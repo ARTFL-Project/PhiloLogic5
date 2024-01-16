@@ -32,6 +32,9 @@ setup(
         "msgpack",
         "unidecode",
         "lz4",
+        "lmdb",
+        "numpy",
+        "numba",
     ],
     python_requires=">=3.8",
     use_scm_version={

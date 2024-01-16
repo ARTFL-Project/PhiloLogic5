@@ -24,6 +24,7 @@ class HitList(object):
         methodarg=3,
         sort_order=None,
         raw=False,
+        raw_bytes=False,
         ascii_conversion=True,
     ):
         self.filename = filename
@@ -33,7 +34,8 @@ class HitList(object):
         self.sort_order = sort_order
         if self.sort_order == ["rowid"]:
             self.sort_order = None
-        self.raw = raw  # if true, this return the raw hitlist consisting of a list of philo_ids
+        self.raw = raw  # if true, this return the raw hitlist consisting of an iterable of philo_ids
+        self.raw_bytes = raw_bytes  # if true, this returns the raw hitlist consisting of an iterable of bytes
         self.dbh = dbh
         self.encoding = encoding or "utf-8"
         if method != "cooc":
@@ -41,15 +43,16 @@ class HitList(object):
             self.length = 7 + 2 * (words)
         else:
             self.has_word_id = 0  # unfortunately.  fix this next time I have 3 months to spare.
-            self.length = methodarg + 1 + (words)
+            self.length = 7 + 2 * (words)
         self.fh = open(self.filename, "rb")  # need a full path here.
-        self.format = "=%dI" % self.length  # short for object id's, int for byte offset.
+        self.format = "%dI" % self.length  # short for object id's, int for byte offset.
         self.hitsize = struct.calcsize(self.format)
         self.doc = doc
         self.byte = byte
         self.position = 0
         self.done = False
         self.update()
+
         if self.sort_order:
             self.sorted_hitlist = []
             iter_position = 0
@@ -200,7 +203,6 @@ class HitList(object):
             if self.done:
                 raise IndexError
             else:
-                time.sleep(0.05)
                 self.update()
         if n != self.position:
             offset = self.hitsize * n
@@ -208,6 +210,8 @@ class HitList(object):
             self.position = n
         buffer = self.fh.read(self.hitsize)
         self.position += 1
+        if self.raw_bytes:
+            return buffer
         return struct.unpack(self.format, buffer)
 
     def get_total_word_count(self):

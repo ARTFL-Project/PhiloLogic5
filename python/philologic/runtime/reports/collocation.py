@@ -3,31 +3,25 @@
 
 import os
 import timeit
-from collections import defaultdict
-import string
-import msgpack
-import lz4.frame
+import struct
+from typing import Any
 
+import msgpack
+import lmdb
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_expanded_query
-
-remove_punctuation_map = dict((ord(char), None) for char in string.punctuation if char != "'")
 
 
 def collocation_results(request, config):
     """Fetch collocation results"""
     db = DB(config.db_path + "/data/")
-    if request["collocate_distance"]:
-        hits = db.query(
-            request["q"],
-            "proxy",
-            int(request["collocate_distance"]),
-            **request.metadata,
-        )
+    collocation_object: dict[str, Any] = {"query": dict([i for i in request])}
+
+    # We turn on lemma counting if the query word is a lemma search
+    if "lemma:" in request["q"]:
+        count_lemmas = True
     else:
-        hits = db.query(request["q"], "cooc", request["arg"], **request.metadata)
-    hits.finish()
-    collocation_object = {"query": dict([i for i in request])}
+        count_lemmas = False
 
     try:
         collocate_distance = int(request["collocate_distance"])
@@ -37,9 +31,28 @@ def collocation_results(request, config):
     if request.colloc_filter_choice == "nofilter":
         filter_list = []
     else:
-        filter_list = build_filter_list(request, config)
+        filter_list = build_filter_list(request, config, count_lemmas)
     collocation_object["filter_list"] = filter_list
     filter_list = set(filter_list)
+
+    if request["collocate_distance"]:
+        hits = db.query(
+            request["q"],
+            "proxy",
+            int(request["collocate_distance"]),
+            raw_results=True,
+            raw_bytes=True,
+            **request.metadata,
+        )
+    else:
+        hits = db.query(
+            request["q"],
+            "proxy",
+            request["arg"],
+            raw_results=True,
+            raw_bytes=True,
+            **request.metadata,
+        )
 
     # Build list of search terms to filter out
     query_words = []
@@ -50,56 +63,49 @@ def collocation_results(request, config):
     query_words = set(query_words)
     filter_list = filter_list.union(query_words)
 
-    if request["collocate_distance"]:
-        hits = db.query(
-            request["q"],
-            "proxy",
-            int(request["collocate_distance"]),
-            raw_results=True,
-            **request.metadata,
-        )
-    else:
-        hits = db.query(
-            request["q"],
-            "proxy",
-            request["arg"],
-            raw_results=True,
-            **request.metadata,
-        )
-    hits.finish()
-    stored_sentence_id = None
-    stored_sentence_counts = defaultdict(int)
-    sentence_hit_count = 1
     hits_done = request.start or 0
     max_time = request.max_time or 2
-    all_collocates = defaultdict(lambda: {"count": 0})
-    cursor = db.dbh.cursor()
+    all_collocates = {}
     start_time = timeit.default_timer()
-    for hit in hits[hits_done:]:
-        sentence = f"{hit[0]} {hit[1]} {hit[2]} {hit[3]} {hit[4]} {hit[5]} 0"
-        cursor.execute("SELECT words FROM sentences WHERE philo_id = ?", (sentence,))
-        words = msgpack.loads(lz4.frame.decompress(cursor.fetchone()[0]))
-        parent = hit[:6] + (0,)
-        if parent != stored_sentence_id:
-            sentence_hit_count = 1
-            stored_sentence_id = parent
-            stored_sentence_counts = defaultdict(int)
-            for collocate in words:
-                if collocate["word"] not in filter_list:
-                    stored_sentence_counts[collocate["word"]] += 1
-        else:
-            sentence_hit_count += 1
-        for word in stored_sentence_counts:
-            if stored_sentence_counts[word] < sentence_hit_count:
-                continue
-            all_collocates[word]["count"] += 1
-        hits_done += 1
 
-        elapsed = timeit.default_timer() - start_time
-        # avoid timeouts by splitting the query if more than request.max_time (in
-        # seconds) has been spent in the loop
-        if elapsed > int(max_time):
-            break
+    env = lmdb.open(
+        os.path.join(db.path, "sentences.lmdb"),
+        readonly=True,
+        lock=False,
+    )
+
+    with env.begin() as txn:
+        cursor = txn.cursor()
+        for hit in hits[hits_done:]:
+            parent_sentence = hit[:24]  # 24 bytes for the first 6 integers
+            q_word_position = struct.unpack("1I", hit[24:28])  # 4 bytes for the 7th integer
+            sentence = cursor.get(parent_sentence)
+            word_objects = msgpack.loads(sentence)
+            if count_lemmas is False:
+                words = [(word, position) for word, _, _, position in word_objects]
+            else:
+                words = [(lemma, position) for _, lemma, _, position in word_objects]
+            for collocate, position in words:
+                if collocate not in filter_list:
+                    if collocate_distance is None:
+                        if collocate not in all_collocates:
+                            all_collocates[collocate] = {"count": 1}
+                        else:
+                            all_collocates[collocate]["count"] += 1
+                    else:
+                        if abs(position - q_word_position[0]) <= collocate_distance:
+                            if collocate not in all_collocates:
+                                all_collocates[collocate] = {"count": 1}
+                            else:
+                                all_collocates[collocate]["count"] += 1
+            hits_done += 1
+
+            elapsed = timeit.default_timer() - start_time
+            # split the query if more than request.max_time has been spent in the loop
+            if elapsed > int(max_time):
+                break
+    env.close()
+    hits.finish()
 
     collocation_object["collocates"] = all_collocates
     collocation_object["results_length"] = len(hits)
@@ -109,21 +115,12 @@ def collocation_results(request, config):
     else:
         collocation_object["more_results"] = False
         collocation_object["hits_done"] = collocation_object["results_length"]
+    collocation_object["distance"] = collocate_distance
 
     return collocation_object
 
 
-def extract_bytes(hit):
-    remaining = list(hit[8:])
-    byte_offsets = []
-    while remaining:
-        if remaining:
-            byte_offsets.append(remaining.pop(0))
-    byte_offsets.sort()
-    return byte_offsets
-
-
-def build_filter_list(request, config):
+def build_filter_list(request, config, count_lemmas):
     """set up filtering with stopwords or most frequent terms."""
     if config.stopwords and request.colloc_filter_choice == "stopwords":
         if config.stopwords and "/" not in config.stopwords:
@@ -150,5 +147,8 @@ def build_filter_list(request, config):
                 word = line.split()[0]
             except IndexError:
                 continue
-            filter_list.append(word)
+            if count_lemmas is False:
+                filter_list.append(word)
+            else:
+                filter_list.append("lemma:" + word)
     return filter_list

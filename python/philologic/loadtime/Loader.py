@@ -4,7 +4,6 @@ Calls all parsing functions and stores data in index"""
 
 import collections
 import datetime
-import math
 import os
 import pickle
 import shutil
@@ -14,14 +13,29 @@ import time
 from glob import iglob
 from json import dump
 import csv
+import subprocess
+import struct
+from collections import defaultdict
+import sqlite3
 
+import lmdb
+import lz4.frame
+from orjson import loads
+from pickle import dumps
 import lxml.etree
 import regex as re
 from black import FileMode, format_str
 from multiprocess import Pool
 from philologic.Config import MakeDBConfig, MakeWebConfig
-from philologic.loadtime.PostFilters import make_sentences_table, make_sql_table
-from philologic.utils import convert_entities, extract_full_date, extract_integer, load_module, pretty_print, sort_list
+from philologic.loadtime.PostFilters import make_sentences_database, make_sql_table
+from philologic.utils import (
+    convert_entities,
+    extract_full_date,
+    extract_integer,
+    load_module,
+    pretty_print,
+    sort_list,
+)
 from tqdm import tqdm
 
 SORT_BY_WORD = "-k 2,2"
@@ -31,7 +45,7 @@ OBJECT_TYPES = ["doc", "div1", "div2", "div3", "para", "sent", "word"]
 BLOCKSIZE = 2048  # index block size.  Don't alter.
 INDEX_CUTOFF = 10  # index frequency cutoff.  Don't alter.
 
-DEFAULT_TABLES = ("toms", "pages", "refs", "graphics", "lines", "sentences")
+DEFAULT_TABLES = ("toms", "pages", "refs", "graphics", "lines")
 
 DEFAULT_OBJECT_LEVEL = "doc"
 
@@ -97,6 +111,8 @@ class Loader:
     url_root = ""
     cores = 2
     ascii_conversion = ASCII_CONVERSION
+    lemmas = None
+    # word_attributes = []
 
     @classmethod
     def set_class_attributes(cls, loader_options):
@@ -115,6 +131,13 @@ class Loader:
         cls.cores = loader_options["cores"]
         cls.ascii_conversion = loader_options["ascii_conversion"]
         cls.metadata_sql_types = loader_options["metadata_sql_types"]
+        # cls.word_attributes = loader_options["word_attributes"]
+        if loader_options["lemma_file"]:
+            cls.lemmas = {}
+            with open(loader_options["lemma_file"], encoding="utf8") as lemma_file:
+                for line in lemma_file:
+                    word, lemma = line.strip().split("\t")
+                    cls.lemmas[word] = lemma
         for option in PARSER_OPTIONS:
             try:
                 cls.parser_config[option] = loader_options[option]
@@ -147,28 +170,41 @@ class Loader:
                 ):
                     already_configured_values[attribute] = getattr(config_obj, attribute)
             with open(load_config_path, "a") as load_config_copy:
-                print("\n\n## The values below were also used for loading ##", file=load_config_copy)
+                print(
+                    "\n\n## The values below were also used for loading ##",
+                    file=load_config_copy,
+                )
                 for option, option_value in loader_options.items():
                     if (
                         option not in already_configured_values
                         and option not in values_to_ignore
                         and option != "web_config"
                     ):
-                        print("%s = %s\n" % (option, repr(option_value)), file=load_config_copy)
+                        print(
+                            "%s = %s\n" % (option, repr(option_value)),
+                            file=load_config_copy,
+                        )
         else:
             with open(load_config_path, "w") as load_config_copy:
                 print("#!/usr/bin/env python3", file=load_config_copy)
                 print(
-                    '"""This is a dump of the default configuration used to load this database,', file=load_config_copy
+                    '"""This is a dump of the default configuration used to load this database,',
+                    file=load_config_copy,
                 )
-                print("including non-configurable options. You can use this file to reload", file=load_config_copy)
+                print(
+                    "including non-configurable options. You can use this file to reload",
+                    file=load_config_copy,
+                )
                 print(
                     'the current database using the -l flag. See load documentation for more details"""\n\n',
                     file=load_config_copy,
                 )
                 for option, option_value in loader_options.items():
                     if option not in values_to_ignore and option != "web_config":
-                        print("%s = %s\n" % (option, repr(option_value)), file=load_config_copy)
+                        print(
+                            "%s = %s\n" % (option, repr(option_value)),
+                            file=load_config_copy,
+                        )
 
         if "web_config" in loader_options:
             web_config_path = os.path.join(loader_options["data_destination"], "web_config.cfg")
@@ -191,7 +227,12 @@ class Loader:
 
     def add_files(self, files):
         """Copy files to database directory"""
-        for f in tqdm(files, total=len(files), leave=False, desc="Copying files to database directory"):
+        for f in tqdm(
+            files,
+            total=len(files),
+            leave=False,
+            desc="Copying files to database directory",
+        ):
             new_file_path = os.path.join(self.textdir, os.path.basename(f).replace(" ", "_").replace("'", "_"))
             shutil.copy2(f, new_file_path)
             os.chmod(new_file_path, 775)
@@ -209,7 +250,10 @@ class Loader:
         with open(bibliography_file, encoding="utf8") as input_file:
             reader = csv.DictReader(input_file, delimiter=delimiter)
             load_metadata = [metadata for metadata in reader]
-        print("Sorting files by the following metadata fields: %s..." % ", ".join([i for i in sort_by_field]), end=" ")
+        print(
+            "Sorting files by the following metadata fields: %s..." % ", ".join([i for i in sort_by_field]),
+            end=" ",
+        )
 
         def make_sort_key(d):
             """Inner sort function"""
@@ -470,10 +514,7 @@ class Loader:
             print("%s: parsing %d files." % (time.ctime(), len(cls.filequeue)))
         with tqdm(total=len(cls.filequeue), smoothing=0, leave=False, desc="Parsing files") as pbar:
             with Pool(workers) as pool:
-                for results in pool.imap_unordered(cls.parse_file, range(len(cls.data_dicts))):
-                    with open(results, "rb") as proc_fh:
-                        vec = pickle.load(proc_fh)
-                    cls.omax = [max(x, y) for x, y in zip(vec, cls.omax)]
+                for _ in pool.imap_unordered(cls.parse_file, range(len(cls.data_dicts))):
                     pbar.update()
         if verbose is True:
             print("%s: done parsing" % time.ctime())
@@ -528,6 +569,7 @@ class Loader:
                 metadata_to_parse=cls.parser_config["metadata_to_parse"],
                 words_to_index=cls.words_to_index,
                 file_type=cls.parser_config["file_type"],
+                lemmas=cls.lemmas,
                 **options,
             )
             with open(text["newpath"], "r", newline="", encoding="utf8") as input_file:
@@ -552,6 +594,10 @@ class Loader:
         print("\n### Merge parser output ###")
         print(f"{time.ctime()}: sorting words")
         self.merge_files("words")
+
+        if self.lemmas:
+            print(f"{time.ctime()}: sorting lemmas")
+            self.merge_files("lemmas")
 
         print(f"{time.ctime()}: sorting objects", flush=True)
         self.merge_files("toms")
@@ -578,7 +624,8 @@ class Loader:
     def merge_files(self, file_type, file_num=1000, verbose=True):
         """This function runs a multi-stage merge sort on words
         Since PhiloLogic can potentially merge thousands of files, we need to split
-        the sorting stage into multiple steps to avoid running out of file descriptors"""
+        the sorting stage into multiple steps to avoid running out of file descriptors
+        """
         if sys.platform == "darwin":
             file_num = 250
         lists_of_files = []
@@ -590,6 +637,13 @@ class Loader:
             else:
                 open_file_command = "lz4cat"
             sort_command = f"LANG=C sort -S 25% -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+        elif file_type == "lemmas":
+            suffix = "/*raw.lemma.lz4"
+            if self.debug is False:
+                open_file_command = "lz4cat --rm"
+            else:
+                open_file_command = "lz4cat"
+            sort_command = f"LANG=C sort -S 25% -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
         else:  # sorting for toms
             suffix = "/*.toms.sorted"
             open_file_command = "cat"
@@ -608,7 +662,10 @@ class Loader:
         total_files = sum(len(files) for files in lists_of_files)
         # Then we run the merge sort on each chunk of 500 files and compress the result
         if verbose is True:
-            print(f"{time.ctime()}: Merging {file_type} in batches of {file_num}...", flush=True)
+            print(
+                f"{time.ctime()}: Merging {file_type} in batches of {file_num}...",
+                flush=True,
+            )
         else:
             print(f"Merging {file_type} in batches of {file_num}...", flush=True)
         os.system(f"touch {self.workdir}/sorted.init")
@@ -629,11 +686,18 @@ class Loader:
         if file_type == "words":
             output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
             command = f'/bin/bash -c "{sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
+        elif file_type == "lemmas":
+            output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
+            command = f'/bin/bash -c "{sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
         else:
             output_file = os.path.join(self.workdir, "all_toms_sorted")
             command = f'/bin/bash -c "{sort_command} {sorted_files} > {output_file}"'
         if verbose is True:
-            print(f"{time.ctime()}: Merging all merged sorted files (this may take a while)...", flush=True, end=" ")
+            print(
+                f"{time.ctime()}: Merging all merged sorted files (this may take a while)...",
+                flush=True,
+                end=" ",
+            )
 
         status = os.system(command)
         if status != 0:
@@ -645,69 +709,134 @@ class Loader:
             if sorted_file.name.endswith(".split"):
                 os.system(f"rm {sorted_file.name}")
 
-    def analyze(self):
+    def analyze(self, commit_interval=1000):
         """Create inverted index"""
         print("\n### Create inverted index ###", flush=True)
-        print(self.omax, flush=True)
-        vl = [max(int(math.ceil(math.log(float(x) + 1.0, 2.0))), 1) if x > 0 else 1 for x in self.omax]
-        print(vl, flush=True)
-        width = sum(x for x in vl)
-        print(str(width) + " bits wide.", flush=True)
-
-        hits_per_block = (BLOCKSIZE * 8) // width
-        freq1 = INDEX_CUTOFF
-        freq2 = 0
-        offset = 0
-
-        # Generate frequency table
-        os.system(
-            f'/bin/bash -c "cut -f 2 <(lz4cat {self.workdir}/all_words_sorted.lz4) | uniq -c | LANG=C sort -S 25% -rn -k 1,1> {self.workdir}/all_frequencies"'
+        line_count_process = subprocess.run(
+            f"lz4 -dc {self.workdir}/all_words_sorted.lz4 | wc -l",
+            shell=True,
+            text=True,
+            capture_output=True,
         )
+        line_count = int(line_count_process.stdout.strip())
+        db_env = lmdb.open(
+            f"{self.destination}/words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
+        )  # 2TB limit
 
-        # now scan over the frequency table to figure out how wide (in bits) the frequency fields are,
-        # and how large the block file will be.
-        with open(self.workdir + "/all_frequencies") as frequencies:
-            for line in frequencies:
-                f, _ = line.rsplit(" ", 1)  # uniq -c pads output on the left side, so we split on the right.
-                try:
-                    f = int(f)
-                except ValueError:
-                    f = int(re.sub(r"(\d+)\D+", r"\1", f.strip()))
-                if f > freq2:
-                    freq2 = f
-                if f < INDEX_CUTOFF:
-                    pass  # low-frequency words don't go into the block-mode index.
-                else:
-                    blocks = 1 + f // (hits_per_block + 1)  # high frequency words have at least one block.
-                    offset += blocks * BLOCKSIZE
+        with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
+            current_word = None
+            count = 0
+            current_word = None
+            philo_ids = bytearray()
+            txn = db_env.begin(write=True)
+            for line in tqdm(input_file, total=line_count, desc="Creating word index", leave=False):
+                line = line.decode("utf-8")  # type: ignore
+                _, word, philo_id, _ = line.split("\t", 3)
+                hit = list(map(int, philo_id.split()))
+                hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
+                word_id = struct.pack("9I", *hit)
+                if word != current_word:
+                    if current_word is not None:
+                        txn.put(
+                            current_word.encode("utf-8"),
+                            philo_ids,
+                        )
+                        count += 1
+                        if count % commit_interval == 0:
+                            txn.commit()
+                            txn = db_env.begin(write=True)
+                    current_word = word
+                    philo_ids.clear()
+                philo_ids.extend(word_id)
 
-        # take the log base 2 for the length of the binary representation.
-        freq1_l = math.ceil(math.log(float(freq1), 2.0))
-        freq2_l = math.ceil(math.log(float(freq2), 2.0))
-        offset_l = math.ceil(math.log(float(offset), 2.0))
+            # Commit any remaining words
+            if philo_ids:
+                txn.put(
+                    current_word.encode("utf-8"),  # type: ignore
+                    philo_ids,
+                )
+            txn.commit()
 
-        print("freq1: %d; %d bits" % (freq1, freq1_l))
-        print("freq2: %d; %d bits" % (freq2, freq2_l))
-        print("offst: %d; %d bits" % (offset, offset_l))
+        # Create lemmas index
+        if self.lemmas:
+            print("Creating lemma index...", end=" ", flush=True)
+            with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4", "rb") as input_file:
+                txn = db_env.begin(write=True)
+                current_lemma = None
+                count = 0
+                philo_ids = bytearray()
+                for line in tqdm(input_file, total=line_count, leave=False, desc="Creating lemma index"):
+                    line = line.decode("utf-8")
+                    _, lemma, philo_id = line.strip().split("\t")
+                    hit = list(map(int, philo_id.split()))
+                    hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
+                    lemma_id = struct.pack("9I", *hit)
+                    if lemma != current_lemma:
+                        if current_lemma is not None:
+                            txn.put(
+                                f"lemma:{current_lemma}".encode("utf-8"),
+                                philo_ids,
+                            )
+                            count += 1
+                            if count % commit_interval == 0:
+                                txn.commit()
+                                txn = db_env.begin(write=True)
+                        current_lemma = lemma
+                        philo_ids.clear()
+                    philo_ids.extend(lemma_id)
+                # Commit any remaining lemmas
+                if philo_ids:
+                    txn.put(
+                        f"lemma:{current_lemma}".encode("utf-8"),
+                        philo_ids,
+                    )
+                txn.commit()
+        db_env.close()
+        print("Finished creating inverted index.")
 
-        # now write it out in our legacy c-header-like format.  TODO: reasonable format, or ctypes bindings for packer.
-        with open(self.workdir + "dbspecs4.h", "w") as dbs:
-            print("#define FIELDS 9", file=dbs)
-            print("#define TYPE_LENGTH 1", file=dbs)
-            print("#define BLK_SIZE " + str(BLOCKSIZE), file=dbs)
-            print("#define FREQ1_LENGTH " + str(freq1_l), file=dbs)
-            print("#define FREQ2_LENGTH " + str(freq2_l), file=dbs)
-            print("#define OFFST_LENGTH " + str(offset_l), file=dbs)
-            print("#define NEGATIVES {0,0,0,0,0,0,0,0,0}", file=dbs)
-            print("#define DEPENDENCIES {-1,0,1,2,3,4,5,0,0}", file=dbs)
-            print("#define BITLENGTHS {%s}" % ",".join(str(i) for i in vl), file=dbs)
-        print("%s: analysis done" % time.ctime())
-        os.system(
-            f'/bin/bash -c "lz4cat {self.workdir}/all_words_sorted.lz4 | pack4 {self.workdir}/dbspecs4.h"',
-        )
-        print("%s: all indices built. moving into place." % time.ctime())
-        os.system("mv index " + self.destination + "/index")
-        os.system("mv index.1 " + self.destination + "/index.1")
+        # with sqlite3.connect(f"{self.destination}/words.db") as conn, lz4.frame.open(
+        #     f"{self.workdir}/all_words_sorted.lz4"
+        # ) as input_file:
+        #     cursor = conn.cursor()
+        #     for attribute in self.word_attributes:
+        #         cursor.execute(f"CREATE TABLE IF NOT EXISTS {attribute} (word_{attribute} TEXT, philo_ids BLOB)")
+
+        #     # Initialize a dictionary holding different attributes values for each word
+        #     word_attributes = {attribute: defaultdict(bytes) for attribute in self.word_attributes}
+
+        #     current_word = None
+        #     with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
+        #         for line in tqdm(input_file, total=line_count, desc="Storing words in LMDB database"):
+        #             line = line.decode("utf-8")
+        #             _, word, philo_id, attributes = line.split("\t", 3)
+        #             philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
+        #             local_word_attributes = loads(attributes)
+        #             for attribute in self.word_attributes:
+        #                 attribute_value = local_word_attributes[attribute]
+        #                 if attribute_value in word_attributes[attributes]:
+        #                     word_attributes[attribute][attribute_value] += philo_id_bytes
+
+        #             if word != current_word:
+        #                 if current_word is not None:
+        #                     for attribute in self.word_attributes:
+        #                         cursor.execute(
+        #                             f"INSERT INTO {attribute} (word_{attribute}, philo_ids) VALUES (?, ?)",
+        #                             (current_word, word_attributes[attribute][current_word]),
+        #                         )
+        #                 current_word = word
+        #                 word_attributes = {attribute: defaultdict(bytes) for attribute in self.word_attributes}
+
+        #     # Handle the last set of words
+        #     for attribute in self.word_attributes:
+        #         cursor.execute(
+        #             f"INSERT INTO {attribute} (word_{attribute}, philo_ids) VALUES (?, ?)",
+        #             (current_word, word_attributes[attribute][current_word]),
+        #         )
+
+        #     # Create indexes
+        #     for attribute in self.word_attributes:
+        #         cursor.execute(f"CREATE INDEX word_{attribute}_index ON {attribute} (word_{attribute})")
+        #     conn.commit()
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""
@@ -736,11 +865,7 @@ class Loader:
                 file_in = self.destination + "/WORK/all_lines"
                 indices = [("doc_id", "start_byte", "end_byte")]
                 depth = 9
-            if table == "sentences":
-                db_destination = os.path.join(self.destination, "toms.db")
-                post_filter = make_sentences_table(self.destination, db_destination)
-            else:
-                post_filter = make_sql_table(table, file_in, indices=indices, depth=depth, verbose=verbose)
+            post_filter = make_sql_table(table, file_in, indices=indices, depth=depth, verbose=verbose)
             self.post_filters.insert(0, post_filter)
 
     @classmethod
@@ -753,6 +878,11 @@ class Loader:
                 cls.metadata_fields_not_found = f(cls)
             else:
                 f(cls)
+
+        # Set up sentences database
+        db_destination = os.path.join(cls.destination, "sentences.lmdb")
+        make_sentences_database(cls.destination, db_destination)
+
         if extra_filters:
             print("Running the following additional filters:")
             for f in extra_filters:
@@ -762,11 +892,15 @@ class Loader:
     def finish(self):
         """Write important runtime information to the database directory"""
         print("\n### Finishing up ###")
-        os.mkdir(self.destination + "/src/")
         os.mkdir(self.destination + "/hitlists/")
         os.chmod(self.destination + "/hitlists/", 0o777)
         os.chmod(os.path.join(self.destination, "TEXT"), 0o775)
-        os.system("mv dbspecs4.h ../src/dbspecs4.h")
+
+        # Write lemmas to frequency file
+        if self.lemmas:
+            with open(f"{self.destination}/frequencies/lemmas", "w", encoding="utf8") as freq_file:
+                for lemma in self.lemmas.values():
+                    print(f"lemma:{lemma}", file=freq_file)
 
         # Make data directory inaccessible from the outside
         fh = open(self.destination + "/.htaccess", "w")
@@ -889,7 +1023,10 @@ class Loader:
             config_values["kwic_bibliography_fields"] = ["filename"]
 
         if "author" in config_values["search_examples"] and "title" in config_values["search_examples"]:
-            config_values["concordance_biblio_sorting"] = [("author", "title"), ("title", "author")]
+            config_values["concordance_biblio_sorting"] = [
+                ("author", "title"),
+                ("title", "author"),
+            ]
 
         # Find default start and end dates for times series
         try:
@@ -903,9 +1040,15 @@ class Loader:
                 end_date = int(max_year)
             except TypeError:
                 end_date = 2100
-            config_values["time_series_start_end_date"] = {"start_date": start_date, "end_date": end_date}
+            config_values["time_series_start_end_date"] = {
+                "start_date": start_date,
+                "end_date": end_date,
+            }
         except sqlite3.OperationalError:  # no year field present
-            config_values["time_series_start_end_date"] = {"start_date": "", "end_date": ""}
+            config_values["time_series_start_end_date"] = {
+                "start_date": "",
+                "end_date": "",
+            }
 
         config_values["ascii_conversion"] = Loader.ascii_conversion
 

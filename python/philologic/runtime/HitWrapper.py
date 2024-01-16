@@ -1,7 +1,4 @@
-#!/usr/bin/python3
 """All different types of hit objects"""
-
-import sys
 
 TEXT_OBJECT_LEVELS = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 SHARED_CACHE = {}
@@ -20,6 +17,8 @@ def _safe_lookup(row, field):
 
 class HitWrapper:
     """Class representing an individual hit with all its ancestors"""
+
+    __slots__ = ["db", "hit", "object_type", "row", "bytes", "words", "philo_id", "page", "line", "ancestors"]
 
     def __init__(self, hit, db, obj_type=False, method="proxy"):
         self.db = db
@@ -42,7 +41,7 @@ class HitWrapper:
             self.words.append(WordWrapper(hit, db, self.start_byte))
             page_i = self["page"]
         else:
-            self.philo_id = hit[:6] + (self.hit[7],)
+            self.philo_id = hit[:7]
             parent_id = self.hit[:6]
             remaining = list(self.hit[7:])
             while remaining:
@@ -52,9 +51,8 @@ class HitWrapper:
             self.bytes.sort()
             self.words.sort(key=lambda x: x[-1])  # assumes words in same sent, as does search4
             self.words = [WordWrapper(word, db, byte) for word, byte in zip(self.words, self.bytes)]
-
             page_i = self.hit[6]
-        page_id = [self.hit[0], 0, 0, 0, 0, 0, 0, 0, page_i]
+        page_id = (self.hit[0], 0, 0, 0, 0, 0, 0, 0, page_i)
         self.page = PageWrapper(page_id, db)
         self.ancestors = {}
         for object_type in TEXT_OBJECT_LEVELS:
@@ -105,6 +103,8 @@ class HitWrapper:
 class ObjectWrapper:
     """Class representing doc, div1, div2, div3, para, sent objects"""
 
+    __slots__ = ["db", "hit", "object_type", "row", "bytes", "words", "philo_id", "page"]
+
     def __init__(self, hit, db, obj_type=False, row=None):
         self.db = db
         self.hit = hit
@@ -122,7 +122,7 @@ class ObjectWrapper:
         self.row = row
         self.words = []
         page_i = self["page"]
-        page_id = [self.hit[0], 0, 0, 0, 0, 0, 0, 0, page_i]
+        page_id = (self.hit[0], 0, 0, 0, 0, 0, 0, 0, page_i)
         self.page = PageWrapper(page_id, db)
 
     def __getitem__(self, key):
@@ -145,6 +145,8 @@ class ObjectWrapper:
 
 class PageWrapper:
     """Class representing page objects"""
+
+    __slots__ = ["db", "philo_id", "object_type", "row", "bytes"]
 
     def __init__(self, id, db):
         self.db = db
@@ -170,6 +172,8 @@ class PageWrapper:
 class LineWrapper:
     """Class representing line objects"""
 
+    __slots__ = ["db", "philo_id", "object_type", "row", "bytes", "doc_id", "hit_offset"]
+
     def __init__(self, philo_id, byte_offset, db):
         self.db = db
         self.philo_id = philo_id
@@ -181,7 +185,7 @@ class LineWrapper:
 
     def __getitem__(self, key):
         if self.row is None:
-            self.row = self.db.get_line(self.hit_offset, self.doc_id)
+            self.row = self.db.get_page(self.hit_offset, self.doc_id)
         return _safe_lookup(self.row, key)
 
     def __getattr__(self, name):
@@ -196,6 +200,8 @@ class LineWrapper:
 class WordWrapper:
     """Class representing word objects"""
 
+    __slots__ = ["db", "philo_id", "object_type", "row", "byte"]
+
     def __init__(self, id, db, byte):
         self.db = db
         self.philo_id = id
@@ -203,9 +209,14 @@ class WordWrapper:
         self.row = None
         self.byte = byte
 
+    @property
+    def parent(self):
+        """Calculates and returns the parent value."""
+        return self.philo_id.split()[:6] + ["0"]
+
     def __getitem__(self, key):
         if key == "parent":
-            return self.philo_id.split()[:6] + ["0"]
+            return self.parent
         return ""
 
     def __getattr__(self, name):

@@ -48,6 +48,20 @@ def generate_words_sorted(loader_obj, text):
     os.system(wordcommand)
 
 
+def get_lemmas(_, text):
+    """Get lemmas for each word"""
+    with open(text["raw"] + ".lemma", "w", encoding="utf8") as lemma_file:
+        with open(text["raw"], encoding="utf8") as fh:
+            for line in fh:
+                philo_type, _, philo_id, attribs = line.split("\t")
+                if philo_type != "word":
+                    continue
+                attribs = loads(attribs)
+                if "lemma" in attribs:
+                    print(f"lemma\t{attribs['lemma']}\t{philo_id}", file=lemma_file)
+    os.system(f"lz4 -z -q {text['raw']}.lemma {text['raw']}.lemma.lz4 && rm {text['raw']}.lemma")
+
+
 def make_object_ancestors(*philo_types):
     """Find object ancestors for all stored object types"""
     # We should add support for a 'div' philo_type in the future
@@ -205,19 +219,6 @@ def generate_lines(_, text):
     os.system(lines_command)
 
 
-def make_max_id(_, text):
-    """Define max id"""
-    max_id = [0, 0, 0, 0, 0, 0, 0, 0, 0]
-    with open(text["words"], encoding="utf8") as filehandle:
-        for line in filehandle:
-            _, _, philo_id, _ = line.split("\t")
-            philo_id = map(int, philo_id.split(" "))
-            max_id = [max(new, prev) for new, prev in zip(philo_id, max_id)]
-    with open(text["results"], "wb") as rf:
-        # write the result out--really just the resulting omax vector, which the parent will merge in below.
-        pickle.dump(max_id, rf)
-
-
 def store_in_plain_text(*philo_types):
     """Store indexed words in plain text"""
     object_types = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
@@ -282,15 +283,16 @@ def store_words_and_philo_ids(loader_obj, text):
                         attrib["start_byte"] = attrib["end_byte"] - len(
                             word.encode("utf8")
                         )  # Parser uses beginning of sent as start_byte
-                    word_obj = dumps(
-                        {
-                            "token": word,
-                            "position": philo_id,
-                            "start_byte": attrib["start_byte"],
-                            "end_byte": attrib["end_byte"],
-                            "philo_type": philo_type,
-                        }
-                    ).decode("utf-8")
+                    word_obj = {
+                        "token": word,
+                        "position": philo_id,
+                        "start_byte": attrib["start_byte"],
+                        "end_byte": attrib["end_byte"],
+                        "philo_type": philo_type,
+                    }
+                    if "lemma" in attrib:
+                        word_obj["lemma"] = attrib["lemma"]
+                    word_obj = dumps(word_obj).decode("utf-8")
                     print(word_obj, file=output)
     with open(f"{filename}.lz4", "wb") as compressed_file:
         with open(filename, "rb") as input_file:
@@ -397,6 +399,7 @@ def generate_word_frequencies(loader_obj, text):
 DefaultNavigableObjects = ("doc", "div1", "div2", "div3", "para")
 DefaultLoadFilters = [
     get_word_counts,
+    get_lemmas,
     generate_words_sorted,
     make_object_ancestors,
     make_sorted_toms,
@@ -406,7 +409,6 @@ DefaultLoadFilters = [
     generate_refs,
     generate_graphics,
     generate_lines,
-    make_max_id,
     store_words_and_philo_ids,
 ]
 
