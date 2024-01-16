@@ -11,7 +11,6 @@ import signal
 from operator import le, eq
 import numpy as np
 
-from typing import Iterator
 import lmdb
 
 import regex as re
@@ -23,18 +22,14 @@ import numba
 numba.config.CACHE_DIR = "/tmp/numba"
 
 OBJECT_LEVEL = {"para": 5, "sent": 6}
-os.environ["PATH"] += ":/usr/local/bin/"
-# os.environ["NUMBA_CACHE_DIR"] = "/tmp/numba_cache"
 
 
 def query(
     db,
     terms,
     corpus_file=None,
-    corpus_size=0,
     method=None,
     method_arg=None,
-    limit=3000,
     filename="",
     query_debug=False,
     sort_order=None,
