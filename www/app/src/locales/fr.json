@@ -25,6 +25,7 @@
         "collocation": "Collocation",
         "time_series": "Série Temporelle",
         "searchTerms": "Recherche par mots",
+        "collocationParams": "Paramètres de collocation",
         "tips": "Conseils",
         "search": "Rechercher",
         "clear": "Effacer",
@@ -63,6 +64,7 @@
     },
     "searchArgs": {
         "searchingDbFor": "Recherche dans la base de données des",
+        "searchingCollocates": "Recherche des collocations de",
         "termsSimilarTo": "termes similaires à",
         "terms": "termes",
         "termsExpanded": "La recherche de mots a été étendue aux {length} mots suivants",

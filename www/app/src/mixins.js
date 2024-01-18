@@ -29,7 +29,7 @@ export function paramsFilter(formValues) {
             } else {
                 localFormData[field] = value
             }
-        } else if (field == 'hit_num' || field == "start_date" || field == "end_date") {
+        } else if (field == 'hit_num' || field == "start_date" || field == "end_date" || field == "arg_proxy") {
             localFormData[field] = value
         }
     }

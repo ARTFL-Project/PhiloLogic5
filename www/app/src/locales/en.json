@@ -26,6 +26,7 @@
         "collocation": "Collocation",
         "time_series": "Time-Series",
         "searchTerms": "Search Terms",
+        "collocationParams": "Collocation Parameters",
         "tips": "Tips",
         "search": "Search",
         "clear": "Clear",
@@ -64,6 +65,7 @@
     },
     "searchArgs": {
         "searchingDbFor": "Searching database for",
+        "searchingCollocates": "Searching for collocates of",
         "termsSimilarTo": "terms similar to",
         "terms": "the terms",
         "termsExpanded": "The search terms query expanded to the following {length} terms",

@@ -49,6 +49,8 @@ export default {
             "formData.colloc_filter_choice",
             "formData.q",
             "formData.filter_frequency",
+            "formData.arg_proxy",
+            "formData.colloc_within",
             "currentReport",
             "resultsLength",
             "searching",
@@ -205,12 +207,16 @@ export default {
             } else {
                 q = `${this.q} "${item.surfaceForm}"`;
             }
+            let method = "cooc"
+            if (this.arg_proxy.length > 0) {
+                method = 'proxy'
+            }
             this.$router.push(
                 this.paramsToRoute({
                     ...this.$store.state.formData,
                     report: "concordance",
                     q: q,
-                    method: "cooc",
+                    method: method,
                 })
             );
         },

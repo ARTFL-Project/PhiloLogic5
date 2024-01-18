@@ -24,7 +24,7 @@ def collocation_results(request, config):
         count_lemmas = False
 
     try:
-        collocate_distance = int(request["collocate_distance"])
+        collocate_distance = int(request["arg_proxy"])
     except ValueError:  # Getting an empty string since the keyword is not specificed in the URL
         collocate_distance = None
 
@@ -35,24 +35,14 @@ def collocation_results(request, config):
     collocation_object["filter_list"] = filter_list
     filter_list = set(filter_list)
 
-    if request["collocate_distance"]:
-        hits = db.query(
-            request["q"],
-            "proxy",
-            int(request["collocate_distance"]),
-            raw_results=True,
-            raw_bytes=True,
-            **request.metadata,
-        )
-    else:
-        hits = db.query(
-            request["q"],
-            "proxy",
-            request["arg"],
-            raw_results=True,
-            raw_bytes=True,
-            **request.metadata,
-        )
+    hits = db.query(
+        request["q"],
+        "proxy",
+        request["arg"],
+        raw_results=True,
+        raw_bytes=True,
+        **request.metadata,
+    )
 
     # Build list of search terms to filter out
     query_words = []

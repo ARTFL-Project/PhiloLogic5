@@ -9,10 +9,8 @@
                 <hr class="mb-3" width="20%" style="margin: auto" />
                 Powered by
                 <br />
-                <a
-                    href="https://artfl-project.uchicago.edu/"
-                    title="Philologic 4: Open Source ARTFL Search and Retrieval Engine"
-                >
+                <a href="https://artfl-project.uchicago.edu/"
+                    title="Philologic 4: Open Source ARTFL Search and Retrieval Engine">
                     <img src="./assets/philo.png" alt="PhiloLogic" height="40" width="110" />
                 </a>
             </div>
@@ -56,6 +54,7 @@ export default {
                 start: "",
                 end: "",
                 colloc_filter_choice: "",
+                colloc_within: "sent",
                 filter_frequency: 100,
                 approximate: "no",
                 approximate_ratio: 100,
@@ -103,7 +102,7 @@ export default {
                 "end",
                 "frequency_field",
             ]);
-            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency"]);
+            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "arg_proxy"]);
             reportValues.time_series = new Set([
                 ...commonFields,
                 "method",
@@ -220,23 +219,29 @@ export default {
 a {
     text-decoration: none;
 }
+
 .btn:focus {
     box-shadow: none !important;
 }
+
 .modal-backdrop {
     opacity: 0.7;
 }
+
 .highlight {
     color: #ef4500;
     font-weight: 400;
 }
+
 .passage-highlight {
     display: inline-block;
     color: royalblue;
 }
+
 li {
     list-style-type: none;
 }
+
 body,
 .btn,
 select,
@@ -247,16 +252,19 @@ input {
     font-size: 14px !important;
     font-family: "Open-Sans", sans-serif;
 }
+
 .text-view {
     font-family: "Source Serif Pro", serif;
     font-size: 0.9rem;
 }
+
 .custom-control {
     min-height: auto;
 }
-.toc-div1 > a,
-.toc-div2 > a,
-.toc-div3 > a {
+
+.toc-div1>a,
+.toc-div2>a,
+.toc-div3>a {
     padding: 5px 5px 5px 0px;
 }
 
@@ -307,6 +315,7 @@ input {
 .toc-div3:hover {
     cursor: pointer;
 }
+
 br {
     content: " ";
     display: block;

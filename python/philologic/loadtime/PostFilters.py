@@ -87,7 +87,7 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
 
 
 def make_sentences_database(datadir, db_destination):
-    """Generate a table where each row is a sentence containing all the words in it"""
+    """Generate an LMDB database where keys are sentence IDs and values the associated sentence containing all the words in it"""
     print(f"{time.ctime()}: Loading the sentences LMDB database...")
 
     line_count = sum(
@@ -117,7 +117,7 @@ def make_sentences_database(datadir, db_destination):
                             else:
                                 lemma = ""
                             words.append(
-                                (word_obj["token"], lemma, word_obj["start_byte"], word_obj["position"][6])
+                                (word_obj["token"], lemma, word_obj["start_byte"], int(word_obj["position"].split()[6]))
                             )  # maybe add word attribs later...
                         pbar.update()
                     if sentence_id:
