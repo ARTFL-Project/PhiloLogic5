@@ -68,7 +68,7 @@ def collocation_results(request, config):
         cursor = txn.cursor()
         for hit in hits[hits_done:]:
             parent_sentence = hit[:24]  # 24 bytes for the first 6 integers
-            q_word_position = struct.unpack("1I", hit[24:28])  # 4 bytes for the 7th integer
+            q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
             sentence = cursor.get(parent_sentence)
             word_objects = msgpack.loads(sentence)
             if count_lemmas is False:
