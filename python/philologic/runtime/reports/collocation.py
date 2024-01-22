@@ -68,7 +68,8 @@ def collocation_results(request, config):
         cursor = txn.cursor()
         for hit in hits[hits_done:]:
             parent_sentence = hit[:24]  # 24 bytes for the first 6 integers
-            q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
+            if collocate_distance is not None:
+                q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
             sentence = cursor.get(parent_sentence)
             word_objects = msgpack.loads(sentence)
             if count_lemmas is False:
@@ -83,7 +84,7 @@ def collocation_results(request, config):
                         else:
                             all_collocates[collocate]["count"] += 1
                     else:
-                        if abs(position - q_word_position[0]) <= collocate_distance:
+                        if abs(position - q_word_position[0]) <= collocate_distance:  # type: ignore
                             if collocate not in all_collocates:
                                 all_collocates[collocate] = {"count": 1}
                             else:
