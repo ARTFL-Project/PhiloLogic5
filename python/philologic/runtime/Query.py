@@ -156,53 +156,25 @@ def search_word(db_path, hitlist_filename, corpus_file=None):
 
 def search_phrase(db_path, hitlist_filename, corpus_file=None):
     """Phrase searches where words need to be in a specific order"""
-    with open(f"{hitlist_filename}.terms", "r") as terms_file:
-        words = terms_file.read().split()
-    if corpus_file is None:
-        env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
-        with env.begin() as txn, open(hitlist_filename, "wb") as output_file:
-            results = []
-            byte_streams = {}
-            philo_id_length = 36  # Length of a full philo_id (9 integers * 4 bytes each)
-            cursor = txn.cursor()
-            for i, word in enumerate(words):
-                if cursor.set_key(word.encode("utf8")):
-                    philo_ids = cursor.value()
-                    results.append(((philo_ids[i : i + 36], philo_ids[i:24]) for i in range(0, len(philo_ids), 36)))
+    word_groups = get_word_groups(f"{hitlist_filename}.terms")
+    object_level = None
+    corpus_philo_ids = None
+    if corpus_file is not None:
+        corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
+    common_object_ids = get_cooccurrence_groups(
+        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level
+    )
 
-            # Iterate over both byte streams and write when they are within one word of each other
-            # for philo_id_tuples in zip(*results):
-
-            # byte_stream = cursor.value()
-            # byte_streams[i] = byte_stream
-            # first_philo_id = byte_stream[:36]
-            # heapq.heappush(pq, (first_philo_id, i, 0))  # (philo_id, word_index, byte_index)
-
-            # # Iterate and write sorted philo_ids
-            # while pq:
-            #     philo_id, word_index, byte_index = heapq.heappop(pq)
-            #     if word_index == len(words) - 1:
-            #         if word_index == 0:
-            #             output_file.write(philo_id)
-            #         else:
-            #             output_file.write(philo_id[28:])
-            #     else:
-            #         next_byte_index = byte_index + philo_id_length
-            #         if next_byte_index < len(byte_streams[word_index]):
-            #             next_philo_id = byte_streams[word_index][next_byte_index : next_byte_index + philo_id_length]
-            #             heapq.heappush(pq, (next_philo_id, word_index + 1, next_byte_index))
-        # else:
-        # corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
-        # with sqlite3.connect(f"{db_path}/words.db") as conn, open(hitlist_filename, "wb", buffering=900) as output_file:
-        #     cursor = conn.cursor()
-        #     cursor.execute(f"""SELECT philo_ids FROM words WHERE word IN ({",".join(["?"] * len(words))})""", words)
-        #     for (philo_ids,) in cursor:
-        #         philo_ids = extract_philo_ids(philo_ids, 36)
-        #         for i, philo_id in enumerate(philo_ids):
-        #             if i == len(philo_ids) - 1:
-        #                 output_file.write(philo_id)
-        #             else:
-        #                 next_philo_id = philo_ids[i]
+    with open(hitlist_filename, "wb") as output_file:
+        for philo_id_groups in common_object_ids:
+            for group_combination in product(*philo_id_groups):
+                positions: list[int] = [philo_id[7:8][0] for philo_id in group_combination]
+                # we now need to check if the positions are within 1 word of each other and in sorted order
+                if positions[0] + len(word_groups) - 1 == positions[-1] and sorted(positions) == positions:
+                    starting_id = group_combination[0].tobytes()
+                    for group_num in range(1, len(word_groups)):
+                        starting_id += group_combination[group_num][7:].tobytes()
+                    output_file.write(starting_id)
 
 
 def search_within_word_span(db_path, hitlist_filename, n, exact_distance, corpus_file=None):
