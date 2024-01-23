@@ -767,7 +767,7 @@ class Loader:
                 philo_ids = bytearray()
                 for line in tqdm(input_file, total=line_count, leave=False, desc="Creating lemma index"):
                     line = line.decode("utf-8")
-                    _, lemma, philo_id = line.strip().split("\t")
+                    _, lemma, philo_id, _ = line.strip().split("\t")
                     hit = list(map(int, philo_id.split()))
                     hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
                     lemma_id = struct.pack("9I", *hit)
@@ -791,52 +791,82 @@ class Loader:
                         philo_ids,
                     )
                 txn.commit()
-        db_env.close()
         print("Finished creating inverted index.")
 
-        # with sqlite3.connect(f"{self.destination}/words.db") as conn, lz4.frame.open(
-        #     f"{self.workdir}/all_words_sorted.lz4"
-        # ) as input_file:
-        #     cursor = conn.cursor()
-        #     for attribute in self.word_attributes:
-        #         cursor.execute(f"CREATE TABLE IF NOT EXISTS {attribute} (word_{attribute} TEXT, philo_ids BLOB)")
+        # Add word attributes to LMDB database
+        # Keys follow the format word_attribute:attribute_value:word
+        with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
+            word_attributes: dict[str, dict[str, bytes]] = {}
+            current_word = None
+            for line in tqdm(input_file, total=line_count, desc="Storing word attributes in LMDB database"):
+                line = line.decode("utf-8")
+                _, word, philo_id, attributes = line.split("\t", 3)
+                philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
+                local_word_attributes = loads(attributes)
+                for attribute, attribute_value in local_word_attributes.items():
+                    if attribute not in word_attributes:
+                        word_attributes[attribute] = {attribute_value: philo_id_bytes}
+                    if attribute_value in word_attributes[attributes]:
+                        word_attributes[attribute][attribute_value] += philo_id_bytes
+                    else:
+                        word_attributes[attribute][attribute_value] = philo_id_bytes
 
-        #     # Initialize a dictionary holding different attributes values for each word
-        #     word_attributes = {attribute: defaultdict(bytes) for attribute in self.word_attributes}
+                if word != current_word:
+                    if current_word is not None:
+                        for attribute, attribute_dict in word_attributes.items():
+                            for attribute_value, philo_ids in attribute_dict.items():
+                                txn.put(f"{attribute}:{attribute_value}:{current_word}".encode("utf-8"), philo_ids)
+                    current_word = word
+                    word_attributes = {}
 
-        #     current_word = None
-        #     with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
-        #         for line in tqdm(input_file, total=line_count, desc="Storing words in LMDB database"):
-        #             line = line.decode("utf-8")
-        #             _, word, philo_id, attributes = line.split("\t", 3)
-        #             philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
-        #             local_word_attributes = loads(attributes)
-        #             for attribute in self.word_attributes:
-        #                 attribute_value = local_word_attributes[attribute]
-        #                 if attribute_value in word_attributes[attributes]:
-        #                     word_attributes[attribute][attribute_value] += philo_id_bytes
+            # Handle the last set of words
+            for attribute, attribute_dict in word_attributes.items():
+                for attribute_value, philo_ids in attribute_dict.items():
+                    txn.put(f"{attribute}:{attribute_value}:{current_word}".encode("utf-8"), philo_ids)
+            txn.commit()
 
-        #             if word != current_word:
-        #                 if current_word is not None:
-        #                     for attribute in self.word_attributes:
-        #                         cursor.execute(
-        #                             f"INSERT INTO {attribute} (word_{attribute}, philo_ids) VALUES (?, ?)",
-        #                             (current_word, word_attributes[attribute][current_word]),
-        #                         )
-        #                 current_word = word
-        #                 word_attributes = {attribute: defaultdict(bytes) for attribute in self.word_attributes}
+        # Add word attributes to LMDB database with lemma info.
+        # Keys follow the format word_attribute:attribute_value:word where word is lemma:word
+        if self.lemmas:
+            with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
+                word_attributes = {}
+                current_word = None
+                for line in tqdm(
+                    input_file,
+                    total=line_count,
+                    desc="Storing lemma word attributes in LMDB database",
+                ):
+                    line = line.decode("utf-8")
+                    _, lemma, philo_id, attributes = line.split("\t", 3)
+                    philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
+                    local_word_attributes = loads(attributes)
+                    for attribute, attribute_value in local_word_attributes.items():
+                        if attribute not in word_attributes:
+                            word_attributes[attribute] = {attribute_value: philo_id_bytes}
+                        if attribute_value in word_attributes[attributes]:
+                            word_attributes[attribute][attribute_value] += philo_id_bytes
+                        else:
+                            word_attributes[attribute][attribute_value] = philo_id_bytes
 
-        #     # Handle the last set of words
-        #     for attribute in self.word_attributes:
-        #         cursor.execute(
-        #             f"INSERT INTO {attribute} (word_{attribute}, philo_ids) VALUES (?, ?)",
-        #             (current_word, word_attributes[attribute][current_word]),
-        #         )
+                    if lemma != current_word:
+                        if current_word is not None:
+                            for attribute, attribute_dict in word_attributes.items():
+                                for attribute_value, philo_ids in attribute_dict.items():
+                                    txn.put(
+                                        f"{attribute}:{attribute_value}:lemma:{current_word}".encode("utf-8"), philo_ids
+                                    )
+                        current_word = lemma
+                        word_attributes = {}
 
-        #     # Create indexes
-        #     for attribute in self.word_attributes:
-        #         cursor.execute(f"CREATE INDEX word_{attribute}_index ON {attribute} (word_{attribute})")
-        #     conn.commit()
+                # Handle the last set of words
+                for attribute, attribute_dict in word_attributes.items():
+                    for attribute_value, philo_ids in attribute_dict.items():
+                        txn.put(
+                            f"{attribute}:{attribute_value}:lemma:{current_word}".encode("utf-8"), philo_ids
+                        )
+                txn.commit()
+
+        db_env.close()
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""

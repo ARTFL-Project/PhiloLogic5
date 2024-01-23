@@ -56,9 +56,9 @@ def get_lemmas(_, text):
                 philo_type, _, philo_id, attribs = line.split("\t")
                 if philo_type != "word":
                     continue
-                attribs = loads(attribs)
+                loaded_attribs = loads(attribs)
                 if "lemma" in attribs:
-                    print(f"lemma\t{attribs['lemma']}\t{philo_id}", file=lemma_file)
+                    print(f"lemma\t{loaded_attribs['lemma']}\t{philo_id}\t{attribs}", file=lemma_file)
     os.system(f"lz4 -z -q {text['raw']}.lemma {text['raw']}.lemma.lz4 && rm {text['raw']}.lemma")
 
 
