@@ -122,6 +122,7 @@ class Loader:
         "para_ancestor",
         "parent",
         "page",
+        "lemma",
     }
 
     @classmethod
@@ -812,7 +813,9 @@ class Loader:
             ):
                 line = line.decode("utf-8")
                 _, word, philo_id, attributes = line.split("\t", 3)
-                philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
+                hit = list(map(int, philo_id.split()))
+                hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
+                philo_id_bytes = struct.pack("9I", *hit)
                 local_word_attributes = {k: v for k, v in loads(attributes).items() if k not in self.attributes_to_skip}
                 for attribute, attribute_value in local_word_attributes.items():
                     if attribute not in word_attributes:
@@ -826,7 +829,9 @@ class Loader:
                     if current_word is not None:
                         for attribute, attribute_dict in word_attributes.items():
                             for attribute_value, philo_ids in attribute_dict.items():
-                                txn.put(f"{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+                                txn.put(
+                                    f"{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids
+                                )
                                 count += 1
                                 if count % commit_interval == 0:
                                     txn.commit()
@@ -837,7 +842,7 @@ class Loader:
             # Handle the last set of words
             for attribute, attribute_dict in word_attributes.items():
                 for attribute_value, philo_ids in attribute_dict.items():
-                    txn.put(f"{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+                    txn.put(f"{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
             txn.commit()
 
         # Add word attributes to LMDB database with lemma info.
@@ -852,7 +857,9 @@ class Loader:
             ):
                 line = line.decode("utf-8")
                 _, lemma, philo_id, attributes = line.split("\t", 3)
-                philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
+                hit = list(map(int, philo_id.split()))
+                hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
+                philo_id_bytes = struct.pack("9I", *hit)
                 local_word_attributes = {k: v for k, v in loads(attributes).items() if k not in self.attributes_to_skip}
                 for attribute, attribute_value in local_word_attributes.items():
                     if attribute not in word_attributes:
@@ -867,7 +874,8 @@ class Loader:
                         for attribute, attribute_dict in word_attributes.items():
                             for attribute_value, philo_ids in attribute_dict.items():
                                 txn.put(
-                                    f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids
+                                    f"lemma:{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"),
+                                    philo_ids,
                                 )
                                 count += 1
                                 if count % commit_interval == 0:
@@ -879,7 +887,7 @@ class Loader:
             # Handle the last set of words
             for attribute, attribute_dict in word_attributes.items():
                 for attribute_value, philo_ids in attribute_dict.items():
-                    txn.put(f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+                    txn.put(f"lemma:{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
             txn.commit()
 
         db_env.close()
@@ -944,6 +952,7 @@ class Loader:
         os.chmod(os.path.join(self.destination, "TEXT"), 0o775)
 
         # Write lemmas to frequency file
+        print("Writing lemmas to frequency file...", end=" ", flush=True)
         lemmas = set()
         with open(f"{self.destination}/frequencies/lemmas", "w", encoding="utf8") as freq_file:
             with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
@@ -955,6 +964,7 @@ class Loader:
                         lemmas.add(lemma)
 
         # Write word attributes to frequency file
+        print("Writing word attributes to frequency file...", end=" ", flush=True)
         with open(f"{self.destination}/frequencies/word_attributes", "w", encoding="utf8") as freq_file:
             with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
                 for line in input_file:
@@ -965,6 +975,7 @@ class Loader:
                             print(f"{word}:{attribute}:{attribute_value}", file=freq_file)
 
         # Write word attributes to frequency file with lemma info
+        print("Writing lemma attributes to frequency file...", end=" ", flush=True)
         with open(f"{self.destination}/frequencies/lemma_word_attributes", "w", encoding="utf8") as freq_file:
             with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
                 for line in input_file:
