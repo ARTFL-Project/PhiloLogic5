@@ -112,7 +112,17 @@ class Loader:
     cores = 2
     ascii_conversion = ASCII_CONVERSION
     lemmas = None
-    # word_attributes = []
+    attributes_to_skip = {
+        "start_byte",
+        "end_byte",
+        "doc_ancestor",
+        "div1_ancestor",
+        "div2_ancestor",
+        "div3_ancestor",
+        "para_ancestor",
+        "parent",
+        "page",
+    }
 
     @classmethod
     def set_class_attributes(cls, loader_options):
@@ -132,7 +142,7 @@ class Loader:
         cls.ascii_conversion = loader_options["ascii_conversion"]
         cls.metadata_sql_types = loader_options["metadata_sql_types"]
         # cls.word_attributes = loader_options["word_attributes"]
-        if loader_options["lemma_file"]:
+        if loader_options["lemma_file"] is not None:
             cls.lemmas = {}
             with open(loader_options["lemma_file"], encoding="utf8") as lemma_file:
                 for line in lemma_file:
@@ -595,9 +605,8 @@ class Loader:
         print(f"{time.ctime()}: sorting words")
         self.merge_files("words")
 
-        if self.lemmas:
-            print(f"{time.ctime()}: sorting lemmas")
-            self.merge_files("lemmas")
+        print(f"{time.ctime()}: sorting lemmas")
+        self.merge_files("lemmas")
 
         print(f"{time.ctime()}: sorting objects", flush=True)
         self.merge_files("toms")
@@ -758,55 +767,57 @@ class Loader:
             txn.commit()
 
         # Create lemmas index
-        if self.lemmas:
-            print("Creating lemma index...", end=" ", flush=True)
-            with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4", "rb") as input_file:
-                txn = db_env.begin(write=True)
-                current_lemma = None
-                count = 0
-                philo_ids = bytearray()
-                for line in tqdm(input_file, total=line_count, leave=False, desc="Creating lemma index"):
-                    line = line.decode("utf-8")
-                    _, lemma, philo_id, _ = line.strip().split("\t")
-                    hit = list(map(int, philo_id.split()))
-                    hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
-                    lemma_id = struct.pack("9I", *hit)
-                    if lemma != current_lemma:
-                        if current_lemma is not None:
-                            txn.put(
-                                f"lemma:{current_lemma}".encode("utf-8"),
-                                philo_ids,
-                            )
-                            count += 1
-                            if count % commit_interval == 0:
-                                txn.commit()
-                                txn = db_env.begin(write=True)
-                        current_lemma = lemma
-                        philo_ids.clear()
-                    philo_ids.extend(lemma_id)
-                # Commit any remaining lemmas
-                if philo_ids:
-                    txn.put(
-                        f"lemma:{current_lemma}".encode("utf-8"),
-                        philo_ids,
-                    )
-                txn.commit()
-        print("Finished creating inverted index.")
+        print("Creating lemma index...", end=" ", flush=True)
+        with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4", "rb") as input_file:
+            txn = db_env.begin(write=True)
+            current_lemma = None
+            count = 0
+            philo_ids = bytearray()
+            for line in tqdm(input_file, total=line_count, leave=False, desc="Creating lemma index"):
+                line = line.decode("utf-8")
+                _, lemma, philo_id, _ = line.strip().split("\t")
+                hit = list(map(int, philo_id.split()))
+                hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
+                lemma_id = struct.pack("9I", *hit)
+                if lemma != current_lemma:
+                    if current_lemma is not None:
+                        txn.put(
+                            f"lemma:{current_lemma}".encode("utf-8"),
+                            philo_ids,
+                        )
+                        count += 1
+                        if count % commit_interval == 0:
+                            txn.commit()
+                            txn = db_env.begin(write=True)
+                    current_lemma = lemma
+                    philo_ids.clear()
+                philo_ids.extend(lemma_id)
+            # Commit any remaining lemmas
+            if philo_ids:
+                txn.put(
+                    f"lemma:{current_lemma}".encode("utf-8"),
+                    philo_ids,
+                )
+            txn.commit()
 
         # Add word attributes to LMDB database
-        # Keys follow the format word_attribute:attribute_value:word
+        # Keys follow the format word:word_attribute:attribute_value
         with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
+            txn = db_env.begin(write=True)
             word_attributes: dict[str, dict[str, bytes]] = {}
             current_word = None
-            for line in tqdm(input_file, total=line_count, desc="Storing word attributes in LMDB database"):
+            count = 0
+            for line in tqdm(
+                input_file, total=line_count, desc="Storing word attributes in LMDB database", leave=False
+            ):
                 line = line.decode("utf-8")
                 _, word, philo_id, attributes = line.split("\t", 3)
                 philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
-                local_word_attributes = loads(attributes)
+                local_word_attributes = {k: v for k, v in loads(attributes).items() if k not in self.attributes_to_skip}
                 for attribute, attribute_value in local_word_attributes.items():
                     if attribute not in word_attributes:
                         word_attributes[attribute] = {attribute_value: philo_id_bytes}
-                    if attribute_value in word_attributes[attributes]:
+                    if attribute_value in word_attributes[attribute]:
                         word_attributes[attribute][attribute_value] += philo_id_bytes
                     else:
                         word_attributes[attribute][attribute_value] = philo_id_bytes
@@ -815,58 +826,64 @@ class Loader:
                     if current_word is not None:
                         for attribute, attribute_dict in word_attributes.items():
                             for attribute_value, philo_ids in attribute_dict.items():
-                                txn.put(f"{attribute}:{attribute_value}:{current_word}".encode("utf-8"), philo_ids)
+                                txn.put(f"{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+                                count += 1
+                                if count % commit_interval == 0:
+                                    txn.commit()
+                                    txn = db_env.begin(write=True)
                     current_word = word
                     word_attributes = {}
 
             # Handle the last set of words
             for attribute, attribute_dict in word_attributes.items():
                 for attribute_value, philo_ids in attribute_dict.items():
-                    txn.put(f"{attribute}:{attribute_value}:{current_word}".encode("utf-8"), philo_ids)
+                    txn.put(f"{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
             txn.commit()
 
         # Add word attributes to LMDB database with lemma info.
-        # Keys follow the format word_attribute:attribute_value:word where word is lemma:word
-        if self.lemmas:
-            with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
-                word_attributes = {}
-                current_word = None
-                for line in tqdm(
-                    input_file,
-                    total=line_count,
-                    desc="Storing lemma word attributes in LMDB database",
-                ):
-                    line = line.decode("utf-8")
-                    _, lemma, philo_id, attributes = line.split("\t", 3)
-                    philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
-                    local_word_attributes = loads(attributes)
-                    for attribute, attribute_value in local_word_attributes.items():
-                        if attribute not in word_attributes:
-                            word_attributes[attribute] = {attribute_value: philo_id_bytes}
-                        if attribute_value in word_attributes[attributes]:
-                            word_attributes[attribute][attribute_value] += philo_id_bytes
-                        else:
-                            word_attributes[attribute][attribute_value] = philo_id_bytes
+        # Keys follow the format lemma:word:word_attribute:attribute_value
+        with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
+            txn = db_env.begin(write=True)
+            word_attributes = {}
+            current_word = None
+            count = 0
+            for line in tqdm(
+                input_file, total=line_count, desc="Storing lemma word attributes in LMDB database", leave=False
+            ):
+                line = line.decode("utf-8")
+                _, lemma, philo_id, attributes = line.split("\t", 3)
+                philo_id_bytes = struct.pack("9I", *map(int, philo_id.split()))
+                local_word_attributes = {k: v for k, v in loads(attributes).items() if k not in self.attributes_to_skip}
+                for attribute, attribute_value in local_word_attributes.items():
+                    if attribute not in word_attributes:
+                        word_attributes[attribute] = {attribute_value: philo_id_bytes}
+                    if attribute_value in word_attributes[attribute]:
+                        word_attributes[attribute][attribute_value] += philo_id_bytes
+                    else:
+                        word_attributes[attribute][attribute_value] = philo_id_bytes
 
-                    if lemma != current_word:
-                        if current_word is not None:
-                            for attribute, attribute_dict in word_attributes.items():
-                                for attribute_value, philo_ids in attribute_dict.items():
-                                    txn.put(
-                                        f"{attribute}:{attribute_value}:lemma:{current_word}".encode("utf-8"), philo_ids
-                                    )
-                        current_word = lemma
-                        word_attributes = {}
+                if lemma != current_word:
+                    if current_word is not None:
+                        for attribute, attribute_dict in word_attributes.items():
+                            for attribute_value, philo_ids in attribute_dict.items():
+                                txn.put(
+                                    f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids
+                                )
+                                count += 1
+                                if count % commit_interval == 0:
+                                    txn.commit()
+                                    txn = db_env.begin(write=True)
+                    current_word = lemma
+                    word_attributes = {}
 
-                # Handle the last set of words
-                for attribute, attribute_dict in word_attributes.items():
-                    for attribute_value, philo_ids in attribute_dict.items():
-                        txn.put(
-                            f"{attribute}:{attribute_value}:lemma:{current_word}".encode("utf-8"), philo_ids
-                        )
-                txn.commit()
+            # Handle the last set of words
+            for attribute, attribute_dict in word_attributes.items():
+                for attribute_value, philo_ids in attribute_dict.items():
+                    txn.put(f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+            txn.commit()
 
         db_env.close()
+        print("Finished creating inverted index.")
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""
@@ -927,10 +944,35 @@ class Loader:
         os.chmod(os.path.join(self.destination, "TEXT"), 0o775)
 
         # Write lemmas to frequency file
-        if self.lemmas:
-            with open(f"{self.destination}/frequencies/lemmas", "w", encoding="utf8") as freq_file:
-                for lemma in self.lemmas.values():
-                    print(f"lemma:{lemma}", file=freq_file)
+        lemmas = set()
+        with open(f"{self.destination}/frequencies/lemmas", "w", encoding="utf8") as freq_file:
+            with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
+                for line in input_file:
+                    line = line.decode("utf-8")
+                    _, lemma, _, _ = line.split("\t", 3)
+                    if lemma not in lemmas:
+                        print(f"lemma:{lemma}", file=freq_file)
+                        lemmas.add(lemma)
+
+        # Write word attributes to frequency file
+        with open(f"{self.destination}/frequencies/word_attributes", "w", encoding="utf8") as freq_file:
+            with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
+                for line in input_file:
+                    line = line.decode("utf-8")
+                    _, word, _, attributes = line.split("\t", 3)
+                    for attribute, attribute_value in loads(attributes).items():
+                        if attribute not in self.attributes_to_skip:
+                            print(f"{word}:{attribute}:{attribute_value}", file=freq_file)
+
+        # Write word attributes to frequency file with lemma info
+        with open(f"{self.destination}/frequencies/lemma_word_attributes", "w", encoding="utf8") as freq_file:
+            with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
+                for line in input_file:
+                    line = line.decode("utf-8")
+                    _, lemma, _, attributes = line.split("\t", 3)
+                    for attribute, attribute_value in loads(attributes).items():
+                        if attribute not in self.attributes_to_skip:
+                            print(f"lemma:{lemma}:{attribute}:{attribute_value}", file=freq_file)
 
         # Make data directory inaccessible from the outside
         fh = open(self.destination + "/.htaccess", "w")

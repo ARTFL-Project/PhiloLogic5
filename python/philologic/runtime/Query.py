@@ -3,11 +3,9 @@
 import os
 import subprocess
 import sys
-import sqlite3
 import struct
 from itertools import product
 from pathlib import Path
-import signal
 from operator import le, eq
 import numpy as np
 
@@ -515,7 +513,13 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
                 grep_proc = grep_exact(token, freq_file, filter_inputs[0])
                 grep_proc.wait()
             elif kind == "LEMMA":
-                grep_proc = grep_lemma(token, freq_file, filter_inputs[0])
+                grep_proc = grep_word_attributes(token, freq_file, filter_inputs[0], "lemmas")
+                grep_proc.wait()
+            elif kind == "LEMMA_ATTR":
+                grep_proc = grep_word_attributes(token, freq_file, filter_inputs[0], "lemma_word_attributes")
+                grep_proc.wait()
+            elif kind == "ATTR":
+                grep_proc = grep_word_attributes(token, freq_file, filter_inputs[0], "word_attributes")
                 grep_proc.wait()
         # close all the pipes and wait for procs to finish.
         for pipe, proc in zip(filter_inputs, filter_procs):
@@ -523,9 +527,9 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
             proc.wait()
 
 
-def grep_lemma(token, freq_file, dest_fh):
+def grep_word_attributes(token, freq_file, dest_fh, token_type):
     """Grep on lemmas"""
-    lemma_file = os.path.join(os.path.dirname(freq_file), "lemmas")
+    lemma_file = os.path.join(os.path.dirname(freq_file), token_type)
     try:
         grep_proc = subprocess.Popen(["rg", "-a", b"^%s$" % token, lemma_file], stdout=dest_fh)
     except (UnicodeEncodeError, TypeError):

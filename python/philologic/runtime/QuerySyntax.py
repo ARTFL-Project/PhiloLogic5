@@ -6,7 +6,9 @@ YEAR_MONTH = re.compile(r"^(\d+)-(\d+)\Z")
 YEAR = re.compile(r"^(\d+)\Z")
 
 patterns = [
+    ("LEMMA_ATTR", r'lemma:[^\-|\s"]+:[^\-|\s"]+'),
     ("LEMMA", r'lemma:[^\-|\s"]+'),
+    ("ATTR", r'[^\-|\s"]+:[^\-|\s"]+'),
     ("QUOTE", r'".+?"'),
     ("QUOTE", r'".+'),
     ("NOT", "NOT"),

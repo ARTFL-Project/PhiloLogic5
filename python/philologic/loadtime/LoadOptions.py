@@ -74,6 +74,7 @@ class LoadOptions:
         self.values["punctuation"] = Parser.PUNCTUATION
         self.values["pos"] = ""
         self.values["metadata_sql_types"] = {}
+        self.values["lemma_file"] = None
 
     def setup_parser(self):
         """Set up parser options"""
