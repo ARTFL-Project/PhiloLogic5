@@ -11,7 +11,7 @@ setup(
     author_email="clovisgladstone@artfl.uchicago.edu",
     description="A concordance search engine for TEI-XML",
     long_description=long_description,
-    url="https://github.com/ARTFL-Project/PhiloLogic4",
+    url="https://github.com/ARTFL-Project/PhiloLogic5",
     packages=[
         "philologic",
         "philologic.runtime",
@@ -19,7 +19,7 @@ setup(
         "philologic.runtime.reports",
         "philologic.loadtime",
     ],
-    scripts=["scripts/philoload4"],
+    scripts=["scripts/philoload5"],
     install_requires=[
         "regex",
         "lxml",

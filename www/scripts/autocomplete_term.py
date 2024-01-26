@@ -7,7 +7,7 @@ import sys
 from wsgiref.handlers import CGIHandler
 
 from philologic.runtime.DB import DB
-from philologic.runtime.Query import grep_exact, grep_word, split_terms
+from philologic.runtime.Query import grep_exact, grep_word, split_terms, grep_word_attributes
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 
 
@@ -60,6 +60,10 @@ def format_query(q, db, config):
 
     frequency_file = config.db_path + "/data/frequencies/normalized_word_frequencies"
 
+    import sys
+
+    print(token, kind, file=sys.stderr)
+
     if kind == "TERM" and db.locals.ascii_conversion is True:
         expanded_token = token + ".*"
         grep_proc = grep_word(expanded_token, frequency_file, subprocess.PIPE, db.locals["lowercase_index"])
@@ -70,15 +74,28 @@ def format_query(q, db, config):
         expanded_token = token[:-1] + ".*" + token[-1]
         grep_proc = grep_exact(expanded_token, frequency_file, subprocess.PIPE)
     elif kind == "LEMMA":
-        grep_proc = grep_word(token, frequency_file, subprocess.PIPE, db.locals["lowercase_index"])
+        grep_proc = grep_word_attributes(f"{token}.*", frequency_file, subprocess.PIPE, "lemmas")
+        grep_proc.wait()
+    elif kind == "LEMMA_ATTR":
+        grep_proc = grep_word_attributes(f"{token}.*", frequency_file, subprocess.PIPE, "lemma_word_attributes")
+        grep_proc.wait()
+    elif kind == "ATTR":
+        grep_proc = grep_word_attributes(f"{token}.*", frequency_file, subprocess.PIPE, "word_attributes")
+        grep_proc.wait()
     elif kind == "NOT" or kind == "OR":
         return []
 
     matches = []
     len_token = len(token)
     for line in grep_proc.stdout:
-        word = line.split(b"\t")[1].strip().decode("utf8")
-        highlighted_word = highlighter(word, len_token)
+        if kind in ("TERM", "QUOTE"):
+            word = line.split(b"\t")[1].strip().decode("utf8")
+        else:
+            word = line.strip().decode("utf8")
+        import sys
+
+        print(line, word, file=sys.stderr)
+        highlighted_word = f'<span class="highlight">{word[:len_token]}</span>{word[len_token:]}'
         matches.append(highlighted_word)
 
     output_string = []
@@ -89,14 +106,6 @@ def format_query(q, db, config):
             output_string.append(prefix + m)
 
     return output_string
-
-
-def highlighter(word, token_len):
-    """Highlight matching substring"""
-    highlighted_section = word[:token_len]
-    end_word = word[token_len:]
-    highlighted_word = '<span class="highlight">' + highlighted_section + "</span>" + end_word
-    return highlighted_word
 
 
 if __name__ == "__main__":

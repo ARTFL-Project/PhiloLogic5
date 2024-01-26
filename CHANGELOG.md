@@ -1,3 +1,11 @@
+### 5.0 ###
+- Rewrite core search routines from the old C to Python, move word index to LMDB
+- Count all co-occurrences (old behavior only counted one co-occurrence per sentence)
+- Search within n words in collocations
+- Lemma searching in all reports enabled if present in TEI or if lemma mapping file provided
+- Word attribute searching enabled if found in TEI
+- Much faster collocations
+
 ### 4.7 ###
 - New aggregation report
 - New metadata stats in search results

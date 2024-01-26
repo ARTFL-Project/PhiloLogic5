@@ -965,25 +965,31 @@ class Loader:
 
         # Write word attributes to frequency file
         print("Writing word attributes to frequency file...", end=" ", flush=True)
+        word_attributes = set()
         with open(f"{self.destination}/frequencies/word_attributes", "w", encoding="utf8") as freq_file:
             with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
                 for line in input_file:
                     line = line.decode("utf-8")
                     _, word, _, attributes = line.split("\t", 3)
                     for attribute, attribute_value in loads(attributes).items():
-                        if attribute not in self.attributes_to_skip:
+                        stored_string = f"{word}:{attribute}:{attribute_value}"
+                        if attribute not in self.attributes_to_skip and stored_string not in word_attributes:
                             print(f"{word}:{attribute}:{attribute_value}", file=freq_file)
+                            word_attributes.add(stored_string)
 
         # Write word attributes to frequency file with lemma info
         print("Writing lemma attributes to frequency file...", end=" ", flush=True)
+        word_attributes = set()
         with open(f"{self.destination}/frequencies/lemma_word_attributes", "w", encoding="utf8") as freq_file:
             with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
                 for line in input_file:
                     line = line.decode("utf-8")
                     _, lemma, _, attributes = line.split("\t", 3)
                     for attribute, attribute_value in loads(attributes).items():
-                        if attribute not in self.attributes_to_skip:
+                        stored_string = f"{word}:{attribute}:{attribute_value}"
+                        if attribute not in self.attributes_to_skip and stored_string not in word_attributes:
                             print(f"lemma:{lemma}:{attribute}:{attribute_value}", file=freq_file)
+                            word_attributes.add(stored_string)
 
         # Make data directory inaccessible from the outside
         fh = open(self.destination + "/.htaccess", "w")
