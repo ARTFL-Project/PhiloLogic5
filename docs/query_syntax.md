@@ -18,12 +18,18 @@ Full-text word search is unique in having the concept of a "term", which is eith
 or a group of plain/quoted terms joined by `|`, optionally followed by `NOT` and another term-like filter expression.
 When specifying a query, one can select a query method to constrain the relation between terms, such as `within k words` or `in the same sentence`
 
-1. plain terms are evaluated without regard to accent. They are currently sensitive to case, to allow for named entity
-   search--this is currently implemented only for Greek, however. Regexes are permitted.
+1. plain terms are evaluated without regard to accent or to case. Regexes are permitted.
 2. quoted terms are case and accent sensitive. Regexes are permitted.
 3. the range is not operational. In the future, stub this out to make hyphenated search terms less of a pain to escape.
 4. `OR` can conjoin plain and quoted tokens, and precedes evaluation of phrase distance.
 5. `NOT` is a filter on a preceding term, but cannot stand alone: `a.* NOT abalone` is legal, `NOT a.*` is illegal
+
+#### Lemma and word attribute Searches
+If you text collection contains lemma and/or word attribute information (usually in <w> tags), then PhiloLogic allows you to query words based on lemma and/or word attribute value
+1. For simple lemma searching, just preprend the lemma with `lemma:` such as in `lemma:have`. Regexes are permitted on the token portion of the search, e.g. `lemma:constitut.*`.
+2. For word attribute searching, use the `word:attribute:attribute` syntax such as in `love:pos:NOUN`. Regexes are permitted on the token portion of the search, e.g. `lov.*:pos:NOUN`.
+3. You can combine lemma searching with word attribute filtering. Just preprend your token with `lemma:` such as in `lemma:love:pos:NOUN`. Regexes are permitted on the token portion of the search, e.g. `lemma:lov.*:pos:NOUN`.
+4. Note that you cannot combine multiple word attributes filters on one token, such as in `charles:pos:PROPN:ner:PERS`.
 
 ### Metadata Searches
 

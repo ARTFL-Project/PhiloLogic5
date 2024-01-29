@@ -39,8 +39,7 @@
                 by <span class="code-block">NOT</span> and another term-like filter expression:
                 <ol class="mt-2">
                     <li>
-                        plain terms are evaluated without regard to accent. They are currently sensitive to case, to
-                        allow for named entity search--this is currently implemented only for Greek, however. Regexes
+                        plain terms are evaluated without regard to accent or to case. Regexes
                         are permitted.
                     </li>
                     <li>quoted terms are case and accent sensitive. Regexes are permitted.</li>
@@ -57,6 +56,21 @@
                         <span class="code-block">a.* NOT abalone</span> is legal,
                         <span class="code-block">NOT a.*</span> is illegal
                     </li>
+                </ol>
+                If the collection contains lemma or other morphological information, you can use the following syntax:
+                <ol>
+                    <li>For simple lemma searching, just preprend the lemma with <span class="code-block">lemma:</span> such
+                        as in <span class="code-block">lemma:have</span>. Regexes are permitted on the token portion of the
+                        search, e.g. <span class="code-block">lemma:constitut.*</span>.</li>
+                    <li>For word attribute searching, use the <span class="code-block">word:attribute:attribute</span>
+                        syntax such as in <span class="code-block">love:pos:NOUN</span>. Regexes are permitted on the token
+                        portion of the search e.g. <span class="code-block">lov.*:pos:NOUN</span>.</li>
+                    <li>You can combine lemma searching with word attribute filtering. Just preprend your token with <span
+                            class="code-block">lemma:</span> such as in <span class="code-block">lemma:love:pos:NOUN</span>.
+                        Regexes are permitted on the token portion of the search, e.g. <span
+                            class="code-block">lemma:lov.*:pos:NOUN</span>.</li>
+                    <li>Note that you cannot combine multiple word attributes filters on one token, such as in <span
+                            class="code-block">charles:pos:PROPN:ner:PERS</span>.</li>
                 </ol>
 
                 <h5 style="margin-top: 20px">Metadata Searches</h5>
@@ -87,9 +101,8 @@
                 <h5 style="margin-top: 20px">Regexp syntax</h5>
                 Basic regexp syntax, adapted from the
                 <a
-                    href="http://www.gnu.org/software/findutils/manual/html_node/find_html/egrep-regular-expression-syntax.html#egrep-regular-expression-syntax"
-                    >egrep regular expression syntax</a
-                >:
+                    href="http://www.gnu.org/software/findutils/manual/html_node/find_html/egrep-regular-expression-syntax.html#egrep-regular-expression-syntax">egrep
+                    regular expression syntax</a>:
                 <ol class="mt-2">
                     <li>
                         The character
