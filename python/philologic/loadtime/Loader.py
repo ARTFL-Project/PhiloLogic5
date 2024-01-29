@@ -817,14 +817,6 @@ class Loader:
                 hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
                 philo_id_bytes = struct.pack("9I", *hit)
                 local_word_attributes = {k: v for k, v in loads(attributes).items() if k not in self.attributes_to_skip}
-                for attribute, attribute_value in local_word_attributes.items():
-                    if attribute not in word_attributes:
-                        word_attributes[attribute] = {attribute_value: philo_id_bytes}
-                    if attribute_value in word_attributes[attribute]:
-                        word_attributes[attribute][attribute_value] += philo_id_bytes
-                    else:
-                        word_attributes[attribute][attribute_value] = philo_id_bytes
-
                 if word != current_word:
                     if current_word is not None:
                         for attribute, attribute_dict in word_attributes.items():
@@ -838,6 +830,10 @@ class Loader:
                                     txn = db_env.begin(write=True)
                     current_word = word
                     word_attributes = {}
+                for attribute, attribute_value in local_word_attributes.items():
+                    if attribute not in word_attributes:
+                        word_attributes[attribute] = defaultdict(bytes)
+                    word_attributes[attribute][attribute_value] += philo_id_bytes
 
             # Handle the last set of words
             for attribute, attribute_dict in word_attributes.items():
@@ -861,14 +857,6 @@ class Loader:
                 hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
                 philo_id_bytes = struct.pack("9I", *hit)
                 local_word_attributes = {k: v for k, v in loads(attributes).items() if k not in self.attributes_to_skip}
-                for attribute, attribute_value in local_word_attributes.items():
-                    if attribute not in word_attributes:
-                        word_attributes[attribute] = {attribute_value: philo_id_bytes}
-                    if attribute_value in word_attributes[attribute]:
-                        word_attributes[attribute][attribute_value] += philo_id_bytes
-                    else:
-                        word_attributes[attribute][attribute_value] = philo_id_bytes
-
                 if lemma != current_word:
                     if current_word is not None:
                         for attribute, attribute_dict in word_attributes.items():
@@ -883,6 +871,10 @@ class Loader:
                                     txn = db_env.begin(write=True)
                     current_word = lemma
                     word_attributes = {}
+                for attribute, attribute_value in local_word_attributes.items():
+                    if attribute not in word_attributes:
+                        word_attributes[attribute] = defaultdict(bytes)
+                    word_attributes[attribute][attribute_value] += philo_id_bytes
 
             # Handle the last set of words
             for attribute, attribute_dict in word_attributes.items():
@@ -972,9 +964,9 @@ class Loader:
                     line = line.decode("utf-8")
                     _, word, _, attributes = line.split("\t", 3)
                     for attribute, attribute_value in loads(attributes).items():
-                        stored_string = f"{word}:{attribute}:{attribute_value}"
+                        stored_string = f"{word.lower()}:{attribute}:{attribute_value}"
                         if attribute not in self.attributes_to_skip and stored_string not in word_attributes:
-                            print(f"{word}:{attribute}:{attribute_value}", file=freq_file)
+                            print(stored_string, file=freq_file)
                             word_attributes.add(stored_string)
 
         # Write word attributes to frequency file with lemma info
@@ -986,9 +978,9 @@ class Loader:
                     line = line.decode("utf-8")
                     _, lemma, _, attributes = line.split("\t", 3)
                     for attribute, attribute_value in loads(attributes).items():
-                        stored_string = f"{lemma}:{attribute}:{attribute_value}"
+                        stored_string = f"{lemma.lower()}:{attribute}:{attribute_value}"
                         if attribute not in self.attributes_to_skip and stored_string not in word_attributes:
-                            print(f"lemma:{lemma}:{attribute}:{attribute_value}", file=freq_file)
+                            print(stored_string, file=freq_file)
                             word_attributes.add(stored_string)
 
         # Make data directory inaccessible from the outside

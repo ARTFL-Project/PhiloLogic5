@@ -386,7 +386,10 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
 
     # Load initial chunks
     for word in words:
-        word_data[word]["array"] = np.frombuffer(word_data[word]["buffer"][0:3600], dtype="u4").reshape(-1, 9)
+        try:
+            word_data[word]["array"] = np.frombuffer(word_data[word]["buffer"][0:3600], dtype="u4").reshape(-1, 9)
+        except TypeError:  # failsafe in case a word is queried despite not existing in the database
+            word_data[word]["array"] = np.array([], dtype="u4").reshape(-1, 9)
 
     # Merge sort and write loop
     while any(word_data[word]["array"].size > 0 for word in words):

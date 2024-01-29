@@ -782,7 +782,11 @@ export default {
                             lastInput = lastInput.slice(0, lastInput.length - 1);
                         }
                     }
-                    this.queryTermTyped = `${inputGroup.join("")}"${lastInput.trim()}"`;
+                    if (lastInput.includes(":")) { // word property autocomplete
+                        this.queryTermTyped = `${inputGroup.join("")}${lastInput}`; // No quotes
+                    } else {
+                        this.queryTermTyped = `${inputGroup.join("")}"${lastInput.trim()}"`;
+                    }
                 } else {
                     let prefix = "";
                     if (inputString.match(/<last\/>/)) {

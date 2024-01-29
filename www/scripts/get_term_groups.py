@@ -47,12 +47,8 @@ def term_group(environ, start_response):
                         term_group += " NOT "
                 elif kind == "OR":
                     term_group += "|"
-                elif kind == "TERM":
-                    term_group += " %s " % term
-                elif kind == "QUOTE":
-                    term_group += " %s " % term
-                elif kind == "LEMMA":
-                    term_group += " %s " % term
+                elif kind in ("TERM", "QUOTE", "LEMMA", "ATTR", "LEMMA_ATTR"):
+                    term_group += f" {term} "
             term_group = term_group.strip()
             term_groups.append(term_group)
         dump = orjson.dumps({"term_groups": term_groups, "original_query": request.original_q})
