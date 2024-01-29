@@ -17,7 +17,6 @@ description, you can refer to [our blog](<http://artfl.blogspot.com>).
 
 ### IMPORTANT
 
--   PhiloLogic4.7 will only work on Unix-based systems (Linux, \*BSD) though MacOS is not supported and guaranteed to work.
--   PhiloLogic4.7 will only run on the Apache Webserver
--   PhiloLogic4.7 has only been tested on Python 3.8 and up
--   The PhiloLogic4.7 Web App will only work on recent versions of web browsers: Chrome, Firefox, Safari, Opera, Edge. No support for Internet Explorer.
+-   PhiloLogic5 will only work on Unix-based systems (Linux, \*BSD) though MacOS is not supported and guaranteed to work.
+-   PhiloLogic5 will only run on the Apache Webserver
+-   PhiloLogic5 has only been tested on Python 3.10 and up
