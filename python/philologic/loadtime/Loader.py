@@ -978,7 +978,7 @@ class Loader:
                     line = line.decode("utf-8")
                     _, lemma, _, attributes = line.split("\t", 3)
                     for attribute, attribute_value in loads(attributes).items():
-                        stored_string = f"{lemma.lower()}:{attribute}:{attribute_value}"
+                        stored_string = f"lemma:{lemma.lower()}:{attribute}:{attribute_value}"
                         if attribute not in self.attributes_to_skip and stored_string not in word_attributes:
                             print(stored_string, file=freq_file)
                             word_attributes.add(stored_string)

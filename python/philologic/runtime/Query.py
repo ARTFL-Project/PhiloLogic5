@@ -531,12 +531,12 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
 
 
 def grep_word_attributes(token, freq_file, dest_fh, token_type):
-    """Grep on lemmas"""
-    lemma_file = os.path.join(os.path.dirname(freq_file), token_type)
+    """Grep on lemmas or word attributes"""
+    forms_file = os.path.join(os.path.dirname(freq_file), token_type)
     try:
-        grep_proc = subprocess.Popen(["rg", "-a", b"^%s$" % token, lemma_file], stdout=dest_fh)
+        grep_proc = subprocess.Popen(["rg", "-a", b"^%s$" % token, forms_file], stdout=dest_fh)
     except (UnicodeEncodeError, TypeError):
-        grep_proc = subprocess.Popen(["rg", "-a", b"^%s$" % token.encode("utf8"), lemma_file], stdout=dest_fh)
+        grep_proc = subprocess.Popen(["rg", "-a", b"^%s$" % token.encode("utf8"), forms_file], stdout=dest_fh)
     return grep_proc
 
 
