@@ -265,6 +265,7 @@ def store_in_plain_text(*philo_types):
 def store_words_and_philo_ids(loader_obj, text):
     """Store words and philo ids file for data-mining"""
     files_path = loader_obj.destination + "/words_and_philo_ids/"
+    attributes_to_skip = loader_obj.attributes_to_skip
     try:
         os.mkdir(files_path)
     except OSError:
@@ -290,8 +291,7 @@ def store_words_and_philo_ids(loader_obj, text):
                         "end_byte": attrib["end_byte"],
                         "philo_type": philo_type,
                     }
-                    if "lemma" in attrib:
-                        word_obj["lemma"] = attrib["lemma"]
+                    word_obj.update({k: v for k, v in attrib.items() if k not in attributes_to_skip})
                     word_obj = dumps(word_obj).decode("utf-8")
                     print(word_obj, file=output)
     with open(f"{filename}.lz4", "wb") as compressed_file:

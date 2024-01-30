@@ -86,18 +86,21 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
     return inner_make_sql_table
 
 
-def make_sentences_database(datadir, db_destination):
+def make_sentences_database(loader_obj, db_destination):
     """Generate an LMDB database where keys are sentence IDs and values the associated sentence containing all the words in it"""
     print(f"{time.ctime()}: Loading the sentences LMDB database...")
 
+    attributes_to_skip = loader_obj.attributes_to_skip
+    attributes_to_skip += {"lemma", "token", "position"}
     line_count = sum(
-        sum(1 for _ in lz4.frame.open(raw_words.path)) for raw_words in os.scandir(f"{datadir}/words_and_philo_ids")
+        sum(1 for _ in lz4.frame.open(raw_words.path))
+        for raw_words in os.scandir(f"{loader_obj.datadir}/words_and_philo_ids")
     )
     with tqdm(total=line_count, leave=False) as pbar:
         env = lmdb.open(db_destination, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True)  # 2TB
         count = 0
         with env.begin(write=True) as txn:
-            for raw_words in os.scandir(f"{datadir}/words_and_philo_ids"):
+            for raw_words in os.scandir(f"{loader_obj.datadir}/words_and_philo_ids"):
                 sentence_id = ""
                 with lz4.frame.open(raw_words.path) as input_file:
                     current_sentence = None
@@ -116,8 +119,14 @@ def make_sentences_database(datadir, db_destination):
                                 lemma = f'lemma:{word_obj["lemma"]}'
                             else:
                                 lemma = ""
+
                             words.append(
-                                (word_obj["token"], lemma, word_obj["start_byte"], int(word_obj["position"].split()[6]))
+                                (
+                                    word_obj["token"],
+                                    word_obj["start_byte"],
+                                    int(word_obj["position"].split()[6]),
+                                    {k: v for k, v in word_obj.items() if k not in attributes_to_skip},
+                                )
                             )  # maybe add word attribs later...
                         pbar.update()
                     if sentence_id:

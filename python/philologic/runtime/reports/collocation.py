@@ -23,6 +23,12 @@ def collocation_results(request, config):
     else:
         count_lemmas = False
 
+    # Attribute filtering
+    if request.attribute_filter:
+        attribute_filter = request.attribute_filter
+    else:
+        attribute_filter = None
+
     try:
         collocate_distance = int(request["arg_proxy"])
     except ValueError:  # Getting an empty string since the keyword is not specificed in the URL
@@ -72,10 +78,29 @@ def collocation_results(request, config):
                 q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
             sentence = cursor.get(parent_sentence)
             word_objects = msgpack.loads(sentence)
-            if count_lemmas is False:
-                words = [(word, position) for word, _, _, position in word_objects]
+
+            # If not attribute filter set, we just get the words
+            if attribute_filter is None:
+                if count_lemmas is False:
+                    words = [(word, position) for word, _, position, _ in word_objects]
+                else:
+                    words = [(attr["lemma"], position) for _, _, position, attr in word_objects]
+
+            # If attribute filter is set, we get the words that match the filter
             else:
-                words = [(lemma, position) for _, lemma, _, position in word_objects]
+                if count_lemmas is False:
+                    words = [
+                        (word, position)
+                        for word, _, position, attr in word_objects
+                        if evaluate_attributes(attr, attribute_filter)
+                    ]
+                else:
+                    words = [
+                        (attr["lemma"], position)
+                        for _, _, position, attr in word_objects
+                        if evaluate_attributes(attr, attribute_filter)
+                    ]
+
             for collocate, position in words:
                 if collocate not in filter_list:
                     if collocate_distance is None:
@@ -143,3 +168,11 @@ def build_filter_list(request, config, count_lemmas):
             else:
                 filter_list.append("lemma:" + word)
     return filter_list
+
+
+def evaluate_attributes(word_attributes, attribute_filter):
+    """Evaluate attributes"""
+    for attribute, attribute_value in attribute_filter.items():
+        if attribute_value != word_attributes.get(attribute):
+            return False
+    return True

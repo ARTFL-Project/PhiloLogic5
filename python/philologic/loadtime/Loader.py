@@ -928,7 +928,7 @@ class Loader:
 
         # Set up sentences database
         db_destination = os.path.join(cls.destination, "sentences.lmdb")
-        make_sentences_database(cls.destination, db_destination)
+        make_sentences_database(cls, db_destination)
 
         if extra_filters:
             print("Running the following additional filters:")
