@@ -1030,6 +1030,18 @@ class Loader:
         }
         db_values["token_regex"] = self.token_regex
         db_values["default_object_level"] = self.default_object_level
+
+        # Compile all possible word attributes with their types from the frequency file
+        word_attributes = {}
+        with open(f"{self.destination}/frequencies/word_attributes", "r", encoding="utf8") as freq_file:
+            for line in freq_file:
+                line = line.strip()
+                _, attribute, attribute_value = line.split(":")
+                if attribute not in word_attributes:
+                    word_attributes[attribute] = set()
+                word_attributes[attribute].add(attribute_value)
+        db_values["word_attributes"] = word_attributes
+
         db_config = MakeDBConfig(filename, **db_values)
         with open(filename, "w") as db_file:
             try:
