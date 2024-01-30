@@ -291,6 +291,15 @@ WEB_CONFIG_DEFAULTS = {
             ]
         ),
     },
+    "word_attributes": {
+        "value": {},
+        "comment": "\n".join(
+            [
+                "# The word_attributes variable defines word attributes filters for use in the collocation report to allow searching",
+                "# only on a combination of one or more word attribute. Shows up in the search form under the collocation report only.",
+            ]
+        ),
+    },
     "results_summary": {
         "value": [
             {
