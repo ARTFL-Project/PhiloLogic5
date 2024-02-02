@@ -26,6 +26,8 @@
         "time_series": "Série Temporelle",
         "searchTerms": "Recherche par mots",
         "collocationParams": "Paramètres de collocation",
+        "selectAttribute": "Sélectionner un attribut",
+        "selectAttributeValue": "Sélectionner une valeur pour l'attribut",
         "tips": "Conseils",
         "search": "Rechercher",
         "clear": "Effacer",

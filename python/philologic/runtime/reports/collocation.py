@@ -24,10 +24,12 @@ def collocation_results(request, config):
         count_lemmas = False
 
     # Attribute filtering
-    if request.attribute_filter:
-        attribute_filter = request.attribute_filter
+    if request.word_attribute_filter:
+        attribute = request.word_attribute_filter["attribute"]
+        attribute_value = request.word_attribute_filter["value"]
     else:
-        attribute_filter = None
+        attribute = None
+        attribute_value = None
 
     try:
         collocate_distance = int(request["arg_proxy"])
@@ -36,6 +38,8 @@ def collocation_results(request, config):
 
     if request.colloc_filter_choice == "nofilter":
         filter_list = []
+    elif attribute is not None:
+        filter_list = [f"{request['q']}:{attribute}:{attribute_value}"]
     else:
         filter_list = build_filter_list(request, config, count_lemmas)
     collocation_object["filter_list"] = filter_list
@@ -79,26 +83,26 @@ def collocation_results(request, config):
             sentence = cursor.get(parent_sentence)
             word_objects = msgpack.loads(sentence)
 
-            # If not attribute filter set, we just get the words
-            if attribute_filter is None:
+            # If not attribute filter set, we just get the words/lemmas
+            if attribute is None:
                 if count_lemmas is False:
                     words = [(word, position) for word, _, position, _ in word_objects]
                 else:
                     words = [(attr["lemma"], position) for _, _, position, attr in word_objects]
 
-            # If attribute filter is set, we get the words that match the filter
+            # If attribute filter is set, we get the words/lemmas that match the filter
             else:
                 if count_lemmas is False:
                     words = [
-                        (word, position)
+                        (f"{word}:{attribute}:{attribute_value}", position)
                         for word, _, position, attr in word_objects
-                        if evaluate_attributes(attr, attribute_filter)
+                        if attr.get(attribute) == attribute_value
                     ]
                 else:
                     words = [
-                        (attr["lemma"], position)
+                        (f"{attr['lemma']}:{attribute}:{attribute_value}", position)
                         for _, _, position, attr in word_objects
-                        if evaluate_attributes(attr, attribute_filter)
+                        if attr.get(attribute) == attribute_value
                     ]
 
             for collocate, position in words:
@@ -168,11 +172,3 @@ def build_filter_list(request, config, count_lemmas):
             else:
                 filter_list.append("lemma:" + word)
     return filter_list
-
-
-def evaluate_attributes(word_attributes, attribute_filter):
-    """Evaluate attributes"""
-    for attribute, attribute_value in attribute_filter.items():
-        if attribute_value != word_attributes.get(attribute):
-            return False
-    return True

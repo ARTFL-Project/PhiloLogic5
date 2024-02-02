@@ -172,6 +172,9 @@ export default {
             let sortedList = [];
             for (let word of collocates.sorted.slice(0, 100)) {
                 let collocate = `${word.label}`.replace(/lemma:/, "");
+                if (collocate.search(/\w+:.*/) != -1) {
+                    collocate = collocate.replace(/(\w+):.*/, "$1");
+                }
                 let surfaceForm = word.label;
                 sortedList.push({ collocate: collocate, surfaceForm: surfaceForm, count: word.count });
             }
@@ -200,11 +203,14 @@ export default {
             this.searching = false;
         },
         collocTableClick(item) {
+            console.log(item);
             let q
-            console.log(item)
             if (item.surfaceForm.startsWith("lemma:")) {
                 q = `${this.q} ${item.surfaceForm}`;
-            } else {
+            } else if (item.surfaceForm.search(/\w+:.*/) != -1) {
+                q = `${this.q} ${item.surfaceForm}`;
+            }
+            else {
                 q = `${this.q} "${item.surfaceForm}"`;
             }
             let method = "cooc"

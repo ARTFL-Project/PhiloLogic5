@@ -169,7 +169,6 @@ export default {
             } else {
                 this.queryArgs.approximate = false;
             }
-            console.log(this.queryArgs)
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_term_groups.py`, {
                     params: this.paramsFilter({ report: this.report, ...this.$route.query }),

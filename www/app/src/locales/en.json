@@ -27,6 +27,8 @@
         "time_series": "Time-Series",
         "searchTerms": "Search Terms",
         "collocationParams": "Collocation Parameters",
+        "selectAttribute": "Select an attribute",
+        "selectAttributeValue": "Select an attribute value",
         "tips": "Tips",
         "search": "Search",
         "clear": "Clear",

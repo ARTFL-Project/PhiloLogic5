@@ -101,6 +101,37 @@
     min-height: initial; min-height: fit-content;" v-model="arg_proxy"> words
                                     </label>
                                 </div>
+                                <button v-if="wordAttributes" type="button" class="btn btn-outline-secondary"
+                                    style="border-top-right-radius: 0; border-bottom-right-radius: 0">
+                                    Filter by word attributes
+                                </button>
+                                <div class="btn-group" role="group">
+                                    <button class="btn btn-secondary dropdown-toggle"
+                                        style="border-top-left-radius: 0; border-bottom-left-radius: 0" type="button"
+                                        id="attribute-selector'" data-bs-toggle="dropdown" aria-expanded="false">
+                                        {{ attributeSelected.toUpperCase() || $t("searchForm.selectAttribute") }}
+                                    </button>
+                                    <ul class="dropdown-menu" aria-labelledby="attribute-selector">
+                                        <li v-for="(_, attribute) in wordAttributes" :key="attribute">
+                                            <a class="dropdown-item" @click="attributeSelected = attribute">{{
+                                                attribute.toUpperCase() }}</a>
+                                        </li>
+                                    </ul>
+
+                                </div>
+                                <div class="dropdown d-inline-block ms-2" v-if="attributeSelected.length > 0">
+                                    <button class="btn btn-secondary dropdown-toggle" type="button" id="attributeValues"
+                                        data-bs-toggle="dropdown" aria-expanded="false">
+                                        {{ wordAttributeSelected.toUpperCase() || $t("searchForm.selectAttributeValue") }}
+                                    </button>
+                                    <ul class="dropdown-menu" aria-labelledby="attributeValues">
+                                        <li v-for="attributeValue in wordAttributes[attributeSelected]"
+                                            :key="attributeValue">
+                                            <a class="dropdown-item" @click="wordAttributeSelected = attributeValue">{{
+                                                attributeValue }}</a>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                             <div class="mt-1">
                                 <h6>{{ $t("searchForm.searchTermsParameters") }}:</h6>
@@ -469,6 +500,9 @@ export default {
             dateType: {},
             dateRange: {},
             reports: this.$philoConfig.search_reports,
+            wordAttributes: this.$philoConfig.word_attributes,
+            attributeSelected: "",
+            wordAttributeSelected: ""
         };
     },
     watch: {
@@ -637,13 +671,17 @@ export default {
             if (this.currentReport == 'collocation' && this.colloc_within == "sent") {
                 this.arg_proxy = "";
             }
-            console.log(this.arg_proxy)
+            let attributes = {}
+            if (this.attributeSelected.length > 0) {
+                attributes[`q_${this.attributeSelected}`] = this.wordAttributeSelected;
+            }
             this.$router.push(
                 this.paramsToRoute({
                     ...this.$store.state.formData,
                     ...this.metadataValues,
                     ...metadataChoices,
                     ...metadataSelected,
+                    ...attributes,
                     approximate: this.approximateSelected ? "yes" : "no",
                     q: this.queryTermTyped.trim(),
                     start: "",
@@ -651,6 +689,7 @@ export default {
                     byte: "",
                     start_date: this.start_date,
                     end_date: this.end_date,
+
                 })
             );
             // }

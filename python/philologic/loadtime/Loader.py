@@ -1141,7 +1141,7 @@ class Loader:
                 if attribute not in word_attributes:
                     word_attributes[attribute] = set()
                 word_attributes[attribute].add(attribute_value)
-        config_values["word_attributes"] = word_attributes
+        config_values["word_attributes"] = {k: list(v) for k, v in word_attributes.items()}
 
         config_values["ascii_conversion"] = Loader.ascii_conversion
 

@@ -163,10 +163,10 @@ class WSGIHandler(object):
             self.full_bibliography = False
 
         # Set up collocation word attribute filters
-        self.word_attributes = {}
+        self.word_attribute_filter = {}
         for word_attrib in config.word_attributes:
-            if word_attrib in self.cgi:
-                self.word_attributes[word_attrib] = self.cgi[f"q_{word_attrib}"][0]
+            if f"q_{word_attrib}" in self.cgi:
+                self.word_attribute_filter = {"attribute": word_attrib, "value": self.cgi[f"q_{word_attrib}"][0]}
 
     def __getattr__(self, key):
         """Return query arg as attribute of class."""

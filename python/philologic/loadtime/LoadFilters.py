@@ -265,7 +265,9 @@ def store_in_plain_text(*philo_types):
 def store_words_and_philo_ids(loader_obj, text):
     """Store words and philo ids file for data-mining"""
     files_path = loader_obj.destination + "/words_and_philo_ids/"
-    attributes_to_skip = loader_obj.attributes_to_skip
+    attributes_to_skip = list(loader_obj.attributes_to_skip)  # make a copy
+    attributes_to_skip.remove("lemma")
+    attributes_to_skip = set(attributes_to_skip)
     try:
         os.mkdir(files_path)
     except OSError:
@@ -298,44 +300,6 @@ def store_words_and_philo_ids(loader_obj, text):
         with open(filename, "rb") as input_file:
             compressed_file.write(lz4.frame.compress(input_file.read(), compression_level=4))
         os.remove(filename)
-
-
-def pos_tagger(language):
-    """POS Tagger using Spacy"""
-    try:
-        import spacy
-    except ImportError:
-        raise ImportError
-
-    nlp = spacy.load(language, disable=["parser", "ner", "textcat"])
-
-    def inner_pos_tagger(_, text):
-        with open(text["words"] + ".tmp", "w", encoding="utf8") as tmp_file:
-            with open(text["words"], encoding="utf8") as fh:
-                sentence = []
-                current_sent_id = None
-                for line in fh:
-                    philo_type, word, philo_id, attrib = line.split("\t")
-                    sent_id = " ".join(philo_id.split()[:6])
-                    record = Record(philo_type, word, philo_id.split())
-                    record.attrib = loads(attrib)
-                    if current_sent_id is not None and sent_id != current_sent_id:
-                        parsed_sentence = nlp.tagger(spacy.tokens.Doc(nlp.vocab, [r.name for r in sentence]))
-                        for saved_record, parsed_word in zip(sentence, parsed_sentence):
-                            saved_record.attrib["pos"] = parsed_word.pos_
-                            print(saved_record, file=tmp_file)
-                        sentence = []
-                    sentence.append(record)
-                    current_sent_id = sent_id
-            if sentence:
-                parsed_sentence = nlp.tagger(spacy.tokens.Doc(nlp.vocab, [r.name for r in sentence]))
-                for saved_record, parsed_word in zip(sentence, parsed_sentence):
-                    saved_record.attrib["pos"] = parsed_word.pos_
-                    print(saved_record, file=tmp_file)
-        os.remove(text["words"])
-        os.rename(text["words"] + ".tmp", text["words"])
-
-    return inner_pos_tagger
 
 
 def generate_word_frequencies(loader_obj, text):
