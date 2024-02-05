@@ -88,6 +88,7 @@ export default {
                 "start",
                 "end",
                 "frequency_field",
+                "word_property"
             ]);
             reportValues.kwic = new Set([
                 ...commonFields,
@@ -101,6 +102,7 @@ export default {
                 "start",
                 "end",
                 "frequency_field",
+                "word_property"
             ]);
             reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "arg_proxy"]);
             for (let field in this.$philoConfig.word_attributes) {

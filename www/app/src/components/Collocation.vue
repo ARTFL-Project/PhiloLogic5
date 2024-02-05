@@ -173,7 +173,7 @@ export default {
             for (let word of collocates.sorted.slice(0, 100)) {
                 let collocate = `${word.label}`.replace(/lemma:/, "");
                 if (collocate.search(/\w+:.*/) != -1) {
-                    collocate = collocate.replace(/(\w+):.*/, "$1");
+                    collocate = collocate.replace(/(\p{L}+):.*/u, "$1");
                 }
                 let surfaceForm = word.label;
                 sortedList.push({ collocate: collocate, surfaceForm: surfaceForm, count: word.count });

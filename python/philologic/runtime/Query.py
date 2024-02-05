@@ -54,7 +54,7 @@ def query(
     if pid == 0:  # In child process
         os.umask(0)
         os.setsid()
-        pid = os.fork()
+        pid = os.fork()  # double fork to detach completely from parent
         if pid > 0:
             os._exit(0)
         else:

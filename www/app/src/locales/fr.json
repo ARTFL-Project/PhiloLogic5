@@ -110,7 +110,8 @@
         "showOptions": "Montrer les options",
         "frequencyByLabel": "Fréquence par {label}",
         "top500Results": "Top 500 résultats par {label}",
-        "relativeFrequencyDescription": "{total} occurrence(s) pour {wordCount} mots"
+        "relativeFrequencyDescription": "{total} occurrence(s) pour {wordCount} mots",
+        "wordProperty": "Propriété du mot"
     },
     "exportResults": {
         "currentPage": "SEUL les résults de cette page seront générés",

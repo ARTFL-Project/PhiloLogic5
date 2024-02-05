@@ -111,7 +111,8 @@
         "showOptions": "Show options",
         "frequencyByLabel": "Frequency by {label}",
         "top500Results": "Top 500 results for {label}",
-        "relativeFrequencyDescription": "{total} actual occurrence(s) in {wordCount} words"
+        "relativeFrequencyDescription": "{total} actual occurrence(s) in {wordCount} words",
+        "wordProperty": "Word property"
     },
     "exportResults": {
         "currentPage": "ONLY results from the current page will be generated",

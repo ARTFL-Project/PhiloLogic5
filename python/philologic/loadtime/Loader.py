@@ -5,7 +5,6 @@ Calls all parsing functions and stores data in index"""
 import collections
 import datetime
 import os
-import pickle
 import shutil
 import sqlite3
 import sys
@@ -21,7 +20,6 @@ import sqlite3
 import lmdb
 import lz4.frame
 from orjson import loads
-from pickle import dumps
 import lxml.etree
 import regex as re
 from black import FileMode, format_str
