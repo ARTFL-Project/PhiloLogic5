@@ -103,7 +103,7 @@ def group_terms(parsed):
             grouped.append(current_clause)
             current_clause = []
 
-        if kind in ("LEMMA", "TERM", "QUOTE", "NULL"):
+        if kind in ("LEMMA", "TERM", "QUOTE", "ATTR", "LEMMA_ATTR", "NULL"):
             if last_term != "OR" and last_term != "NOT":
                 grouped.append(current_clause)
                 current_clause = []
