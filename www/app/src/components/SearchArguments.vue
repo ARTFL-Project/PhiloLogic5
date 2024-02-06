@@ -41,6 +41,11 @@
                 </span>
                 <span v-else>
                     {{ proximity() }}</span>
+                <div v-if="collocationFilter">
+                    {{ $t("searchArgs.collocateFilter") }}:&nbsp; <b>{{ collocationFilter.attrib }} = {{
+                        collocationFilter.value
+                    }}</b>
+                </div>
             </div>
         </div>
         <div>
@@ -102,7 +107,15 @@ export default {
         wordGroups() {
             return this.description.termGroups;
         },
-
+        collocationFilter() {
+            for (let wordAttrib in this.$philoConfig.word_attributes) {
+                let attribQuery = `q_${wordAttrib}`;
+                if (attribQuery in this.$route.query) {
+                    return { attrib: wordAttrib, value: this.$route.query[attribQuery] };
+                }
+            }
+            return false;
+        },
     },
     inject: ["$http"],
     data() {

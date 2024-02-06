@@ -271,7 +271,7 @@ lowercase_index = True
 
 # Path to a file containing a mapping of words to their lemmatized form.
 # Format is one word per line, separated by a tab from its lemma.
-lemma_file =
+lemma_file = ""
 
 
 ###########################################

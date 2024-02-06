@@ -103,7 +103,7 @@
                                 </div>
                                 <button v-if="wordAttributes" type="button" class="btn btn-outline-secondary"
                                     style="border-top-right-radius: 0; border-bottom-right-radius: 0">
-                                    Filter by word attributes
+                                    {{ $t("searchForm.filterCollocate") }}
                                 </button>
                                 <div class="btn-group" role="group">
                                     <button class="btn btn-secondary dropdown-toggle"

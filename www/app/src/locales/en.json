@@ -27,7 +27,7 @@
         "time_series": "Time-Series",
         "searchTerms": "Search Terms",
         "collocationParams": "Collocation Parameters",
-        "selectAttribute": "Select an attribute",
+        "selectAttribute": "Attribute",
         "selectAttributeValue": "Select an attribute value",
         "tips": "Tips",
         "search": "Search",
@@ -59,7 +59,8 @@
         "mostFrequentTerms": "Most Frequent Terms",
         "stopwords": "Stopwords",
         "noFiltering": "No Filtering",
-        "collocationAlert": "You cannot generate a collocation report when there is a gap between the query words"
+        "collocationAlert": "You cannot generate a collocation report when there is a gap between the query words",
+        "filterCollocate": "Filter collocate by"
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",
@@ -78,7 +79,8 @@
         "collocOccurrences": "Displaying the top 100 collocates for {n} occurrences",
         "withinProximity": "within {n} words",
         "withinExactlyProximity": "within exactly {n} words",
-        "sameSentence": "in the same sentence"
+        "sameSentence": "in the same sentence",
+        "collocateFilter": "Collocate Filter"
     },
     "resultsSummary": {
         "exportResults": "Export results",

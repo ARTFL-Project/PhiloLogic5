@@ -26,7 +26,7 @@
         "time_series": "Série Temporelle",
         "searchTerms": "Recherche par mots",
         "collocationParams": "Paramètres de collocation",
-        "selectAttribute": "Sélectionner un attribut",
+        "selectAttribute": "Attribut",
         "selectAttributeValue": "Sélectionner une valeur pour l'attribut",
         "tips": "Conseils",
         "search": "Rechercher",
@@ -58,7 +58,8 @@
         "mostFrequentTerms": "Mots les plus fréquents",
         "stopwords": "Mots vides",
         "noFiltering": "Pas de filtrage",
-        "collocationAlert": "Vous ne pouvez pas faire une recherche par collocation quand les termes de recherches sont séparés par plusieurs mots"
+        "collocationAlert": "Vous ne pouvez pas faire une recherche par collocation quand les termes de recherches sont séparés par plusieurs mots",
+        "filterCollocate": "Filtrer les collocations par"
     },
     "resultsBiblio": {
         "heading": "Bibliographie des résultats sur cette page",
@@ -77,7 +78,8 @@
         "collocOccurrences": "Affichage des 100 mots vides pour {n} occurrences",
         "withinProximity": "dans une fenêtre de {n} mots",
         "withinExactlyProximity": "dans une fenêtre exacte de {n} mots",
-        "sameSentence": "dans la même phrase"
+        "sameSentence": "dans la même phrase",
+        "collocateFilter": "Filtrage de collocations"
     },
     "resultsSummary": {
         "exportResults": "Exporter les résultats",

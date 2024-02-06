@@ -343,6 +343,10 @@ flatten_ligatures = True
 # Define a list of strings which mark the end of a sentence.
 # Note that this list will be added to the current one which is [".", "?", "!"]
 sentence_breakers = []
+
+# Path to a file containing a mapping of words to their lemmatized form.
+# Format is one word per line, separated by a tab from its lemma.
+lemma_file = ""
 ```
 
 The basic layout is this:
