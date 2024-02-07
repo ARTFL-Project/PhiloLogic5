@@ -253,15 +253,24 @@ def get_cooccurrence_groups(db_path, word_groups, level="sent", corpus_philo_ids
         # Perform an argsort on the list to get the indices of the groups sorted by byte size
         sorted_indices = np.argsort(byte_size_per_group)
 
+        def one_word_generator(word):
+            yield np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9)
+
         # Process each word group
         first_group_data = np.array([])
         group_generators = []
         for index in sorted_indices:
             words = word_groups[index]
             if index == sorted_indices[0]:  # grab the entire first group
-                first_group_data = np.concatenate([i for i in merge_word_group(txn, words)], dtype="u4")
+                if len(words) == 1:
+                    first_group_data = np.frombuffer(txn.get(words[0].encode("utf8")), dtype="u4").reshape(-1, 9)
+                else:
+                    first_group_data = np.concatenate([i for i in merge_word_group(txn, words)], dtype="u4")
             else:
-                group_generators.append(merge_word_group(txn, words, chunk_size=36 * 1000))
+                if len(words) == 1:
+                    group_generators.append(one_word_generator(words[0]))
+                else:
+                    group_generators.append(merge_word_group(txn, words, chunk_size=36 * 1000))
 
         if corpus_philo_ids is not None:
             # Filter out philo_ids that are not in the corpus
