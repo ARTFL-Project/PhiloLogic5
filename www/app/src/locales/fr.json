@@ -59,7 +59,10 @@
         "stopwords": "Mots vides",
         "noFiltering": "Pas de filtrage",
         "collocationAlert": "Vous ne pouvez pas faire une recherche par collocation quand les termes de recherches sont séparés par plusieurs mots",
-        "filterCollocate": "Filtrer les collocations par"
+        "filterCollocate": "Filtrer les collocations par",
+        "collocatesWithin": "Collocations dans une fenêtre de",
+        "words": "mots",
+        "collocatesWithinSentence": "Collocations dans la même phrase"
     },
     "resultsBiblio": {
         "heading": "Bibliographie des résultats sur cette page",

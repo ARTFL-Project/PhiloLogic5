@@ -60,7 +60,10 @@
         "stopwords": "stopwords",
         "noFiltering": "no filtering",
         "collocationAlert": "You cannot generate a collocation report when there is a gap between the query words",
-        "filterCollocate": "Filter collocates by"
+        "filterCollocate": "Filter collocates by",
+        "collocatesWithin": "Collocates within",
+        "words": "words",
+        "collocatesWithinSentence": "Collocates within the same sentence"
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",

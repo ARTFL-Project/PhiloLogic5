@@ -128,16 +128,16 @@
                                         <input class="form-check-input" type="radio" name="colloc_within"
                                             id="collocSentence" value="sent" checked v-model="colloc_within">
                                         <label class="form-check-label" for="collocSentence">
-                                            Collocates within the same sentence
+                                            {{ $t("searchForm.collocatesWithinSentence") }}
                                         </label>
                                     </div>
                                     <div class="form-check mt-1">
                                         <input class="form-check-input" type="radio" name="colloc_within" id="collocWithinN"
                                             value="n" v-model="colloc_within">
                                         <label class="form-check-label" for="collocWithinN">
-                                            Collocates within <input type="number" name="arg_proxy"
+                                            {{ $t("searchForm.collocatesWithin") }} <input type="number" name="arg_proxy"
                                                 class="form-control form-control-sm" id="collocNWords" style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
-    min-height: initial; min-height: fit-content;" v-model="arg_proxy"> words
+    min-height: initial; min-height: fit-content;" v-model="arg_proxy"> {{ $t("searchForm.words") }}
                                         </label>
                                     </div>
                                     <div class="mt-2">
@@ -201,27 +201,6 @@
                                                 style="width: 60px; text-align: center" />
                                         </div>
                                     </div>
-                                    <!-- <div class="d-flex mt-2">
-                                        <div class="input-group d-inline" style="width: fit-content">
-                                            <button class="btn btn-outline-secondary" style="height: fit-content">
-                                                <label for="filter-frequency">{{ $t("searchForm.wordFiltering") }}</label>
-                                            </button>
-                                            <input type="text" class="form-control d-inline-block" id="filter-frequency"
-                                                name="filter_frequency" placeholder="100" v-model="filter_frequency"
-                                                style="width: 60px; text-align: center" />
-                                        </div>
-                                        <div>
-                                            <div class="form-check" v-for="collocFilter in collocationOptions"
-                                                :key="collocFilter.value">
-                                                <input class="btn-check" type="radio" name="colloc_filter_choice"
-                                                    v-model="colloc_filter_choice" :value="collocFilter.value"
-                                                    :id="collocFilter.value" />
-                                                <label class="btn btn-secondary" :for="collocFilter.value">{{
-                                                    collocFilter.text
-                                                }}</label><br />
-                                            </div>
-                                        </div>
-                                    </div> -->
                                 </div>
                                 <h5 class="mt-2">{{ $t("searchForm.filterByField") }}:</h5>
                                 <div class="input-group pb-2" v-for="localField in metadataDisplayFiltered"
