@@ -60,10 +60,6 @@ def format_query(q, db, config):
 
     frequency_file = config.db_path + "/data/frequencies/normalized_word_frequencies"
 
-    import sys
-
-    print(token, kind, file=sys.stderr)
-
     if kind == "TERM" and db.locals.ascii_conversion is True:
         expanded_token = token + ".*"
         grep_proc = grep_word(expanded_token, frequency_file, subprocess.PIPE, db.locals["lowercase_index"])
@@ -92,9 +88,6 @@ def format_query(q, db, config):
             word = line.split(b"\t")[1].strip().decode("utf8")
         else:
             word = line.strip().decode("utf8")
-        import sys
-
-        print(line, word, file=sys.stderr)
         highlighted_word = f'<span class="highlight">{word[:len_token]}</span>{word[len_token:]}'
         matches.append(highlighted_word)
 

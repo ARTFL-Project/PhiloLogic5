@@ -186,6 +186,9 @@ def search_within_word_span(db_path, hitlist_filename, n, exact_distance, corpus
         db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level
     )
 
+    if len(word_groups) > 1 and n == 1:
+        n = len(word_groups) - 1
+
     if exact_distance is True:
         comp = eq  # distance between words equals n
     else:
