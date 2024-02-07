@@ -104,10 +104,7 @@ export default {
                 "frequency_field",
                 "word_property"
             ]);
-            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "arg_proxy"]);
-            for (let field in this.$philoConfig.word_attributes) {
-                reportValues.collocation.add(`q_${field}`);
-            }
+            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "arg_proxy", "q_attribute", "q_attribute_value"]);
             reportValues.time_series = new Set([
                 ...commonFields,
                 "method",

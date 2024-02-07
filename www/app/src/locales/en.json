@@ -27,7 +27,7 @@
         "time_series": "Time-Series",
         "searchTerms": "Search Terms",
         "collocationParams": "Collocation Parameters",
-        "selectAttribute": "Attribute",
+        "selectAttribute": "word attribute",
         "selectAttributeValue": "Select an attribute value",
         "tips": "Tips",
         "search": "Search",
@@ -56,11 +56,11 @@
         "groupResultsBy": "Group results by",
         "displayOptions": "Display Options",
         "sortResultsBy": "Sort results by",
-        "mostFrequentTerms": "Most Frequent Terms",
-        "stopwords": "Stopwords",
-        "noFiltering": "No Filtering",
+        "mostFrequentTerms": "most frequent terms",
+        "stopwords": "stopwords",
+        "noFiltering": "no filtering",
         "collocationAlert": "You cannot generate a collocation report when there is a gap between the query words",
-        "filterCollocate": "Filter collocate by"
+        "filterCollocate": "Filter collocates by"
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",

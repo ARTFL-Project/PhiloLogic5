@@ -83,58 +83,8 @@
                     </div>
                     <transition name="slide-fade">
                         <div id="search-elements" v-if="formOpen" class="ps-3 pe-3 pb-3 shadow">
-                            <div class="mt-1" id="collocation-params" v-if="currentReport == 'collocation'">
-                                <h6>{{ $t("searchForm.collocationParams") }}:</h6>
-                                <div class="form-check">
-                                    <input class="form-check-input" type="radio" name="colloc_within" id="collocSentence"
-                                        value="sent" checked v-model="colloc_within">
-                                    <label class="form-check-label" for="collocSentence">
-                                        Collocates within the same sentence
-                                    </label>
-                                </div>
-                                <div class="form-check mt-1">
-                                    <input class="form-check-input" type="radio" name="colloc_within" id="collocWithinN"
-                                        value="n" v-model="colloc_within">
-                                    <label class="form-check-label" for="collocWithinN">
-                                        Collocates within <input type="number" name="arg_proxy"
-                                            class="form-control form-control-sm" id="collocNWords" style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
-    min-height: initial; min-height: fit-content;" v-model="arg_proxy"> words
-                                    </label>
-                                </div>
-                                <button v-if="wordAttributes" type="button" class="btn btn-outline-secondary"
-                                    style="border-top-right-radius: 0; border-bottom-right-radius: 0">
-                                    {{ $t("searchForm.filterCollocate") }}
-                                </button>
-                                <div class="btn-group" role="group">
-                                    <button class="btn btn-secondary dropdown-toggle"
-                                        style="border-top-left-radius: 0; border-bottom-left-radius: 0" type="button"
-                                        id="attribute-selector'" data-bs-toggle="dropdown" aria-expanded="false">
-                                        {{ attributeSelected.toUpperCase() || $t("searchForm.selectAttribute") }}
-                                    </button>
-                                    <ul class="dropdown-menu" aria-labelledby="attribute-selector">
-                                        <li v-for="(_, attribute) in wordAttributes" :key="attribute">
-                                            <a class="dropdown-item" @click="attributeSelected = attribute">{{
-                                                attribute.toUpperCase() }}</a>
-                                        </li>
-                                    </ul>
-
-                                </div>
-                                <div class="dropdown d-inline-block ms-2" v-if="attributeSelected.length > 0">
-                                    <button class="btn btn-secondary dropdown-toggle" type="button" id="attributeValues"
-                                        data-bs-toggle="dropdown" aria-expanded="false">
-                                        {{ wordAttributeSelected.toUpperCase() || $t("searchForm.selectAttributeValue") }}
-                                    </button>
-                                    <ul class="dropdown-menu" aria-labelledby="attributeValues">
-                                        <li v-for="attributeValue in wordAttributes[attributeSelected]"
-                                            :key="attributeValue">
-                                            <a class="dropdown-item" @click="wordAttributeSelected = attributeValue">{{
-                                                attributeValue }}</a>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
                             <div class="mt-1">
-                                <h6>{{ $t("searchForm.searchTermsParameters") }}:</h6>
+                                <h5>{{ $t("searchForm.searchTermsParameters") }}:</h5>
                                 <div class="form-check form-switch form-check-inline" id="approximate" style="height: 31px">
                                     <input class="form-check-input" type="checkbox" id="approximate-input"
                                         v-model="approximateSelected" @change="approximateChange(approximateSelected)" />
@@ -172,7 +122,108 @@
                                     <span class="input-group-text ms-0" v-if="method == 'proxy' || method == 'phrase'">{{
                                         $t("searchForm.wordsSentence") }}</span>
                                 </div>
-                                <h6>{{ $t("searchForm.filterByField") }}:</h6>
+                                <div class="mt-1" id="collocation-params" v-if="currentReport == 'collocation'">
+                                    <h5>{{ $t("searchForm.collocationParams") }}:</h5>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="colloc_within"
+                                            id="collocSentence" value="sent" checked v-model="colloc_within">
+                                        <label class="form-check-label" for="collocSentence">
+                                            Collocates within the same sentence
+                                        </label>
+                                    </div>
+                                    <div class="form-check mt-1">
+                                        <input class="form-check-input" type="radio" name="colloc_within" id="collocWithinN"
+                                            value="n" v-model="colloc_within">
+                                        <label class="form-check-label" for="collocWithinN">
+                                            Collocates within <input type="number" name="arg_proxy"
+                                                class="form-control form-control-sm" id="collocNWords" style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
+    min-height: initial; min-height: fit-content;" v-model="arg_proxy"> words
+                                        </label>
+                                    </div>
+                                    <div class="mt-2">
+                                        <button v-if="wordAttributes" type="button" class="btn btn-outline-secondary"
+                                            style="border-top-right-radius: 0; border-bottom-right-radius: 0">
+                                            {{ $t("searchForm.filterCollocate") }}
+                                        </button>
+                                        <div class="btn-group d-inline-block" role="group">
+                                            <button class="btn btn-secondary dropdown-toggle"
+                                                style="border-top-left-radius: 0; border-bottom-left-radius: 0"
+                                                type="button" id="attribute-selector'" data-bs-toggle="dropdown"
+                                                aria-expanded="false">
+                                                {{ collocFilteringSelected.text || collocationOptions[0].text }}
+                                            </button>
+                                            <ul class="dropdown-menu" aria-labelledby="attribute-selector">
+                                                <li v-for="option in collocationOptions" :key="option.value">
+                                                    <a class="dropdown-item" @click="collocFilteringSelected = option">{{
+                                                        option.text }}</a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                        <div class="dropdown d-inline-block ms-2"
+                                            v-if="collocFilteringSelected.value == 'attribute'">
+                                            <button class="btn btn-secondary dropdown-toggle"
+                                                style="border-top-left-radius: 0; border-bottom-left-radius: 0"
+                                                type="button" id="attribute-selector'" data-bs-toggle="dropdown"
+                                                aria-expanded="false">
+                                                {{ attributeSelected.toUpperCase() }}
+                                            </button>
+                                            <ul class="dropdown-menu" aria-labelledby="attribute-selector">
+                                                <li v-for="(_, attribute) in wordAttributes" :key="attribute">
+                                                    <a class="dropdown-item" @click="attributeSelected = attribute">{{
+                                                        attribute.toUpperCase() }}</a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                        <div class="dropdown d-inline-block ms-2"
+                                            v-if="collocFilteringSelected.value == 'attribute' && attributeSelected.length > 0">
+                                            <button class="btn btn-secondary dropdown-toggle" type="button"
+                                                id="attributeValues" data-bs-toggle="dropdown" aria-expanded="false">
+                                                {{ wordAttributeSelected.toUpperCase() ||
+                                                    $t("searchForm.selectAttributeValue")
+                                                }}
+                                            </button>
+                                            <ul class="dropdown-menu" aria-labelledby="attributeValues">
+                                                <li v-for="attributeValue in wordAttributes[attributeSelected]"
+                                                    :key="attributeValue">
+                                                    <a class="dropdown-item"
+                                                        @click="wordAttributeSelected = attributeValue">{{
+                                                            attributeValue }}</a>
+                                                </li>
+                                            </ul>
+                                        </div>
+                                        <div class="input-group d-inline ms-2" style="width: fit-content"
+                                            v-if="collocFilteringSelected.value == 'frequency'">
+                                            <button class="btn btn-outline-secondary" style="height: fit-content">
+                                                <label for="filter-frequency">{{ $t("searchForm.wordFiltering") }}</label>
+                                            </button>
+                                            <input type="text" class="form-control d-inline-block" id="filter-frequency"
+                                                name="filter_frequency" placeholder="100" v-model="filter_frequency"
+                                                style="width: 60px; text-align: center" />
+                                        </div>
+                                    </div>
+                                    <!-- <div class="d-flex mt-2">
+                                        <div class="input-group d-inline" style="width: fit-content">
+                                            <button class="btn btn-outline-secondary" style="height: fit-content">
+                                                <label for="filter-frequency">{{ $t("searchForm.wordFiltering") }}</label>
+                                            </button>
+                                            <input type="text" class="form-control d-inline-block" id="filter-frequency"
+                                                name="filter_frequency" placeholder="100" v-model="filter_frequency"
+                                                style="width: 60px; text-align: center" />
+                                        </div>
+                                        <div>
+                                            <div class="form-check" v-for="collocFilter in collocationOptions"
+                                                :key="collocFilter.value">
+                                                <input class="btn-check" type="radio" name="colloc_filter_choice"
+                                                    v-model="colloc_filter_choice" :value="collocFilter.value"
+                                                    :id="collocFilter.value" />
+                                                <label class="btn btn-secondary" :for="collocFilter.value">{{
+                                                    collocFilter.text
+                                                }}</label><br />
+                                            </div>
+                                        </div>
+                                    </div> -->
+                                </div>
+                                <h5 class="mt-2">{{ $t("searchForm.filterByField") }}:</h5>
                                 <div class="input-group pb-2" v-for="localField in metadataDisplayFiltered"
                                     :key="localField.value">
                                     <div class="input-group pb-2" :id="localField.value + '-group'"
@@ -285,27 +336,6 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="d-flex mt-4" v-if="currentReport === 'collocation'">
-                                <div class="input-group d-inline" style="width: fit-content">
-                                    <button class="btn btn-outline-secondary" style="height: fit-content">
-                                        <label for="filter-frequency">{{ $t("searchForm.wordFiltering") }}</label>
-                                    </button>
-                                    <input type="text" class="form-control d-inline-block" id="filter-frequency"
-                                        name="filter_frequency" placeholder="100" v-model="filter_frequency"
-                                        style="width: 60px; text-align: center" />
-                                </div>
-                                <div>
-                                    <div class="form-check" v-for="collocFilter in collocationOptions"
-                                        :key="collocFilter.value">
-                                        <input class="btn-check" type="radio" name="colloc_filter_choice"
-                                            v-model="colloc_filter_choice" :value="collocFilter.value"
-                                            :id="collocFilter.value" />
-                                        <label class="btn btn-secondary" :for="collocFilter.value">{{
-                                            collocFilter.text
-                                        }}</label><br />
-                                    </div>
-                                </div>
-                            </div>
                             <div class="input-group mt-4 pt-1 pb-2" v-if="currentReport === 'time_series'">
                                 <button class="btn btn-outline-secondary">{{ $t("searchForm.dateRange") }}</button>
                                 <span class="d-inline-flex align-self-center mx-2"><label for="start_date">{{
@@ -336,9 +366,9 @@
                                     </option>
                                 </select>
                             </div>
-                            <h6 class="mt-3" v-if="['concordance', 'kwic', 'bibliography'].includes(currentReport)">
+                            <h5 class="mt-3" v-if="['concordance', 'kwic', 'bibliography'].includes(currentReport)">
                                 {{ $t("searchForm.displayOptions") }}:
-                            </h6>
+                            </h5>
                             <div class="input-group pb-2" v-if="['concordance', 'bibliography'].includes(currentReport)">
                                 <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy") }}</button>
                                 <select v-once class="form-select" style="max-width: fit-content" aria-label="select fields"
@@ -502,7 +532,8 @@ export default {
             reports: this.$philoConfig.search_reports,
             wordAttributes: this.$philoConfig.word_attributes,
             attributeSelected: "",
-            wordAttributeSelected: ""
+            wordAttributeSelected: "",
+            collocFilteringSelected: ""
         };
     },
     watch: {
@@ -578,6 +609,24 @@ export default {
                 }
             }
         }
+        if (Object.keys(this.$philoConfig.word_attributes).length > 0) {
+            // place the word attribute option at the second position
+            this.collocationOptions.splice(1, 0, { text: this.$t("searchForm.selectAttribute"), value: "attribute" })
+            this.attributeSelected = Object.keys(this.$philoConfig.word_attributes)[0];
+        }
+        if (this.colloc_filter_choice.length > 0) {
+            for (let collocFilter of this.collocationOptions) {
+                if (collocFilter.value == this.colloc_filter_choice) {
+                    this.collocFilteringSelected = collocFilter;
+                    if (this.collocFilteringSelected.value == "attribute") {
+                        this.attributeSelected = this.$route.query.q_attribute;
+                        this.wordAttributeSelected = this.$route.query.q_attribute_value;
+                    }
+                    break
+                }
+            }
+        }
+        console.log(this.collocFilteringSelected)
     },
     mounted() {
         this.$nextTick(() => {
@@ -671,17 +720,13 @@ export default {
             if (this.currentReport == 'collocation' && this.colloc_within == "sent") {
                 this.arg_proxy = "";
             }
-            let attributes = {}
-            if (this.attributeSelected.length > 0) {
-                attributes[`q_${this.attributeSelected}`] = this.wordAttributeSelected;
-            }
+            this.colloc_filter_choice = this.collocFilteringSelected.value;
             this.$router.push(
                 this.paramsToRoute({
                     ...this.$store.state.formData,
                     ...this.metadataValues,
                     ...metadataChoices,
                     ...metadataSelected,
-                    ...attributes,
                     approximate: this.approximateSelected ? "yes" : "no",
                     q: this.queryTermTyped.trim(),
                     start: "",
@@ -689,7 +734,8 @@ export default {
                     byte: "",
                     start_date: this.start_date,
                     end_date: this.end_date,
-
+                    q_attribute: this.attributeSelected,
+                    q_attribute_value: this.wordAttributeSelected,
                 })
             );
             // }
@@ -878,7 +924,7 @@ input[type="text"] {
 }
 
 .input-group,
-#search-elements h6 {
+#search-elements h5 {
     width: fit-content;
 }
 
@@ -1127,9 +1173,9 @@ input:focus::placeholder {
     opacity: 0;
 }
 
-h6 {
+h5 {
     font-variant: small-caps;
     font-weight: 700;
-    font-size: 1.05rem;
+    font-size: 1.15rem;
 }
 </style>

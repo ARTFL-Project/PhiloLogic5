@@ -203,7 +203,6 @@ export default {
             this.searching = false;
         },
         collocTableClick(item) {
-            console.log(item);
             let q
             if (item.surfaceForm.startsWith("lemma:")) {
                 q = `${this.q} ${item.surfaceForm}`;

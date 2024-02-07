@@ -33,9 +33,9 @@ def collocation_results(request, config):
         count_lemmas = False
 
     # Attribute filtering
-    if request.word_attribute_filter:
-        attribute = request.word_attribute_filter["attribute"]
-        attribute_value = request.word_attribute_filter["value"]
+    if request.colloc_filter_choice == "attribute":
+        attribute = request.q_attribute
+        attribute_value = request.q_attribute_value
     else:
         attribute = None
         attribute_value = None
@@ -51,12 +51,15 @@ def collocation_results(request, config):
         for word in group:
             word = word.replace('"', "")
             query_words.append(word)
-    # query_words = set(query_words)
 
-    if request.colloc_filter_choice == "nofilter" and attribute is None:
+    if request.colloc_filter_choice == "nofilter":
         filter_list = set(query_words)
-    elif attribute is not None:
-        filter_list = {f"{word}:{attribute}:{attribute_value}" for word in query_words}
+    elif request.colloc_filter_choice == "attribute":
+        if f"{attribute}:{attribute_value}" not in request.q:
+            filter_list = {f"{word}:{attribute}:{attribute_value}" for word in query_words}
+        else:
+            filter_list = set(query_words)
+            filter_list = filter_list.union(set(query_words))
         filter_list.add(f"{request['q']}:{attribute}:{attribute_value}")
     else:
         filter_list = set(build_filter_list(request, config, count_lemmas))

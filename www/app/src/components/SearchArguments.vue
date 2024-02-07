@@ -97,6 +97,9 @@ export default {
             "formData.start_date",
             "formData.end_date",
             "formData.colloc_within",
+            "formData.colloc_filter_choice",
+            "formData.q_attribute",
+            "formData.q_attribute_value",
             "currentReport",
             "resultsLength",
             "description",
@@ -108,13 +111,14 @@ export default {
             return this.description.termGroups;
         },
         collocationFilter() {
-            for (let wordAttrib in this.$philoConfig.word_attributes) {
-                let attribQuery = `q_${wordAttrib}`;
-                if (attribQuery in this.$route.query) {
-                    return { attrib: wordAttrib, value: this.$route.query[attribQuery] };
-                }
+            if (this.formData.colloc_filter_choice == 'attribute') {
+                return {
+                    attrib: this.formData.q_attribute,
+                    value: this.formData.q_attribute_value,
+                };
+            } else {
+                return false
             }
-            return false;
         },
     },
     inject: ["$http"],
