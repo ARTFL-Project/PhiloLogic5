@@ -14,8 +14,17 @@ from philologic.runtime.Query import get_expanded_query
 
 def collocation_results(request, config):
     """Fetch collocation results"""
-    db = DB(config.db_path + "/data/")
     collocation_object: dict[str, Any] = {"query": dict([i for i in request])}
+    db = DB(config.db_path + "/data/")
+
+    hits = db.query(
+        request["q"],
+        "proxy",
+        request["arg"],
+        raw_results=True,
+        raw_bytes=True,
+        **request.metadata,
+    )
 
     # We turn on lemma counting if the query word is a lemma search
     if "lemma:" in request["q"]:
@@ -36,32 +45,23 @@ def collocation_results(request, config):
     except ValueError:  # Getting an empty string since the keyword is not specificed in the URL
         collocate_distance = None
 
-    if request.colloc_filter_choice == "nofilter":
-        filter_list = []
-    elif attribute is not None:
-        filter_list = [f"{request['q']}:{attribute}:{attribute_value}"]
-    else:
-        filter_list = build_filter_list(request, config, count_lemmas)
-    collocation_object["filter_list"] = filter_list
-    filter_list = set(filter_list)
-
-    hits = db.query(
-        request["q"],
-        "proxy",
-        request["arg"],
-        raw_results=True,
-        raw_bytes=True,
-        **request.metadata,
-    )
-
     # Build list of search terms to filter out
     query_words = []
     for group in get_expanded_query(hits):
         for word in group:
             word = word.replace('"', "")
             query_words.append(word)
-    query_words = set(query_words)
-    filter_list = filter_list.union(query_words)
+    # query_words = set(query_words)
+
+    if request.colloc_filter_choice == "nofilter" and attribute is None:
+        filter_list = set(query_words)
+    elif attribute is not None:
+        filter_list = {f"{word}:{attribute}:{attribute_value}" for word in query_words}
+        filter_list.add(f"{request['q']}:{attribute}:{attribute_value}")
+    else:
+        filter_list = set(build_filter_list(request, config, count_lemmas))
+        filter_list = filter_list.union(set(query_words))
+    collocation_object["filter_list"] = list(filter_list)
 
     hits_done = request.start or 0
     max_time = request.max_time or 2
@@ -94,7 +94,7 @@ def collocation_results(request, config):
             else:
                 if count_lemmas is False:
                     words = [
-                        (f"{word}:{attribute}:{attribute_value}", position)
+                        (f"{word.lower()}:{attribute}:{attribute_value}", position)
                         for word, _, position, attr in word_objects
                         if attr.get(attribute) == attribute_value
                     ]

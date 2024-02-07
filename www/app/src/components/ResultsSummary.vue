@@ -3,14 +3,8 @@
         <div class="card shadow-sm px-3 py-2">
             <div id="initial_report">
                 <div id="description">
-                    <button
-                        type="button"
-                        class="btn btn-secondary btn-sm"
-                        style="margin-top: -0.5rem; margin-right: -1rem"
-                        id="export-results"
-                        data-bs-toggle="modal"
-                        data-bs-target="#export-modal"
-                    >
+                    <button type="button" class="btn btn-secondary btn-sm" style="margin-top: -0.5rem; margin-right: -1rem"
+                        id="export-results" data-bs-toggle="modal" data-bs-target="#export-modal">
                         {{ $t("resultsSummary.exportResults") }}
                     </button>
                     <div class="modal fade" tabindex="-1" id="export-modal" title="Export Results">
@@ -23,32 +17,24 @@
                             <span v-if="fieldSummary.length > 0">
                                 {{ $t("resultsSummary.spreadAcross") }}
                                 <div class="d-inline-block" style="position: relative" v-if="!hitlistStatsDone">
-                                    <div
-                                        class="spinner-border text-secondary"
-                                        role="status"
-                                        style="
+                                    <div class="spinner-border text-secondary" role="status" style="
                                             position: absolute;
                                             width: 2rem;
                                             height: 2rem;
                                             z-index: 50;
                                             bottom: -0.75rem;
-                                        "
-                                    >
+                                        ">
                                         <span class="visually-hidden">{{ $t("common.loading") }}...</span>
                                     </div>
                                 </div>
                                 <span v-if="hitlistStatsDone">
                                     <span v-for="(stat, statIndex) in statsDescription" :key="stat.field">
-                                        <router-link
-                                            :to="`/aggregation?${stat.link}&group_by=${stat.field}`"
-                                            class="stat-link"
-                                            v-if="stat.link.length > 0"
-                                            >{{ stat.count }} {{ stat.label }}(s)</router-link
-                                        >
+                                        <router-link :to="`/aggregation?${stat.link}&group_by=${stat.field}`"
+                                            class="stat-link" v-if="stat.link.length > 0">{{ stat.count }} {{ stat.label
+                                            }}(s)</router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
-                                        <span v-if="statIndex != statsDescription.length - 1"
-                                            >&nbsp;{{ $t("common.and") }}&nbsp;</span
-                                        >
+                                        <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
+                                        }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
@@ -62,13 +48,8 @@
                                 })
                             }}</b>
                             <b v-else>{{ $t("resultsSummary.noResults") }}</b>
-                            <button
-                                type="button"
-                                class="btn rounded-pill btn-outline-secondary btn-sm ms-1"
-                                style="margin-top: -0.05rem"
-                                data-bs-toggle="modal"
-                                data-bs-target="#results-bibliography"
-                            >
+                            <button type="button" class="btn rounded-pill btn-outline-secondary btn-sm ms-1"
+                                style="margin-top: -0.05rem" data-bs-toggle="modal" data-bs-target="#results-bibliography">
                                 {{ $t("resultsSummary.fromTheseTitles") }}
                             </button>
                         </div>
@@ -91,52 +72,30 @@
                         </div>
                     </div>
                     <div v-if="['collocation', 'time_series'].includes(report)">
-                        <div
-                            class="progress ms-3 me-3 mb-3"
-                            :max="resultsLength"
-                            show-progress
-                            variant="secondary"
-                            v-if="runningTotal != resultsLength"
-                        >
-                            <div
-                                class="progress-bar"
-                                role="progressbar"
-                                aria-valuemin="0"
-                                aria-valuemax="100"
-                                :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`"
-                            >
+                        <div class="progress ms-3 me-3 mb-3" :max="resultsLength" show-progress variant="secondary"
+                            v-if="runningTotal != resultsLength">
+                            <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+                                :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`">
                                 {{ Math.floor((runningTotal / resultsLength) * 100) }}%
                             </div>
                         </div>
                         <div v-if="report == 'collocation'">
                             <span>
                                 <span tooltip tooltip-title="Click to display filtered words">
-                                    <a
-                                        href
-                                        @click="toggleFilterList($event)"
-                                        v-if="colloc_filter_choice === 'frequency'"
-                                        >{{ $t("resultsSummary.commonWords", { n: filter_frequency }) }}</a
-                                    >
-                                    <a
-                                        href
-                                        @click="toggleFilterList($event)"
-                                        v-if="colloc_filter_choice === 'stopwords'"
-                                        >{{ $t("resultsSummary.commonStopwords") }}</a
-                                    >
+                                    <a href @click="toggleFilterList($event)" v-if="colloc_filter_choice === 'frequency'">{{
+                                        $t("resultsSummary.commonWords", { n: filter_frequency }) }}</a>
+                                    <a href @click="toggleFilterList($event)" v-if="colloc_filter_choice === 'stopwords'">{{
+                                        $t("resultsSummary.commonStopwords") }}</a>
                                     {{ $t("resultsSummary.filtered") }}.
                                 </span>
                             </span>
                             <div class="card ps-3 pe-3 pb-3 shadow-lg" id="filter-list" v-if="showFilteredWords">
-                                <button
-                                    type="button"
-                                    class="btn btn-secondary"
-                                    id="close-filter-list"
-                                    @click="toggleFilterList($event)"
-                                >
+                                <button type="button" class="btn btn-secondary" id="close-filter-list"
+                                    @click="toggleFilterList($event)">
                                     &times;
                                 </button>
                                 <div class="row mt-4">
-                                    <div class="col" v-for="wordGroup in splittedFilterList" :key="wordGroup[0]">
+                                    <div class="col" v-for="wordGroup in splitFilterList" :key="wordGroup[0]">
                                         <div class="list-group list-group-flush">
                                             <div class="list-group-item" v-for="word in wordGroup" :key="word">
                                                 {{ word }}
@@ -150,28 +109,16 @@
                 </div>
             </div>
         </div>
-        <div
-            class="row d-none d-sm-block mt-4 mb-3"
-            id="act-on-report"
-            v-if="report == 'concordance' || report == 'kwic'"
-        >
+        <div class="row d-none d-sm-block mt-4 mb-3" id="act-on-report" v-if="report == 'concordance' || report == 'kwic'">
             <div class="col col-sm-7 col-lg-8" v-if="['concordance', 'kwic'].includes(report)">
                 <div class="btn-group" role="group" id="report_switch">
-                    <button
-                        type="button"
-                        class="btn btn-secondary"
-                        :class="{ active: report === 'concordance' }"
-                        @click="switchReport('concordance')"
-                    >
+                    <button type="button" class="btn btn-secondary" :class="{ active: report === 'concordance' }"
+                        @click="switchReport('concordance')">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("resultsSummary.concordanceBig") }}</span>
                         <span class="d-inline d-sm-inline d-md-none">{{ $t("resultsSummary.concordanceSmall") }}</span>
                     </button>
-                    <button
-                        type="button"
-                        class="btn btn-secondary"
-                        :class="{ active: report === 'kwic' }"
-                        @click="switchReport('kwic')"
-                    >
+                    <button type="button" class="btn btn-secondary" :class="{ active: report === 'kwic' }"
+                        @click="switchReport('kwic')">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("resultsSummary.kwicBig") }}</span>
                         <span class="d-inline d-sm-inline d-md-none">{{ $t("resultsSummary.kwicSmall") }}</span>
                     </button>
@@ -214,7 +161,7 @@ export default {
             "aggregationCache",
             "totalResultsDone",
         ]),
-        splittedFilterList: function () {
+        splitFilterList: function () {
             let arrayLength = this.filterList.length;
             let chunkSize = arrayLength / 5;
             let splittedList = [];
@@ -320,9 +267,8 @@ export default {
         updateTotalResults() {
             let params = { ...this.$store.state.formData };
             if (this.report == "time_series") {
-                params.year = `${this.start_date || this.$philoConfig.time_series_start_end_date.start_date}-${
-                    this.end_date || this.$philoConfig.time_series_start_end_date.end_date
-                }`;
+                params.year = `${this.start_date || this.$philoConfig.time_series_start_end_date.start_date}-${this.end_date || this.$philoConfig.time_series_start_end_date.end_date
+                    }`;
             }
             this.totalResultsDone = false;
             this.$http
@@ -388,7 +334,7 @@ export default {
             this.results_per_page = 25;
             this.$router.push(this.paramsToRoute({ ...this.$store.state.formData }));
         },
-        showFacets() {},
+        showFacets() { },
         showResultsBiblio() {
             if (!this.showBiblio) {
                 this.showBiblio = true;
@@ -412,21 +358,26 @@ export default {
 #description {
     position: relative;
 }
+
 #export-results {
     position: absolute;
     right: 0;
     padding: 0.125rem 0.25rem;
     font-size: 0.8rem !important;
 }
+
 #results-bibliography .modal-header {
     padding-bottom: 0.5rem;
 }
+
 #results-bibliography .modal-header button {
     padding: 0.5rem;
 }
+
 #results-bibliography .modal-header h5 {
     line-height: 1;
 }
+
 #close-filter-list {
     width: fit-content;
     float: right;
@@ -434,10 +385,12 @@ export default {
     position: absolute;
     right: 0;
 }
+
 #filter-list .list-group-item {
     border-width: 0px;
     padding: 0.1rem;
 }
+
 .stat-link {
     text-decoration: none;
 }

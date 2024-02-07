@@ -70,7 +70,6 @@
                     :label="`${((runningTotal / resultsLength) * 100).toFixed(2)}%`"></div>
             </div>
             <div class="list-group" flush>
-                {{ facet }}
                 <div class="list-group-item" v-for="result in facetResults" :key="result.label">
                     <div>
                         <a href class="sidebar-text text-content-area text-view" v-if="facet.type == 'facet'"
