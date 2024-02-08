@@ -59,7 +59,9 @@ def query(
             os._exit(0)
         else:
             with open(f"{filename}.terms", "w") as terms_file:
-                expand_query_not(split, frequency_file, terms_file, True, False)
+                expand_query_not(
+                    split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
+                )
             if method == "proxy":
                 search_word(db.path, filename, corpus_file=corpus_file)
             elif method == "exact_phrase":
@@ -195,14 +197,20 @@ def search_within_word_span(db_path, hitlist_filename, n, exact_distance, corpus
         comp = le  # distance between words is less than or equal to n
     with open(hitlist_filename, "wb") as output_file:
         for philo_id_groups in common_object_ids:
+            hit_cache = set()
             for group_combination in product(*philo_id_groups):
                 # we now need to check if the positions are within n words of each other
-                positions: list[int] = [philo_id[7:8][0] for philo_id in group_combination]
-                if comp(max(positions) - min(positions), n):
+                positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
+                if len(positions) != len(word_groups):  # we had duplicate words
+                    continue
+                if comp(positions[-1] - positions[0], n):
+                    group_combination = sorted(group_combination, key=lambda x: x[-1])
                     starting_id = group_combination[0].tobytes()
                     for group_num in range(1, len(word_groups)):
                         starting_id += group_combination[group_num][7:].tobytes()
-                    output_file.write(starting_id)
+                    if starting_id not in hit_cache:
+                        hit_cache.add(starting_id)
+                        output_file.write(starting_id)
 
 
 def search_within_text_object(db_path, hitlist_filename, level, corpus_file=None):
