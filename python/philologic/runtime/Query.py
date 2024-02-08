@@ -225,11 +225,18 @@ def search_within_text_object(db_path, hitlist_filename, level, corpus_file=None
     )
     with open(hitlist_filename, "wb") as output_file:
         for philo_id_groups in common_object_ids:
+            hit_cache = set()
             for group_combination in product(*philo_id_groups):
+                positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
+                if len(positions) != len(word_groups):  # we had duplicate words
+                    continue
+                group_combination = sorted(group_combination, key=lambda x: x[-1])
                 starting_id = group_combination[0].tobytes()
                 for group_num in range(1, len(word_groups)):
                     starting_id += group_combination[group_num][7:].tobytes()
-                output_file.write(starting_id)
+                if starting_id not in hit_cache:
+                    hit_cache.add(starting_id)
+                    output_file.write(starting_id)
 
 
 def get_word_groups(terms_file):
