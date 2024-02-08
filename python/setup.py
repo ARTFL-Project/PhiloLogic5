@@ -1,4 +1,5 @@
 """Install script for PhiloLogic Python library"""
+
 from setuptools import setup
 
 with open("README", encoding="utf8") as input_file:
@@ -33,8 +34,8 @@ setup(
         "unidecode",
         "lz4",
         "lmdb",
-        "numpy",
-        "numba",
+        "numpy~=1.26",
+        "numba~=0.59",
     ],
     python_requires=">=3.8",
     use_scm_version={
