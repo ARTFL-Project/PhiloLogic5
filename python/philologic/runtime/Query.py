@@ -162,15 +162,18 @@ def search_phrase(db_path, hitlist_filename, corpus_file=None):
     if corpus_file is not None:
         corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
     common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level
+        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level, phrase=True
     )
+    sorted_indices = next(common_object_ids)
 
     with open(hitlist_filename, "wb") as output_file:
         for philo_id_groups in common_object_ids:
             for group_combination in product(*philo_id_groups):
-                positions: list[int] = [philo_id[7:8][0] for philo_id in group_combination]
-                # we now need to check if the positions are within 1 word of each other and in sorted order
-                if positions[0] + len(word_groups) - 1 == positions[-1] and sorted(positions) == positions:
+                positions: list[int] = [group_combination[index][7:8][0] for index in sorted_indices]
+                if sorted(positions) != positions:  # are positions in sorted order?
+                    continue
+                # we now need to check if the positions are within 1 word of each other
+                if positions[0] + len(word_groups) - 1 == positions[-1]:
                     starting_id = group_combination[0].tobytes()
                     for group_num in range(1, len(word_groups)):
                         starting_id += group_combination[group_num][7:].tobytes()
@@ -255,7 +258,7 @@ def get_word_groups(terms_file):
     return word_groups
 
 
-def get_cooccurrence_groups(db_path, word_groups, level="sent", corpus_philo_ids=None, object_level=None):
+def get_cooccurrence_groups(db_path, word_groups, level="sent", corpus_philo_ids=None, object_level=None, phrase=False):
     cooc_slice = 6
     if level == "para":
         cooc_slice = 5
@@ -270,6 +273,8 @@ def get_cooccurrence_groups(db_path, word_groups, level="sent", corpus_philo_ids
             byte_size_per_group.append(byte_size)
         # Perform an argsort on the list to get the indices of the groups sorted by byte size
         sorted_indices = np.argsort(byte_size_per_group)
+        if phrase is True:
+            yield sorted_indices[::-1]  # we only need the sorted indices for phrases
 
         def one_word_generator(word):
             yield np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9)
