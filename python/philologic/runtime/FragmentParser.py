@@ -71,7 +71,7 @@ class LXMLTreeDriver:
         if kind == "start":
             uni_attrib = {}
             for k, v in list(attributes.items()):
-                # hack to handle double quoted empty string values coming up None.  Fixed in rwhaling branch of PhiloLogic4
+                # hack to handle double quoted empty string values coming up None.  Fixed in rwhaling branch of PhiloLogic5
                 if v is None:
                     v = ""
                 uni_attrib[k] = v

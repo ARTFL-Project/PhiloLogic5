@@ -36,7 +36,7 @@ function getBaseUrl() {
     if (dbUrl == "") {
         let dbPath = __dirname.replace(/app$/, "");
         let dbname = dbPath.split("/").reverse()[1];
-        let config = fs.readFileSync("/etc/philologic/philologic4.cfg", "utf8");
+        let config = fs.readFileSync("/etc/philologic/philologic5.cfg", "utf8");
         let re = /url_root = ["']([^"]+)["']/gm;
         let match = re.exec(config);
         let rootPath = match[1];

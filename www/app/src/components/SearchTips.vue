@@ -6,7 +6,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                PhiloLogic4's query syntax has 5 basic operators:
+                PhiloLogic5's query syntax has 5 basic operators:
                 <ul class="mt-2">
                     <li>
                         the plain token, essentially, any word at all, split on space, e.g.

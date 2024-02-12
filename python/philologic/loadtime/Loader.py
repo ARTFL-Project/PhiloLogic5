@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Standard PhiloLogic4 loader.
+"""Standard PhiloLogic5 loader.
 Calls all parsing functions and stores data in index"""
 
 import collections

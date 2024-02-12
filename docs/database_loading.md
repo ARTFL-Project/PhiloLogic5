@@ -6,8 +6,8 @@ Loading PhiloLogic databases is very straight forward, and most of the time, you
 
 A few important notes:
 
--   Before loading any databases, you should first make sure the global configuration file located in `/etc/philologic/philologic4.cfg` has been edited appropriately. For more info, see [here](installation.md#global-config)
--   The PhiloLogic4 Parser's behavior is configurable from an external load config file, though only to a certain extent. You can also supply a replacement Parser class if you need to.
+-   Before loading any databases, you should first make sure the global configuration file located in `/etc/philologic/philologic5.cfg` has been edited appropriately. For more info, see [here](installation.md#global-config)
+-   The PhiloLogic5 Parser's behavior is configurable from an external load config file, though only to a certain extent. You can also supply a replacement Parser class if you need to.
 -   The loading process is designed to be short, and easy to understand and configure.
 
 ### Text format support
@@ -17,18 +17,18 @@ PhiloLogic supports the following text files formats
 
 ### Executing the load command
 
-In order for PhiloLogic to index your files, you need to execute the `philoload4` command. The basic command is run as so:
+In order for PhiloLogic to index your files, you need to execute the `philoload5` command. The basic command is run as so:
 
-`philoload4 [database_name] [path_to_files]`
+`philoload5 [database_name] [path_to_files]`
 
-The `philoload4` command requires the following required arguments::
+The `philoload5` command requires the following required arguments::
 
 1.  the name of the database to create, which will be the subdirectory
     into your web space directory, i.e. `/var/www/html/mydatabase`,
 2.  the paths to each of the files you wish to load,
     i.e. `mycorpus/xml/*.xml`.
 
-`philoload4` also accepts a number of optional command line arguments::
+`philoload5` also accepts a number of optional command line arguments::
 
 `-h`, `--help` show this help message and exit
 
@@ -52,11 +52,11 @@ The `philoload4` command requires the following required arguments::
 
 So our command for loading texts could be::
 
-`philoload4 -c 8 -d my_database files/*xml`
+`philoload5 -c 8 -d my_database files/*xml`
 
 ### Database Load Configuration
 
-In the event you need to customize the behavior of the parser, you can pass the `-l` option along with a `load_config.py` file to be found in `PhiloLogic4/extras/` directory. In this file, you can configure a number of different parameters:
+In the event you need to customize the behavior of the parser, you can pass the `-l` option along with a `load_config.py` file to be found in `PhiloLogic5/extras/` directory. In this file, you can configure a number of different parameters:
 
 ```python
 # Define default object level
@@ -87,7 +87,7 @@ store_words_and_ids = False
 
 ### Plain text Parser
 To use the plain text parser, you will need to specify the `t plain_text` command-line argument and also provide a bibliography file (with the `-b` argument) in CSV or TSV format, such as in the following example:
-`philoload4 -t plain_text -b metadata.csv database_name /path/to/files`
+`philoload5 -t plain_text -b metadata.csv database_name /path/to/files`
 
 Note that the plain text parser is fairly rudimentary and does not detect structure within the files themselves, with the sole exception being paragraphs when there is an empty line between blocks of text. In order for better structure detection, you will need to convert your files to TEI.
 
@@ -369,7 +369,7 @@ The remaining options are self-explanatory given the comments...
 
 So to use a load config file as an argument, you would run the following:
 
-`philoload4 -l load_config.py db_name path_to_files`
+`philoload5 -l load_config.py db_name path_to_files`
 
 
 

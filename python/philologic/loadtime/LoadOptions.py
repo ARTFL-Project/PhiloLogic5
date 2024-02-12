@@ -11,20 +11,20 @@ from philologic.loadtime import Loader, LoadFilters, Parser, PlainTextParser, Po
 from philologic.utils import pretty_print, load_module
 
 # Load global config
-CONFIG_PATH = os.getenv("PHILOLOGIC_CONFIG", "/etc/philologic/philologic4.cfg")
-CONFIG_FILE = load_module("philologic4", CONFIG_PATH)
+CONFIG_PATH = os.getenv("PHILOLOGIC_CONFIG", "/etc/philologic/philologic5.cfg")
+CONFIG_FILE = load_module("philologic5", CONFIG_PATH)
 
 if CONFIG_FILE.url_root is None:
-    print("url_root variable is not set in /etc/philologic/philologic4.cfg", file=sys.stderr)
-    print("See https://github.com/ARTFL-Project/PhiloLogic4/blob/master/docs/installation.md.", file=sys.stderr)
+    print("url_root variable is not set in /etc/philologic/philologic5.cfg", file=sys.stderr)
+    print("See https://github.com/ARTFL-Project/PhiloLogic5/blob/master/docs/installation.md.", file=sys.stderr)
     exit()
 elif CONFIG_FILE.web_app_dir is None:
-    print("web_app_dir variable is not set in /etc/philologic/philologic4.cfg", file=sys.stderr)
-    print("See https://github.com/ARTFL-Project/PhiloLogic4/blob/master/docs/installation.md.", file=sys.stderr)
+    print("web_app_dir variable is not set in /etc/philologic/philologic5.cfg", file=sys.stderr)
+    print("See https://github.com/ARTFL-Project/PhiloLogic5/blob/master/docs/installation.md.", file=sys.stderr)
     exit()
 elif CONFIG_FILE.database_root is None:
-    print("database_root variable is not set in /etc/philologic/philologic4.cfg", file=sys.stderr)
-    print("See https://github.com/ARTFL-Project/PhiloLogic4/blob/master/docs/installation.md.", file=sys.stderr)
+    print("database_root variable is not set in /etc/philologic/philologic5.cfg", file=sys.stderr)
+    print("See https://github.com/ARTFL-Project/PhiloLogic5/blob/master/docs/installation.md.", file=sys.stderr)
     exit()
 
 
@@ -79,7 +79,7 @@ class LoadOptions:
     def setup_parser(self):
         """Set up parser options"""
         usage = "usage: %(prog)s [options] database_name files"
-        parser = ArgumentParser(description="PhiloLogic4 database load command", usage=usage)
+        parser = ArgumentParser(description="PhiloLogic5 database load command", usage=usage)
         parser.add_argument(
             "-b",
             "--bibliography",

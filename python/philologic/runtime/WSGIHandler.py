@@ -12,7 +12,7 @@ from philologic.runtime.DB import DB
 
 
 class WSGIHandler(object):
-    """Class which parses the environ object and massages query arguments for PhiloLogic4."""
+    """Class which parses the environ object and massages query arguments for PhiloLogic5."""
 
     def __init__(self, environ, config):
         """Initialize class."""

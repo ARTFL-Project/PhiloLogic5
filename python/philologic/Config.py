@@ -163,7 +163,7 @@ DB_LOCALS_DEFAULTS = {
 }
 DB_LOCALS_HEADER = """
    #########################################################\n
-   #### Database configuration options for PhiloLogic4 #####\n
+   #### Database configuration options for PhiloLogic5 #####\n
    #########################################################\n
    #### All variables must be in valid Python syntax #######\n
    #########################################################\n
@@ -792,7 +792,7 @@ WEB_CONFIG_DEFAULTS = {
 
 WEB_CONFIG_HEADER = """
    ####################################################\n
-   #### Web configuration options for PhiloLogic4 #####\n
+   #### Web configuration options for PhiloLogic5 #####\n
    ####################################################\n
    ### All variables must be in valid Python syntax ###\n
    ####################################################\n\n\n

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PhiloLogic4 main parser"""
+"""PhiloLogic5 main parser"""
 
 import os
 import regex as re
