@@ -3,16 +3,23 @@
         <div v-if="currentWordQuery !== ''">
             <div v-if="currentReport !== 'collocation'">
                 {{ $t("searchArgs.searchingDbFor") }}
-                <span v-if="approximate == 'yes'">
-                    {{ $t("searchArgs.termsSimilarTo") }} <b>{{ currentWordQuery }}</b>:
+                <span v-if="exactPhrase">
+                    {{ $t("searchArgs.exactPhrase") }}<button class="btn rounded-pill btn-outline-secondary btn-sm ms-1">{{ q
+                    }}</button>
                 </span>
-                <span v-else>{{ $t("searchArgs.terms") }}&nbsp;</span>
-                <span v-if="approximate.length == 0 || approximate == 'no'"></span>
-                <span class="rounded-pill term-groups" v-for="(group, index) in wordGroups" :key="index">
-                    <a class="term-group-word" href @click.prevent="getQueryTerms(group, index)">{{ group }}</a>
-                    <span class="close-pill" @click="removeTerm(index)">X</span>
+                <span v-else>
+                    <span v-if="approximate == 'yes'">
+                        {{ $t("searchArgs.termsSimilarTo") }} <b>{{ currentWordQuery }}</b>:
+                    </span>
+                    <span v-else>{{ $t("searchArgs.terms") }}&nbsp;</span>
+                    <span v-if="approximate.length == 0 || approximate == 'no'"></span>
+
+                    <span class="rounded-pill term-groups" v-for="(group, index) in wordGroups" :key="index">
+                        <a class="term-group-word" href @click.prevent="getQueryTerms(group, index)">{{ group }}</a>
+                        <span class="close-pill" @click="removeTerm(index)">X</span>
+                    </span>
+                    {{ queryArgs.proximity }}
                 </span>
-                {{ queryArgs.proximity }}
                 <div class="card outline-secondary shadow" id="query-terms" style="display: none">
                     <button type="button" class="btn btn-secondary btn-sm close" @click="closeTermsList()">
                         <span aria-hidden="true">&times;</span>
@@ -119,6 +126,17 @@ export default {
             } else {
                 return false
             }
+        },
+        exactPhrase() {
+            let querySplit = this.q.split(" ");
+            if (this.q.split('"').length - 1 == 2 && querySplit.length > 1) {
+                let lastWord = querySplit.pop();
+                let firstWord = querySplit.shift();
+                if (firstWord.startsWith('"') && lastWord.endsWith('"')) {
+                    return true;
+                }
+            }
+            return false
         },
     },
     inject: ["$http"],

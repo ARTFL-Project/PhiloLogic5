@@ -605,7 +605,6 @@ export default {
                 }
             }
         }
-        console.log(this.collocFilteringSelected)
     },
     mounted() {
         this.$nextTick(() => {
@@ -700,6 +699,7 @@ export default {
                 this.arg_proxy = "";
             }
             this.colloc_filter_choice = this.collocFilteringSelected.value;
+
             this.$router.push(
                 this.paramsToRoute({
                     ...this.$store.state.formData,
@@ -717,7 +717,6 @@ export default {
                     q_attribute_value: this.wordAttributeSelected,
                 })
             );
-            // }
         },
         onReset() {
             this.$store.commit("setDefaultFields", this.$parent.defaultFieldValues);

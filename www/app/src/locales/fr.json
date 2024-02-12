@@ -82,7 +82,8 @@
         "withinProximity": "dans une fenêtre de {n} mots",
         "withinExactlyProximity": "dans une fenêtre exacte de {n} mots",
         "sameSentence": "dans la même phrase",
-        "collocateFilter": "Filtrage de collocations"
+        "collocateFilter": "Filtrage de collocations",
+        "exactPhrase": "l'expression exacte"
     },
     "resultsSummary": {
         "exportResults": "Exporter les résultats",

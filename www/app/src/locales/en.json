@@ -83,7 +83,8 @@
         "withinProximity": "within {n} words",
         "withinExactlyProximity": "within exactly {n} words",
         "sameSentence": "in the same sentence",
-        "collocateFilter": "Collocate Filter"
+        "collocateFilter": "Collocate Filter",
+        "exactPhrase": "the exact phrase"
     },
     "resultsSummary": {
         "exportResults": "Export results",

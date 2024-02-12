@@ -125,7 +125,7 @@ class DB:
                     method_arg = 0
         exact = 1
         words = [w for w in qs.split() if w]
-        if len(words) > 1 and qs.startswith('"') and qs.endswith('"'):
+        if len(words) > 1 and qs.count('"') == 2 and qs.startswith('"') and qs.endswith('"'):
             method = "exact_phrase"
             unquoted = qs[1:-1]
             qs = " ".join(f'"{word}"' for word in unquoted.split())

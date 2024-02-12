@@ -12,28 +12,13 @@ from philologic.runtime.HitList import CombinedHitlist
 def concordance_results(request, config):
     """Fetch concordances results."""
     db = DB(config.db_path + "/data/")
-    if request.collocation_type:
-        first_hits = db.query(
-            request["q"],
-            request["method"],
-            request["arg"],
-            **request.metadata,
-        )
-        second_hits = db.query(
-            request["left"],
-            request["method"],
-            request["arg"],
-            **request.metadata,
-        )
-        hits = CombinedHitlist(first_hits, second_hits)
-    else:
-        hits = db.query(
-            request["q"],
-            request["method"],
-            request["arg"],
-            sort_order=request["sort_order"],
-            **request.metadata,
-        )
+    hits = db.query(
+        request["q"],
+        request["method"],
+        request["arg"],
+        sort_order=request["sort_order"],
+        **request.metadata,
+    )
     start, end, _ = page_interval(request["results_per_page"], hits, request.start, request.end)
 
     concordance_object = {
