@@ -77,6 +77,10 @@ def collocation_results(request, config):
         lock=False,
     )
 
+    import sys
+
+    print(filter_list, file=sys.stderr)
+
     with env.begin() as txn:
         cursor = txn.cursor()
         for hit in hits[hits_done:]:
@@ -89,9 +93,14 @@ def collocation_results(request, config):
             # If not attribute filter set, we just get the words/lemmas
             if attribute is None:
                 if count_lemmas is False:
-                    words = [(word, position) for word, _, position, _ in word_objects]
+                    words = [(word, position) for word, _, position, _ in word_objects if word not in filter_list]
                 else:
-                    words = [(attr["lemma"], position) for _, _, position, attr in word_objects]
+                    words = [
+                        (attr["lemma"], position)
+                        for _, _, position, attr in word_objects
+                        if attr["lemma"] not in filter_list
+                    ]
+                    print(words, file=sys.stderr, end="\n\n")
 
             # If attribute filter is set, we get the words/lemmas that match the filter
             else:
@@ -109,18 +118,17 @@ def collocation_results(request, config):
                     ]
 
             for collocate, position in words:
-                if collocate not in filter_list:
-                    if collocate_distance is None:
+                if collocate_distance is None:
+                    if collocate not in all_collocates:
+                        all_collocates[collocate] = {"count": 1}
+                    else:
+                        all_collocates[collocate]["count"] += 1
+                else:
+                    if abs(position - q_word_position[0]) <= collocate_distance:  # type: ignore
                         if collocate not in all_collocates:
                             all_collocates[collocate] = {"count": 1}
                         else:
                             all_collocates[collocate]["count"] += 1
-                    else:
-                        if abs(position - q_word_position[0]) <= collocate_distance:  # type: ignore
-                            if collocate not in all_collocates:
-                                all_collocates[collocate] = {"count": 1}
-                            else:
-                                all_collocates[collocate]["count"] += 1
             hits_done += 1
 
             elapsed = timeit.default_timer() - start_time
@@ -155,6 +163,12 @@ def build_filter_list(request, config, count_lemmas):
         if not os.path.exists(filter_file):
             return ["stopwords list not found"]
         filter_num = float("inf")
+    elif count_lemmas is True:
+        filter_file = config.db_path + "/data/frequencies/lemmas"
+        if request.filter_frequency:
+            filter_num = int(request.filter_frequency)
+        else:
+            filter_num = 100
     else:
         filter_file = config.db_path + "/data/frequencies/word_frequencies"
         if request.filter_frequency:
@@ -170,8 +184,8 @@ def build_filter_list(request, config, count_lemmas):
                 word = line.split()[0]
             except IndexError:
                 continue
-            if count_lemmas is False:
-                filter_list.append(word)
-            else:
-                filter_list.append("lemma:" + word)
+            if count_lemmas is True:
+                word = word.replace("lemma:", "")
+            filter_list.append(word)
+    filter_list.append(request["q"].replace("lemma:", ""))
     return filter_list

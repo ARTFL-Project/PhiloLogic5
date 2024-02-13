@@ -512,7 +512,7 @@ export default {
             wordAttributes: this.$philoConfig.word_attributes,
             attributeSelected: "",
             wordAttributeSelected: "",
-            collocFilteringSelected: ""
+            collocFilteringSelected: { text: "", value: "" },
         };
     },
     watch: {
@@ -603,6 +603,13 @@ export default {
                     }
                     break
                 }
+            }
+        }
+        if (this.collocFilteringSelected.value == "") {
+            if (this.$philoConfig.stopwords.length > 0) {
+                this.collocFilteringSelected = this.collocationOptions[1];
+            } else {
+                this.collocFilteringSelected = this.collocationOptions[0];
             }
         }
     },
@@ -699,6 +706,10 @@ export default {
                 this.arg_proxy = "";
             }
             this.colloc_filter_choice = this.collocFilteringSelected.value;
+            if (this.colloc_filter_choice == "frequency" || this.colloc_filter_choice == "stopwords") {
+                this.attributeSelected = "";
+                this.wordAttributeSelected = "";
+            }
 
             this.$router.push(
                 this.paramsToRoute({

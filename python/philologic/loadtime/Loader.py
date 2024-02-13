@@ -14,7 +14,7 @@ from json import dump
 import csv
 import subprocess
 import struct
-from collections import defaultdict
+from collections import defaultdict, Counter
 import sqlite3
 
 import lmdb
@@ -943,15 +943,15 @@ class Loader:
 
         # Write lemmas to frequency file
         print("Writing lemmas to frequency file...", flush=True)
-        lemmas = set()
+        lemma_count = Counter()
+        with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
+            for line in input_file:
+                line = line.decode("utf-8")
+                _, lemma, _, _ = line.split("\t", 3)
+                lemma_count[f"lemma:{lemma.lower()}"] += 1
         with open(f"{self.destination}/frequencies/lemmas", "w", encoding="utf8") as freq_file:
-            with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
-                for line in input_file:
-                    line = line.decode("utf-8")
-                    _, lemma, _, _ = line.split("\t", 3)
-                    if lemma not in lemmas:
-                        print(f"lemma:{lemma}", file=freq_file)
-                        lemmas.add(lemma)
+            for lemma, _ in lemma_count.most_common():
+                print(lemma, file=freq_file)
 
         # Write word attributes to frequency file
         print("Writing word attributes to frequency file...", flush=True)
