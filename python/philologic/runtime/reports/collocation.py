@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Collocation results"""
 
+import math
 import os
+import pickle
 import timeit
 import struct
 from typing import Any
@@ -26,6 +28,11 @@ def collocation_results(request, config):
         **request.metadata,
     )
 
+    try:
+        collocate_distance = int(request["arg_proxy"])
+    except ValueError:  # Getting an empty string since the keyword is not specificed in the URL
+        collocate_distance = None
+
     # We turn on lemma counting if the query word is a lemma search
     if "lemma:" in request["q"]:
         count_lemmas = True
@@ -39,11 +46,6 @@ def collocation_results(request, config):
     else:
         attribute = None
         attribute_value = None
-
-    try:
-        collocate_distance = int(request["arg_proxy"])
-    except ValueError:  # Getting an empty string since the keyword is not specificed in the URL
-        collocate_distance = None
 
     # Build list of search terms to filter out
     query_words = []
@@ -76,10 +78,6 @@ def collocation_results(request, config):
         readonly=True,
         lock=False,
     )
-
-    import sys
-
-    print(filter_list, file=sys.stderr)
 
     with env.begin() as txn:
         cursor = txn.cursor()

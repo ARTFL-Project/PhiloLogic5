@@ -18,6 +18,7 @@ from collections import defaultdict, Counter
 import sqlite3
 
 import lmdb
+import numpy as np
 import lz4.frame
 from orjson import loads
 import lxml.etree
@@ -122,6 +123,8 @@ class Loader:
         "page",
         "lemma",
     }
+    word_count = 0
+    lemma_count = 0
 
     @classmethod
     def set_class_attributes(cls, loader_options):
@@ -717,16 +720,30 @@ class Loader:
             if sorted_file.name.endswith(".split"):
                 os.system(f"rm {sorted_file.name}")
 
-    def analyze(self, commit_interval=1000):
-        """Create inverted index"""
-        print("\n### Create inverted index ###", flush=True)
+    @classmethod
+    def count_words(cls):
+        """Count words in all files"""
+        print("\n### Counting total words ###", flush=True)
+        print(f"{time.ctime()}: counting words in all files...", flush=True)
         line_count_process = subprocess.run(
-            f"lz4 -dc {self.workdir}/all_words_sorted.lz4 | wc -l",
+            f"lz4 -dc {cls.workdir}/all_words_sorted.lz4 | wc -l",
             shell=True,
             text=True,
             capture_output=True,
         )
-        line_count = int(line_count_process.stdout.strip())
+        cls.word_count = int(line_count_process.stdout.strip())
+        print(f"{time.ctime()}: counting lemmas in all files...", flush=True)
+        line_count_process = subprocess.run(
+            f"lz4 -dc {cls.workdir}/all_lemmas_sorted.lz4 | wc -l",
+            shell=True,
+            text=True,
+            capture_output=True,
+        )
+        cls.lemma_count = int(line_count_process.stdout.strip())
+
+    def build_inverted_index(self, commit_interval=1000):
+        """Create inverted index"""
+        print("\n### Create inverted index ###", flush=True)
         db_env = lmdb.open(
             f"{self.destination}/words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
         )  # 2TB limit
@@ -737,7 +754,7 @@ class Loader:
             current_word = None
             philo_ids = bytearray()
             txn = db_env.begin(write=True)
-            for line in tqdm(input_file, total=line_count, desc="Creating word index", leave=False):
+            for line in tqdm(input_file, total=self.word_count, desc="Creating word index", leave=False):
                 line = line.decode("utf-8")  # type: ignore
                 _, word, philo_id, _ = line.split("\t", 3)
                 hit = list(map(int, philo_id.split()))
@@ -764,15 +781,15 @@ class Loader:
                     philo_ids,
                 )
             txn.commit()
+        print("Creating word index... done.", flush=True)
 
         # Create lemmas index
-        print("Creating lemma index...", end=" ", flush=True)
         with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4", "rb") as input_file:
             txn = db_env.begin(write=True)
             current_lemma = None
             count = 0
             philo_ids = bytearray()
-            for line in tqdm(input_file, total=line_count, leave=False, desc="Creating lemma index"):
+            for line in tqdm(input_file, total=self.lemma_count, leave=False, desc="Creating lemma index"):
                 line = line.decode("utf-8")
                 _, lemma, philo_id, _ = line.strip().split("\t")
                 hit = list(map(int, philo_id.split()))
@@ -798,6 +815,7 @@ class Loader:
                     philo_ids,
                 )
             txn.commit()
+        print("Creating lemma index... done.", flush=True)
 
         # Add word attributes to LMDB database
         # Keys follow the format word:word_attribute:attribute_value
@@ -806,9 +824,7 @@ class Loader:
             word_attributes: dict[str, dict[str, bytes]] = {}
             current_word = None
             count = 0
-            for line in tqdm(
-                input_file, total=line_count, desc="Storing word attributes in LMDB database", leave=False
-            ):
+            for line in tqdm(input_file, total=self.word_count, desc="Creating word attributes index", leave=False):
                 line = line.decode("utf-8")
                 _, word, philo_id, attributes = line.split("\t", 3)
                 hit = list(map(int, philo_id.split()))
@@ -838,6 +854,7 @@ class Loader:
                 for attribute_value, philo_ids in attribute_dict.items():
                     txn.put(f"{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
             txn.commit()
+        print("Creating word attributes index... done.", flush=True)
 
         # Add word attributes to LMDB database with lemma info.
         # Keys follow the format lemma:word:word_attribute:attribute_value
@@ -846,9 +863,7 @@ class Loader:
             word_attributes = {}
             current_word = None
             count = 0
-            for line in tqdm(
-                input_file, total=line_count, desc="Storing lemma word attributes in LMDB database", leave=False
-            ):
+            for line in tqdm(input_file, total=self.lemma_count, desc="Creating lemma word index", leave=False):
                 line = line.decode("utf-8")
                 _, lemma, philo_id, attributes = line.split("\t", 3)
                 hit = list(map(int, philo_id.split()))
@@ -881,7 +896,30 @@ class Loader:
             txn.commit()
 
         db_env.close()
-        print("Finished creating inverted index.")
+        print("Creating lemma word index... done.", flush=True)
+
+        # Create a lemma lookup table where keys are philo_ids as bytes and values are lemmas in the form lemma:word
+        lemma_db_env = lmdb.open(
+            f"{self.destination}/lemma_lookup.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
+        )
+        commit_interval = 1000
+        count = 0
+        with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4", "rb") as input_file:
+            lemma_txn = lemma_db_env.begin(write=True)
+            for line in tqdm(input_file, desc="Creating lemma lookup table", leave=False, total=self.lemma_count):
+                line = line.decode("utf-8")
+                _, word, philo_id, _ = line.strip().split("\t")
+                lemma_utf8 = f"lemma:{word}".encode("utf-8")
+                hit = list(map(int, philo_id.split()))
+                hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
+                lemma_id = struct.pack("9I", *hit)
+                lemma_txn.put(lemma_id, lemma_utf8)
+                count += 1
+                if count % commit_interval == 0:
+                    lemma_txn.commit()
+                    lemma_txn = lemma_db_env.begin(write=True)
+        lemma_db_env.close()
+        print("Creating lemma lookup table... done.", flush=True)
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""
@@ -1140,6 +1178,12 @@ class Loader:
                     word_attributes[attribute] = set()
                 word_attributes[attribute].add(attribute_value)
         config_values["word_attributes"] = {k: list(v) for k, v in word_attributes.items()}
+
+        # Check if the lemmas file is empty
+        if os.path.getsize(f"{self.destination}/frequencies/lemmas") != 0:
+            config_values["word_facets"] = ["lemma"]
+        for attribute in word_attributes:
+            config_values["word_facets"].append(attribute)
 
         config_values["ascii_conversion"] = Loader.ascii_conversion
 

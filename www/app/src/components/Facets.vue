@@ -18,8 +18,8 @@
                 <div class="list-group" flush id="select-word-properties"
                     v-if="showFacetSelection && report != 'bibliography'">
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
-                    <div class="list-group-item facet-selection" v-for="(_, facet) in philoConfig.word_attributes"
-                        :key="facet" @click="getFacet({ facet: facet, type: 'property' })">
+                    <div class="list-group-item facet-selection" v-for="facet in philoConfig.words_facets" :key="facet"
+                        @click="getFacet({ facet: facet, type: 'property' })">
                         {{ facet }}
                     </div>
                 </div>

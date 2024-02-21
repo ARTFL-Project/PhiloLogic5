@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 
+from collections import defaultdict
 import os
+from pickle import dump
 import sqlite3
 import struct
 import time
@@ -12,6 +14,7 @@ import lz4.frame
 import msgpack
 from orjson import loads
 from tqdm import tqdm
+import numpy as np
 
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
@@ -89,16 +92,11 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
 def make_sentences_database(loader_obj, db_destination):
     """Generate an LMDB database where keys are sentence IDs and values the associated sentence containing all the words in it"""
     print(f"{time.ctime()}: Loading the sentences LMDB database...")
-
     attributes_to_skip = list(loader_obj.attributes_to_skip)
     attributes_to_skip.remove("lemma")
     attributes_to_skip = set(attributes_to_skip)
     attributes_to_skip.update({"token", "position", "philo_type"})
-    line_count = sum(
-        sum(1 for _ in lz4.frame.open(raw_words.path))
-        for raw_words in os.scandir(f"{loader_obj.destination}/words_and_philo_ids")
-    )
-    with tqdm(total=line_count, leave=False) as pbar:
+    with tqdm(total=loader_obj.word_count, leave=False) as pbar:
         env = lmdb.open(db_destination, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True)  # 2TB
         count = 0
         with env.begin(write=True) as txn:
@@ -125,7 +123,7 @@ def make_sentences_database(loader_obj, db_destination):
                                     {k: v for k, v in word_obj.items() if k not in attributes_to_skip},
                                 )
                             )
-                        pbar.update()
+                            pbar.update()
                     if sentence_id:
                         txn.put(sentence_id, msgpack.dumps(words))
         env.close()
@@ -214,11 +212,99 @@ def normalized_metadata_frequencies(loader_obj):
             pass
 
 
+def generate_expected_bigram_frequency(loader_obj):
+    """Calculate expected frequency of bigrams (window 1-10) for use in the mutual information calculations"""
+    print(f"{time.ctime()}: Calculating expected bigram frequency...")
+    window_range = range(1, 11)  # window range from 1 to 10
+    bigram_counts = {window: 0 for window in window_range}
+    word_count = defaultdict(int)
+    total_words = 0
+    with tqdm(total=loader_obj.word_count, leave=False, desc="Counting total bigrams") as pbar:
+        for doc_id in os.scandir(f"{loader_obj.destination}/words_and_philo_ids"):
+            words = []
+            current_para_id = None
+            with lz4.frame.open(doc_id.path) as input_file:
+                for line in input_file:
+                    word_obj = loads(line.decode("utf8"))
+                    if word_obj["philo_type"] == "word":
+                        word = word_obj["token"]
+                        philo_para_id = " ".join(word_obj["position"].split()[:5])
+                        if philo_para_id != current_para_id and current_para_id is not None:
+                            for window_size in window_range:
+                                bigram_counts[window_size] += len(words) - window_size + 1
+                            current_para_id = philo_para_id
+                            words = []
+                        words.append(word)
+                        word_count[word] += 1
+                        total_words += 1
+                    pbar.update()
+            for window_size in window_range:  # for the last paragraph
+                bigram_counts[window_size] += len(words) - window_size + 1
+
+    save_expected_bigram_frequency(word_count, total_words, bigram_counts, loader_obj)
+
+    # Do the same for lemmas
+    if loader_obj.lemma_count != 0:
+        print(f"{time.ctime()}: Calculating expected lemma bigram frequency...")
+        bigram_counts = {window: 0 for window in window_range}
+        word_count = defaultdict(int)
+        total_words = 0
+        with tqdm(total=loader_obj.lemma_count, leave=False, desc="Counting total lemma bigrams") as pbar:
+            for doc_id in os.scandir(f"{loader_obj.destination}/words_and_philo_ids"):
+                words = []
+                current_para_id = None
+                with lz4.frame.open(doc_id.path) as input_file:
+                    for line in input_file:
+                        word_obj = loads(line.decode("utf8"))
+                        if word_obj["philo_type"] == "word" and "lemma" in word_obj:
+                            word = word_obj["lemma"]
+                            philo_para_id = " ".join(word_obj["position"].split()[:5])
+                            if philo_para_id != current_para_id and current_para_id is not None:
+                                for window_size in window_range:
+                                    bigram_counts[window_size] += len(words) - window_size + 1
+                                current_para_id = philo_para_id
+                                words = []
+                            words.append(word)
+                            word_count[word] += 1
+                            total_words += 1
+                        if "lemma" in word_obj:  # Not sure about this
+                            words.append("")  # Add a blank space for the missing word
+                        pbar.update()
+                for window_size in window_range:
+                    bigram_counts[window_size] += len(words) - window_size + 1
+        save_expected_bigram_frequency(word_count, total_words, bigram_counts, loader_obj, token_type="lemma")
+
+
+def save_expected_bigram_frequency(word_count, total_words, bigram_counts, loader_obj, token_type="word"):
+    # Calculate and save the expected frequency of each bigram for each window size as a pickle file
+    vocabulary = list(word_count.keys())
+    word_to_id = {word: i for i, word in enumerate(vocabulary)}
+    id_to_word = {i: word for i, word in enumerate(vocabulary)}
+    words_array = np.array([word_to_id[word] for word in vocabulary])
+    counts_array = np.array(list(word_count.values()))
+    word_probabilities_array = counts_array / total_words
+    for window_size, total_bigrams in tqdm(bigram_counts.items(), desc="Calculating expected frequency", total=10):
+        expected_frequencies = {}
+        for i in range(len(words_array) - window_size + 1):
+            bigram_ids = tuple(words_array[i : i + window_size])
+            bigram = tuple(id_to_word[i] for i in bigram_ids)  # Reconstruct strings
+
+            # Calculate expected frequency
+            expected_frequencies[bigram] = total_bigrams
+            expected_frequencies[bigram] *= np.prod(word_probabilities_array[list(bigram_ids)])
+
+        with open(
+            f"{loader_obj.destination}/frequencies/expected_bigram_frequencies_{token_type}_{window_size}.pickle", "wb"
+        ) as output:
+            dump(expected_frequencies, output)
+
+
 DefaultPostFilters = [
     word_frequencies,
     normalized_word_frequencies,
     metadata_frequencies,
     normalized_metadata_frequencies,
+    generate_expected_bigram_frequency,
 ]
 
 
