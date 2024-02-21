@@ -283,15 +283,18 @@ def save_expected_bigram_frequency(word_count, total_words, bigram_counts, loade
     words_array = np.array([word_to_id[word] for word in vocabulary])
     counts_array = np.array(list(word_count.values()))
     word_probabilities_array = counts_array / total_words
-    for window_size, total_bigrams in tqdm(bigram_counts.items(), desc="Calculating expected frequency", total=10):
+    for window_size, total_bigrams in tqdm(
+        bigram_counts.items(), desc="Calculating expected frequency", total=10, leave=False
+    ):
         expected_frequencies = {}
         for i in range(len(words_array) - window_size + 1):
-            bigram_ids = tuple(words_array[i : i + window_size])
-            bigram = tuple(id_to_word[i] for i in bigram_ids)  # Reconstruct strings
+            for j in range(i + 1, i + window_size):
+                bigram_ids = (words_array[i], words_array[j])
+                bigram = tuple(id_to_word[i] for i in bigram_ids)
 
-            # Calculate expected frequency
-            expected_frequencies[bigram] = total_bigrams
-            expected_frequencies[bigram] *= np.prod(word_probabilities_array[list(bigram_ids)])
+                # Calculate expected frequency
+                expected_frequencies[bigram] = total_bigrams
+                expected_frequencies[bigram] *= np.prod(word_probabilities_array[list(bigram_ids)])
 
         with open(
             f"{loader_obj.destination}/frequencies/expected_bigram_frequencies_{token_type}_{window_size}.pickle", "wb"

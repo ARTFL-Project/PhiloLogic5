@@ -76,8 +76,8 @@ class WSGIHandler(object):
         self.metadata = {}
         num_empty = 0
 
-        self.start = int(self["start"])
-        self.end = int(self["end"])
+        self.start = int(self["start"] or 0)
+        self.end = int(self["end"] or 0)
         self.results_per_page = int(self["results_per_page"])
         if self.start_date:
             try:

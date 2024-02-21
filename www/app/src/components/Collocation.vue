@@ -191,6 +191,26 @@ export default {
                 this.done = true;
                 // Collocation cloud not showing when loading cached searches one after the other
                 //saveToLocalStorage({results: this.sortedList, resultsLength: this.resultsLength, filterList: this.filterList});
+                if (this.colloc_within == "mutualInformation") {
+                    this.$http.post(`${this.$dbUrl}/scripts/get_mutual_information.py`, {
+                        all_collocates: collocates.unsorted,
+                    }, {
+                        params: {
+                            ...this.$store.state.formData,
+                            collocate_distance: this.arg_proxy
+                        },
+
+                    }, {
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        }
+                    }).then((response) => {
+                        this.sortedList = this.mergeResults({}, response.data);
+
+                    }).catch((error) => {
+                        this.debug(this, error);
+                    });
+                }
             }
         },
         retrieveFromStorage() {

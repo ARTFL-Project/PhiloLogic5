@@ -98,7 +98,6 @@ def collocation_results(request, config):
                         for _, _, position, attr in word_objects
                         if attr["lemma"] not in filter_list
                     ]
-                    print(words, file=sys.stderr, end="\n\n")
 
             # If attribute filter is set, we get the words/lemmas that match the filter
             else:
