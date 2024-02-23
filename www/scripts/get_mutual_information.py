@@ -7,6 +7,7 @@ import pickle
 import sys
 from wsgiref.handlers import CGIHandler
 import orjson
+from philologic.runtime.DB import DB
 
 
 sys.path.append("..")
@@ -23,6 +24,7 @@ except ImportError:
 
 
 def get_mutual_information(environ, start_response):
+    """Calculate normalized pointwise mutual information between two words."""
     if environ["REQUEST_METHOD"] == "OPTIONS":
         # Handle preflight request
         start_response(
@@ -39,7 +41,9 @@ def get_mutual_information(environ, start_response):
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
     config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    db = DB(config.db_path + "/data/")
     request = WSGIHandler(environ, config)
+
     all_collocates = orjson.loads(environ["wsgi.input"].read())["all_collocates"]
     collocate_distance = request.collocate_distance
     if "lemma:" in request["q"]:
@@ -49,14 +53,23 @@ def get_mutual_information(environ, start_response):
     frequency_file = (
         config.db_path + f"/data/frequencies/expected_bigram_frequencies_{word}_{collocate_distance}.pickle"
     )
+    results = []
     with open(frequency_file, "rb") as input_file:
         bigram_expected_frequency = pickle.load(input_file)
-    for collocate in all_collocates:
-        bigram = (request["q"], collocate)
-        bigram_frequency = all_collocates[collocate]["count"]
+    for collocate, value in all_collocates.items():
+        bigram = tuple((sorted([request["q"], collocate])))
         expected_frequency = bigram_expected_frequency[bigram]
-        all_collocates[collocate] = math.log2(bigram_frequency / expected_frequency)
-    yield orjson.dumps(all_collocates)
+        pmi = math.log2(value["count"] / expected_frequency)
+        npmi = pmi / -math.log2(expected_frequency)
+        results.append({"collocate": collocate, "count": npmi})
+    results.sort(key=lambda x: x["count"], reverse=True)
+    yield orjson.dumps(results[:100])
+
+
+def get_word_prob(word, db):
+    hits = db.query(word, raw_bytes=True, raw_results=True)
+    hits.finish()
+    return len(hits) / db.total_word_count
 
 
 if __name__ == "__main__":

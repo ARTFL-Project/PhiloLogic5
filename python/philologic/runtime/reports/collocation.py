@@ -12,6 +12,7 @@ import msgpack
 import lmdb
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_expanded_query
+from orjson import dumps
 
 
 def collocation_results(request, config):
@@ -79,6 +80,8 @@ def collocation_results(request, config):
         lock=False,
     )
 
+    # TODO: we need another way of storing collocates for MI since we have to be order sensitive.
+
     with env.begin() as txn:
         cursor = txn.cursor()
         for hit in hits[hits_done:]:
@@ -126,6 +129,7 @@ def collocation_results(request, config):
                             all_collocates[collocate] = {"count": 1}
                         else:
                             all_collocates[collocate]["count"] += 1
+
             hits_done += 1
 
             elapsed = timeit.default_timer() - start_time

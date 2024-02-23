@@ -205,7 +205,8 @@ export default {
                             'Content-Type': 'application/x-www-form-urlencoded'
                         }
                     }).then((response) => {
-                        this.sortedList = this.mergeResults({}, response.data);
+                        this.sortedList = response.data
+                        this.buildWordCloud();
 
                     }).catch((error) => {
                         this.debug(this, error);

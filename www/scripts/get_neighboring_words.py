@@ -7,7 +7,6 @@ import timeit
 from wsgiref.handlers import CGIHandler
 import struct
 
-import lz4.frame
 import msgpack
 import orjson
 import regex as re
