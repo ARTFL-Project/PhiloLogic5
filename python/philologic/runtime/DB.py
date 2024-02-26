@@ -256,6 +256,11 @@ class DB:
             return corpus
         return self.get_all(self.locals["default_object_level"], sort_order)
 
+    def get_total_word_count(self, word_type):
+        """Get total word count"""
+        with open(os.path.join(self.path, f"frequencies/total_{word_type}_count.txt")) as f:
+            return int(f.readline().strip())
+
 
 if __name__ == "__main__":
     import sys

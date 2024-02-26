@@ -40,6 +40,16 @@ def collocation_results(request, config):
     else:
         count_lemmas = False
 
+    if '"' in request["q"]:
+        exact_match = True
+    else:
+        exact_match = False
+
+    if request.colloc_method == "loglikelihood":
+        loglikelihood = True
+    else:
+        loglikelihood = False
+
     # Attribute filtering
     if request.colloc_filter_choice == "attribute":
         attribute = request.q_attribute
@@ -79,8 +89,6 @@ def collocation_results(request, config):
         readonly=True,
         lock=False,
     )
-
-    # TODO: we need another way of storing collocates for MI since we have to be order sensitive.
 
     with env.begin() as txn:
         cursor = txn.cursor()

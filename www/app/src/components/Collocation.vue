@@ -2,7 +2,21 @@
     <div class="container-fluid mt-4">
         <results-summary :description="results.description" :running-total="runningTotal"
             :filter-list="filterList"></results-summary>
-        <div class="row mt-4 pe-1" style="padding: 0 0.5rem" v-if="resultsLength">
+        <div class="row d-none d-sm-block mt-4" style="padding: 0 0.5rem">
+            <div class="col col-sm-7 col-lg-8">
+                <div class="btn-group" role="group" id="report_switch">
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'frequency' }"
+                        @click="getFrequency()">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.frequency") }}</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'logLikelihood' }"
+                        @click="getLogLikelihood()">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.logLikelihood") }}</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-2 pe-1" style="padding: 0 0.5rem" v-if="resultsLength">
             <div class="col-12 col-sm-4">
                 <div class="card shadow-sm">
                     <table class="table table-hover table-striped table-light table-borderless caption-top">
@@ -114,6 +128,8 @@ export default {
             collocCloudWords: [],
             unboundListener: null,
             cloudColor: variables.color,
+            collocMethod: "frequency",
+            collocatesUnsorted: {},
         };
     },
     created() {
@@ -169,6 +185,7 @@ export default {
                 this.filterList = data.filter_list;
             }
             var collocates = this.mergeResults(fullResults, data.collocates);
+            this.collocatesUnsorted = collocates.unsorted
             let sortedList = [];
             for (let word of collocates.sorted.slice(0, 100)) {
                 let collocate = `${word.label}`.replace(/lemma:/, "");
@@ -191,27 +208,6 @@ export default {
                 this.done = true;
                 // Collocation cloud not showing when loading cached searches one after the other
                 //saveToLocalStorage({results: this.sortedList, resultsLength: this.resultsLength, filterList: this.filterList});
-                if (this.colloc_within == "mutualInformation") {
-                    this.$http.post(`${this.$dbUrl}/scripts/get_mutual_information.py`, {
-                        all_collocates: collocates.unsorted,
-                    }, {
-                        params: {
-                            ...this.$store.state.formData,
-                            collocate_distance: this.arg_proxy
-                        },
-
-                    }, {
-                        headers: {
-                            'Content-Type': 'application/x-www-form-urlencoded'
-                        }
-                    }).then((response) => {
-                        this.sortedList = response.data
-                        this.buildWordCloud();
-
-                    }).catch((error) => {
-                        this.debug(this, error);
-                    });
-                }
             }
         },
         retrieveFromStorage() {
@@ -276,6 +272,32 @@ export default {
         },
         getWordCloudStyle(word) {
             return `font-size: ${word.weight}rem; color: ${word.color}`;
+        },
+        getFrequency() {
+            this.collocMethod = "frequency";
+            this.fetchResults();
+        },
+        getLogLikelihood() {
+            this.collocMethod = "logLikelihood";
+            this.$http.post(`${this.$dbUrl}/scripts/get_log_likelihood.py`, {
+                all_collocates: this.collocatesUnsorted,
+            }, {
+                params: {
+                    ...this.$store.state.formData,
+                },
+
+            }, {
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            }).then((response) => {
+                this.sortedList = response.data
+                this.buildWordCloud();
+
+            }).catch((error) => {
+                this.debug(this, error);
+            });
+
         },
     },
 };

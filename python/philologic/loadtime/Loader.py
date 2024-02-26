@@ -994,30 +994,62 @@ class Loader:
         # Write word attributes to frequency file
         print("Writing word attributes to frequency file...", flush=True)
         word_attributes = set()
+        total_count_per_attribute = defaultdict(Counter)
         with open(f"{self.destination}/frequencies/word_attributes", "w", encoding="utf8") as freq_file:
             with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
                 for line in input_file:
                     line = line.decode("utf-8")
                     _, word, _, attributes = line.split("\t", 3)
                     for attribute, attribute_value in loads(attributes).items():
+                        if attribute in self.attributes_to_skip:
+                            continue
+                        if attribute_value:
+                            total_count_per_attribute[attribute][attribute_value] += 1
                         stored_string = f"{word.lower()}:{attribute}:{attribute_value}"
-                        if attribute not in self.attributes_to_skip and stored_string not in word_attributes:
+                        if stored_string not in word_attributes:
                             print(stored_string, file=freq_file)
                             word_attributes.add(stored_string)
+        for attribute, attribute_counter in total_count_per_attribute.items():
+            for attribute_value, count in attribute_counter.items():
+                with open(
+                    f"{self.destination}/frequencies/total_{attribute}_{attribute_value}_count.txt",
+                    "w",
+                    encoding="utf8",
+                ) as output_file:
+                    output_file.write(str(count))
 
         # Write word attributes to frequency file with lemma info
         print("Writing lemma attributes to frequency file...", flush=True)
         word_attributes = set()
+        total_count_per_attribute = defaultdict(Counter)
         with open(f"{self.destination}/frequencies/lemma_word_attributes", "w", encoding="utf8") as freq_file:
             with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
                 for line in input_file:
                     line = line.decode("utf-8")
                     _, lemma, _, attributes = line.split("\t", 3)
                     for attribute, attribute_value in loads(attributes).items():
+                        if attribute in self.attributes_to_skip:
+                            continue
+                        if attribute_value:
+                            total_count_per_attribute[attribute][attribute_value] += 1
                         stored_string = f"lemma:{lemma.lower()}:{attribute}:{attribute_value}"
-                        if attribute not in self.attributes_to_skip and stored_string not in word_attributes:
+                        if stored_string not in word_attributes:
                             print(stored_string, file=freq_file)
                             word_attributes.add(stored_string)
+        for attribute, attribute_counter in total_count_per_attribute.items():
+            for attribute_value, count in attribute_counter.items():
+                with open(
+                    f"{self.destination}/frequencies/total_lemma_{attribute}_{attribute_value}_count.txt",
+                    "w",
+                    encoding="utf8",
+                ) as output_file:
+                    output_file.write(str(count))
+
+        # Save total word counts for words and lemma
+        with open(self.destination + "/frequencies/total_word_count.txt", "w") as output:
+            output.write(str(self.word_count))
+        with open(self.destination + "/frequencies/total_lemma_count.txt", "w") as output:
+            output.write(str(self.lemma_count))
 
         # Make data directory inaccessible from the outside
         fh = open(self.destination + "/.htaccess", "w")

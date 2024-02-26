@@ -106,7 +106,9 @@
     },
     "collocation": {
         "collocate": "Collocate",
-        "count": "Count"
+        "count": "Count",
+        "frequency": "Collocate Frequency",
+        "logLikelihood": "Collocate Significance"
     },
     "concordance": {
         "more": "More",
