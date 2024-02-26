@@ -98,13 +98,14 @@ def get_collocation_relative_proportions(environ, start_response):
 def get_number_of_occurrences(word, db_path, lemma=False, attrib=None, attrib_value=None):
     """Get the number of occurrences of a word in the corpus."""
     if lemma:
-        word = f"lemma:{word}"
+        word = f"lemma:{word}".lower()
     if attrib is not None:
         word = f"{word}:{attrib}:{attrib_value}"
-    print(word, file=sys.stderr)
     env = lmdb.open(f"{db_path}/data/words.lmdb", readonly=True, lock=False, readahead=False)
     with env.begin(buffers=True) as txn:
         occurrences = txn.get(word.encode("utf-8"))
+        if occurrences is None and lemma is True:  # no lemma form in index
+            occurrences = txn.get(word[6:].encode("utf-8"))
     return len(occurrences) / 36  # 36 bytes per occurrence
 
 

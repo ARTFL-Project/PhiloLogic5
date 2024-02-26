@@ -863,7 +863,9 @@ class Loader:
             word_attributes = {}
             current_word = None
             count = 0
-            for line in tqdm(input_file, total=self.lemma_count, desc="Creating lemma word index", leave=False):
+            for line in tqdm(
+                input_file, total=self.lemma_count, desc="Creating lemma word attribute index", leave=False
+            ):
                 line = line.decode("utf-8")
                 _, lemma, philo_id, attributes = line.split("\t", 3)
                 hit = list(map(int, philo_id.split()))
@@ -896,7 +898,7 @@ class Loader:
             txn.commit()
 
         db_env.close()
-        print("Creating lemma word index... done.", flush=True)
+        print("Creating lemma word attribute index... done.", flush=True)
 
         # Create a lemma lookup table where keys are philo_ids as bytes and values are lemmas in the form lemma:word
         lemma_db_env = lmdb.open(

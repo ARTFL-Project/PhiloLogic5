@@ -279,7 +279,7 @@ export default {
         },
         getLogLikelihood() {
             this.collocMethod = "logLikelihood";
-            this.$http.post(`${this.$dbUrl}/scripts/get_log_likelihood.py`, {
+            this.$http.post(`${this.$dbUrl}/scripts/get_collocation_relative_proportions.py`, {
                 all_collocates: this.collocatesUnsorted,
             }, {
                 params: {
