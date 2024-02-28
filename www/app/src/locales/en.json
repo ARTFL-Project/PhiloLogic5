@@ -107,8 +107,9 @@
     "collocation": {
         "collocate": "Collocate",
         "count": "Count",
-        "frequency": "Collocate Frequency",
-        "logLikelihood": "Collocate Significance"
+        "frequency": "Frequency",
+        "overRepresented": "Over-Represented",
+        "underRepresented": "Under-Represented"
     },
     "concordance": {
         "more": "More",

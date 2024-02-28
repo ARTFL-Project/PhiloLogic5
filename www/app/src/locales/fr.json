@@ -106,8 +106,9 @@
     "collocation": {
         "collocate": "Collocation",
         "count": "Compte",
-        "frequency": "Fréquence des collocations",
-        "logLikelihood": "Importance des collocations"
+        "frequency": "Fréquence",
+        "overRepresented": "Sur-représentées",
+        "underRepresented": "Sous-représentées"
     },
     "concordance": {
         "more": "Plus",

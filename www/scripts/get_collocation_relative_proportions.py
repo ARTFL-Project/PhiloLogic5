@@ -12,7 +12,7 @@ from philologic.runtime.Query import get_expanded_query
 
 import numpy as np
 import lmdb
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import RobustScaler
 
 
 sys.path.append("..")
@@ -84,15 +84,17 @@ def get_collocation_relative_proportions(environ, start_response):
         relative_proportions.append(
             {"collocate": collocate, "count": (sub_corpus_proportion + 1) / (corpus_proportion + 1)}
         )
-    relative_proportions = sorted(relative_proportions, key=lambda x: x["count"], reverse=True)[:100]
 
-    proportions_array = np.array([x["count"] for x in relative_proportions]).reshape(-1, 1)
-    scaler = MinMaxScaler()
-    scaled_scores = scaler.fit_transform(proportions_array)
-    for i, score in enumerate(scaled_scores):
-        relative_proportions[i]["count"] = float(score[0])
+    relative_proportions = sorted(relative_proportions, key=lambda x: x["count"], reverse=True)
 
-    yield orjson.dumps(relative_proportions)
+    top_relative_proportions = normalize_proportions(relative_proportions[:100])
+    top_relative_proportions = [p for p in top_relative_proportions if p["count"] > 0]
+
+    relative_proportions.reverse()
+    low_relative_proportions = normalize_proportions(relative_proportions[:100])
+    low_relative_proportions = [p for p in low_relative_proportions if p["count"] < 0]
+
+    yield orjson.dumps({"top": top_relative_proportions, "bottom": low_relative_proportions})
 
 
 def get_number_of_occurrences(word, db_path, lemma=False, attrib=None, attrib_value=None):
@@ -107,6 +109,25 @@ def get_number_of_occurrences(word, db_path, lemma=False, attrib=None, attrib_va
         if occurrences is None and lemma is True:  # no lemma form in index
             occurrences = txn.get(word[6:].encode("utf-8"))
     return len(occurrences) / 36  # 36 bytes per occurrence
+
+
+def normalize_proportions(relative_proportions):
+    """Normalize relative proportions with:
+    - L1 normalization
+    - Scale proportions to enhance differences"""
+    proportions_array = np.array([x["count"] for x in relative_proportions])
+    sum_of_proportions = proportions_array.sum()
+    normalized_scores = proportions_array / sum_of_proportions
+
+    # Calculate average distinctiveness score
+    average_score = sum(normalized_scores) / len(normalized_scores)
+
+    # Calculate relative difference for each collocate
+    for i, score in enumerate(normalized_scores):
+        relative_difference = ((score - average_score) / average_score) * 100  # we are enhancing the difference
+        relative_proportions[i]["count"] = float(relative_difference)
+
+    return relative_proportions
 
 
 if __name__ == "__main__":

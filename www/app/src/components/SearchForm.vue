@@ -140,16 +140,6 @@
     min-height: initial; min-height: fit-content;" v-model="arg_proxy"> {{ $t("searchForm.words") }}
                                         </label>
                                     </div>
-                                    <div class="form-check mt-1">
-                                        <input class="form-check-input" type="radio" name="colloc_within" id="collocWithinN"
-                                            value="mutualInformation" v-model="colloc_within">
-                                        <label class="form-check-label" for="collocWithinN">
-                                            {{ $t("searchForm.mutualInformation") }} <input type="number" name="arg_proxy"
-                                                class="form-control form-control-sm" id="mutualInfo" min="1" max="10" style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
-    min-height: initial; min-height: fit-content;" v-model="arg_proxy"> {{ $t("searchForm.words") }} ({{
-        $t("searchForm.max10") }})
-                                        </label>
-                                    </div>
                                     <div class="mt-2">
                                         <button v-if="wordAttributes" type="button" class="btn btn-outline-secondary"
                                             style="border-top-right-radius: 0; border-bottom-right-radius: 0">

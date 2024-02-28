@@ -9,9 +9,13 @@
                         @click="getFrequency()">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.frequency") }}</span>
                     </button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'logLikelihood' }"
-                        @click="getLogLikelihood()">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.logLikelihood") }}</span>
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'over' }"
+                        @click="getRelativeFrequency('over')">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.overRepresented") }}</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'under' }"
+                        @click="getRelativeFrequency('under')">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.underRepresented") }}</span>
                     </button>
                 </div>
             </div>
@@ -130,6 +134,9 @@ export default {
             cloudColor: variables.color,
             collocMethod: "frequency",
             collocatesUnsorted: {},
+            collocatesSorted: [],
+            relativeFrequencies: {},
+            loading: false
         };
     },
     created() {
@@ -149,6 +156,7 @@ export default {
             this.localFormData = this.copyObject(this.$store.state.formData);
             var collocObject = {};
             this.searching = true;
+            this.relativeFrequencies = {};
             this.updateCollocation(collocObject, 0);
             // } else {
             //     this.retrieveFromStorage();
@@ -275,29 +283,47 @@ export default {
         },
         getFrequency() {
             this.collocMethod = "frequency";
-            this.fetchResults();
+            this.sortedList = this.collocatesSorted
         },
-        getLogLikelihood() {
-            this.collocMethod = "logLikelihood";
-            this.$http.post(`${this.$dbUrl}/scripts/get_collocation_relative_proportions.py`, {
-                all_collocates: this.collocatesUnsorted,
-            }, {
-                params: {
-                    ...this.$store.state.formData,
-                },
+        getRelativeFrequency(overUnder) {
+            if (this.collocMethod == "frequency") {
+                this.collocatesSorted = this.copyObject(this.sortedList)
+            }
+            this.collocMethod = overUnder;
+            if (Object.keys(this.relativeFrequencies).length === 0) {
+                this.searching = true;
+                this.$http.post(`${this.$dbUrl}/scripts/get_collocation_relative_proportions.py`, {
+                    all_collocates: this.collocatesUnsorted,
+                }, {
+                    params: {
+                        ...this.$store.state.formData,
+                    },
 
-            }, {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
+                }, {
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    }
+                }).then((response) => {
+                    this.relativeFrequencies = response.data;
+                    if (overUnder === "over") {
+                        this.sortedList = response.data.top;
+                    } else {
+                        this.sortedList = response.data.bottom;
+                    }
+                    this.searching = false;
+                    this.buildWordCloud();
+
+                }).catch((error) => {
+                    this.debug(this, error);
+                });
+            } else {
+                if (overUnder === "over") {
+                    this.sortedList = this.relativeFrequencies.top;
+                } else {
+                    this.sortedList = this.relativeFrequencies.bottom;
                 }
-            }).then((response) => {
-                this.sortedList = response.data
                 this.buildWordCloud();
-
-            }).catch((error) => {
-                this.debug(this, error);
-            });
-
+            }
         },
     },
 };
