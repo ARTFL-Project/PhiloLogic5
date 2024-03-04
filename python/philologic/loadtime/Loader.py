@@ -741,7 +741,7 @@ class Loader:
         )
         cls.lemma_count = int(line_count_process.stdout.strip())
 
-    def build_inverted_index(self, commit_interval=1000):
+    def build_inverted_index(self, commit_interval=5000):
         """Create inverted index"""
         print("\n### Create inverted index ###", flush=True)
         db_env = lmdb.open(
@@ -877,7 +877,7 @@ class Loader:
                         for attribute, attribute_dict in word_attributes.items():
                             for attribute_value, philo_ids in attribute_dict.items():
                                 txn.put(
-                                    f"lemma:{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"),
+                                    f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"),
                                     philo_ids,
                                 )
                                 count += 1
@@ -894,7 +894,7 @@ class Loader:
             # Handle the last set of words
             for attribute, attribute_dict in word_attributes.items():
                 for attribute_value, philo_ids in attribute_dict.items():
-                    txn.put(f"lemma:{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+                    txn.put(f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
             txn.commit()
 
         db_env.close()

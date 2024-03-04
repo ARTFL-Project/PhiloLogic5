@@ -108,8 +108,8 @@
         "collocate": "Collocate",
         "count": "Count",
         "frequency": "Frequency",
-        "overRepresented": "Over-Represented",
-        "underRepresented": "Under-Represented"
+        "idf": "Weighted Frequency",
+        "comparitive": "Comparated to..."
     },
     "concordance": {
         "more": "More",

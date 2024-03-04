@@ -107,8 +107,7 @@
         "collocate": "Collocation",
         "count": "Compte",
         "frequency": "Fréquence",
-        "overRepresented": "Sur-représentées",
-        "underRepresented": "Sous-représentées"
+        "idf": "Fréquence pondérée"
     },
     "concordance": {
         "more": "Plus",

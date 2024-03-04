@@ -105,9 +105,9 @@ def collocation_results(request, config):
                     words = [(word, position) for word, _, position, _ in word_objects if word not in filter_list]
                 else:
                     words = [
-                        (attr.get("lemma", word), position)
+                        (attr.get("lemma"), position)
                         for word, _, position, attr in word_objects
-                        if attr.get("lemma", word) not in filter_list
+                        if attr.get("lemma") not in filter_list
                     ]
 
             # If attribute filter is set, we get the words/lemmas that match the filter
@@ -126,17 +126,18 @@ def collocation_results(request, config):
                     ]
 
             for collocate, position in words:
-                if collocate_distance is None:
-                    if collocate not in all_collocates:
-                        all_collocates[collocate] = {"count": 1}
-                    else:
-                        all_collocates[collocate]["count"] += 1
-                else:
-                    if abs(position - q_word_position[0]) <= collocate_distance:  # type: ignore
+                if collocate is not None:  # in the event lemma is None
+                    if collocate_distance is None:
                         if collocate not in all_collocates:
                             all_collocates[collocate] = {"count": 1}
                         else:
                             all_collocates[collocate]["count"] += 1
+                    else:
+                        if abs(position - q_word_position[0]) <= collocate_distance:  # type: ignore
+                            if collocate not in all_collocates:
+                                all_collocates[collocate] = {"count": 1}
+                            else:
+                                all_collocates[collocate]["count"] += 1
 
             hits_done += 1
 

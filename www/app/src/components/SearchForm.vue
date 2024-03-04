@@ -420,6 +420,7 @@ export default {
             "searching",
             "currentReport",
             "metadataUpdate",
+            "searchableMetadata"
         ]),
         formData() {
             return this.$store.state.formData;
@@ -612,6 +613,7 @@ export default {
                 this.collocFilteringSelected = this.collocationOptions[0];
             }
         }
+        this.searchableMetadata = { display: this.metadataDisplay, choiceValues: this.metadataChoiceValues, inputStyle: this.metadataInputStyle };
     },
     mounted() {
         this.$nextTick(() => {
@@ -647,20 +649,6 @@ export default {
                 } else if (this.$philoConfig.metadata_input_style[field] == "checkbox") {
                     this.metadataChoiceChecked[field] = this.formData[field].split(" | ");
                 }
-            }
-        },
-        buildMetadataFieldDisplay() {
-            for (let metadataField of this.$philoConfig.metadata) {
-                let metadataObj = {
-                    label: metadataField[0].toUpperCase() + metadataField.slice(1),
-                    value: metadataField,
-                    example: this.$philoConfig.search_examples[metadataField],
-                };
-                if (metadataField in this.$philoConfig.metadata_aliases) {
-                    metadataObj.label = this.$philoConfig.metadata_aliases[metadataField];
-                }
-                this.metadataValues[metadataField] = "";
-                this.metadataDisplay.push(metadataObj);
             }
         },
         getLoadedStatField() {

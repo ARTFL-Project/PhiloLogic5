@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 
 
-from collections import defaultdict
 import os
-from pickle import dump, load
 import sqlite3
 import struct
 import time
 from unidecode import unidecode
+from pickle import dump
 
+import multiprocess as mp
 import lmdb
 import lz4.frame
 import msgpack
 from orjson import loads
 from tqdm import tqdm
-import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
@@ -115,12 +115,15 @@ def make_sentences_database(loader_obj, db_destination):
                                     words = []
                                     count += 1
                                 current_sentence = sentence_id
+                            attribs = {k: v for k, v in word_obj.items() if k not in attributes_to_skip}
+                            if "lemma" in attribs:
+                                attribs["lemma"] = f'lemma:{attribs["lemma"]}'
                             words.append(
                                 (
                                     word_obj["token"],
                                     word_obj["start_byte"],
                                     int(word_obj["position"].split()[6]),
-                                    {k: v for k, v in word_obj.items() if k not in attributes_to_skip},
+                                    attribs,
                                 )
                             )
                             pbar.update()
@@ -212,11 +215,58 @@ def normalized_metadata_frequencies(loader_obj):
             pass
 
 
+def idf_per_word(loader_obj):
+    """Get the IDF weighting of every word in corpus"""
+    path = os.path.join(loader_obj.destination, "words_and_philo_ids")
+
+    def get_text(text):
+        text_path, token_type = text
+        with lz4.frame.open(text_path) as input_file:
+            words = []
+            current_sentence = None
+            sentences = []
+            for line in input_file:
+                word_obj = loads(line.decode("utf8"))  # type: ignore
+                if word_obj["philo_type"] == "word":
+                    sentence_id = struct.pack("6I", *map(int, word_obj["position"].split()[:6]))
+                    if sentence_id != current_sentence:
+                        if current_sentence is not None:
+                            sentences.append(" ".join(words))
+                            words = []
+                        current_sentence = sentence_id
+                    if token_type == "word":
+                        words.append(word_obj["token"])
+                    elif token_type == "lemma":
+                        words.append(word_obj["lemma"])
+            if sentence_id:
+                sentences.append(" ".join(words))
+        return sentences
+
+    def get_sentences(token_type="word"):
+        pool = mp.Pool(loader_obj.cores)
+        total_texts = sum(1 for _ in os.scandir(path))
+        with tqdm(total=total_texts, leave=False) as pbar:
+            for sentences in pool.imap_unordered(get_text, [(f.path, token_type) for f in os.scandir(path)]):
+                for sentence in sentences:
+                    yield sentence
+                pbar.update()
+        pool.close()
+
+    for token_type in ["word", "lemma"]:
+        print(f"{time.ctime()}: Computing IDF score of all {token_type}s in corpus...")
+        vectorizer = TfidfVectorizer(lowercase=False, token_pattern=r"\w+")
+        vectorizer.fit(get_sentences())
+        with open(os.path.join(loader_obj.destination, f"frequencies/{token_type}_idf.pickle"), "wb") as idf_output:
+            idf = {word: vectorizer.idf_[i] for word, i in vectorizer.vocabulary_.items()}
+            dump(idf, idf_output)
+
+
 DefaultPostFilters = [
     word_frequencies,
     normalized_word_frequencies,
     metadata_frequencies,
     normalized_metadata_frequencies,
+    idf_per_word,
 ]
 
 

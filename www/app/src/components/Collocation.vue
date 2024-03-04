@@ -9,16 +9,118 @@
                         @click="getFrequency()">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.frequency") }}</span>
                     </button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'over' }"
-                        @click="getRelativeFrequency('over')">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.overRepresented") }}</span>
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'idf' }"
+                        @click="getRelativeFrequency()">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.idf") }}</span>
                     </button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'under' }"
-                        @click="getRelativeFrequency('under')">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.underRepresented") }}</span>
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'comparative' }"
+                        @click="collocMethod = 'comparative'">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.comparitive") }}</span>
                     </button>
                 </div>
             </div>
+        </div>
+        <div class="card shadow-sm mt-2 ms-2 p-2" style="max-width: 720px;" v-if="collocMethod == 'comparative'">
+            <div class="row">
+                <div class="col-8">
+                    <div class="input-group pb-2" v-for="localField in metadataDisplay" :key="localField.value">
+                        <div class="input-group pb-2" :id="localField.value + '-group'"
+                            v-if="metadataInputStyle[localField.value] == 'text'">
+                            <button type="button" class="btn btn-outline-secondary">
+                                <label :for="localField.value + 'input-filter'">{{
+                                    localField.label
+                                }}</label></button><input type="text" class="form-control"
+                                :id="localField.value + 'input-filter'" :name="localField.value"
+                                :placeholder="localField.example" v-model="metadataValues[localField.value]" v-if="metadataInputStyle[localField.value] == 'text' &&
+                                        metadataInputStyle[localField.value] != 'date'
+                                        " />
+                        </div>
+                        <div class="input-group pb-2" :id="localField.value + '-group'"
+                            v-if="metadataInputStyle[localField.value] == 'checkbox'">
+                            <button style="border-top-right-radius: 0; border-bottom-right-radius: 0"
+                                class="btn btn-outline-secondary me-2">
+                                {{ localField.label }}
+                            </button>
+                            <div class="d-inline-block">
+                                <div class="form-check d-inline-block ms-3" style="padding-top: 0.35rem"
+                                    :id="localField.value" :options="metadataChoiceValues[localField.value]"
+                                    v-for="metadataChoice in metadataChoiceValues[localField.value]"
+                                    :key="metadataChoice.value" v-once>
+                                    <input class="form-check-input" type="checkbox" :id="metadataChoice.value"
+                                        v-model="metadataChoiceChecked[metadataChoice.value]" />
+                                    <label class="form-check-label" :for="metadataChoice.value">{{
+                                        metadataChoice.text
+                                    }}</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="input-group pb-2" :id="localField.value + '-group'"
+                            v-if="metadataInputStyle[localField.value] == 'dropdown'">
+                            <button type="button" class="btn btn-outline-secondary">
+                                <label :for="localField.value + '-input-filter'">{{
+                                    localField.label
+                                }}</label>
+                            </button>
+                            <select class="form-select" :id="localField.value + '-select'"
+                                v-model="metadataChoiceSelected[localField.value]">
+                                <option v-for="innerValue in metadataChoiceValues[localField.value]" :key="innerValue.value"
+                                    :value="innerValue.value" :id="innerValue.value + '-select-option'">
+                                    {{ innerValue.text }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="input-group pb-2" :id="localField.value + '-group'"
+                            v-if="['date', 'int'].includes(metadataInputStyle[localField.value])">
+                            <button type="button" class="btn btn-outline-secondary"
+                                style="border-top-right-radius: 0; border-bottom-right-radius: 0">
+                                <label :for="localField.value + '-date'">{{ localField.label }}</label>
+                            </button>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-secondary dropdown-toggle"
+                                    style="border-top-left-radius: 0; border-bottom-left-radius: 0" type="button"
+                                    :id="localField.value + '-selector'" data-bs-toggle="dropdown" aria-expanded="false">
+                                    {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
+                                </button>
+                                <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
+                                    <li @click="dateTypeToggle(localField.value, 'exact')">
+                                        <a class="dropdown-item">{{ $t("searchForm.exactDate") }}</a>
+                                    </li>
+                                    <li @click="dateTypeToggle(localField.value, 'range')">
+                                        <a class="dropdown-item">{{ $t("searchForm.rangeDate") }}</a>
+                                    </li>
+                                </ul>
+                            </div>
+                            <input type="text" class="form-control" :id="localField.value + 'input-filter'"
+                                :name="localField.value" :placeholder="localField.example"
+                                v-model="metadataValues[localField.value]" v-if="dateType[localField.value] == 'exact'" />
+                            <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
+                                <div class="input-group ms-3">
+                                    <button class="btn btn-outline-secondary" type="button">
+                                        <label for="query-term-input">{{
+                                            $t("searchForm.dateFrom")
+                                        }}</label>
+                                    </button>
+                                    <input type="text" class="form-control date-range"
+                                        :id="localField.value + '-start-input-filter'" :name="localField.value + '-start'"
+                                        :placeholder="localField.example" v-model="dateRange[localField.value].start" />
+                                    <button class="btn btn-outline-secondary ms-3" type="button">
+                                        <label for="query-term-input">{{
+                                            $t("searchForm.dateTo")
+                                        }}</label></button><input type="text" class="form-control date-range"
+                                        :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
+                                        :placeholder="localField.example" v-model="dateRange[localField.value].end" />
+                                </div>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-4 position-relative">
+                    <button type="button" class="btn btn-secondary position-absolute" style="bottom: 10px; right: 15px">Run
+                        comparison
+                    </button>
+                </div>
+            </div>
+
         </div>
         <div class="row mt-2 pe-1" style="padding: 0 0.5rem" v-if="resultsLength">
             <div class="col-12 col-sm-4">
@@ -74,6 +176,7 @@ export default {
             "searching",
             "urlUpdate",
             "accessAuthorized",
+            "searchableMetadata"
         ]),
         colorCodes: function () {
             let r = 0,
@@ -136,7 +239,13 @@ export default {
             collocatesUnsorted: {},
             collocatesSorted: [],
             relativeFrequencies: {},
-            loading: false
+            loading: false,
+            metadataDisplay: [],
+            metadataInputStyle: [],
+            metadataChoiceValues: [],
+            metadataValues: {},
+            dateRange: {},
+            dateType: {},
         };
     },
     created() {
@@ -149,6 +258,14 @@ export default {
             if (this.$route.name == "collocation") {
                 this.fetchResults();
             }
+        },
+        searchableMetadata: {
+            handler: function (newVal, oldVal) {
+                this.metadataDisplay = newVal.display;
+                this.metadataInputStyle = newVal.inputStyle;
+                this.metadataChoiceValues = newVal.choiceValues;
+            },
+            deep: true,
         },
     },
     methods: {
@@ -281,15 +398,21 @@ export default {
         getWordCloudStyle(word) {
             return `font-size: ${word.weight}rem; color: ${word.color}`;
         },
+        dateTypeToggle(metadata, dateType) {
+            this.dateRange[metadata] = { start: "", end: "" };
+            this.metadataValues[metadata] = "";
+            this.dateType[metadata] = dateType;
+        },
         getFrequency() {
             this.collocMethod = "frequency";
             this.sortedList = this.collocatesSorted
+            this.buildWordCloud()
         },
-        getRelativeFrequency(overUnder) {
+        getRelativeFrequency() {
             if (this.collocMethod == "frequency") {
                 this.collocatesSorted = this.copyObject(this.sortedList)
             }
-            this.collocMethod = overUnder;
+            this.collocMethod = "idf";
             if (Object.keys(this.relativeFrequencies).length === 0) {
                 this.searching = true;
                 this.$http.post(`${this.$dbUrl}/scripts/get_collocation_relative_proportions.py`, {
@@ -305,11 +428,7 @@ export default {
                     }
                 }).then((response) => {
                     this.relativeFrequencies = response.data;
-                    if (overUnder === "over") {
-                        this.sortedList = response.data.top;
-                    } else {
-                        this.sortedList = response.data.bottom;
-                    }
+                    this.sortedList = response.data;
                     this.searching = false;
                     this.buildWordCloud();
 
@@ -317,11 +436,7 @@ export default {
                     this.debug(this, error);
                 });
             } else {
-                if (overUnder === "over") {
-                    this.sortedList = this.relativeFrequencies.top;
-                } else {
-                    this.sortedList = this.relativeFrequencies.bottom;
-                }
+                this.sortedList = this.relativeFrequencies
                 this.buildWordCloud();
             }
         },
@@ -381,6 +496,11 @@ tbody tr {
     padding: 0 0.2rem;
     position: absolute;
     right: 0;
+}
+
+.input-group {
+    max-width: 700px;
+    width: 100%;
 }
 </style>
 

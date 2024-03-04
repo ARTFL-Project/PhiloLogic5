@@ -38,6 +38,7 @@ export default new Vuex.Store({
         showFacets: true,
         urlUpdate: "",
         metadataUpdate: {},
+        searchableMetadata: {display: [], inputStyle: [], choiceValues: []},
     },
     getters: {
         getField

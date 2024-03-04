@@ -133,9 +133,13 @@ class PlainTextParser:
                         self.v.push("word", word, start_byte)
                         if self.lemmas is not None:
                             if word not in self.lemmas:
-                                self.v["word"]["lemma"] = self.lemmas.get(word.lower(), word).lower()
+                                lower_word = word.lower()
+                                try:
+                                    self.v["word"]["lemma"] = self.lemmas[lower_word]
+                                except KeyError:
+                                    self.v["word"]["lemma"] = word.lower()
                             else:
-                                self.v["word"]["lemma"] = self.lemmas[word].lower()
+                                self.v["word"]["lemma"] = self.lemmas[word]
                         self.v.pull("word", end_byte)
                         start_byte += len(word_in_utf8)
                         continue

@@ -48,86 +48,20 @@ def get_collocation_relative_proportions(environ, start_response):
     config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
     db = DB(config.db_path + "/data/")
     request = WSGIHandler(environ, config)
-
     all_collocates = orjson.loads(environ["wsgi.input"].read())["all_collocates"]
 
-    # Create a contingency table for each collocate
-    relative_proportions = []
-    lemma = False
-    attrib = None
-    attrib_value = None
-    if ":" not in request.q:
-        total_corpus_words = db.get_total_word_count("word")
-    elif "lemma:" in request.q:
-        if request.q.count(":") == 1:
-            total_corpus_words = db.get_total_word_count("lemma")
-            lemma = True
-        else:
-            attrib = request.q.split(":")[2]
-            attrib_value = request.q.split(":")[3]
-            total_corpus_words = db.get_total_word_count(f"lemma_{attrib}_{attrib_value}")
-    else:
-        attrib = request.q.split(":")[1]
-        attrib_value = request.q.split(":")[2]
-        total_corpus_words = db.get_total_word_count(f"word_{attrib}_{attrib_value}")
-    total_words_in_window = sum(v["count"] for v in all_collocates.values())
-    total_corpus_words -= total_words_in_window
-    relative_proportions = []
+    with open(f"{config.db_path}/data/frequencies/idf.pickle", "rb") as f:
+        idf = pickle.load(f)
+
+    # Reweigh collocates using tf-idf
+    relative_frequencies = []
     for collocate, value in all_collocates.items():
-        collocate_count = value["count"]
-        collocate_count_in_corpus = (
-            get_number_of_occurrences(collocate, config.db_path, lemma=lemma, attrib=attrib, attrib_value=attrib_value)
-            - collocate_count
-        )
-        sub_corpus_proportion = collocate_count / total_words_in_window
-        corpus_proportion = collocate_count_in_corpus / total_corpus_words
-        relative_proportions.append(
-            {"collocate": collocate, "count": (sub_corpus_proportion + 1) / (corpus_proportion + 1)}
-        )
+        sub_linear_tf = 1 + math.log(value["count"])
+        tf_idf_score = sub_linear_tf * float(value["count"] * idf[collocate])
+        relative_frequencies.append({"collocate": collocate, "count": tf_idf_score})
 
-    relative_proportions = sorted(relative_proportions, key=lambda x: x["count"], reverse=True)
-
-    top_relative_proportions = normalize_proportions(relative_proportions[:100])
-    top_relative_proportions = [p for p in top_relative_proportions if p["count"] > 0]
-
-    relative_proportions.reverse()
-    low_relative_proportions = normalize_proportions(relative_proportions[:100])
-    low_relative_proportions = [p for p in low_relative_proportions if p["count"] < 0]
-
-    yield orjson.dumps({"top": top_relative_proportions, "bottom": low_relative_proportions})
-
-
-def get_number_of_occurrences(word, db_path, lemma=False, attrib=None, attrib_value=None):
-    """Get the number of occurrences of a word in the corpus."""
-    if lemma:
-        word = f"lemma:{word}".lower()
-    if attrib is not None:
-        word = f"{word}:{attrib}:{attrib_value}"
-    env = lmdb.open(f"{db_path}/data/words.lmdb", readonly=True, lock=False, readahead=False)
-    with env.begin(buffers=True) as txn:
-        occurrences = txn.get(word.encode("utf-8"))
-        if occurrences is None and lemma is True:  # no lemma form in index
-            occurrences = txn.get(word[6:].encode("utf-8"))
-    return len(occurrences) / 36  # 36 bytes per occurrence
-
-
-def normalize_proportions(relative_proportions):
-    """Normalize relative proportions with:
-    - L1 normalization
-    - Scale proportions to enhance differences"""
-    proportions_array = np.array([x["count"] for x in relative_proportions])
-    sum_of_proportions = proportions_array.sum()
-    normalized_scores = proportions_array / sum_of_proportions
-
-    # Calculate average distinctiveness score
-    average_score = sum(normalized_scores) / len(normalized_scores)
-
-    # Calculate relative difference for each collocate
-    for i, score in enumerate(normalized_scores):
-        relative_difference = ((score - average_score) / average_score) * 100  # we are enhancing the difference
-        relative_proportions[i]["count"] = float(relative_difference)
-
-    return relative_proportions
+    relative_frequencies.sort(key=lambda x: x["count"], reverse=True)
+    yield orjson.dumps(relative_frequencies[:100])
 
 
 if __name__ == "__main__":
