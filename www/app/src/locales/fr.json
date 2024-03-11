@@ -63,8 +63,6 @@
         "collocatesWithin": "Collocations dans une fenêtre de",
         "words": "mots",
         "collocatesWithinSentence": "Collocations dans la même phrase",
-        "mutualInformation": "Information Mutuelle dans une fenêtre de",
-        "max10": "maximum 10"
     },
     "resultsBiblio": {
         "heading": "Bibliographie des résultats sur cette page",
@@ -107,7 +105,8 @@
         "collocate": "Collocation",
         "count": "Compte",
         "frequency": "Fréquence",
-        "idf": "Fréquence pondérée"
+        "overRepresented": "Sur-représentées",
+        "underRepresented": "Sous-représentées"
     },
     "concordance": {
         "more": "Plus",

@@ -45,11 +45,6 @@ def collocation_results(request, config):
     else:
         exact_match = False
 
-    if request.colloc_method == "loglikelihood":
-        loglikelihood = True
-    else:
-        loglikelihood = False
-
     # Attribute filtering
     if request.colloc_filter_choice == "attribute":
         attribute = request.q_attribute
@@ -80,7 +75,10 @@ def collocation_results(request, config):
     collocation_object["filter_list"] = list(filter_list)
 
     hits_done = request.start or 0
-    max_time = request.max_time or 2
+    if request.max_time is None:
+        max_time = None
+    else:
+        max_time = request.max_time or 2
     all_collocates = {}
     start_time = timeit.default_timer()
 
@@ -98,6 +96,12 @@ def collocation_results(request, config):
                 q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
             sentence = cursor.get(parent_sentence)
             word_objects = msgpack.loads(sentence)
+
+            words = [w for w, _, _, _ in word_objects]
+            if "'" in words:
+                import sys
+
+                print(struct.unpack("6I", hit[0:24]), file=sys.stderr)
 
             # If not attribute filter set, we just get the words/lemmas
             if attribute is None:
@@ -143,8 +147,9 @@ def collocation_results(request, config):
 
             elapsed = timeit.default_timer() - start_time
             # split the query if more than request.max_time has been spent in the loop
-            if elapsed > int(max_time):
-                break
+            if max_time is not None:
+                if elapsed > int(max_time):
+                    break
     env.close()
     hits.finish()
 

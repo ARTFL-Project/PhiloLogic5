@@ -231,15 +231,18 @@ def idf_per_word(loader_obj):
                     sentence_id = struct.pack("6I", *map(int, word_obj["position"].split()[:6]))
                     if sentence_id != current_sentence:
                         if current_sentence is not None:
-                            sentences.append(" ".join(words))
+                            sentences.append("#TOK#".join(words))
                             words = []
                         current_sentence = sentence_id
                     if token_type == "word":
                         words.append(word_obj["token"])
                     elif token_type == "lemma":
-                        words.append(word_obj["lemma"])
+                        try:
+                            words.append(f'lemma_{word_obj["lemma"]}')
+                        except KeyError:
+                            continue
             if sentence_id:
-                sentences.append(" ".join(words))
+                sentences.append("#TOK#".join(words))
         return sentences
 
     def get_sentences(token_type="word"):
@@ -254,8 +257,8 @@ def idf_per_word(loader_obj):
 
     for token_type in ["word", "lemma"]:
         print(f"{time.ctime()}: Computing IDF score of all {token_type}s in corpus...")
-        vectorizer = TfidfVectorizer(lowercase=False, token_pattern=r"\w+")
-        vectorizer.fit(get_sentences())
+        vectorizer = TfidfVectorizer(lowercase=False, token_pattern=r"[^#TOK#]+", min_df=0)
+        vectorizer.fit(get_sentences(token_type=token_type))
         with open(os.path.join(loader_obj.destination, f"frequencies/{token_type}_idf.pickle"), "wb") as idf_output:
             idf = {word: vectorizer.idf_[i] for word, i in vectorizer.vocabulary_.items()}
             dump(idf, idf_output)

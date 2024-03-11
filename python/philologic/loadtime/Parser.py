@@ -1096,14 +1096,19 @@ class XMLParser:
                     current_pos += word_length
 
                     # Do we have a word? At least one of these characters.
-                    if check_if_char_word.search(word):
+                    converted_word = word
+                    if "&" in word: # convert entities before checking if there are word chars
+                        word = self.latin1_ents_to_utf8(word)
+                        word = self.convert_other_ents(word)
+                        word_match = check_if_char_word.search(word)
+                        converted_word = word
+                    else:
+                        word_match = check_if_char_word.search(word)
+                    if word_match:
                         last_word = word
                         word_pos = current_pos - len(word_in_utf8)
                         if "&" in word:
-                            # Convert ents to utf-8
-                            word = self.latin1_ents_to_utf8(word)
-                            # Convert other ents to things....
-                            word = self.convert_other_ents(word)
+                            word = converted_word # use the converted word from above
 
                         # You may have some semi-colons...
                         if ";" in word:

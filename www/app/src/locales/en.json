@@ -64,8 +64,6 @@
         "collocatesWithin": "Collocates within",
         "words": "words",
         "collocatesWithinSentence": "Collocates within the same sentence",
-        "mutualInformation": "Mutual Information within",
-        "max10": "max 10"
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",
@@ -108,7 +106,8 @@
         "collocate": "Collocate",
         "count": "Count",
         "frequency": "Frequency",
-        "idf": "Weighted Frequency",
+        "overRepresented": "Over-Represented",
+        "underRepresented": "Under-Represented",
         "comparitive": "Comparated to..."
     },
     "concordance": {

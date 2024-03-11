@@ -9,9 +9,13 @@
                         @click="getFrequency()">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.frequency") }}</span>
                     </button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'idf' }"
-                        @click="getRelativeFrequency()">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.idf") }}</span>
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'over' }"
+                        @click="getRelativeFrequency('over')">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.overRepresented") }}</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'under' }"
+                        @click="getRelativeFrequency('under')">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.underRepresented") }}</span>
                     </button>
                     <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'comparative' }"
                         @click="collocMethod = 'comparative'">
@@ -28,12 +32,12 @@
                             v-if="metadataInputStyle[localField.value] == 'text'">
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + 'input-filter'">{{
-                                    localField.label
-                                }}</label></button><input type="text" class="form-control"
+            localField.label
+        }}</label></button><input type="text" class="form-control"
                                 :id="localField.value + 'input-filter'" :name="localField.value"
                                 :placeholder="localField.example" v-model="metadataValues[localField.value]" v-if="metadataInputStyle[localField.value] == 'text' &&
-                                        metadataInputStyle[localField.value] != 'date'
-                                        " />
+            metadataInputStyle[localField.value] != 'date'
+            " />
                         </div>
                         <div class="input-group pb-2" :id="localField.value + '-group'"
                             v-if="metadataInputStyle[localField.value] == 'checkbox'">
@@ -49,8 +53,8 @@
                                     <input class="form-check-input" type="checkbox" :id="metadataChoice.value"
                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                     <label class="form-check-label" :for="metadataChoice.value">{{
-                                        metadataChoice.text
-                                    }}</label>
+            metadataChoice.text
+        }}</label>
                                 </div>
                             </div>
                         </div>
@@ -58,13 +62,14 @@
                             v-if="metadataInputStyle[localField.value] == 'dropdown'">
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + '-input-filter'">{{
-                                    localField.label
-                                }}</label>
+            localField.label
+        }}</label>
                             </button>
                             <select class="form-select" :id="localField.value + '-select'"
                                 v-model="metadataChoiceSelected[localField.value]">
-                                <option v-for="innerValue in metadataChoiceValues[localField.value]" :key="innerValue.value"
-                                    :value="innerValue.value" :id="innerValue.value + '-select-option'">
+                                <option v-for="innerValue in metadataChoiceValues[localField.value]"
+                                    :key="innerValue.value" :value="innerValue.value"
+                                    :id="innerValue.value + '-select-option'">
                                     {{ innerValue.text }}
                                 </option>
                             </select>
@@ -78,7 +83,8 @@
                             <div class="btn-group" role="group">
                                 <button class="btn btn-secondary dropdown-toggle"
                                     style="border-top-left-radius: 0; border-bottom-left-radius: 0" type="button"
-                                    :id="localField.value + '-selector'" data-bs-toggle="dropdown" aria-expanded="false">
+                                    :id="localField.value + '-selector'" data-bs-toggle="dropdown"
+                                    aria-expanded="false">
                                     {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
                                 </button>
                                 <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
@@ -92,21 +98,23 @@
                             </div>
                             <input type="text" class="form-control" :id="localField.value + 'input-filter'"
                                 :name="localField.value" :placeholder="localField.example"
-                                v-model="metadataValues[localField.value]" v-if="dateType[localField.value] == 'exact'" />
+                                v-model="metadataValues[localField.value]"
+                                v-if="dateType[localField.value] == 'exact'" />
                             <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
                                 <div class="input-group ms-3">
                                     <button class="btn btn-outline-secondary" type="button">
                                         <label for="query-term-input">{{
-                                            $t("searchForm.dateFrom")
-                                        }}</label>
+            $t("searchForm.dateFrom")
+        }}</label>
                                     </button>
                                     <input type="text" class="form-control date-range"
-                                        :id="localField.value + '-start-input-filter'" :name="localField.value + '-start'"
-                                        :placeholder="localField.example" v-model="dateRange[localField.value].start" />
+                                        :id="localField.value + '-start-input-filter'"
+                                        :name="localField.value + '-start'" :placeholder="localField.example"
+                                        v-model="dateRange[localField.value].start" />
                                     <button class="btn btn-outline-secondary ms-3" type="button">
                                         <label for="query-term-input">{{
-                                            $t("searchForm.dateTo")
-                                        }}</label></button><input type="text" class="form-control date-range"
+            $t("searchForm.dateTo")
+        }}</label></button><input type="text" class="form-control date-range"
                                         :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
                                         :placeholder="localField.example" v-model="dateRange[localField.value].end" />
                                 </div>
@@ -115,7 +123,8 @@
                     </div>
                 </div>
                 <div class="col-4 position-relative">
-                    <button type="button" class="btn btn-secondary position-absolute" style="bottom: 10px; right: 15px">Run
+                    <button type="button" class="btn btn-secondary position-absolute"
+                        style="bottom: 10px; right: 15px">Run
                         comparison
                     </button>
                 </div>
@@ -153,6 +162,7 @@
         </div>
     </div>
 </template>
+
 <script>
 import { mapFields } from "vuex-map-fields";
 import ResultsSummary from "./ResultsSummary";
@@ -408,11 +418,11 @@ export default {
             this.sortedList = this.collocatesSorted
             this.buildWordCloud()
         },
-        getRelativeFrequency() {
+        getRelativeFrequency(overUnder) {
             if (this.collocMethod == "frequency") {
                 this.collocatesSorted = this.copyObject(this.sortedList)
             }
-            this.collocMethod = "idf";
+            this.collocMethod = overUnder;
             if (Object.keys(this.relativeFrequencies).length === 0) {
                 this.searching = true;
                 this.$http.post(`${this.$dbUrl}/scripts/get_collocation_relative_proportions.py`, {
@@ -428,7 +438,11 @@ export default {
                     }
                 }).then((response) => {
                     this.relativeFrequencies = response.data;
-                    this.sortedList = response.data;
+                    if (overUnder === "over") {
+                        this.sortedList = response.data.top;
+                    } else {
+                        this.sortedList = response.data.bottom;
+                    }
                     this.searching = false;
                     this.buildWordCloud();
 
@@ -436,13 +450,18 @@ export default {
                     this.debug(this, error);
                 });
             } else {
-                this.sortedList = this.relativeFrequencies
+                if (overUnder === "over") {
+                    this.sortedList = this.relativeFrequencies.top;
+                } else {
+                    this.sortedList = this.relativeFrequencies.bottom;
+                }
                 this.buildWordCloud();
             }
         },
     },
 };
 </script>
+
 <style lang="scss" scoped>
 @import "../assets/styles/theme.module.scss";
 
@@ -503,4 +522,3 @@ tbody tr {
     width: 100%;
 }
 </style>
-
