@@ -92,36 +92,22 @@ def get_collocation_relative_proportions(environ, start_response):
 
     relative_proportions = sorted(relative_proportions, key=lambda x: x["count"], reverse=True)
 
-    top_relative_proportions = normalize_proportions(relative_proportions[:100])
-    top_relative_proportions = [p for p in top_relative_proportions if p["count"] > 0]
+    # Get top relative proportions
+    normalized_proportions = normalize_proportions(relative_proportions)
+    top_relative_proportions = [p for p in normalized_proportions[:100] if p["count"] > 0]
 
-    # add missing collocates from other_collocates
-    relative_proportions = {p["collocate"]: p["count"] for p in relative_proportions}
-    for collocate, value in other_collocates.items():
-        if collocate not in relative_proportions:
-            collocate_count_in_corpus = value["count"]
-            sub_corpus_proportion = (1 + math.log(1)) / total_words_in_window
-            corpus_proportion = (1 + math.log(collocate_count_in_corpus)) / total_corpus_words
-            # if collocate not in idf:  # this will mean the word occurred in just one document so we discard it
-            #     continue
-            relative_proportion = (sub_corpus_proportion + 1) / (corpus_proportion + 1)  # * idf[collocate]
-            relative_proportions[collocate] = relative_proportion
-        # else:
-        #     relative_proportions[collocate] *= (
-        #         relative_proportions[collocate] / total_words_in_window
-        #     )  # * idf[collocate]
-
-    relative_proportions = sorted(relative_proportions.items(), key=lambda x: x[1])[:100]
-    relative_proportions = [{"collocate": p[0], "count": p[1]} for p in relative_proportions]
-    low_relative_proportions = normalize_proportions(relative_proportions[:100])
+    # Get bottom relative proportions
+    normalized_proportions.sort(key=lambda x: x["count"])
     low_relative_proportions = [
-        {"collocate": p["collocate"], "count": float(p["count"])} for p in low_relative_proportions if p["count"] < 0
+        {"collocate": p["collocate"], "count": float(p["count"])}
+        for p in normalized_proportions[:100]
+        if p["count"] < 0
     ]
 
     yield orjson.dumps({"top": top_relative_proportions, "bottom": low_relative_proportions})
 
 
-def normalize_proportions(relative_proportions):
+def normalize_proportions(relative_proportions) -> list:
     """Normalize relative proportions with:
     - L1 normalization
     - Scale proportions to enhance differences"""
