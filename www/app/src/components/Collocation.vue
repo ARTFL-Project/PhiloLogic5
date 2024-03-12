@@ -284,6 +284,7 @@ export default {
             var collocObject = {};
             this.searching = true;
             this.relativeFrequencies = {};
+            this.collocMethod = "frequency"
             this.updateCollocation(collocObject, 0);
             // } else {
             //     this.retrieveFromStorage();
