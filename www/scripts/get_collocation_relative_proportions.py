@@ -82,6 +82,7 @@ def get_collocation_relative_proportions(environ, start_response):
         collocate_count = value["count"]
         if collocate not in other_collocates:
             collocate_count_in_corpus = 0
+            print(f"Collocate {collocate} not found in other_collocates", file=sys.stderr)
         else:
             collocate_count_in_corpus = other_collocates[collocate]["count"] - collocate_count + 1
         sub_corpus_proportion = (1 + math.log(collocate_count)) / total_words_in_window
@@ -101,10 +102,14 @@ def get_collocation_relative_proportions(environ, start_response):
             collocate_count_in_corpus = value["count"]
             sub_corpus_proportion = (1 + math.log(1)) / total_words_in_window
             corpus_proportion = (1 + math.log(collocate_count_in_corpus)) / total_corpus_words
-            relative_proportion = (sub_corpus_proportion + 1) / (corpus_proportion + 1) * idf[collocate]
+            # if collocate not in idf:  # this will mean the word occurred in just one document so we discard it
+            #     continue
+            relative_proportion = (sub_corpus_proportion + 1) / (corpus_proportion + 1)  # * idf[collocate]
             relative_proportions[collocate] = relative_proportion
-        else:
-            relative_proportions[collocate] *= idf[collocate] * relative_proportions[collocate] / total_words_in_window
+        # else:
+        #     relative_proportions[collocate] *= (
+        #         relative_proportions[collocate] / total_words_in_window
+        #     )  # * idf[collocate]
 
     relative_proportions = sorted(relative_proportions.items(), key=lambda x: x[1])[:100]
     relative_proportions = [{"collocate": p[0], "count": p[1]} for p in relative_proportions]

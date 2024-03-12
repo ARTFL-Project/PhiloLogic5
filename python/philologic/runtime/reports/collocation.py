@@ -97,12 +97,6 @@ def collocation_results(request, config):
             sentence = cursor.get(parent_sentence)
             word_objects = msgpack.loads(sentence)
 
-            words = [w for w, _, _, _ in word_objects]
-            if "'" in words:
-                import sys
-
-                print(struct.unpack("6I", hit[0:24]), file=sys.stderr)
-
             # If not attribute filter set, we just get the words/lemmas
             if attribute is None:
                 if count_lemmas is False:

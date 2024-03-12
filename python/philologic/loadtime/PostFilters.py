@@ -255,9 +255,13 @@ def idf_per_word(loader_obj):
                 pbar.update()
         pool.close()
 
-    for token_type in ["word", "lemma"]:
+    token_types = ["word"]
+    if loader_obj.lemma_count > 0:
+        token_types.append("lemma")
+
+    for token_type in token_types:
         print(f"{time.ctime()}: Computing IDF score of all {token_type}s in corpus...")
-        vectorizer = TfidfVectorizer(lowercase=False, token_pattern=r"[^#TOK#]+", min_df=0)
+        vectorizer = TfidfVectorizer(lowercase=False, token_pattern=r"[^#TOK#]+")
         vectorizer.fit(get_sentences(token_type=token_type))
         with open(os.path.join(loader_obj.destination, f"frequencies/{token_type}_idf.pickle"), "wb") as idf_output:
             idf = {word: vectorizer.idf_[i] for word, i in vectorizer.vocabulary_.items()}
