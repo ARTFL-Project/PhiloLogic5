@@ -6,11 +6,11 @@
                     <div id="initial-form">
                         <div class="btn-group" role="group" id="report" style="width: 100%; top: -1px">
                             <button type="button" :id="report" v-for="searchReport in reports"
-                                @click="reportChange(searchReport)" :key="searchReport" class="btn btn-secondary rounded-0"
-                                :class="{ active: currentReport == searchReport }">
+                                @click="reportChange(searchReport)" :key="searchReport"
+                                class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }">
                                 <span v-if="searchReport != 'kwic'">{{ $t(`searchForm.${searchReport}`) }}</span>
                                 <span v-else><span class="d-md-inline d-sm-none">{{ $t(`searchForm.${searchReport}`)
-                                }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
+                                        }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
                             </button>
                         </div>
                         <div id="search_terms_container" class="p-3">
@@ -27,8 +27,9 @@
                                             <span v-if="showTips">{{ $t("searchForm.tips") }}</span>
                                         </button>
                                         <input type="text" class="form-control" id="query-term-input"
-                                            v-model="queryTermTyped" @input="onChange('q')" @keyup.down="onArrowDown('q')"
-                                            @keyup.up="onArrowUp('q')" @keyup.enter="onEnter('q')" />
+                                            v-model="queryTermTyped" @input="onChange('q')"
+                                            @keyup.down="onArrowDown('q')" @keyup.up="onArrowUp('q')"
+                                            @keyup.enter="onEnter('q')" />
 
                                         <ul id="autocomplete-q" class="autocomplete-results shadow"
                                             :style="autoCompletePosition('q')" v-if="autoCompleteResults.q.length > 0">
@@ -47,13 +48,15 @@
                             <div class="input-group" id="head-group">
                                 <button type="button" class="btn btn-outline-secondary">
                                     <label :for="metadataDisplay[headIndex].value + '-input'">{{
-                                        metadataDisplay[headIndex].label
-                                    }}</label>
+                metadataDisplay[headIndex].label
+            }}</label>
                                 </button>
-                                <input type="text" class="form-control" :id="metadataDisplay[headIndex].value + '-input'"
+                                <input type="text" class="form-control"
+                                    :id="metadataDisplay[headIndex].value + '-input'"
                                     :name="metadataDisplay[headIndex].value"
                                     :placeholder="metadataDisplay[headIndex].example" v-model="metadataValues.head"
-                                    @input="onChange('head')" @keydown.down="onArrowDown(metadataDisplay[headIndex].value)"
+                                    @input="onChange('head')"
+                                    @keydown.down="onArrowDown(metadataDisplay[headIndex].value)"
                                     @keydown.up="onArrowUp(metadataDisplay[headIndex].value)"
                                     @keyup.enter="onEnter(metadataDisplay[headIndex].value)" />
                                 <ul :id="'autocomplete-' + metadataDisplay[headIndex].value"
@@ -64,8 +67,8 @@
                                         v-for="(result, i) in autoCompleteResults[metadataDisplay[headIndex].value]"
                                         :key="result" @click="setResult(result, metadataDisplay[headIndex].value)"
                                         class="autocomplete-result" :class="{
-                                            'is-active': i === arrowCounters[metadataDisplay[headIndex].value],
-                                        }" v-html="result"></li>
+                'is-active': i === arrowCounters[metadataDisplay[headIndex].value],
+            }" v-html="result"></li>
                                 </ul>
                             </div>
                         </div>
@@ -74,7 +77,8 @@
                                 <button type="reset" id="reset_form" class="btn btn-outline-secondary">
                                     {{ $t("searchForm.clear") }}
                                 </button>
-                                <button type="button" id="show-search-form" class="btn btn-secondary" @click="toggleForm()">
+                                <button type="button" id="show-search-form" class="btn btn-secondary"
+                                    @click="toggleForm()">
                                     <span v-if="!formOpen">{{ $t("searchForm.showSearchOptions") }}</span>
                                     <span v-else>{{ $t("searchForm.hideSearchOptions") }}</span>
                                 </button>
@@ -85,11 +89,13 @@
                         <div id="search-elements" v-if="formOpen" class="ps-3 pe-3 pb-3 shadow">
                             <div class="mt-1">
                                 <h5>{{ $t("searchForm.searchTermsParameters") }}:</h5>
-                                <div class="form-check form-switch form-check-inline" id="approximate" style="height: 31px">
+                                <div class="form-check form-switch form-check-inline" id="approximate"
+                                    style="height: 31px">
                                     <input class="form-check-input" type="checkbox" id="approximate-input"
-                                        v-model="approximateSelected" @change="approximateChange(approximateSelected)" />
+                                        v-model="approximateSelected"
+                                        @change="approximateChange(approximateSelected)" />
                                     <label class="form-check-label" for="approximate-input">{{
-                                        $t("searchForm.approximateMatch") }}
+                $t("searchForm.approximateMatch") }}
                                     </label>
                                 </div>
                                 <select class="form-select form-select-sm d-inline-block"
@@ -111,16 +117,17 @@
                                     <button class="btn btn-outline-secondary" type="button"
                                         v-if="method == 'proxy' || method == 'phrase'">
                                         <label for="arg-proxy" v-if="method == 'proxy'">{{ $t("searchForm.howMany")
-                                        }}?</label>
+                                            }}?</label>
                                         <label for="arg-phrase" v-if="method == 'phrase'">{{ $t("searchForm.howMany")
-                                        }}?</label>
+                                            }}?</label>
                                     </button>
                                     <input class="form-control" type="text" name="arg_proxy" id="arg-proxy"
                                         v-model="arg_proxy" v-if="method == 'proxy'" />
                                     <input class="form-control" type="text" name="arg_phrase" id="arg-phrase"
                                         v-model="arg_phrase" v-if="method == 'phrase'" />
-                                    <span class="input-group-text ms-0" v-if="method == 'proxy' || method == 'phrase'">{{
-                                        $t("searchForm.wordsSentence") }}</span>
+                                    <span class="input-group-text ms-0"
+                                        v-if="method == 'proxy' || method == 'phrase'">{{
+                $t("searchForm.wordsSentence") }}</span>
                                 </div>
                                 <div class="mt-1" id="collocation-params" v-if="currentReport == 'collocation'">
                                     <h5>{{ $t("searchForm.collocationParams") }}:</h5>
@@ -132,11 +139,12 @@
                                         </label>
                                     </div>
                                     <div class="form-check mt-1">
-                                        <input class="form-check-input" type="radio" name="colloc_within" id="collocWithinN"
-                                            value="n" v-model="colloc_within">
+                                        <input class="form-check-input" type="radio" name="colloc_within"
+                                            id="collocWithinN" value="n" v-model="colloc_within">
                                         <label class="form-check-label" for="collocWithinN">
-                                            {{ $t("searchForm.collocatesWithin") }} <input type="number" name="arg_proxy"
-                                                class="form-control form-control-sm" id="collocNWords" style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
+                                            {{ $t("searchForm.collocatesWithin") }} <input type="number"
+                                                name="arg_proxy" class="form-control form-control-sm" id="collocNWords"
+                                                style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
     min-height: initial; min-height: fit-content;" v-model="arg_proxy"> {{ $t("searchForm.words") }}
                                         </label>
                                     </div>
@@ -154,8 +162,9 @@
                                             </button>
                                             <ul class="dropdown-menu" aria-labelledby="attribute-selector">
                                                 <li v-for="option in collocationOptions" :key="option.value">
-                                                    <a class="dropdown-item" @click="collocFilteringSelected = option">{{
-                                                        option.text }}</a>
+                                                    <a class="dropdown-item"
+                                                        @click="collocFilteringSelected = option">{{
+                option.text }}</a>
                                                 </li>
                                             </ul>
                                         </div>
@@ -170,7 +179,7 @@
                                             <ul class="dropdown-menu" aria-labelledby="attribute-selector">
                                                 <li v-for="(_, attribute) in wordAttributes" :key="attribute">
                                                     <a class="dropdown-item" @click="attributeSelected = attribute">{{
-                                                        attribute.toUpperCase() }}</a>
+                attribute.toUpperCase() }}</a>
                                                 </li>
                                             </ul>
                                         </div>
@@ -179,7 +188,7 @@
                                             <button class="btn btn-secondary dropdown-toggle" type="button"
                                                 id="attributeValues" data-bs-toggle="dropdown" aria-expanded="false">
                                                 {{ wordAttributeSelected.toUpperCase() ||
-                                                    $t("searchForm.selectAttributeValue")
+                $t("searchForm.selectAttributeValue")
                                                 }}
                                             </button>
                                             <ul class="dropdown-menu" aria-labelledby="attributeValues">
@@ -187,14 +196,15 @@
                                                     :key="attributeValue">
                                                     <a class="dropdown-item"
                                                         @click="wordAttributeSelected = attributeValue">{{
-                                                            attributeValue }}</a>
+                attributeValue }}</a>
                                                 </li>
                                             </ul>
                                         </div>
                                         <div class="input-group d-inline ms-2" style="width: fit-content"
                                             v-if="collocFilteringSelected.value == 'frequency'">
                                             <button class="btn btn-outline-secondary" style="height: fit-content">
-                                                <label for="filter-frequency">{{ $t("searchForm.wordFiltering") }}</label>
+                                                <label for="filter-frequency">{{ $t("searchForm.wordFiltering")
+                                                    }}</label>
                                             </button>
                                             <input type="text" class="form-control d-inline-block" id="filter-frequency"
                                                 name="filter_frequency" placeholder="100" v-model="filter_frequency"
@@ -209,21 +219,22 @@
                                         v-if="metadataInputStyle[localField.value] == 'text'">
                                         <button type="button" class="btn btn-outline-secondary">
                                             <label :for="localField.value + 'input-filter'">{{
-                                                localField.label
-                                            }}</label></button><input type="text" class="form-control"
+                localField.label
+            }}</label></button><input type="text" class="form-control"
                                             :id="localField.value + 'input-filter'" :name="localField.value"
                                             :placeholder="localField.example" v-model="metadataValues[localField.value]"
                                             @input="onChange(localField.value)"
                                             @keydown.down="onArrowDown(localField.value)"
                                             @keydown.up="onArrowUp(localField.value)"
                                             @keyup.enter="onEnter(localField.value)" v-if="metadataInputStyle[localField.value] == 'text' &&
-                                                    metadataInputStyle[localField.value] != 'date'
-                                                    " />
+                metadataInputStyle[localField.value] != 'date'
+                " />
                                         <ul :id="'autocomplete-' + localField.value" class="autocomplete-results shadow"
                                             :style="autoCompletePosition(localField.value)" v-if="autoCompleteResults[localField.value].length > 0 &&
-                                                metadataInputStyle[localField.value] != 'date'
-                                                ">
-                                            <li tabindex="-1" v-for="(result, i) in autoCompleteResults[localField.value]"
+                metadataInputStyle[localField.value] != 'date'
+                ">
+                                            <li tabindex="-1"
+                                                v-for="(result, i) in autoCompleteResults[localField.value]"
                                                 :key="result" @click="setResult(result, localField.value)"
                                                 class="autocomplete-result"
                                                 :class="{ 'is-active': i === arrowCounters[localField.value] }"
@@ -241,11 +252,12 @@
                                                 :id="localField.value" :options="metadataChoiceValues[localField.value]"
                                                 v-for="metadataChoice in metadataChoiceValues[localField.value]"
                                                 :key="metadataChoice.value" v-once>
-                                                <input class="form-check-input" type="checkbox" :id="metadataChoice.value"
+                                                <input class="form-check-input" type="checkbox"
+                                                    :id="metadataChoice.value"
                                                     v-model="metadataChoiceChecked[metadataChoice.value]" />
                                                 <label class="form-check-label" :for="metadataChoice.value">{{
-                                                    metadataChoice.text
-                                                }}</label>
+                metadataChoice.text
+            }}</label>
                                             </div>
                                         </div>
                                     </div>
@@ -253,8 +265,8 @@
                                         v-if="metadataInputStyle[localField.value] == 'dropdown'">
                                         <button type="button" class="btn btn-outline-secondary">
                                             <label :for="localField.value + '-input-filter'">{{
-                                                localField.label
-                                            }}</label>
+                localField.label
+            }}</label>
                                         </button>
                                         <select class="form-select" :id="localField.value + '-select'"
                                             v-model="metadataChoiceSelected[localField.value]">
@@ -274,8 +286,8 @@
                                         <div class="btn-group" role="group">
                                             <button class="btn btn-secondary dropdown-toggle"
                                                 style="border-top-left-radius: 0; border-bottom-left-radius: 0"
-                                                type="button" :id="localField.value + '-selector'" data-bs-toggle="dropdown"
-                                                aria-expanded="false">
+                                                type="button" :id="localField.value + '-selector'"
+                                                data-bs-toggle="dropdown" aria-expanded="false">
                                                 {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
                                             </button>
                                             <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
@@ -295,17 +307,18 @@
                                             <div class="input-group ms-3">
                                                 <button class="btn btn-outline-secondary" type="button">
                                                     <label for="query-term-input">{{
-                                                        $t("searchForm.dateFrom")
-                                                    }}</label>
+                $t("searchForm.dateFrom")
+            }}</label>
                                                 </button>
                                                 <input type="text" class="form-control date-range"
                                                     :id="localField.value + '-start-input-filter'"
-                                                    :name="localField.value + '-start'" :placeholder="localField.example"
+                                                    :name="localField.value + '-start'"
+                                                    :placeholder="localField.example"
                                                     v-model="dateRange[localField.value].start" />
                                                 <button class="btn btn-outline-secondary ms-3" type="button">
                                                     <label for="query-term-input">{{
-                                                        $t("searchForm.dateTo")
-                                                    }}</label></button><input type="text"
+                $t("searchForm.dateTo")
+            }}</label></button><input type="text"
                                                     class="form-control date-range"
                                                     :id="localField.value + 'end-input-filter'"
                                                     :name="localField.value + '-end'" :placeholder="localField.example"
@@ -318,11 +331,11 @@
                             <div class="input-group mt-4 pt-1 pb-2" v-if="currentReport === 'time_series'">
                                 <button class="btn btn-outline-secondary">{{ $t("searchForm.dateRange") }}</button>
                                 <span class="d-inline-flex align-self-center mx-2"><label for="start_date">{{
-                                    $t("searchForm.dateFrom") }}</label></span>
+                $t("searchForm.dateFrom") }}</label></span>
                                 <input type="text" class="form-control" name="start_date" id="start_date"
                                     style="max-width: 65px; text-align: center" v-model="start_date" />
                                 <span class="d-inline-flex align-self-center mx-2"><label for="end_date">{{
-                                    $t("searchForm.dateTo") }}</label></span>
+                $t("searchForm.dateTo") }}</label></span>
                                 <input type="text" class="form-control" name="end_date" id="end_date"
                                     style="max-width: 65px; text-align: center" v-model="end_date" />
                             </div>
@@ -339,8 +352,8 @@
                                 <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy") }}</button>
                                 <select v-once class="form-select" :aria-label="aggregationOptions[0].text"
                                     style="max-width: fit-content" v-model="group_by">
-                                    <option v-for="aggregationOption in aggregationOptions" :key="aggregationOption.text"
-                                        :value="aggregationOption.value">
+                                    <option v-for="aggregationOption in aggregationOptions"
+                                        :key="aggregationOption.text" :value="aggregationOption.value">
                                         {{ aggregationOption.text }}
                                     </option>
                                 </select>
@@ -348,26 +361,28 @@
                             <h5 class="mt-3" v-if="['concordance', 'kwic', 'bibliography'].includes(currentReport)">
                                 {{ $t("searchForm.displayOptions") }}:
                             </h5>
-                            <div class="input-group pb-2" v-if="['concordance', 'bibliography'].includes(currentReport)">
+                            <div class="input-group pb-2"
+                                v-if="['concordance', 'bibliography'].includes(currentReport)">
                                 <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy") }}</button>
-                                <select v-once class="form-select" style="max-width: fit-content" aria-label="select fields"
-                                    v-model="sort_by">
-                                    <option v-for="sortValue in sortValues" :key="sortValue.value" :value="sortValue.value">
+                                <select v-once class="form-select" style="max-width: fit-content"
+                                    aria-label="select fields" v-model="sort_by">
+                                    <option v-for="sortValue in sortValues" :key="sortValue.value"
+                                        :value="sortValue.value">
                                         {{ sortValue.text }}
                                     </option>
                                 </select>
                             </div>
                             <div class="btn-group radio-btn-group" role="group" v-if="currentReport != 'collocation' &&
-                                currentReport != 'time_series' &&
-                                currentReport != 'aggregation'
-                                ">
+                currentReport != 'time_series' &&
+                currentReport != 'aggregation'
+                ">
                                 <button class="btn btn-outline-secondary">{{ $t("searchForm.resultsPerPage") }}</button>
                                 <span v-for="resultsPerPage in resultsPerPageOptions" :key="resultsPerPage" v-once>
                                     <input type="radio" class="btn-check" :id="`page-${resultsPerPage}`"
                                         :value="`${resultsPerPage}`" v-model="results_per_page" />
                                     <label class="btn btn-secondary radio-group" :for="`page-${resultsPerPage}`">{{
                                         resultsPerPage
-                                    }}</label>
+                                        }}</label>
                                 </span>
                             </div>
                         </div>
@@ -660,25 +675,6 @@ export default {
                 );
             }
         },
-        dateRangeHandler() {
-            for (let metadata in this.metadataInputStyle) {
-                if (["date", "int"].includes(this.metadataInputStyle[metadata]) && this.dateType[metadata] != "exact") {
-                    let separator = "-";
-                    if (this.metadataInputStyle[metadata] == "date") {
-                        separator = "<=>";
-                    }
-                    if (this.dateRange[metadata].start.length > 0 && this.dateRange[metadata].end.length > 0) {
-                        this.metadataValues[
-                            metadata
-                        ] = `${this.dateRange[metadata].start}${separator}${this.dateRange[metadata].end}`;
-                    } else if (this.dateRange[metadata].start.length > 0 && this.dateRange[metadata].end.length == 0) {
-                        this.metadataValues[metadata] = `${this.dateRange[metadata].start}${separator}`;
-                    } else if (this.dateRange[metadata].start.length == 0 && this.dateRange[metadata].end.length > 0) {
-                        this.metadataValues[metadata] = `${separator}${this.dateRange[metadata].end}`;
-                    }
-                }
-            }
-        },
         onSubmit() {
             this.report = this.currentReport;
             this.formOpen = false;
@@ -688,7 +684,7 @@ export default {
             let metadataSelected = Object.fromEntries(
                 Object.entries(this.metadataChoiceSelected).map(([key, val]) => [key, val])
             );
-            this.dateRangeHandler();
+            this.metadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.metadataValues)
             this.clearAutoCompletePopup();
             if (this.currentReport == 'collocation' && this.colloc_within == "sent") {
                 this.arg_proxy = "";

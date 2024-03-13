@@ -138,6 +138,28 @@ export function dictionaryLookup(event, year) {
         window.open(link);
     }
 }
+
+export function dateRangeHandler(metadataInputStyle, dateRange, dateType, metadataValues) {
+    for (let metadata in metadataInputStyle) {
+        if (["date", "int"].includes(metadataInputStyle[metadata]) && dateType[metadata] != "exact") {
+            let separator = "-";
+            if (metadataInputStyle[metadata] == "date") {
+                separator = "<=>";
+            }
+            if (dateRange[metadata].start.length > 0 && dateRange[metadata].end.length > 0) {
+                metadataValues[
+                    metadata
+                ] = `${dateRange[metadata].start}${separator}${dateRange[metadata].end}`;
+            } else if (dateRange[metadata].start.length > 0 && dateRange[metadata].end.length == 0) {
+                metadataValues[metadata] = `${dateRange[metadata].start}${separator}`;
+            } else if (dateRange[metadata].start.length == 0 && dateRange[metadata].end.length > 0) {
+                metadataValues[metadata] = `${separator}${dateRange[metadata].end}`;
+            }
+        }
+    }
+    return metadataValues;
+}
+
 export function debug(component, message) {
     console.log(`MESSAGE FROM ${component.$options.name}:`, message)
 }
@@ -152,5 +174,6 @@ export default {
     sortResults,
     deepEqual,
     dictionaryLookup,
+    dateRangeHandler,
     debug
 }

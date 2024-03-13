@@ -383,12 +383,13 @@ export default {
             this.buildWordCloud()
         },
         getRelativeFrequency(method) {
-            console.log(this.comparedMetadataValues)
             if (this.collocMethod == "frequency") {
                 this.collocatesSorted = this.copyObject(this.sortedList)
             }
             this.collocMethod = method;
             if (Object.keys(this.relativeFrequencies).length === 0 || Object.keys(this.comparedMetadataValues).length !== 0) {
+                console.log(this.dateRangeHandler)
+                this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
                 this.searching = true;
                 this.$http.post(`${this.$dbUrl}/scripts/get_collocation_relative_proportions.py`, {
                     all_collocates: this.collocatesUnsorted,

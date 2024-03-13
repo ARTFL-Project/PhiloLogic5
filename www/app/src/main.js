@@ -13,6 +13,7 @@ import {
     sortResults,
     deepEqual,
     dictionaryLookup,
+    dateRangeHandler,
     debug,
 } from "./mixins.js";
 import axios from "axios";
@@ -45,6 +46,7 @@ axios
                 sortResults,
                 deepEqual,
                 dictionaryLookup,
+                dateRangeHandler,
                 debug,
             },
         });
