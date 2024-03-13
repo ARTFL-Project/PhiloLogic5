@@ -11,7 +11,7 @@ from typing import Any
 import msgpack
 import lmdb
 from philologic.runtime.DB import DB
-from philologic.runtime.Query import get_expanded_query
+from philologic.runtime.Query import get_word_groups
 from orjson import dumps
 
 
@@ -55,9 +55,8 @@ def collocation_results(request, config):
 
     # Build list of search terms to filter out
     query_words = []
-    for group in get_expanded_query(hits):
+    for group in get_word_groups(f"{hits.filename}.terms"):
         for word in group:
-            word = word.replace('"', "")
             title_word = word.title()
             upper_word = word.upper()
             query_words.extend([word, title_word, upper_word])
