@@ -58,7 +58,9 @@ def collocation_results(request, config):
     for group in get_expanded_query(hits):
         for word in group:
             word = word.replace('"', "")
-            query_words.append(word)
+            title_word = word.title()
+            upper_word = word.upper()
+            query_words.extend([word, title_word, upper_word])
 
     if request.colloc_filter_choice == "nofilter":
         filter_list = set(query_words)
