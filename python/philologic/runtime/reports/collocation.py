@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Collocation results"""
 
-import math
+import time
 import os
-import pickle
 import timeit
 import struct
 from typing import Any
@@ -55,6 +54,8 @@ def collocation_results(request, config):
 
     # Build list of search terms to filter out
     query_words = []
+    while not os.path.exists(f"{hits.filename}.terms"):
+        time.sleep(0.1)
     for group in get_word_groups(f"{hits.filename}.terms"):
         for word in group:
             title_word = word.title()

@@ -48,9 +48,11 @@ def get_collocation_relative_proportions(environ, start_response):
     db = DB(config.db_path + "/data/")
     request = WSGIHandler(environ, config)
 
-    all_collocates = orjson.loads(environ["wsgi.input"].read())["all_collocates"]
+    post_data = environ["wsgi.input"].read()
 
-    # Create a contingency table for each collocate
+    all_collocates = orjson.loads(post_data)["all_collocates"]
+    other_corpus_metadata = orjson.loads(post_data)["other_corpus_metadata"]
+
     relative_proportions = []
     attrib = None
     attrib_value = None
@@ -67,13 +69,14 @@ def get_collocation_relative_proportions(environ, start_response):
         attrib_value = request.q.split(":")[2]
         token_type = f"word_{attrib}_{attrib_value}"
     total_corpus_words = db.get_total_word_count(token_type)
-    with open(config.db_path + f"/data/frequencies/{token_type}_idf.pickle", "rb") as f:
-        idf = pickle.load(f)
     total_words_in_window = sum(v["count"] for v in all_collocates.values())
     total_corpus_words -= total_words_in_window
 
-    # Run collocation against whole corpus
-    request.metadata = {}  # Clear metadata to run against whole corpus
+    if other_corpus_metadata:
+        request.metadata = other_corpus_metadata
+    else:
+        # Run collocation against whole corpus
+        request.metadata = {}  # Clear metadata to run against whole corpus
     request.max_time = None  # fetch all results
     other_collocates = collocation_results(request, config)["collocates"]
 
@@ -81,11 +84,14 @@ def get_collocation_relative_proportions(environ, start_response):
     for collocate, value in all_collocates.items():
         collocate_count = value["count"]
         if collocate not in other_collocates:
-            collocate_count_in_corpus = 0
+            collocate_count_in_corpus = 1
             print(f"Collocate {collocate} not found in other_collocates", file=sys.stderr)
         else:
             collocate_count_in_corpus = other_collocates[collocate]["count"] - collocate_count + 1
+            if collocate_count_in_corpus <= 0:
+                collocate_count_in_corpus = 1
         sub_corpus_proportion = (1 + math.log(collocate_count)) / total_words_in_window
+        print(f"corpus count: {collocate_count_in_corpus}", file=sys.stderr)
         corpus_proportion = (1 + math.log(collocate_count_in_corpus)) / total_corpus_words
         relative_proportion = (sub_corpus_proportion + 1) / (corpus_proportion + 1)
         relative_proportions.append({"collocate": collocate, "count": relative_proportion})
