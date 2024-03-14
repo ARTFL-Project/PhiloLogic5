@@ -54,47 +54,34 @@ def get_collocation_relative_proportions(environ, start_response):
     other_corpus_metadata = orjson.loads(post_data)["other_corpus_metadata"]
 
     relative_proportions = []
-    attrib = None
-    attrib_value = None
-    token_type = "word"
-    if "lemma:" in request.q:
-        if request.q.count(":") == 1:
-            token_type = "lemma"
-        else:
-            attrib = request.q.split(":")[2]
-            attrib_value = request.q.split(":")[3]
-            token_type = f"lemma_{attrib}_{attrib_value}"
-    elif request.q.count(":") == 2:
-        attrib = request.q.split(":")[1]
-        attrib_value = request.q.split(":")[2]
-        token_type = f"word_{attrib}_{attrib_value}"
-    total_corpus_words = db.get_total_word_count(token_type)
     total_words_in_window = sum(v["count"] for v in all_collocates.values())
-    total_corpus_words -= total_words_in_window
 
+    whole_corpus = True
     if other_corpus_metadata:
         request.metadata = other_corpus_metadata
+        whole_corpus = False
     else:
         # Run collocation against whole corpus
         request.metadata = {}  # Clear metadata to run against whole corpus
     request.max_time = None  # fetch all results
     other_collocates = collocation_results(request, config)["collocates"]
+    other_total_words_in_window = sum(v["count"] for v in other_collocates.values())
 
     relative_proportions = []
     for collocate, value in all_collocates.items():
-        collocate_count = value["count"]
-        if collocate not in other_collocates:
-            collocate_count_in_corpus = 1
-            print(f"Collocate {collocate} not found in other_collocates", file=sys.stderr)
-        else:
-            collocate_count_in_corpus = other_collocates[collocate]["count"] - collocate_count + 1
-            if collocate_count_in_corpus <= 0:
-                collocate_count_in_corpus = 1
+        collocate_count = value["count"] + 1  # Add 1 for Laplace smoothing
         sub_corpus_proportion = (1 + math.log(collocate_count)) / total_words_in_window
-        print(f"corpus count: {collocate_count_in_corpus}", file=sys.stderr)
-        corpus_proportion = (1 + math.log(collocate_count_in_corpus)) / total_corpus_words
-        relative_proportion = (sub_corpus_proportion + 1) / (corpus_proportion + 1)
-        relative_proportions.append({"collocate": collocate, "count": relative_proportion})
+        if collocate not in other_collocates:
+            other_corpus_collocate_count = 1  # Add 1 for Laplace smoothing
+        else:
+            other_corpus_collocate_count = other_collocates[collocate]["count"] + 1  # Add 1 for Laplace smoothing
+        if whole_corpus is True:
+            other_corpus_collocate_count -= collocate_count  # subtract sub corpus count to get rest of the corpus count
+        if other_corpus_collocate_count == 0:
+            other_corpus_collocate_count = 1
+        other_corpus_proportion = (1 + math.log(other_corpus_collocate_count)) / other_total_words_in_window
+        relative_proportion = (sub_corpus_proportion + 1) / (other_corpus_proportion + 1)
+        relative_proportions.append({"label": collocate, "count": relative_proportion})
 
     relative_proportions = sorted(relative_proportions, key=lambda x: x["count"], reverse=True)
 
@@ -105,9 +92,7 @@ def get_collocation_relative_proportions(environ, start_response):
     # Get bottom relative proportions
     normalized_proportions.sort(key=lambda x: x["count"])
     low_relative_proportions = [
-        {"collocate": p["collocate"], "count": float(p["count"])}
-        for p in normalized_proportions[:100]
-        if p["count"] < 0
+        {"label": p["label"], "count": float(p["count"])} for p in normalized_proportions[:100] if p["count"] < 0
     ]
 
     yield orjson.dumps({"top": top_relative_proportions, "bottom": low_relative_proportions})
