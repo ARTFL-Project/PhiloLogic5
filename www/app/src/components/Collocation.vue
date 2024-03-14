@@ -15,10 +15,6 @@
                         :title="$t('collocation.representativenessDefined')">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.representativeness") }}</span>
                     </button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'comparative' }"
-                        @click="collocMethod = 'comparative'">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.comparitive") }}</span>
-                    </button>
                 </div>
             </div>
         </div>
@@ -51,11 +47,21 @@
         </div>
         <div v-if="collocMethod == 'representativeness'" class="row mt-3 mb-3" style="padding: 0 0.5rem">
             <div>
-                <div v-if="comparedTo == 'wholeCorpus'">As compared to the rest of the corpus
-                    <button type="button" class="btn btn-secondary ms-2" @click="comparedTo = 'selectedCorpus'">
-                        Compare to</button>
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="whole-corpus" id="whole-corpus"
+                        value="wholeCorpus" v-model="comparedTo" checked> <label class="form-check-label"
+                        for="whole-corpus">
+                        When compared to the rest of the corpus
+                    </label>
                 </div>
-                <div v-else>As compared to the following:
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="selected-corpus" id="selected-corpus"
+                        value="selectedCorpus" v-model="comparedTo">
+                    <label class="form-check-label" for="selected-corpus">
+                        When compared to the texts with the following metadata:
+                    </label>
+                </div>
+                <div v-if="comparedTo == 'selectedCorpus'">
                     <div class="card shadow-sm mt-2 mb-2 p-2">
                         <div class="row">
                             <div class="col-8">
@@ -327,16 +333,7 @@ export default {
             }
             var collocates = this.mergeResults(fullResults, data.collocates);
             this.collocatesUnsorted = collocates.unsorted
-            let sortedList = [];
-            for (let word of collocates.sorted.slice(0, 100)) {
-                let collocate = `${word.label}`.replace(/lemma:/, "");
-                if (collocate.search(/\w+:.*/) != -1) {
-                    collocate = collocate.replace(/(\p{L}+):.*/u, "$1");
-                }
-                let surfaceForm = word.label;
-                sortedList.push({ collocate: collocate, surfaceForm: surfaceForm, count: word.count });
-            }
-            this.sortedList = sortedList;
+            this.sortedList = this.extractSurfaceFromCollocate(collocates.sorted.slice(0, 100));
             // this.buildWordCloud();
             if (this.moreResults) {
                 var tempFullResults = collocates.unsorted;
@@ -349,7 +346,42 @@ export default {
                 this.done = true;
             }
         },
+        extractSurfaceFromCollocate(words) {
+            let newWords = []
+            for (let word of words) {
+                let collocate = `${word.label}`.replace(/lemma:/, "");
+                if (collocate.search(/\w+:.*/) != -1) {
+                    collocate = collocate.replace(/(\p{L}+):.*/u, "$1");
+                }
+                let surfaceForm = word.label;
+                newWords.push({ collocate: collocate, surfaceForm: surfaceForm, count: word.count });
+            }
+            return newWords
+        },
         collocTableClick(item) {
+            let q
+            if (item.surfaceForm.startsWith("lemma:")) {
+                q = `${this.q} ${item.surfaceForm}`;
+            } else if (item.surfaceForm.search(/\w+:.*/) != -1) {
+                q = `${this.q} ${item.surfaceForm}`;
+            }
+            else {
+                q = `${this.q} "${item.surfaceForm}"`;
+            }
+            let method = "cooc"
+            if (this.arg_proxy.length > 0) {
+                method = 'proxy'
+            }
+            this.$router.push(
+                this.paramsToRoute({
+                    ...this.$store.state.formData,
+                    report: "concordance",
+                    q: q,
+                    method: method,
+                })
+            );
+        },
+        relativeFrequenciesClick(item) {
             let q
             if (item.surfaceForm.startsWith("lemma:")) {
                 q = `${this.q} ${item.surfaceForm}`;
@@ -387,8 +419,7 @@ export default {
                 this.collocatesSorted = this.copyObject(this.sortedList)
             }
             this.collocMethod = method;
-            if (Object.keys(this.relativeFrequencies).length === 0 || Object.keys(this.comparedMetadataValues).length !== 0) {
-                console.log(this.dateRangeHandler)
+            if (Object.keys(this.relativeFrequencies).length === 0 || this.comparedTo == 'selectedCorpus') {
                 this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
                 this.searching = true;
                 this.$http.post(`${this.$dbUrl}/scripts/get_collocation_relative_proportions.py`, {
@@ -404,9 +435,9 @@ export default {
                         'Content-Type': 'application/x-www-form-urlencoded'
                     }
                 }).then((response) => {
-                    this.relativeFrequencies = response.data;
-                    this.overRepresented = this.relativeFrequencies.top;
-                    this.underRepresented = this.relativeFrequencies.bottom;
+                    this.overRepresented = this.extractSurfaceFromCollocate(response.data.top);
+                    this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
+                    this.relativeFrequencies = { top: this.overRepresented, bottom: this.underRepresented };
                     this.searching = false;
 
                 }).catch((error) => {

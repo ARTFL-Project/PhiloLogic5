@@ -45,11 +45,9 @@ def get_collocation_relative_proportions(environ, start_response):
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
     config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    db = DB(config.db_path + "/data/")
     request = WSGIHandler(environ, config)
 
     post_data = environ["wsgi.input"].read()
-
     all_collocates = orjson.loads(post_data)["all_collocates"]
     other_corpus_metadata = orjson.loads(post_data)["other_corpus_metadata"]
 
@@ -92,7 +90,7 @@ def get_collocation_relative_proportions(environ, start_response):
     # Get bottom relative proportions
     normalized_proportions.sort(key=lambda x: x["count"])
     low_relative_proportions = [
-        {"label": p["label"], "count": float(p["count"])} for p in normalized_proportions[:100] if p["count"] < 0
+        {"label": p["label"], "count": p["count"]} for p in normalized_proportions[:100] if p["count"] < 0
     ]
 
     yield orjson.dumps({"top": top_relative_proportions, "bottom": low_relative_proportions})
