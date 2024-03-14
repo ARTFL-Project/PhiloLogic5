@@ -15,6 +15,7 @@ import msgpack
 from orjson import loads
 from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
 
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
@@ -215,25 +216,27 @@ def normalized_metadata_frequencies(loader_obj):
             pass
 
 
-def idf_per_word(loader_obj):
-    """Get the IDF weighting of every word in corpus"""
+def tfidf_per_doc(loader_obj):
+    """Get the TF-IDF vectors for each doc"""
     path = os.path.join(loader_obj.destination, "words_and_philo_ids")
+    text_object_levels = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5}
+    text_object_level_int = text_object_levels[loader_obj.default_object_level]
 
     def get_text(text):
         text_path, token_type = text
         with lz4.frame.open(text_path) as input_file:
             words = []
-            current_sentence = None
-            sentences = []
+            current_text_section = None
+            text_sections = []
             for line in input_file:
                 word_obj = loads(line.decode("utf8"))  # type: ignore
                 if word_obj["philo_type"] == "word":
-                    sentence_id = struct.pack("6I", *map(int, word_obj["position"].split()[:6]))
-                    if sentence_id != current_sentence:
-                        if current_sentence is not None:
-                            sentences.append("#TOK#".join(words))
+                    text_section_id = list(map(int, word_obj["position"].split()[:text_object_level_int]))
+                    if text_section_id != current_text_section:
+                        if current_text_section is not None:
+                            text_sections.append("#TOK#".join(words))
                             words = []
-                        current_sentence = sentence_id
+                        current_text_section = text_section_id
                     if token_type == "word":
                         words.append(word_obj["token"])
                     elif token_type == "lemma":
@@ -241,17 +244,42 @@ def idf_per_word(loader_obj):
                             words.append(f'lemma_{word_obj["lemma"]}')
                         except KeyError:
                             continue
-            if sentence_id:
-                sentences.append("#TOK#".join(words))
-        return sentences
+            if text_section_id:
+                text_sections.append("#TOK#".join(words))
+        return text_sections
 
-    def get_sentences(token_type="word"):
+    def get_text_sections(paths):
         pool = mp.Pool(loader_obj.cores)
         total_texts = sum(1 for _ in os.scandir(path))
-        with tqdm(total=total_texts, leave=False) as pbar:
-            for sentences in pool.imap_unordered(get_text, [(f.path, token_type) for f in os.scandir(path)]):
-                for sentence in sentences:
-                    yield sentence
+        with tqdm(total=total_texts, leave=False, desc="Gathering texts") as pbar:
+            for text_sections in pool.imap_unordered(get_text, paths):
+                for text_section in text_sections:
+                    yield text_section
+                pbar.update()
+        pool.close()
+
+    def get_philo_ids(text_path):
+        with lz4.frame.open(text_path) as input_file:
+            philo_ids = []
+            current_text_section = None
+            for line in input_file:
+                word_obj = loads(line.decode("utf8"))
+                if word_obj["philo_type"] == "word":
+                    text_section_id = " ".join(word_obj["position"].split()[:text_object_level_int])
+                    if text_section_id != current_text_section:
+                        if current_text_section is not None:
+                            philo_ids.append(current_text_section)
+                        current_text_section = text_section_id
+            philo_ids.append(current_text_section)
+        return philo_ids
+
+    def get_text_philo_ids(paths):
+        pool = mp.Pool(loader_obj.cores)
+        total_texts = sum(1 for _ in os.scandir(path))
+        with tqdm(total=total_texts, leave=False, desc="Gathering philo_ids") as pbar:
+            for philo_ids in pool.imap_unordered(get_philo_ids, [p[0] for p in paths]):
+                for philo_id in philo_ids:
+                    yield philo_id
                 pbar.update()
         pool.close()
 
@@ -259,13 +287,15 @@ def idf_per_word(loader_obj):
     if loader_obj.lemma_count > 0:
         token_types.append("lemma")
 
+    os.mkdir(f"{loader_obj.destination}/tfidf")
     for token_type in token_types:
         print(f"{time.ctime()}: Computing IDF score of all {token_type}s in corpus...")
-        vectorizer = TfidfVectorizer(lowercase=False, token_pattern=r"[^#TOK#]+")
-        vectorizer.fit(get_sentences(token_type=token_type))
-        with open(os.path.join(loader_obj.destination, f"frequencies/{token_type}_idf.pickle"), "wb") as idf_output:
-            idf = {word: vectorizer.idf_[i] for word, i in vectorizer.vocabulary_.items()}
-            dump(idf, idf_output)
+        paths = [(f.path, token_type) for f in os.scandir(path)]
+        vectorizer = TfidfVectorizer(sublinear_tf=True, lowercase=False, token_pattern=r"[^#TOK#]+")
+        dt_matrix = vectorizer.fit_transform(get_text_sections(paths))
+        for philo_id, vector in zip(get_text_philo_ids(paths), dt_matrix):
+            document_vector = pd.Series(vector.toarray().flatten(), index=vectorizer.get_feature_names_out())
+            document_vector.to_pickle(f"{loader_obj.destination}/tfidf/{philo_id}_{token_type}_idf.pickle")
 
 
 DefaultPostFilters = [
@@ -273,7 +303,7 @@ DefaultPostFilters = [
     normalized_word_frequencies,
     metadata_frequencies,
     normalized_metadata_frequencies,
-    idf_per_word,
+    # tfidf_per_doc,
 ]
 
 
