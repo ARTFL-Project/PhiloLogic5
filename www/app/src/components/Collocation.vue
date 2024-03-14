@@ -51,14 +51,14 @@
                     <input class="form-check-input" type="radio" name="whole-corpus" id="whole-corpus"
                         value="wholeCorpus" v-model="comparedTo" checked> <label class="form-check-label"
                         for="whole-corpus">
-                        When compared to the rest of the corpus
+                        {{ $t('collocation.comparedToCorpus') }}
                     </label>
                 </div>
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="radio" name="selected-corpus" id="selected-corpus"
                         value="selectedCorpus" v-model="comparedTo">
                     <label class="form-check-label" for="selected-corpus">
-                        When compared to the texts with the following metadata:
+                        {{ $t('collocation.comparedToSection') }}:
                     </label>
                 </div>
                 <div v-if="comparedTo == 'selectedCorpus'">
@@ -167,8 +167,7 @@
                             </div>
                         </div>
                         <button type="button" class="btn btn-secondary" style="width: fit-content"
-                            @click="getRelativeFrequency('representativeness')">Run
-                            comparison
+                            @click="getRelativeFrequency('representativeness')">{{ $t('collocation.runComparison') }}
                         </button>
                     </div>
                 </div>
