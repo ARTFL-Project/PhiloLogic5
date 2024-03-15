@@ -519,4 +519,16 @@ tbody tr {
     font-weight: 400;
     font-variant: small-caps;
 }
+
+input[type="text"]:focus {
+    opacity: 1;
+}
+
+::placeholder {
+    opacity: 0.4;
+}
+
+input:focus::placeholder {
+    opacity: 0;
+}
 </style>
