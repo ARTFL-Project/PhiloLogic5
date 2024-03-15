@@ -333,7 +333,7 @@ class XMLParser:
         tag_to_obj_map=DEFAULT_TAG_TO_OBJ_MAP,
         metadata_to_parse=DEFAULT_METADATA_TO_PARSE,
         file_type="xml",
-        lowercase_index=False,
+        lowercase_index=True,
         lemmas=None,
         **parse_options,
     ):
@@ -1097,7 +1097,7 @@ class XMLParser:
 
                     # Do we have a word? At least one of these characters.
                     converted_word = word
-                    if "&" in word: # convert entities before checking if there are word chars
+                    if "&" in word:  # convert entities before checking if there are word chars
                         word = self.latin1_ents_to_utf8(word)
                         word = self.convert_other_ents(word)
                         word_match = check_if_char_word.search(word)
@@ -1108,7 +1108,7 @@ class XMLParser:
                         last_word = word
                         word_pos = current_pos - len(word_in_utf8)
                         if "&" in word:
-                            word = converted_word # use the converted word from above
+                            word = converted_word  # use the converted word from above
 
                         # You may have some semi-colons...
                         if ";" in word:

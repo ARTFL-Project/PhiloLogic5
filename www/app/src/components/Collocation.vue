@@ -10,7 +10,7 @@
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.frequency") }}</span>
                     </button>
                     <button type="button" class="btn btn-secondary"
-                        :class="{ active: collocMethod === 'representativeness' }"
+                        :class="{ active: collocMethod === 'representativeness', disabled: wholeCorpus }"
                         @click="getRelativeFrequency('representativeness')"
                         :title="$t('collocation.representativenessDefined')">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.representativeness") }}</span>
@@ -49,8 +49,7 @@
             <div>
                 <div class="form-check">
                     <input class="form-check-input" type="radio" name="whole-corpus" id="whole-corpus"
-                        value="wholeCorpus" v-model="comparedTo" checked> <label class="form-check-label"
-                        for="whole-corpus">
+                        value="wholeCorpus" v-model="comparedTo"> <label class="form-check-label" for="whole-corpus">
                         {{ $t('collocation.comparedToCorpus') }}
                     </label>
                 </div>
@@ -262,6 +261,7 @@ export default {
             dateRange: {},
             dateType: {},
             comparedTo: "wholeCorpus",
+            wholeCorpus: true
         };
     },
     created() {
@@ -311,6 +311,7 @@ export default {
                 })
                 .then((response) => {
                     let data = response.data;
+                    this.wholeCorpus = response.data.whole_corpus;
                     this.resultsLength = data.results_length;
                     this.moreResults = data.more_results;
                     this.runningTotal = data.hits_done;

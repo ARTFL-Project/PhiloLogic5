@@ -158,6 +158,10 @@ def collocation_results(request, config):
         collocation_object["more_results"] = False
         collocation_object["hits_done"] = collocation_object["results_length"]
     collocation_object["distance"] = collocate_distance
+    if len(request.metadata) == 1:  # request.metadata always has philo_type as a key
+        collocation_object["whole_corpus"] = True
+    else:
+        collocation_object["whole_corpus"] = False
 
     return collocation_object
 
