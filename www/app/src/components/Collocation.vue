@@ -11,7 +11,7 @@
                     </button>
                     <button type="button" class="btn btn-secondary"
                         :class="{ active: collocMethod === 'representativeness', disabled: wholeCorpus }"
-                        @click="getRelativeFrequency('representativeness')"
+                        @click="comparativeCollocations('representativeness')"
                         :title="$t('collocation.representativenessDefined')">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.representativeness") }}</span>
                     </button>
@@ -166,7 +166,7 @@
                             </div>
                         </div>
                         <button type="button" class="btn btn-secondary" style="width: fit-content"
-                            @click="getRelativeFrequency('representativeness')">{{ $t('collocation.runComparison') }}
+                            @click="comparativeCollocations('representativeness')">{{ $t('collocation.runComparison') }}
                         </button>
                     </div>
                 </div>
@@ -414,7 +414,7 @@ export default {
             this.sortedList = this.collocatesSorted
             this.buildWordCloud()
         },
-        getRelativeFrequency(method) {
+        comparativeCollocations(method) {
             if (this.collocMethod == "frequency") {
                 this.collocatesSorted = this.copyObject(this.sortedList)
             }
@@ -422,7 +422,7 @@ export default {
             if (Object.keys(this.relativeFrequencies).length === 0 || this.comparedTo == 'selectedCorpus') {
                 this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
                 this.searching = true;
-                this.$http.post(`${this.$dbUrl}/scripts/get_collocation_relative_proportions.py`, {
+                this.$http.post(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
                     all_collocates: this.collocatesUnsorted,
                     other_corpus_metadata: this.comparedMetadataValues
                 }, {
