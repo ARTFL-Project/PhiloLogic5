@@ -177,39 +177,31 @@
                         <bibliography-criteria :biblio="biblio" :query-report="report"
                             :results-length="resultsLength"></bibliography-criteria>
                     </div>
-                    <div class="col-6" style="border-left: solid 1px #ddd">
-                        <bibliography-criteria :biblio="otherBiblio" :query-report="report"
+                    <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
+                        <bibliography-criteria v-if="otherBiblio.length" :biblio="otherBiblio" :query-report="report"
                             :results-length="resultsLength"></bibliography-criteria>
+                        <h6 v-else>{{ $t('collocation.comparedToCorpus') }}</h6>
                     </div>
                 </div>
-                <h5>Collocate counts</h5>
+                <h5 class="mt-3" style="text-align: center">Most frequent collocates</h5>
                 <div class="row gx-5">
                     <div class="col-6">
-                        <div class="card px-2">
-                            <word-cloud :word-weights="sortedList" label=""
-                                :click-handler="collocTableClick"></word-cloud>
-                        </div>
+                        <word-cloud :word-weights="sortedList" label="" :click-handler="collocTableClick"></word-cloud>
                     </div>
-                    <div class="col-6">
-                        <div class="card px-2">
-                            <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates" label=""
-                                :click-handler="collocTableClick"></word-cloud>
-                        </div>
+                    <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
+                        <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates" label=""
+                            :click-handler="collocTableClick"></word-cloud>
                     </div>
                 </div>
-                <h5 class="mt-3">{{ $t('collocation.overRepresented') }}</h5>
+                <h5 class="mt-3" style="text-align: center">{{ $t('collocation.overRepresented') }}</h5>
                 <div class="row gx-5">
                     <div class="col-6">
-                        <div class="card px-2">
-                            <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
-                                :click-handler="collocTableClick"></word-cloud>
-                        </div>
+                        <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
+                            :click-handler="collocTableClick"></word-cloud>
                     </div>
-                    <div class="col-6">
-                        <div class="card px-2">
-                            <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
-                                :click-handler="collocTableClick"></word-cloud>
-                        </div>
+                    <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
+                        <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
+                            :click-handler="collocTableClick"></word-cloud>
                     </div>
                 </div>
             </div>
