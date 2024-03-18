@@ -45,7 +45,7 @@
                 </div>
             </div>
         </div>
-        <div v-if="collocMethod == 'representativeness'" class="row mt-3 mb-3" style="padding: 0 0.5rem">
+        <div v-if="collocMethod == 'representativeness'" class="row m-0 mt-3 mb-3" style="padding: 0 0.5rem">
             <div>
                 <div class="form-check">
                     <input class="form-check-input" type="radio" name="whole-corpus" id="whole-corpus"
@@ -171,22 +171,46 @@
                     </div>
                 </div>
             </div>
-            <div class=" col-12 col-md-6">
-                <div class="card shadow-sm">
-                    <div class="card-header">
-                        {{ $t('collocation.overRepresented') }}
+            <div class="card p-3">
+                <div class="row gx-5">
+                    <div class="col-6">
+                        <bibliography-criteria :biblio="biblio" :query-report="report"
+                            :results-length="resultsLength"></bibliography-criteria>
                     </div>
-                    <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
-                        :click-handler="collocTableClick"></word-cloud>
+                    <div class="col-6" style="border-left: solid 1px #ddd">
+                        <bibliography-criteria :biblio="otherBiblio" :query-report="report"
+                            :results-length="resultsLength"></bibliography-criteria>
+                    </div>
                 </div>
-            </div>
-            <div class="col-12 col-md-6">
-                <div class="card shadow-sm">
-                    <div class="card-header">
-                        {{ $t('collocation.underRepresented') }}
+                <h5>Collocate counts</h5>
+                <div class="row gx-5">
+                    <div class="col-6">
+                        <div class="card px-2">
+                            <word-cloud :word-weights="sortedList" label=""
+                                :click-handler="collocTableClick"></word-cloud>
+                        </div>
                     </div>
-                    <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
-                        :click-handler="collocTableClick"></word-cloud>
+                    <div class="col-6">
+                        <div class="card px-2">
+                            <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates" label=""
+                                :click-handler="collocTableClick"></word-cloud>
+                        </div>
+                    </div>
+                </div>
+                <h5 class="mt-3">{{ $t('collocation.overRepresented') }}</h5>
+                <div class="row gx-5">
+                    <div class="col-6">
+                        <div class="card px-2">
+                            <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
+                                :click-handler="collocTableClick"></word-cloud>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="card px-2">
+                            <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
+                                :click-handler="collocTableClick"></word-cloud>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -197,11 +221,12 @@
 import { mapFields } from "vuex-map-fields";
 import ResultsSummary from "./ResultsSummary";
 import WordCloud from "./WordCloud.vue";
+import BibliographyCriteria from "./BibliographyCriteria";
 
 export default {
     name: "collocation-report",
     components: {
-        ResultsSummary, WordCloud
+        ResultsSummary, WordCloud, BibliographyCriteria
     },
     computed: {
         ...mapFields([
@@ -218,6 +243,9 @@ export default {
             "accessAuthorized",
             "searchableMetadata"
         ]),
+        formData() {
+            return this.$store.state.formData;
+        },
         splittedFilterList: function () {
             let arrayLength = this.filterList.length;
             let chunkSize = arrayLength / 5;
@@ -241,6 +269,7 @@ export default {
             results: {},
             filterList: [],
             searchParams: {},
+            biblio: {},
             moreResults: false,
             sortedList: [],
             showFilteredWords: false,
@@ -260,6 +289,8 @@ export default {
             comparedMetadataValues: {},
             dateRange: {},
             dateType: {},
+            otherCollocates: [],
+            otherBiblio: {},
             comparedTo: "wholeCorpus",
             wholeCorpus: true
         };
@@ -268,6 +299,7 @@ export default {
         this.report = "collocation";
         this.currentReport = "collocation";
         this.fetchResults();
+        this.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
     },
     watch: {
         urlUpdate() {
@@ -421,6 +453,7 @@ export default {
             this.collocMethod = method;
             if (Object.keys(this.relativeFrequencies).length === 0 || this.comparedTo == 'selectedCorpus') {
                 this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
+                this.otherBiblio = this.buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
                 this.searching = true;
                 this.$http.post(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
                     all_collocates: this.collocatesUnsorted,
@@ -437,6 +470,7 @@ export default {
                 }).then((response) => {
                     this.overRepresented = this.extractSurfaceFromCollocate(response.data.top);
                     this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
+                    this.otherCollocates = this.extractSurfaceFromCollocate(response.data.other_collocates);
                     this.relativeFrequencies = { top: this.overRepresented, bottom: this.underRepresented };
                     this.searching = false;
 
@@ -512,12 +546,13 @@ tbody tr {
     width: 100%;
 }
 
+
 .card-header {
-    text-align: center;
-    background-color: $link-color !important;
-    color: #fff !important;
-    font-weight: 400;
-    font-variant: small-caps;
+    // text-align: center;
+    background-color: #fff !important;
+    // color: #fff !important;
+    // font-weight: 400;
+    // font-variant: small-caps;
 }
 
 input[type="text"]:focus {

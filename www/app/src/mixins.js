@@ -160,6 +160,51 @@ export function dateRangeHandler(metadataInputStyle, dateRange, dateType, metada
     return metadataValues;
 }
 
+export function buildBiblioCriteria(philoConfig, query, formData) {
+    let queryArgs = {};
+    for (let field of philoConfig.metadata) {
+        if (field in query && formData[field].length > 0) {
+            queryArgs[field] = formData[field];
+        }
+    }
+    let biblio = [];
+    if (queryArgs.report === "time_series") {
+        delete queryArgs[philoConfig.time_series_year_field];
+    }
+    let config = philoConfig;
+    let facets = [];
+    for (let i = 0; i < config.facets.length; i++) {
+        let alias = Object.keys(config.facets[i])[0];
+        let facet = config.facets[i][alias];
+        if (typeof facet == "string") {
+            facets.push(facet);
+        } else {
+            //facets.push(facet)
+            for (let value of facets) {
+                if (facets.indexOf(value) < 0) {
+                    facets.push(value);
+                }
+            }
+        }
+    }
+    for (let k in queryArgs) {
+        if (config.available_metadata.indexOf(k) >= 0) {
+            if (this.report == "time_series" && k == "year") {
+                continue;
+            }
+            let v = queryArgs[k];
+            let alias = k;
+            if (v) {
+                if (k in config.metadata_aliases) {
+                    alias = config.metadata_aliases[k];
+                }
+                biblio.push({ key: k, alias: alias, value: v });
+            }
+        }
+    }
+    return biblio;
+}
+
 export function debug(component, message) {
     console.log(`MESSAGE FROM ${component.$options.name}:`, message)
 }
@@ -175,5 +220,6 @@ export default {
     deepEqual,
     dictionaryLookup,
     dateRangeHandler,
+    buildBiblioCriteria,
     debug
 }

@@ -4,8 +4,9 @@
             <div v-if="currentReport !== 'collocation'">
                 {{ $t("searchArgs.searchingDbFor") }}
                 <span v-if="exactPhrase">
-                    {{ $t("searchArgs.exactPhrase") }}<button class="btn rounded-pill btn-outline-secondary btn-sm ms-1">{{ q
-                    }}</button>
+                    {{ $t("searchArgs.exactPhrase") }}<button
+                        class="btn rounded-pill btn-outline-secondary btn-sm ms-1">{{ q
+                        }}</button>
                 </span>
                 <span v-else>
                     <span v-if="approximate == 'yes'">
@@ -26,8 +27,8 @@
                     </button>
                     <h6 class="pe-4">{{ $t("searchArgs.termsExpanded", { length: words.length }) }}:</h6>
                     <h6 v-if="words.length > 100">{{ $t("searchArgs.mostFrequentTerms") }}</h6>
-                    <button type="button" class="btn btn-secondary btn-sm" style="margin: 10px 0px" v-if="wordListChanged"
-                        @click="rerunQuery()">
+                    <button type="button" class="btn btn-secondary btn-sm" style="margin: 10px 0px"
+                        v-if="wordListChanged" @click="rerunQuery()">
                         {{ $t("searchArgs.rerunQuery") }}
                     </button>
                     <div class="row" id="query-terms-list">
@@ -50,34 +51,14 @@
                     {{ proximity() }}</span>
                 <div v-if="collocationFilter">
                     {{ $t("searchArgs.collocateFilter") }}:&nbsp; <b>{{ collocationFilter.attrib }} = {{
-                        collocationFilter.value
-                    }}</b>
+            collocationFilter.value
+        }}</b>
                 </div>
             </div>
         </div>
-        <div>
-            {{ $t("searchArgs.biblioCriteria") }}:
-            <span class="metadata-args rounded-pill" v-for="metadata in queryArgs.biblio" :key="metadata.key">
-                <span class="metadata-label">{{ metadata.alias }}</span>
-                <span class="metadata-value">{{ metadata.value.replace("<=>", "&#8212;") }}</span>
-                <span class="remove-metadata" @click="removeMetadata(metadata.key, restart)">X</span>
-            </span>
-            <b v-if="queryArgs.biblio.length === 0">{{ $t("common.none") }}</b>
-        </div>
-        <div v-if="queryReport === 'time_series'">
-            {{ $t("searchArgs.occurrencesBetween", { n: resultsLength }) }}
-            <span class="biblio-criteria">
-                <span class="metadata-args rounded-pill">
-                    <span class="metadata-value">{{ start_date }}</span>
-                    <span class="remove-metadata" @click="removeMetadata('start_date', restart)">X</span>
-                </span> </span>&nbsp; {{ $t("common.and") }}&nbsp;
-            <span class="biblio-criteria">
-                <span class="metadata-args rounded-pill">
-                    <span class="metadata-value">{{ end_date }}</span>
-                    <span class="remove-metadata" @click="removeMetadata('end_date', restart)">X</span>
-                </span>
-            </span>
-        </div>
+        <bibliography-criteria v-if="queryArgs.biblio.length > 0" :biblio="queryArgs.biblio" :queryReport="queryReport"
+            :resultsLength="resultsLength" :start_date="start_date" :end_date="end_date"
+            :removeMetadata="removeMetadata"></bibliography-criteria>
         <div style="margin-top: 10px" v-if="queryReport === 'collocation'">
             {{ $t("searchArgs.collocOccurrences", { n: resultsLength }) }}
         </div>
@@ -85,9 +66,13 @@
 </template>
 <script>
 import { mapFields } from "vuex-map-fields";
+import BibliographyCriteria from "./BibliographyCriteria";
 
 export default {
     name: "searchArguments",
+    components: {
+        BibliographyCriteria,
+    },
     props: ["resultStart", "resultEnd"],
     computed: {
         ...mapFields([
@@ -168,7 +153,7 @@ export default {
             } else {
                 this.queryArgs.queryTerm = "";
             }
-            this.queryArgs.biblio = this.buildCriteria();
+            this.queryArgs.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
 
             if ("q" in queryParams) {
                 let method = queryParams.method;
@@ -223,50 +208,6 @@ export default {
                     this.error = error.toString();
                     this.debug(this, error);
                 });
-        },
-        buildCriteria() {
-            let queryArgs = {};
-            for (let field of this.$philoConfig.metadata) {
-                if (field in this.$route.query && this.formData[field].length > 0) {
-                    queryArgs[field] = this.formData[field];
-                }
-            }
-            let biblio = [];
-            if (queryArgs.report === "time_series") {
-                delete queryArgs[this.$philoConfig.time_series_year_field];
-            }
-            let config = this.$philoConfig;
-            let facets = [];
-            for (let i = 0; i < config.facets.length; i++) {
-                let alias = Object.keys(config.facets[i])[0];
-                let facet = config.facets[i][alias];
-                if (typeof facet == "string") {
-                    facets.push(facet);
-                } else {
-                    //facets.push(facet)
-                    for (let value of facets) {
-                        if (facets.indexOf(value) < 0) {
-                            facets.push(value);
-                        }
-                    }
-                }
-            }
-            for (let k in queryArgs) {
-                if (config.available_metadata.indexOf(k) >= 0) {
-                    if (this.report == "time_series" && k == "year") {
-                        continue;
-                    }
-                    let v = queryArgs[k];
-                    let alias = k;
-                    if (v) {
-                        if (k in config.metadata_aliases) {
-                            alias = config.metadata_aliases[k];
-                        }
-                        biblio.push({ key: k, alias: alias, value: v });
-                    }
-                }
-            }
-            return biblio;
         },
         proximity() {
             return this.$t("searchArgs.withinProximity", {
@@ -419,55 +360,8 @@ export default {
     border-left: solid 1px #888;
 }
 
-.metadata-args {
-    border: 1px solid #ddd;
-    display: inline-flex !important;
-    margin-right: 5px;
-    border-radius: 50rem;
-    width: fit-content;
-    line-height: 2;
-    margin-bottom: 0.5rem;
-}
-
-.metadata-label {
-    background-color: #e9ecef;
-    border: solid #ddd;
-    border-width: 0 1px 0 0;
-    border-top-left-radius: 50rem;
-    border-bottom-left-radius: 50rem;
-    padding: 0 0.5rem;
-}
-
-.metadata-value {
-    -webkit-box-decoration-break: clone;
-    box-decoration-break: clone;
-    padding: 0 0.5rem;
-}
-
-.remove-metadata {
-    padding-right: 5px;
-    padding-left: 5px;
-    border-left: #ddd solid 1px;
-    border-top-right-radius: 50rem;
-    border-bottom-right-radius: 50rem;
-    padding: 0 0.5rem;
-}
-
-.remove-metadata:hover,
-.close-pill:hover {
-    background-color: #e9ecef;
-    cursor: pointer;
-}
-
 .rounded-pill a {
     margin-right: 0.5rem;
     text-decoration: none;
-}
-
-.metadata-label,
-.metadata-value,
-.remove-metadata {
-    display: flex;
-    align-items: center;
 }
 </style>

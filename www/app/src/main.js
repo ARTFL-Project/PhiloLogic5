@@ -14,6 +14,7 @@ import {
     deepEqual,
     dictionaryLookup,
     dateRangeHandler,
+    buildBiblioCriteria,
     debug,
 } from "./mixins.js";
 import axios from "axios";
@@ -47,6 +48,7 @@ axios
                 deepEqual,
                 dictionaryLookup,
                 dateRangeHandler,
+                buildBiblioCriteria,
                 debug,
             },
         });

@@ -64,7 +64,14 @@ def get_collocation_relative_proportions(environ, start_response):
     )
 
     yield orjson.dumps(
-        {"top": top_relative_proportions, "bottom": low_relative_proportions, "other_collocates": other_collocates}
+        {
+            "top": top_relative_proportions,
+            "bottom": low_relative_proportions,
+            "other_collocates": [
+                {"label": word, "count": value["count"]}
+                for word, value in sorted(other_collocates.items(), key=lambda x: x[1]["count"], reverse=True)[:100]
+            ],
+        }
     )
 
 
@@ -88,22 +95,19 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
         df_combined.loc[df_combined["other_corpus_count"] == 0, "other_corpus_count"] = 1
 
     # Calculate Proportions
-    df_combined["sub_corpus_proportion"] = (df_combined["sub_corpus_count"] + 1).apply(np.log) / df_combined[
-        "sub_corpus_count"
-    ].sum()
-    df_combined["other_corpus_proportion"] = (df_combined["other_corpus_count"] + 1).apply(np.log) / df_combined[
-        "other_corpus_count"
-    ].sum()
+    df_combined["sub_corpus_proportion"] = (
+        np.log(df_combined["sub_corpus_count"] + 1) / df_combined["sub_corpus_count"].sum()
+    )
+    df_combined["other_corpus_proportion"] = (
+        np.log(df_combined["other_corpus_count"] + 1) / df_combined["other_corpus_count"].sum()
+    )
 
-    # Calculate Z-scores (Prepare all proportions first)
+    # Calculate Z-scores for each corpus
     all_proportions = pd.concat([df_combined["sub_corpus_proportion"], df_combined["other_corpus_proportion"]])
-
-    df_combined["sub_corpus_zscore"] = (
-        df_combined["sub_corpus_proportion"] - all_proportions.mean()
-    ) / all_proportions.std()
-    df_combined["other_corpus_zscore"] = (
-        df_combined["other_corpus_proportion"] - all_proportions.mean()
-    ) / all_proportions.std()
+    mean_proportion = all_proportions.mean()
+    std_proportion = all_proportions.std()
+    df_combined["sub_corpus_zscore"] = (df_combined["sub_corpus_proportion"] - mean_proportion) / std_proportion
+    df_combined["other_corpus_zscore"] = (df_combined["other_corpus_proportion"] - mean_proportion) / std_proportion
 
     # Over-representation score
     df_combined["over_representation_score"] = df_combined["sub_corpus_zscore"] - df_combined["other_corpus_zscore"]
