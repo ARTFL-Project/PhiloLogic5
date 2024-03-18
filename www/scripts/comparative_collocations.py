@@ -49,9 +49,6 @@ def get_collocation_relative_proportions(environ, start_response):
     all_collocates = orjson.loads(post_data)["all_collocates"]
     other_corpus_metadata = orjson.loads(post_data)["other_corpus_metadata"]
 
-    relative_proportions = []
-    total_words_in_window = sum(v["count"] for v in all_collocates.values())
-
     whole_corpus = True
     if other_corpus_metadata:
         request.metadata = other_corpus_metadata
@@ -61,10 +58,9 @@ def get_collocation_relative_proportions(environ, start_response):
         request.metadata = {}  # Clear metadata to run against whole corpus
     request.max_time = None  # fetch all results
     other_collocates = collocation_results(request, config)["collocates"]
-    other_total_words_in_window = sum(v["count"] for v in other_collocates.values())
 
     top_relative_proportions, low_relative_proportions = get_relative_proportions(
-        all_collocates, other_collocates, total_words_in_window, other_total_words_in_window, whole_corpus
+        all_collocates, other_collocates, whole_corpus
     )
 
     yield orjson.dumps(
@@ -72,9 +68,7 @@ def get_collocation_relative_proportions(environ, start_response):
     )
 
 
-def get_relative_proportions(
-    all_collocates, other_collocates, total_words_in_window, other_total_words_in_window, whole_corpus
-):
+def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     # Create DataFrames
     df_sub = pd.DataFrame.from_dict(
         {k: v["count"] for k, v in all_collocates.items()}, orient="index", columns=["sub_corpus_count"]
@@ -93,39 +87,38 @@ def get_relative_proportions(
         df_combined["other_corpus_count"] = df_combined["other_corpus_count"] - df_combined["sub_corpus_count"]
         df_combined.loc[df_combined["other_corpus_count"] == 0, "other_corpus_count"] = 1
 
-    # Calculate Proportions (Replace with your total words count variables)
-    df_combined["sub_corpus_proportion"] = (df_combined["sub_corpus_count"] + 1).apply(np.log) / total_words_in_window
-    df_combined["other_corpus_proportion"] = (df_combined["other_corpus_count"] + 1).apply(
-        np.log
-    ) / other_total_words_in_window
+    # Calculate Proportions
+    df_combined["sub_corpus_proportion"] = (df_combined["sub_corpus_count"] + 1).apply(np.log) / df_combined[
+        "sub_corpus_count"
+    ].sum()
+    df_combined["other_corpus_proportion"] = (df_combined["other_corpus_count"] + 1).apply(np.log) / df_combined[
+        "other_corpus_count"
+    ].sum()
 
-    # Relative proportion
-    df_combined["relative_proportion"] = (df_combined["sub_corpus_proportion"] + 1) / (
-        df_combined["other_corpus_proportion"] + 1
-    )
+    # Calculate Z-scores (Prepare all proportions first)
+    all_proportions = pd.concat([df_combined["sub_corpus_proportion"], df_combined["other_corpus_proportion"]])
 
-    # Calculate normalized relative proportions (z-score)
-    relative_diff = (df_combined["relative_proportion"] - df_combined["relative_proportion"].mean()) / df_combined[
-        "relative_proportion"
-    ].std()
-    # Multiply by 100 to get percentage
-    df_combined["normalized_relative_proportion"] = relative_diff * 100
+    df_combined["sub_corpus_zscore"] = (
+        df_combined["sub_corpus_proportion"] - all_proportions.mean()
+    ) / all_proportions.std()
+    df_combined["other_corpus_zscore"] = (
+        df_combined["other_corpus_proportion"] - all_proportions.mean()
+    ) / all_proportions.std()
+
+    # Over-representation score
+    df_combined["over_representation_score"] = df_combined["sub_corpus_zscore"] - df_combined["other_corpus_zscore"]
 
     top_relative_proportions = [
         {"label": word, "count": value}
-        for word, value in df_combined[df_combined["normalized_relative_proportion"] > 0][
-            "normalized_relative_proportion"
-        ]
+        for word, value in df_combined[df_combined["over_representation_score"] > 0]["over_representation_score"]
         .sort_values(ascending=False)
         .head(100)
         .items()
     ]
 
     bottom_relative_proportions = [
-        {"label": word, "count": value}
-        for word, value in df_combined[df_combined["normalized_relative_proportion"] < 0][
-            "normalized_relative_proportion"
-        ]
+        {"label": word, "count": abs(value)}
+        for word, value in df_combined[df_combined["over_representation_score"] < 0]["over_representation_score"]
         .sort_values()
         .head(100)
         .items()
