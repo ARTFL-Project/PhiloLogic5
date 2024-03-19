@@ -2,18 +2,16 @@
     <div class="container-fluid mt-4">
         <results-summary :description="results.description" :running-total="runningTotal"
             :filter-list="filterList"></results-summary>
-        <div class="row d-none d-sm-block mt-4" style="padding: 0 0.5rem">
+        <div class="row d-none d-sm-block mt-3" style="padding: 0 0.5rem">
             <div class="col col-sm-7 col-lg-8">
                 <div class="btn-group" role="group" id="report_switch">
                     <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'frequency' }"
                         @click="getFrequency()">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.frequency") }}</span>
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.collocation") }}</span>
                     </button>
                     <button type="button" class="btn btn-secondary"
-                        :class="{ active: collocMethod === 'representativeness', disabled: wholeCorpus }"
-                        @click="comparativeCollocations('representativeness')"
-                        :title="$t('collocation.representativenessDefined')">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.representativeness") }}</span>
+                        :class="{ active: collocMethod === 'compare', disabled: wholeCorpus }" @click="toggleCompare()">
+                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.compareTo") }}</span>
                     </button>
                 </div>
             </div>
@@ -45,282 +43,183 @@
                 </div>
             </div>
         </div>
-        <div v-if="collocMethod == 'representativeness'" class="row m-0 mt-3 mb-3" style="padding: 0 0.5rem">
-            <div>
-                <div class="form-check">
-                    <input class="form-check-input" type="radio" name="whole-corpus" id="whole-corpus"
-                        value="wholeCorpus" v-model="comparedTo"> <label class="form-check-label" for="whole-corpus">
-                        {{ $t('collocation.comparedToCorpus') }}
-                    </label>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="radio" name="selected-corpus" id="selected-corpus"
-                        value="selectedCorpus" v-model="comparedTo">
-                    <label class="form-check-label" for="selected-corpus">
-                        {{ $t('collocation.comparedToSection') }}:
-                    </label>
-                </div>
-                <div v-if="comparedTo == 'selectedCorpus'">
-                    <div class="card shadow-sm mt-2 mb-2 p-2">
-                        <div class="row">
-                            <div class="col-8">
-                                <div class="input-group pb-2" v-for="localField in metadataDisplay"
-                                    :key="localField.value">
-                                    <div class="input-group pb-2" :id="localField.value + '-group'"
-                                        v-if="metadataInputStyle[localField.value] == 'text'">
-                                        <button type="button" class="btn btn-outline-secondary">
-                                            <label :for="localField.value + 'input-filter'">{{ localField.label
-                                                }}</label></button><input type="text" class="form-control"
-                                            :id="localField.value + 'input-filter'" :name="localField.value"
-                                            :placeholder="localField.example"
-                                            v-model="comparedMetadataValues[localField.value]" v-if="metadataInputStyle[localField.value] == 'text' &&
+        <div v-if="collocMethod == 'compare'" class="row m-0 mt-1 mb-3" style="padding: 0 0.5rem">
+            <button id="toggle-metadata" class="btn btn-link" style="text-align: start;" type="button"
+                data-bs-toggle="collapse" data-bs-target="#other-corpus-metadata" aria-expanded="false"
+                aria-controls="other-corpus-metadata" @click="filterMetadataOpen = !filterMetadataOpen">
+                <span v-if="!filterMetadataOpen">&#9654;</span>
+                <span v-else>&#9660;</span>
+                {{ $t('collocation.metadataFilter') }}
+            </button>
+            <div class="collapse my-2" id="other-corpus-metadata">
+                <div class="alert alert-info p-1" style="width: fit-content" role="alert">
+                    {{ $t('collocation.emptySearch') }}</div>
+                <div class="row">
+                    <div class="input-group pb-2" v-for="localField in metadataDisplay" :key="localField.value">
+                        <div class="input-group pb-2" :id="localField.value + '-group'"
+                            v-if="metadataInputStyle[localField.value] == 'text'">
+                            <button type="button" class="btn btn-outline-secondary">
+                                <label :for="localField.value + 'input-filter'">{{
+            localField.label
+        }}</label></button><input type="text" class="form-control"
+                                :id="localField.value + 'input-filter'" :name="localField.value"
+                                :placeholder="localField.example" v-model="comparedMetadataValues[localField.value]"
+                                v-if="metadataInputStyle[localField.value] == 'text' &&
             metadataInputStyle[localField.value] != 'date'
             " />
-                                    </div>
-                                    <div class="input-group pb-2" :id="localField.value + '-group'"
-                                        v-if="metadataInputStyle[localField.value] == 'checkbox'">
-                                        <button style="border-top-right-radius: 0; border-bottom-right-radius: 0"
-                                            class="btn btn-outline-secondary me-2">
-                                            {{ localField.label }}
-                                        </button>
-                                        <div class="d-inline-block">
-                                            <div class="form-check d-inline-block ms-3" style="padding-top: 0.35rem"
-                                                :id="localField.value" :options="metadataChoiceValues[localField.value]"
-                                                v-for="metadataChoice in metadataChoiceValues[localField.value]"
-                                                :key="metadataChoice.value" v-once>
-                                                <input class="form-check-input" type="checkbox"
-                                                    :id="metadataChoice.value"
-                                                    v-model="metadataChoiceChecked[metadataChoice.value]" />
-                                                <label class="form-check-label" :for="metadataChoice.value">{{
+                        </div>
+                        <div class="input-group pb-2" :id="localField.value + '-group'"
+                            v-if="metadataInputStyle[localField.value] == 'checkbox'">
+                            <button style="border-top-right-radius: 0; border-bottom-right-radius: 0"
+                                class="btn btn-outline-secondary me-2">
+                                {{ localField.label }}
+                            </button>
+                            <div class="d-inline-block">
+                                <div class="form-check d-inline-block ms-3" style="padding-top: 0.35rem"
+                                    :id="localField.value" :options="metadataChoiceValues[localField.value]"
+                                    v-for="metadataChoice in metadataChoiceValues[localField.value]"
+                                    :key="metadataChoice.value" v-once>
+                                    <input class="form-check-input" type="checkbox" :id="metadataChoice.value"
+                                        v-model="metadataChoiceChecked[metadataChoice.value]" />
+                                    <label class="form-check-label" :for="metadataChoice.value">{{
             metadataChoice.text
         }}</label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="input-group pb-2" :id="localField.value + '-group'"
-                                        v-if="metadataInputStyle[localField.value] == 'dropdown'">
-                                        <button type="button" class="btn btn-outline-secondary">
-                                            <label :for="localField.value + '-input-filter'">{{
-            localField.label
-        }}</label>
-                                        </button>
-                                        <select class="form-select" :id="localField.value + '-select'"
-                                            v-model="metadataChoiceSelected[localField.value]">
-                                            <option v-for="innerValue in metadataChoiceValues[localField.value]"
-                                                :key="innerValue.value" :value="innerValue.value"
-                                                :id="innerValue.value + '-select-option'">
-                                                {{ innerValue.text }}
-                                            </option>
-                                        </select>
-                                    </div>
-                                    <div class="input-group pb-2" :id="localField.value + '-group'"
-                                        v-if="['date', 'int'].includes(metadataInputStyle[localField.value])">
-                                        <button type="button" class="btn btn-outline-secondary"
-                                            style="border-top-right-radius: 0; border-bottom-right-radius: 0">
-                                            <label :for="localField.value + '-date'">{{ localField.label }}</label>
-                                        </button>
-                                        <div class="btn-group" role="group">
-                                            <button class="btn btn-secondary dropdown-toggle"
-                                                style="border-top-left-radius: 0; border-bottom-left-radius: 0"
-                                                type="button" :id="localField.value + '-selector'"
-                                                data-bs-toggle="dropdown" aria-expanded="false">
-                                                {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
-                                            </button>
-                                            <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
-                                                <li @click="dateTypeToggle(localField.value, 'exact')">
-                                                    <a class="dropdown-item">{{ $t("searchForm.exactDate") }}</a>
-                                                </li>
-                                                <li @click="dateTypeToggle(localField.value, 'range')">
-                                                    <a class="dropdown-item">{{ $t("searchForm.rangeDate") }}</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                        <input type="text" class="form-control" :id="localField.value + 'input-filter'"
-                                            :name="localField.value" :placeholder="localField.example"
-                                            v-model="comparedMetadataValues[localField.value]"
-                                            v-if="dateType[localField.value] == 'exact'" />
-                                        <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
-                                            <div class="input-group ms-3">
-                                                <button class="btn btn-outline-secondary" type="button">
-                                                    <label for="query-term-input">{{
-            $t("searchForm.dateFrom")
-        }}</label>
-                                                </button>
-                                                <input type="text" class="form-control date-range"
-                                                    :id="localField.value + '-start-input-filter'"
-                                                    :name="localField.value + '-start'"
-                                                    :placeholder="localField.example"
-                                                    v-model="dateRange[localField.value].start" />
-                                                <button class="btn btn-outline-secondary ms-3" type="button">
-                                                    <label for="query-term-input">{{
-            $t("searchForm.dateTo")
-        }}</label></button><input type="text"
-                                                    class="form-control date-range"
-                                                    :id="localField.value + 'end-input-filter'"
-                                                    :name="localField.value + '-end'" :placeholder="localField.example"
-                                                    v-model="dateRange[localField.value].end" />
-                                            </div>
-                                        </span>
-                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <button type="button" class="btn btn-secondary" style="width: fit-content"
-                            @click="comparativeCollocations('representativeness')">{{ $t('collocation.runComparison') }}
-                        </button>
+                        <div class="input-group pb-2" :id="localField.value + '-group'"
+                            v-if="metadataInputStyle[localField.value] == 'dropdown'">
+                            <button type="button" class="btn btn-outline-secondary">
+                                <label :for="localField.value + '-input-filter'">{{
+            localField.label
+        }}</label>
+                            </button>
+                            <select class="form-select" :id="localField.value + '-select'"
+                                v-model="metadataChoiceSelected[localField.value]">
+                                <option v-for="innerValue in metadataChoiceValues[localField.value]"
+                                    :key="innerValue.value" :value="innerValue.value"
+                                    :id="innerValue.value + '-select-option'">
+                                    {{ innerValue.text }}
+                                </option>
+                            </select>
+                        </div>
+                        <div class="input-group pb-2" :id="localField.value + '-group'"
+                            v-if="['date', 'int'].includes(metadataInputStyle[localField.value])">
+                            <button type="button" class="btn btn-outline-secondary"
+                                style="border-top-right-radius: 0; border-bottom-right-radius: 0">
+                                <label :for="localField.value + '-date'">{{ localField.label
+                                    }}</label>
+                            </button>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-secondary dropdown-toggle"
+                                    style="border-top-left-radius: 0; border-bottom-left-radius: 0" type="button"
+                                    :id="localField.value + '-selector'" data-bs-toggle="dropdown"
+                                    aria-expanded="false">
+                                    {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
+                                </button>
+                                <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
+                                    <li @click="dateTypeToggle(localField.value, 'exact')">
+                                        <a class="dropdown-item">{{
+            $t("searchForm.exactDate") }}</a>
+                                    </li>
+                                    <li @click="dateTypeToggle(localField.value, 'range')">
+                                        <a class="dropdown-item">{{
+            $t("searchForm.rangeDate") }}</a>
+                                    </li>
+                                </ul>
+                            </div>
+                            <input type="text" class="form-control" :id="localField.value + 'input-filter'"
+                                :name="localField.value" :placeholder="localField.example"
+                                v-model="comparedMetadataValues[localField.value]"
+                                v-if="dateType[localField.value] == 'exact'" />
+                            <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
+                                <div class="input-group ms-3">
+                                    <button class="btn btn-outline-secondary" type="button">
+                                        <label for="query-term-input">{{
+            $t("searchForm.dateFrom")
+        }}</label>
+                                    </button>
+                                    <input type="text" class="form-control date-range"
+                                        :id="localField.value + '-start-input-filter'"
+                                        :name="localField.value + '-start'" :placeholder="localField.example"
+                                        v-model="dateRange[localField.value].start" />
+                                    <button class="btn btn-outline-secondary ms-3" type="button">
+                                        <label for="query-term-input">{{
+            $t("searchForm.dateTo")
+        }}</label></button><input type="text" class="form-control date-range"
+                                        :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
+                                        :placeholder="localField.example" v-model="dateRange[localField.value].end" />
+                                </div>
+                            </span>
+                        </div>
                     </div>
                 </div>
+                <button type="button" class="btn btn-secondary" style="width: fit-content"
+                    @click="comparativeCollocations('compare')">{{
+            $t('collocation.runComparison') }}
+                </button>
             </div>
-            <div class="card p-3">
+            <div v-if="comparativeSearchStarted" class="card shadow-sm py-3">
                 <div class="row">
                     <div class="col-6">
                         <bibliography-criteria :biblio="biblio" :query-report="report"
                             :results-length="resultsLength"></bibliography-criteria>
                     </div>
                     <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                        <bibliography-criteria v-if="otherBiblio.length" :biblio="otherBiblio" :query-report="report"
+                        <bibliography-criteria :biblio="otherBiblio" :query-report="report"
                             :results-length="resultsLength"></bibliography-criteria>
-                        <h6 v-else>{{ $t('collocation.comparedToCorpus') }}</h6>
-                        <button class="btn btn-outline-secondary" type="button" data-bs-toggle="collapse"
-                            data-bs-target="#other-corpus-metadata" aria-expanded="false"
-                            aria-controls="other-corpus-metadata" @click="filterMetadataOpen = !filterMetadataOpen">
-                            <span v-if="!filterMetadataOpen">&#9654;</span>
-                            <span v-else>&#9660;</span>
-                            Filter by following metadata
-                        </button>
-                        <div class="collapse mt-2" id="other-corpus-metadata">
-                            <div class="row">
-                                <div class="input-group pb-2" v-for="localField in metadataDisplay"
-                                    :key="localField.value">
-                                    <div class="input-group pb-2" :id="localField.value + '-group'"
-                                        v-if="metadataInputStyle[localField.value] == 'text'">
-                                        <button type="button" class="btn btn-outline-secondary">
-                                            <label :for="localField.value + 'input-filter'">{{
-            localField.label
-        }}</label></button><input type="text" class="form-control"
-                                            :id="localField.value + 'input-filter'" :name="localField.value"
-                                            :placeholder="localField.example"
-                                            v-model="comparedMetadataValues[localField.value]" v-if="metadataInputStyle[localField.value] == 'text' &&
-            metadataInputStyle[localField.value] != 'date'
-            " />
-                                    </div>
-                                    <div class="input-group pb-2" :id="localField.value + '-group'"
-                                        v-if="metadataInputStyle[localField.value] == 'checkbox'">
-                                        <button style="border-top-right-radius: 0; border-bottom-right-radius: 0"
-                                            class="btn btn-outline-secondary me-2">
-                                            {{ localField.label }}
-                                        </button>
-                                        <div class="d-inline-block">
-                                            <div class="form-check d-inline-block ms-3" style="padding-top: 0.35rem"
-                                                :id="localField.value" :options="metadataChoiceValues[localField.value]"
-                                                v-for="metadataChoice in metadataChoiceValues[localField.value]"
-                                                :key="metadataChoice.value" v-once>
-                                                <input class="form-check-input" type="checkbox"
-                                                    :id="metadataChoice.value"
-                                                    v-model="metadataChoiceChecked[metadataChoice.value]" />
-                                                <label class="form-check-label" :for="metadataChoice.value">{{
-            metadataChoice.text
-        }}</label>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="input-group pb-2" :id="localField.value + '-group'"
-                                        v-if="metadataInputStyle[localField.value] == 'dropdown'">
-                                        <button type="button" class="btn btn-outline-secondary">
-                                            <label :for="localField.value + '-input-filter'">{{
-            localField.label
-        }}</label>
-                                        </button>
-                                        <select class="form-select" :id="localField.value + '-select'"
-                                            v-model="metadataChoiceSelected[localField.value]">
-                                            <option v-for="innerValue in metadataChoiceValues[localField.value]"
-                                                :key="innerValue.value" :value="innerValue.value"
-                                                :id="innerValue.value + '-select-option'">
-                                                {{ innerValue.text }}
-                                            </option>
-                                        </select>
-                                    </div>
-                                    <div class="input-group pb-2" :id="localField.value + '-group'"
-                                        v-if="['date', 'int'].includes(metadataInputStyle[localField.value])">
-                                        <button type="button" class="btn btn-outline-secondary"
-                                            style="border-top-right-radius: 0; border-bottom-right-radius: 0">
-                                            <label :for="localField.value + '-date'">{{ localField.label
-                                                }}</label>
-                                        </button>
-                                        <div class="btn-group" role="group">
-                                            <button class="btn btn-secondary dropdown-toggle"
-                                                style="border-top-left-radius: 0; border-bottom-left-radius: 0"
-                                                type="button" :id="localField.value + '-selector'"
-                                                data-bs-toggle="dropdown" aria-expanded="false">
-                                                {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
-                                            </button>
-                                            <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
-                                                <li @click="dateTypeToggle(localField.value, 'exact')">
-                                                    <a class="dropdown-item">{{
-            $t("searchForm.exactDate") }}</a>
-                                                </li>
-                                                <li @click="dateTypeToggle(localField.value, 'range')">
-                                                    <a class="dropdown-item">{{
-            $t("searchForm.rangeDate") }}</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                        <input type="text" class="form-control" :id="localField.value + 'input-filter'"
-                                            :name="localField.value" :placeholder="localField.example"
-                                            v-model="comparedMetadataValues[localField.value]"
-                                            v-if="dateType[localField.value] == 'exact'" />
-                                        <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
-                                            <div class="input-group ms-3">
-                                                <button class="btn btn-outline-secondary" type="button">
-                                                    <label for="query-term-input">{{
-            $t("searchForm.dateFrom")
-        }}</label>
-                                                </button>
-                                                <input type="text" class="form-control date-range"
-                                                    :id="localField.value + '-start-input-filter'"
-                                                    :name="localField.value + '-start'"
-                                                    :placeholder="localField.example"
-                                                    v-model="dateRange[localField.value].start" />
-                                                <button class="btn btn-outline-secondary ms-3" type="button">
-                                                    <label for="query-term-input">{{
-                                                        $t("searchForm.dateTo")
-                                                        }}</label></button><input type="text"
-                                                    class="form-control date-range"
-                                                    :id="localField.value + 'end-input-filter'"
-                                                    :name="localField.value + '-end'" :placeholder="localField.example"
-                                                    v-model="dateRange[localField.value].end" />
-                                            </div>
-                                        </span>
+                    </div>
+                </div>
+                <ul class="nav nav-tabs mt-1" style="margin-left: -.75rem" id="colloc-tab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" style="border-left-width: 0" id="frequent-tab"
+                            data-bs-toggle="tab" data-bs-target="#freq-tab-pane" type="button" role="tab"
+                            aria-controls="freq-tab-pane" aria-selected="true">{{ $t('collocation.frequentCollocates')
+                            }}</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="rep-tab" data-bs-toggle="tab" data-bs-target="#rep-tab-pane"
+                            type="button" role="tab" aria-controls="rep-tab-pane" aria-selected="false">{{
+            $t('collocation.overRepresentedCollocates') }}</button>
+                    </li>
+                </ul>
+                <div class="tab-content" id="colloc-tab-content">
+                    <div class="tab-pane fade show active" id="freq-tab-pane" role="tabpanel" aria-labelledby="freq-tab"
+                        tabindex="0">
+                        <div class="row gx-5">
+                            <div class="col-6">
+                                <word-cloud :word-weights="sortedList" label=""
+                                    :click-handler="collocTableClick"></word-cloud>
+                            </div>
+                            <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
+                                <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
+                                    <div class="spinner-border text-secondary" role="status"
+                                        style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px">
+                                        <span class="visually-hidden">{{ $t("common.loading") }}...</span>
                                     </div>
                                 </div>
+                                <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates" label=""
+                                    :click-handler="collocTableClick"></word-cloud>
                             </div>
-                            <button type="button" class="btn btn-secondary" style="width: fit-content"
-                                @click="comparativeCollocations('representativeness')">{{
-                                $t('collocation.runComparison') }}
-                            </button>
                         </div>
-
                     </div>
-                </div>
-                <h5 class="mt-3" style="text-align: center">Most frequent collocates</h5>
-                <div class="row gx-5">
-                    <div class="col-6">
-                        <word-cloud :word-weights="sortedList" label="" :click-handler="collocTableClick"></word-cloud>
-                    </div>
-                    <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                        <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates" label=""
-                            :click-handler="collocTableClick"></word-cloud>
-                    </div>
-                </div>
-                <h5 class="mt-3" style="text-align: center">{{ $t('collocation.overRepresented') }}</h5>
-                <div class="row gx-5">
-                    <div class="col-6">
-                        <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
-                            :click-handler="collocTableClick"></word-cloud>
-                    </div>
-                    <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                        <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
-                            :click-handler="collocTableClick"></word-cloud>
+                    <div class="tab-pane fade" id="rep-tab-pane" role="tabpanel" aria-labelledby="rep-tab" tabindex="0">
+                        <div class="row gx-5">
+                            <div class="col-6">
+                                <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
+                                    :click-handler="collocTableClick"></word-cloud>
+                            </div>
+                            <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
+                                <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
+                                    <div class="spinner-border text-secondary" role="status"
+                                        style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px">
+                                        <span class="visually-hidden">{{ $t("common.loading") }}...</span>
+                                    </div>
+                                </div>
+                                <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
+                                    :click-handler="collocTableClick"></word-cloud>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -333,7 +232,7 @@ import { mapFields } from "vuex-map-fields";
 import ResultsSummary from "./ResultsSummary";
 import WordCloud from "./WordCloud.vue";
 import BibliographyCriteria from "./BibliographyCriteria";
-import { Collapse } from "bootstrap";
+import { Collapse, Tab } from "bootstrap";
 
 export default {
     name: "collocation-report",
@@ -406,6 +305,8 @@ export default {
             comparedTo: "wholeCorpus",
             wholeCorpus: true,
             filterMetadataOpen: false,
+            compareSearching: false,
+            comparativeSearchStarted: false
         };
     },
     created() {
@@ -443,6 +344,7 @@ export default {
             this.overRepresented = [];
             this.underRepresented = [];
             this.other_corpus_metadata = {};
+            this.comparativeSearchStarted = false
             this.updateCollocation(collocObject, 0);
         },
         updateCollocation(fullResults, start) {
@@ -556,8 +458,16 @@ export default {
         },
         getFrequency() {
             this.collocMethod = "frequency";
-            this.sortedList = this.collocatesSorted
-            this.buildWordCloud()
+        },
+        toggleCompare() {
+            this.collocMethod = "compare";
+            this.filterMetadataOpen = true
+            this.$nextTick(() => {
+                let collapseElement = document.getElementById('other-corpus-metadata')
+                new Collapse(collapseElement, {
+                    toggle: true
+                })
+            })
         },
         comparativeCollocations(method) {
             let collapseElement = document.getElementById('other-corpus-metadata')
@@ -565,14 +475,14 @@ export default {
                 Collapse.getInstance(collapseElement).hide()
                 this.filterMetadataOpen = false
             }
-
-            if (this.collocMethod == "frequency") {
-                this.collocatesSorted = this.copyObject(this.sortedList)
-            }
+            this.comparativeSearchStarted = true;
             this.collocMethod = method;
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             this.otherBiblio = this.buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
-            this.searching = true;
+            this.compareSearching = true;
+            this.overRepresented = [];
+            this.underRepresented = [];
+            this.otherCollocates = [];
             this.$http.post(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
                 all_collocates: this.collocatesUnsorted,
                 other_corpus_metadata: this.comparedMetadataValues
@@ -590,14 +500,11 @@ export default {
                 this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
                 this.otherCollocates = this.extractSurfaceFromCollocate(response.data.other_collocates);
                 this.relativeFrequencies = { top: this.overRepresented, bottom: this.underRepresented };
-                this.searching = false;
+                this.compareSearching = false;
 
             }).catch((error) => {
                 this.debug(this, error);
             });
-            // } else {
-            //     this.overRepresented = this.relativeFrequencies.top;
-            //     this.underRepresented = this.relativeFrequencies.bottom;
         },
     },
 };
@@ -682,5 +589,10 @@ input[type="text"]:focus {
 
 input:focus::placeholder {
     opacity: 0;
+}
+
+.btn-link {
+    text-decoration: none;
+    margin-left: -.75rem;
 }
 </style>

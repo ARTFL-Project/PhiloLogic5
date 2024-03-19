@@ -105,13 +105,12 @@
     "collocation": {
         "collocate": "Collocate",
         "count": "Count",
-        "frequency": "Frequency",
-        "representativeness": "Representativeness",
-        "overRepresented": "Over-represented collocates",
-        "underRepresented": "Under-represented collocates",
-        "representativenessDefined": "Representativeness is a measure of how much more or less frequently a word occurs in the context of the search term than it does in either the rest of the corpus or another section of the corpus. The top and bottom 100 words are shown here.",
-        "comparedToCorpus": "When compared to the rest of the corpus",
-        "comparedToSection": "When compared to texts with the following metadata",
+        "collocation": "Collocation",
+        "compareTo": "Comparative Collocation",
+        "frequentCollocates": "Most frequent collocates",
+        "overRepresentedCollocates": "Over-represented collocates",
+        "emptySearch": "Note that an empty search will run a comparison against the rest of the corpus",
+        "metadataFilter" : "Filter by the following metadata fields",
         "runComparison": "Run comparison"
     },
     "concordance": {

@@ -104,13 +104,12 @@
     "collocation": {
         "collocate": "Collocation",
         "count": "Compte",
-        "frequency": "Fréquence",
-        "representativeness": "Représentativité",
-        "overRepresented": "Collocatations sur-représentés",
-        "underRepresented": "Collocatations sous-représentés",
-        "representativenessDefined": "La représentativité est une mesure de la fréquence à laquelle un mot apparaît dans le contexte du terme de recherche par rapport à sa fréquence dans le reste du corpus ou dans une autre section du corpus. Les 100 mots les plus et les moins représentés sont affichés ici.",
-        "comparedToCorpus": "Quand comparé à l'ensemble du corpus",
-        "comparedToSection": "Quand comparé à d'autres textes avec les métadonnées suivantes",
+        "collocation": "Collocation",
+        "compareTo": "Collocation comparative",
+        "frequentCollocates": "Collocations les plus fréquentes",
+        "overRepresentedCollocates": "Collocations sur-représentées",
+        "emptySearch": "Notez qu'une recherche vide lancera une comparaison avec le reste du corpus",
+        "metadataFilter" : "Filtrez par les métadonnées suivantes",
         "runComparison": "Lancer la comparaison"
     },
     "concordance": {
