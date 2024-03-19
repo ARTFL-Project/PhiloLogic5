@@ -27,9 +27,23 @@ except ImportError:
 def collocation(environ, start_response):
     config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("reports", ""))
     request = WSGIHandler(environ, config)
+    if environ["REQUEST_METHOD"] == "OPTIONS":
+        # Handle preflight request
+        start_response(
+            "200 OK",
+            [
+                ("Content-Type", "text/plain"),
+                ("Access-Control-Allow-Origin", environ["HTTP_ORIGIN"]),  # Replace with your client domain
+                ("Access-Control-Allow-Methods", "POST, OPTIONS"),
+                ("Access-Control-Allow-Headers", "Content-Type"),  # Adjust if needed for your headers
+            ],
+        )
+        return [b""]  # Empty response body for OPTIONS
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response("200 OK", headers)
-    collocation_object = collocation_results(request, config)
+    post_data = environ["wsgi.input"].read()
+    current_collocates = orjson.loads(post_data)["current_collocates"]
+    collocation_object = collocation_results(request, config, current_collocates)
     yield orjson.dumps(collocation_object)
 
 

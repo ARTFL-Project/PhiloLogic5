@@ -14,7 +14,7 @@ from philologic.runtime.Query import get_word_groups
 from orjson import dumps
 
 
-def collocation_results(request, config):
+def collocation_results(request, config, current_collocates):
     """Fetch collocation results"""
     collocation_object: dict[str, Any] = {"query": dict([i for i in request])}
     db = DB(config.db_path + "/data/")
@@ -81,7 +81,11 @@ def collocation_results(request, config):
         max_time = None
     else:
         max_time = request.max_time or 2
-    all_collocates = {}
+
+    if current_collocates:
+        all_collocates = dict(current_collocates)
+    else:
+        all_collocates = {}
     start_time = timeit.default_timer()
 
     env = lmdb.open(
@@ -129,18 +133,17 @@ def collocation_results(request, config):
                 if collocate is not None:  # in the event lemma is None
                     if collocate_distance is None:
                         if collocate not in all_collocates:
-                            all_collocates[collocate] = {"count": 1}
+                            all_collocates[collocate] = 1
                         else:
-                            all_collocates[collocate]["count"] += 1
+                            all_collocates[collocate] += 1
                     else:
                         if abs(position - q_word_position[0]) <= collocate_distance:  # type: ignore
                             if collocate not in all_collocates:
-                                all_collocates[collocate] = {"count": 1}
+                                all_collocates[collocate] = 1
                             else:
-                                all_collocates[collocate]["count"] += 1
+                                all_collocates[collocate] += 1
 
             hits_done += 1
-
             elapsed = timeit.default_timer() - start_time
             # split the query if more than request.max_time has been spent in the loop
             if max_time is not None:
@@ -149,6 +152,7 @@ def collocation_results(request, config):
     env.close()
     hits.finish()
 
+    all_collocates = sorted(all_collocates.items(), key=lambda item: item[1], reverse=True)
     collocation_object["collocates"] = all_collocates
     collocation_object["results_length"] = len(hits)
     if hits_done < collocation_object["results_length"]:
@@ -158,10 +162,6 @@ def collocation_results(request, config):
         collocation_object["more_results"] = False
         collocation_object["hits_done"] = collocation_object["results_length"]
     collocation_object["distance"] = collocate_distance
-    if len(request.metadata) == 1:  # request.metadata always has philo_type as a key
-        collocation_object["whole_corpus"] = True
-    else:
-        collocation_object["whole_corpus"] = False
 
     return collocation_object
 

@@ -42,22 +42,11 @@ def get_collocation_relative_proportions(environ, start_response):
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    request = WSGIHandler(environ, config)
 
-    post_data = environ["wsgi.input"].read()
-    all_collocates = orjson.loads(post_data)["all_collocates"]
-    other_corpus_metadata = orjson.loads(post_data)["other_corpus_metadata"]
-
-    whole_corpus = True
-    if other_corpus_metadata:
-        request.metadata = other_corpus_metadata
-        whole_corpus = False
-    else:
-        # Run collocation against whole corpus
-        request.metadata = {}  # Clear metadata to run against whole corpus
-    request.max_time = None  # fetch all results
-    other_collocates = collocation_results(request, config)["collocates"]
+    post_data = orjson.loads(environ["wsgi.input"].read())
+    all_collocates = post_data["all_collocates"]
+    other_collocates = post_data["other_collocates"]
+    whole_corpus = post_data["whole_corpus"]
 
     top_relative_proportions, low_relative_proportions = get_relative_proportions(
         all_collocates, other_collocates, whole_corpus
@@ -68,8 +57,7 @@ def get_collocation_relative_proportions(environ, start_response):
             "top": top_relative_proportions,
             "bottom": low_relative_proportions,
             "other_collocates": [
-                {"label": word, "count": value["count"]}
-                for word, value in sorted(other_collocates.items(), key=lambda x: x[1]["count"], reverse=True)[:100]
+                (word, value) for word, value in sorted(other_collocates, key=lambda x: x[1], reverse=True)[:100]
             ],
         }
     )
@@ -77,17 +65,11 @@ def get_collocation_relative_proportions(environ, start_response):
 
 def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     # Create DataFrames
-    df_sub = pd.DataFrame.from_dict(
-        {k: v["count"] for k, v in all_collocates.items()}, orient="index", columns=["sub_corpus_count"]
-    )
-    df_other = pd.DataFrame.from_dict(
-        {k: v["count"] for k, v in other_collocates.items()}, orient="index", columns=["other_corpus_count"]
-    )
+    df_sub = pd.DataFrame.from_dict(dict(all_collocates), orient="index", columns=["sub_corpus_count"])
+    df_other = pd.DataFrame.from_dict(dict(other_collocates), orient="index", columns=["other_corpus_count"])
 
     # Outer Join (Preserves all collocates)
     df_combined = df_sub.join(df_other, how="outer").fillna(0)
-
-    df_combined.to_csv("/tmp/combined.csv")
 
     # Adjust counts if comparing against the whole corpus
     if whole_corpus:
@@ -112,8 +94,10 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     # Over-representation score
     df_combined["over_representation_score"] = df_combined["sub_corpus_zscore"] - df_combined["other_corpus_zscore"]
 
+    df_combined.to_csv("/tmp/combined.csv")
+
     top_relative_proportions = [
-        {"label": word, "count": value}
+        (word, value)
         for word, value in df_combined[df_combined["over_representation_score"] > 0]["over_representation_score"]
         .sort_values(ascending=False)
         .head(100)
@@ -121,7 +105,7 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     ]
 
     bottom_relative_proportions = [
-        {"label": word, "count": abs(value)}
+        (word, abs(value))
         for word, value in df_combined[df_combined["over_representation_score"] < 0]["over_representation_score"]
         .sort_values()
         .head(100)

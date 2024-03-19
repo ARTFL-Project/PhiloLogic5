@@ -9,8 +9,8 @@
                         @click="getFrequency()">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.collocation") }}</span>
                     </button>
-                    <button type="button" class="btn btn-secondary"
-                        :class="{ active: collocMethod === 'compare', disabled: wholeCorpus }" @click="toggleCompare()">
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'compare' }"
+                        @click="toggleCompare()">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.compareTo") }}</span>
                     </button>
                 </div>
@@ -155,7 +155,7 @@
                     </div>
                 </div>
                 <button type="button" class="btn btn-secondary" style="width: fit-content"
-                    @click="comparativeCollocations('compare')">{{
+                    @click="getOtherCollocates({}, 0)">{{
             $t('collocation.runComparison') }}
                 </button>
             </div>
@@ -283,6 +283,7 @@ export default {
             biblio: {},
             moreResults: false,
             sortedList: [],
+            collocateCounts: [],
             showFilteredWords: false,
             runningTotal: 0,
             collocCloudWords: [],
@@ -303,10 +304,10 @@ export default {
             otherCollocates: [],
             otherBiblio: {},
             comparedTo: "wholeCorpus",
-            wholeCorpus: true,
             filterMetadataOpen: false,
             compareSearching: false,
-            comparativeSearchStarted: false
+            comparativeSearchStarted: false,
+            otherDone: false,
         };
     },
     created() {
@@ -332,7 +333,6 @@ export default {
     methods: {
         fetchResults() {
             this.localFormData = this.copyObject(this.$store.state.formData);
-            var collocObject = {};
             this.searching = true;
             this.relativeFrequencies = {};
             this.collocMethod = "frequency"
@@ -340,7 +340,7 @@ export default {
             this.underRepresented = [];
             this.other_corpus_metadata = {};
             this.comparativeSearchStarted = false
-            this.updateCollocation(collocObject, 0);
+            this.updateCollocation({}, 0);
         },
         buildMetadata(metadata) {
             this.metadataDisplay = metadata.display;
@@ -357,55 +357,45 @@ export default {
                 start: start.toString(),
             };
             this.$http
-                .get(`${this.$dbUrl}/reports/collocation.py`, {
-                    params: this.paramsFilter(params),
-                })
+                .post(`${this.$dbUrl}/reports/collocation.py`, {
+                    current_collocates: fullResults,
+                },
+                    {
+                        params: this.paramsFilter(params),
+                    })
                 .then((response) => {
-                    let data = response.data;
-                    this.wholeCorpus = response.data.whole_corpus;
-                    this.resultsLength = data.results_length;
-                    this.moreResults = data.more_results;
-                    this.runningTotal = data.hits_done;
-                    start = data.hits_done;
+                    this.resultsLength = response.data.results_length;
+                    this.moreResults = response.data.more_results;
+                    this.runningTotal = response.data.hits_done;
+                    start = response.data.hits_done;
                     this.searching = false;
                     if (this.resultsLength) {
-                        this.sortAndRenderCollocation(fullResults, data, start);
+                        if (this.moreResults) {
+                            this.sortedList = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
+                            this.updateCollocation(response.data.collocates, start);
+                        }
+                        else {
+                            this.collocateCounts = response.data.collocates;
+                            this.sortedList = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
+                            this.done = true
+                        }
                     }
+
                 })
                 .catch((error) => {
                     this.searching = false;
                     this.debug(this, error);
                 });
         },
-        sortAndRenderCollocation(fullResults, data, start) {
-            if (typeof fullResults === "undefined" || Object.keys(fullResults).length === 0) {
-                fullResults = {};
-                this.filterList = data.filter_list;
-            }
-            var collocates = this.mergeResults(fullResults, data.collocates);
-            this.collocatesUnsorted = collocates.unsorted
-            this.sortedList = this.extractSurfaceFromCollocate(collocates.sorted.slice(0, 100));
-            // this.buildWordCloud();
-            if (this.moreResults) {
-                var tempFullResults = collocates.unsorted;
-                var runningQuery = this.$store.state.formData;
-                if (this.report === "collocation" && this.deepEqual(runningQuery, this.localFormData)) {
-                    // make sure we're still running the same query
-                    this.updateCollocation(tempFullResults, start);
-                }
-            } else {
-                this.done = true;
-            }
-        },
         extractSurfaceFromCollocate(words) {
             let newWords = []
-            for (let word of words) {
-                let collocate = `${word.label}`.replace(/lemma:/, "");
+            for (let wordObj of words) {
+                let collocate = `${wordObj[0]}`.replace(/lemma:/, "");
                 if (collocate.search(/\w+:.*/) != -1) {
                     collocate = collocate.replace(/(\p{L}+):.*/u, "$1");
                 }
-                let surfaceForm = word.label;
-                newWords.push({ collocate: collocate, surfaceForm: surfaceForm, count: word.count });
+                let surfaceForm = wordObj[0];
+                newWords.push({ collocate: collocate, surfaceForm: surfaceForm, count: wordObj[1] });
             }
             return newWords
         },
@@ -469,14 +459,54 @@ export default {
                 })
             })
         },
-        comparativeCollocations(method) {
+        getOtherCollocates(fullResults, start) {
+            // Check if this.compareMetadataValues is empty
+            if (Object.keys(this.comparedMetadataValues).length === 0) {
+                this.wholeCorpus = true
+            } else {
+                this.wholeCorpus = false
+            }
+            this.collocMethod = 'compare';
+            let params = {
+                q: this.q,
+                ...this.comparedMetadataValues,
+                start: start.toString(),
+            };
+            this.otherDone = false;
+            this.$http
+                .post(`${this.$dbUrl}/reports/collocation.py`, {
+                    current_collocates: fullResults,
+                },
+                    {
+                        params: this.paramsFilter(params),
+                    })
+                .then((response) => {
+                    let resultsLength = response.data.results_length;
+                    let moreResults = response.data.more_results;
+                    let start = response.data.hits_done;
+                    if (resultsLength) {
+                        if (moreResults) {
+                            this.getOtherCollocates(response.data.collocates, start);
+                        }
+                        else {
+                            this.otherDone = true
+                            this.comparativeCollocations(response.data.collocates)
+                        }
+                    }
+
+                })
+                .catch((error) => {
+                    this.searching = false;
+                    this.debug(this, error);
+                });
+        },
+        comparativeCollocations(otherCollocates) {
             let collapseElement = document.getElementById('other-corpus-metadata')
             if (collapseElement != null) {
                 Collapse.getInstance(collapseElement).hide()
                 this.filterMetadataOpen = false
             }
             this.comparativeSearchStarted = true;
-            this.collocMethod = method;
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             this.otherBiblio = this.buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
             this.compareSearching = true;
@@ -484,21 +514,17 @@ export default {
             this.underRepresented = [];
             this.otherCollocates = [];
             this.$http.post(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
-                all_collocates: this.collocatesUnsorted,
-                other_corpus_metadata: this.comparedMetadataValues
-            }, {
-                params: {
-                    ...this.$store.state.formData,
-                },
-
+                all_collocates: this.collocateCounts,
+                other_collocates: otherCollocates,
+                whole_corpus: this.wholeCorpus,
             }, {
                 headers: {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }
             }).then((response) => {
+                this.otherCollocates = this.extractSurfaceFromCollocate(otherCollocates.slice(0, 100));
                 this.overRepresented = this.extractSurfaceFromCollocate(response.data.top);
                 this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
-                this.otherCollocates = this.extractSurfaceFromCollocate(response.data.other_collocates);
                 this.relativeFrequencies = { top: this.overRepresented, bottom: this.underRepresented };
                 this.compareSearching = false;
 

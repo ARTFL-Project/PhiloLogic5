@@ -63,7 +63,7 @@
         "filterCollocate": "Filter collocates by",
         "collocatesWithin": "Collocates within",
         "words": "words",
-        "collocatesWithinSentence": "Collocates within the same sentence",
+        "collocatesWithinSentence": "Collocates within the same sentence"
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",
