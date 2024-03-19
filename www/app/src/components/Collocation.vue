@@ -28,7 +28,7 @@
                         </thead>
                         <tbody>
                             <tr style="line-height: 2rem" v-for="word in sortedList" :key="word.collocate"
-                                @click="collocTableClick(word)">
+                                @click="collocateClick(word)">
                                 <td class="text-view">{{ word.collocate }}</td>
                                 <td>{{ word.count }}</td>
                             </tr>
@@ -39,7 +39,7 @@
             <div class="col-12 col-sm-8">
                 <div class="card shadow-sm">
                     <word-cloud v-if="collocMethod == 'frequency' && sortedList.length > 0" :word-weights="sortedList"
-                        label="" :click-handler="collocTableClick"></word-cloud>
+                        label="" :click-handler="collocateClick"></word-cloud>
                 </div>
             </div>
         </div>
@@ -189,7 +189,7 @@
                         <div class="row gx-5">
                             <div class="col-6">
                                 <word-cloud :word-weights="sortedList" label=""
-                                    :click-handler="collocTableClick"></word-cloud>
+                                    :click-handler="collocateClick"></word-cloud>
                             </div>
                             <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
                                 <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
@@ -199,7 +199,7 @@
                                     </div>
                                 </div>
                                 <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates" label=""
-                                    :click-handler="collocTableClick"></word-cloud>
+                                    :click-handler="otherCollocateClick"></word-cloud>
                             </div>
                         </div>
                     </div>
@@ -207,7 +207,7 @@
                         <div class="row gx-5">
                             <div class="col-6">
                                 <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
-                                    :click-handler="collocTableClick"></word-cloud>
+                                    :click-handler="collocateClick"></word-cloud>
                             </div>
                             <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
                                 <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
@@ -217,7 +217,7 @@
                                     </div>
                                 </div>
                                 <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
-                                    :click-handler="collocTableClick"></word-cloud>
+                                    :click-handler="otherCollocateClick"></word-cloud>
                             </div>
                         </div>
                     </div>
@@ -313,6 +313,7 @@ export default {
         this.report = "collocation";
         this.currentReport = "collocation";
         this.fetchResults();
+        this.buildMetadata(this.searchableMetadata);
         this.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
     },
     watch: {
@@ -323,13 +324,7 @@ export default {
         },
         searchableMetadata: {
             handler: function (newVal, oldVal) {
-                this.metadataDisplay = newVal.display;
-                this.metadataInputStyle = newVal.inputStyle;
-                this.metadataChoiceValues = newVal.choiceValues;
-                for (let metadata in this.metadataInputStyle) {
-                    this.dateType[metadata] = "exact";
-                    this.dateRange[metadata] = { start: "", end: "" };
-                }
+                this.buildMetadata(newVal)
             },
             deep: true,
         },
@@ -346,6 +341,15 @@ export default {
             this.other_corpus_metadata = {};
             this.comparativeSearchStarted = false
             this.updateCollocation(collocObject, 0);
+        },
+        buildMetadata(metadata) {
+            this.metadataDisplay = metadata.display;
+            this.metadataInputStyle = metadata.inputStyle;
+            this.metadataChoiceValues = metadata.choiceValues;
+            for (let metadata in this.metadataInputStyle) {
+                this.dateType[metadata] = "exact";
+                this.dateRange[metadata] = { start: "", end: "" };
+            }
         },
         updateCollocation(fullResults, start) {
             let params = {
@@ -405,16 +409,20 @@ export default {
             }
             return newWords
         },
-        collocTableClick(item) {
+        collocateCleanup(collocate) {
             let q
-            if (item.surfaceForm.startsWith("lemma:")) {
-                q = `${this.q} ${item.surfaceForm}`;
-            } else if (item.surfaceForm.search(/\w+:.*/) != -1) {
-                q = `${this.q} ${item.surfaceForm}`;
+            if (collocate.surfaceForm.startsWith("lemma:")) {
+                q = `${this.q} ${collocate.surfaceForm}`;
+            } else if (collocate.surfaceForm.search(/\w+:.*/) != -1) {
+                q = `${this.q} ${collocate.surfaceForm}`;
             }
             else {
-                q = `${this.q} "${item.surfaceForm}"`;
+                q = `${this.q} "${collocate.surfaceForm}"`;
             }
+            return q
+        },
+        collocateClick(item) {
+            let q = this.collocateCleanup(item)
             let method = "cooc"
             if (this.arg_proxy.length > 0) {
                 method = 'proxy'
@@ -428,23 +436,15 @@ export default {
                 })
             );
         },
-        relativeFrequenciesClick(item) {
-            let q
-            if (item.surfaceForm.startsWith("lemma:")) {
-                q = `${this.q} ${item.surfaceForm}`;
-            } else if (item.surfaceForm.search(/\w+:.*/) != -1) {
-                q = `${this.q} ${item.surfaceForm}`;
-            }
-            else {
-                q = `${this.q} "${item.surfaceForm}"`;
-            }
+        otherCollocateClick(item) {
+            let q = this.collocateCleanup(item)
             let method = "cooc"
             if (this.arg_proxy.length > 0) {
                 method = 'proxy'
             }
             this.$router.push(
                 this.paramsToRoute({
-                    ...this.$store.state.formData,
+                    ...this.comparedMetadataValues,
                     report: "concordance",
                     q: q,
                     method: method,
