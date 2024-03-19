@@ -472,7 +472,9 @@ export default {
                 ...this.comparedMetadataValues,
                 start: start.toString(),
             };
-            this.otherDone = false;
+            this.comparativeSearchStarted = true;
+            this.compareSearching = true
+            this.otherCollocates = [];
             this.$http
                 .post(`${this.$dbUrl}/reports/collocation.py`, {
                     current_collocates: fullResults,
@@ -489,7 +491,8 @@ export default {
                             this.getOtherCollocates(response.data.collocates, start);
                         }
                         else {
-                            this.otherDone = true
+                            this.compareSearching = false;
+                            this.otherCollocates = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
                             this.comparativeCollocations(response.data.collocates)
                         }
                     }
@@ -509,10 +512,8 @@ export default {
             this.comparativeSearchStarted = true;
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             this.otherBiblio = this.buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
-            this.compareSearching = true;
             this.overRepresented = [];
             this.underRepresented = [];
-            this.otherCollocates = [];
             this.$http.post(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
                 all_collocates: this.collocateCounts,
                 other_collocates: otherCollocates,
@@ -522,11 +523,9 @@ export default {
                     'Content-Type': 'application/x-www-form-urlencoded'
                 }
             }).then((response) => {
-                this.otherCollocates = this.extractSurfaceFromCollocate(otherCollocates.slice(0, 100));
                 this.overRepresented = this.extractSurfaceFromCollocate(response.data.top);
                 this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
                 this.relativeFrequencies = { top: this.overRepresented, bottom: this.underRepresented };
-                this.compareSearching = false;
 
             }).catch((error) => {
                 this.debug(this, error);
