@@ -13,6 +13,10 @@
                         @click="toggleCompare()">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.compareTo") }}</span>
                     </button>
+                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'similar' }"
+                        @click="toggleSimilar()">
+                        <span class="d-none d-sm-none d-md-inline">Similar word usage</span>
+                    </button>
                 </div>
             </div>
         </div>
@@ -224,6 +228,23 @@
                 </div>
             </div>
         </div>
+        <div v-if="collocMethod == 'similar'" class="ms-2 mt-2">
+            Select field to compare collocations to:
+            <div class="dropdown mt-2">
+                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                    aria-expanded="false">
+                    {{ philoConfig.collocation_fields_to_compare[0] }}
+                </button>
+                <ul class="dropdown-menu">
+                    <li v-for="field in philoConfig.collocation_fields_to_compare" :key="field"
+                        @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{field}}</a></li>
+                </ul>
+            </div>
+            <ul class="list-group mt-3">
+                <li class="list-group-item" v-for="metadataValue in mostSimilarDistributions" :key="metadataValue">{{
+                    metadataValue[0] }}: {{ metadataValue[1] }}</li>
+            </ul>
+        </div>
     </div>
 </template>
 
@@ -257,16 +278,6 @@ export default {
         formData() {
             return this.$store.state.formData;
         },
-        splittedFilterList: function () {
-            let arrayLength = this.filterList.length;
-            let chunkSize = arrayLength / 5;
-            let splittedList = [];
-            for (let index = 0; index < arrayLength; index += chunkSize) {
-                let myChunk = this.filterList.slice(index, index + chunkSize);
-                splittedList.push(myChunk);
-            }
-            return splittedList;
-        },
     },
     inject: ["$http"],
     provide() {
@@ -287,10 +298,7 @@ export default {
             showFilteredWords: false,
             runningTotal: 0,
             collocCloudWords: [],
-            unboundListener: null,
             collocMethod: "frequency",
-            collocatesUnsorted: {},
-            collocatesSorted: [],
             relativeFrequencies: {},
             overRepresented: [],
             underRepresented: [],
@@ -308,6 +316,8 @@ export default {
             compareSearching: false,
             comparativeSearchStarted: false,
             otherDone: false,
+            fieldValuesToCompare: [],
+            mostSimilarDistributions: [],
         };
     },
     created() {
@@ -367,6 +377,7 @@ export default {
                     this.resultsLength = response.data.results_length;
                     this.moreResults = response.data.more_results;
                     this.runningTotal = response.data.hits_done;
+                    this.filterList = response.data.filter_list
                     start = response.data.hits_done;
                     this.searching = false;
                     if (this.resultsLength) {
@@ -459,8 +470,10 @@ export default {
                 })
             })
         },
+        toggleSimilar() {
+            this.collocMethod = "similar";
+        },
         getOtherCollocates(fullResults, start) {
-            // Check if this.compareMetadataValues is empty
             if (Object.keys(this.comparedMetadataValues).length === 0) {
                 this.wholeCorpus = true
             } else {
@@ -531,6 +544,37 @@ export default {
                 this.debug(this, error);
             });
         },
+        similarCollocDistributions(field, start) {
+            this.$http
+                .post(`${this.$dbUrl}/reports/collocation.py`, {
+                    current_collocates: [],
+                }, {
+                    params: { q: this.q, start: start.toString(), map_field: field }
+                }).then((response) => {
+                    if (response.data.more_results) {
+                        this.similarCollocDistributions(field, response.data.hits_done);
+                    } else {
+                        this.getMostSimilarCollocDistribution(response.data.file_path);
+                    }
+                }).catch((error) => {
+                    this.debug(this, error);
+                });
+
+        },
+        getMostSimilarCollocDistribution(filePath) {
+            this.$http.post(`${this.$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
+                collocates: this.collocateCounts,
+            },
+                {
+                    params: {
+                        file_path: filePath,
+                    }
+                }).then((response) => {
+                    this.mostSimilarDistributions = response.data.most_similar_distributions
+                }).catch((error) => {
+                    this.debug(this, error);
+                });
+        }
     },
 };
 </script>
@@ -595,15 +639,6 @@ tbody tr {
     width: 100%;
 }
 
-
-.card-header {
-    // text-align: center;
-    background-color: #fff !important;
-    // color: #fff !important;
-    // font-weight: 400;
-    // font-variant: small-caps;
-}
-
 input[type="text"]:focus {
     opacity: 1;
 }
@@ -619,5 +654,10 @@ input:focus::placeholder {
 .btn-link {
     text-decoration: none;
     margin-left: -.75rem;
+}
+
+#colloc-tab button {
+    font-variant: small-caps;
+    font-size: 1rem;
 }
 </style>

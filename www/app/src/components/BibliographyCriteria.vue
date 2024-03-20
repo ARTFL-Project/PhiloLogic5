@@ -1,26 +1,28 @@
 <template>
     <div>
-        {{ $t("searchArgs.biblioCriteria") }}:
-        <span class="metadata-args rounded-pill" v-for="metadata in biblio" :key="metadata.key">
-            <span class="metadata-label">{{ metadata.alias }}</span>
-            <span class="metadata-value">{{ metadata.value.replace("<=>", "&#8212;") }}</span>
-            <span class="remove-metadata" v-if="removable" @click="removeMetadata(metadata.key)">X</span>
-        </span>
-        <b v-if="biblio.length === 0">{{ $t("common.none") }}</b>
-    </div>
-    <div v-if="queryReport === 'time_series'">
-        {{ $t("searchArgs.occurrencesBetween", { n: resultsLength }) }}
-        <span class="biblio-criteria">
-            <span class="metadata-args rounded-pill">
-                <span class="metadata-value">{{ start_date }}</span>
-                <span class="remove-metadata" v-if="removable" @click="removeMetadata('start_date')">X</span>
-            </span> </span>&nbsp; {{ $t("common.and") }}&nbsp;
-        <span class="biblio-criteria">
-            <span class="metadata-args rounded-pill">
-                <span class="metadata-value">{{ end_date }}</span>
-                <span class="remove-metadata" v-if="removable" @click="removeMetadata('end_date')">X</span>
+        <div>
+            {{ $t("searchArgs.biblioCriteria") }}:
+            <span class="metadata-args rounded-pill" v-for="metadata in biblio" :key="metadata.key">
+                <span class="metadata-label">{{ metadata.alias }}</span>
+                <span class="metadata-value">{{ metadata.value.replace("<=>", "&#8212;") }}</span>
+                <span class="remove-metadata" v-if="removable" @click="removeMetadata(metadata.key)">X</span>
             </span>
-        </span>
+            <b v-if="biblio.length === 0">{{ $t("common.none") }}</b>
+        </div>
+        <div v-if="queryReport === 'time_series'">
+            {{ $t("searchArgs.occurrencesBetween", { n: resultsLength }) }}
+            <span class="biblio-criteria">
+                <span class="metadata-args rounded-pill">
+                    <span class="metadata-value">{{ start_date }}</span>
+                    <span class="remove-metadata" v-if="removable" @click="removeMetadata('start_date')">X</span>
+                </span> </span>&nbsp; {{ $t("common.and") }}&nbsp;
+            <span class="biblio-criteria">
+                <span class="metadata-args rounded-pill">
+                    <span class="metadata-value">{{ end_date }}</span>
+                    <span class="remove-metadata" v-if="removable" @click="removeMetadata('end_date')">X</span>
+                </span>
+            </span>
+        </div>
     </div>
 </template>
 <script>
