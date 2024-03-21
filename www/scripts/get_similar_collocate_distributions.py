@@ -7,12 +7,8 @@ import os
 import pickle
 from wsgiref.handlers import CGIHandler
 import sys
-import time
 
-from philologic.runtime.reports import collocation_results
-from philologic.runtime.DB import DB
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
 import orjson
 import pandas as pd
 

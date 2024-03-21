@@ -56,9 +56,6 @@ def get_collocation_relative_proportions(environ, start_response):
         {
             "top": top_relative_proportions,
             "bottom": low_relative_proportions,
-            "other_collocates": [
-                (word, value) for word, value in sorted(other_collocates, key=lambda x: x[1], reverse=True)[:100]
-            ],
         }
     )
 

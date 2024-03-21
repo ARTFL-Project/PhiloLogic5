@@ -241,7 +241,8 @@
                 </ul>
             </div>
             <ul class="list-group mt-3">
-                <li class="list-group-item" v-for="metadataValue in mostSimilarDistributions" :key="metadataValue">{{
+                <li class="list-group-item" v-for="metadataValue in mostSimilarDistributions" :key="metadataValue"
+                    @click="similarToComparative(metadataValue[0])">{{
                     metadataValue[0] }}: {{ metadataValue[1] }}</li>
             </ul>
         </div>
@@ -318,6 +319,8 @@ export default {
             otherDone: false,
             fieldValuesToCompare: [],
             mostSimilarDistributions: [],
+            cachedDistributions: "",
+            similarFieldSelected: "",
         };
     },
     created() {
@@ -482,6 +485,9 @@ export default {
             this.collocMethod = 'compare';
             let params = {
                 q: this.q,
+                colloc_filter_choice: this.colloc_filter_choice,
+                colloc_within: this.colloc_within,
+                filter_frequency: this.filter_frequency,
                 ...this.comparedMetadataValues,
                 start: start.toString(),
             };
@@ -545,11 +551,16 @@ export default {
             });
         },
         similarCollocDistributions(field, start) {
+            this.similarFieldSelected = field
             this.$http
                 .post(`${this.$dbUrl}/reports/collocation.py`, {
                     current_collocates: [],
                 }, {
-                    params: { q: this.q, start: start.toString(), map_field: field }
+                    params: {
+                        q: this.q, start: start.toString(), colloc_filter_choice: this.colloc_filter_choice,
+                        colloc_within: this.colloc_within,
+                        filter_frequency: this.filter_frequency, map_field: field
+                    }
                 }).then((response) => {
                     if (response.data.more_results) {
                         this.similarCollocDistributions(field, response.data.hits_done);
@@ -571,9 +582,26 @@ export default {
                     }
                 }).then((response) => {
                     this.mostSimilarDistributions = response.data.most_similar_distributions
+                    this.cachedDistributions = filePath
                 }).catch((error) => {
                     this.debug(this, error);
                 });
+        },
+        similarToComparative(field) {
+            this.$http.get(`${this.$dbUrl}/scripts/get_collocate_distribution.py`, {
+                params: {
+                    file_path: this.cachedDistributions,
+                    field: field
+                }
+            }).then((response) => {
+                this.comparedMetadataValues[this.similarFieldSelected] = field
+                this.collocMethod = "compare";
+                this.otherCollocates = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
+                this.wholeCorpus = false
+                this.comparativeCollocations(response.data.collocates)
+            }).catch((error) => {
+                this.debug(this, error);
+            });
         }
     },
 };
