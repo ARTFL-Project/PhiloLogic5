@@ -2,7 +2,6 @@
 
 """Get similar collocate distributions"""
 
-import hashlib
 import os
 import pickle
 from wsgiref.handlers import CGIHandler
@@ -10,7 +9,9 @@ import sys
 
 from sklearn.metrics.pairwise import cosine_similarity
 import orjson
+import numpy as np
 import pandas as pd
+import time
 
 
 sys.path.append("..")
@@ -54,41 +55,38 @@ def get_similar_collocate_distributions(environ, start_response):
 
     with open(request.file_path, "rb") as f:
         collocations_per_field = pickle.load(f)
-    collocations_per_field["reference"] = reference_collocates
+    author_word_matrix = create_word_matrix(collocations_per_field, reference_collocates)
 
-    colloc_df = pd.DataFrame(collocations_per_field.values(), index=collocations_per_field.keys())
-    # move the reference distribution to the first row
-    colloc_df = colloc_df.reindex(["reference"] + [field for field in colloc_df.index if field != "reference"])
-    colloc_df.fillna(0, inplace=True)
-    first_row = colloc_df.iloc[0].to_numpy().reshape(1, -1)
-    rest_of_data = colloc_df.iloc[1:].values
-    similarities = cosine_similarity(first_row, rest_of_data)[0]
-    similarity_series = pd.Series(similarities, index=colloc_df.index[1:]).astype(float)
+    first_row = author_word_matrix[0].reshape(1, -1)
+    similarities = cosine_similarity(first_row, author_word_matrix[1:])[0]
+    similarity_series = pd.Series(similarities, index=collocations_per_field.keys()).astype(float)
     similarity_series.sort_values(ascending=False, inplace=True)
-    most_similar_distributions = [(k, v) for k, v in similarity_series.items()]
+    most_similar_distributions = [(k, round(v, 3)) for k, v in similarity_series.items() if v < 1.0][:50]
+    most_dissimilar_distributions = [(k, round(v, 3)) for k, v in similarity_series.iloc[::-1].items() if v < 1.0][:50]
     yield orjson.dumps(
         {
             "most_similar_distributions": most_similar_distributions,
+            "most_dissimilar_distributions": most_dissimilar_distributions,
         }
     )
 
 
-def create_file_path(request, field, field_value, path):
-    hash = hashlib.sha1()
-    hash.update(request["q"].encode("utf-8"))
-    hash.update(request["method"].encode("utf-8"))
-    hash.update(str(request["arg"]).encode("utf-8"))
-    hash.update(f"{field}={field_value}".encode("utf-8"))
-    return f"{path}/hitlists/{hash.hexdigest()}.pickle"
+def create_word_matrix(collocations_per_field, reference_collocates):
+    """Creates a NumPy matrix from a dictionary of field names associated with word counts."""
+    words = set([w for f in collocations_per_field for w in collocations_per_field[f]])
+    word_to_index = {word: i for i, word in enumerate(words)}
+    author_word_matrix = np.zeros((len(collocations_per_field) + 1, len(words)))
 
+    for word, count in reference_collocates.items():
+        index = word_to_index[word]
+        author_word_matrix[0, index] = count
 
-def get_distributions(reference_collocates, field_values, request, field, path):
-    yield reference_collocates
-    for field_value in field_values:
-        file_path = create_file_path(request, field, field_value, path)
-        with open(file_path, "rb") as f:
-            collocates = pickle.load(f)
-        yield collocates
+    for i, author in enumerate(collocations_per_field, start=1):
+        for word, count in collocations_per_field[author].items():
+            index = word_to_index[word]
+            author_word_matrix[i, index] = count
+
+    return author_word_matrix
 
 
 if __name__ == "__main__":

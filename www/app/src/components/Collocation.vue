@@ -229,22 +229,44 @@
             </div>
         </div>
         <div v-if="collocMethod == 'similar'" class="ms-2 mt-2">
-            Select field to compare collocations to:
-            <div class="dropdown mt-2">
-                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                    aria-expanded="false">
-                    {{ philoConfig.collocation_fields_to_compare[0] }}
+            <div class="btn-group mt-2" role="group">
+                <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid">
+                    Field to compare collocations to:
                 </button>
-                <ul class="dropdown-menu">
-                    <li v-for="field in philoConfig.collocation_fields_to_compare" :key="field"
-                        @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{field}}</a></li>
-                </ul>
+                <div class="btn-group" role="group">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                        {{ this.similarFieldSelected || "Select a field" }}
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li v-for="field in fieldsToCompare" :key="field.value"
+                            @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label }}</a>
+                        </li>
+                    </ul>
+                </div>
             </div>
-            <ul class="list-group mt-3">
-                <li class="list-group-item" v-for="metadataValue in mostSimilarDistributions" :key="metadataValue"
-                    @click="similarToComparative(metadataValue[0])">{{
-                    metadataValue[0] }}: {{ metadataValue[1] }}</li>
-            </ul>
+            <div class="card mt-2">
+                <div class="row">
+                    <div class="col-6 pe-0">
+                        <h6 class="sim-dist">Most similar distributions</h6>
+                        <ul class="list-group list-group-flush mt-3">
+                            <button type="button" class="list-group-item" style="text-align: justify"
+                                v-for="metadataValue in mostSimilarDistributions" :key="metadataValue"
+                                @click="similarToComparative(metadataValue[0])">{{
+                                metadataValue[0] }}: {{ metadataValue[1] }}</button>
+                        </ul>
+                    </div>
+                    <div class="col-6 ps-0" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
+                        <h6 class="sim-dist">Most dissimilar distributions</h6>
+                        <ul class="list-group list-group-flush mt-3">
+                            <button type="button" class="list-group-item" style="text-align: justify"
+                                v-for="metadataValue in mostDissimilarDistributions" :key="metadataValue"
+                                @click="similarToComparative(metadataValue[0])">{{
+                                metadataValue[0] }}: {{ metadataValue[1] }}</button>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </template>
@@ -279,6 +301,16 @@ export default {
         formData() {
             return this.$store.state.formData;
         },
+        fieldsToCompare() {
+            let fields = []
+            for (let field of this.philoConfig.collocation_fields_to_compare) {
+                console.log(field)
+                fields.push({ label: this.philoConfig.metadata_aliases[field] || field, value: field })
+            }
+            console.log(fields)
+            return fields
+        }
+
     },
     inject: ["$http"],
     provide() {
@@ -319,6 +351,7 @@ export default {
             otherDone: false,
             fieldValuesToCompare: [],
             mostSimilarDistributions: [],
+            mostDissimilarDistributions: [],
             cachedDistributions: "",
             similarFieldSelected: "",
         };
@@ -551,7 +584,7 @@ export default {
             });
         },
         similarCollocDistributions(field, start) {
-            this.similarFieldSelected = field
+            this.similarFieldSelected = field.label
             this.$http
                 .post(`${this.$dbUrl}/reports/collocation.py`, {
                     current_collocates: [],
@@ -559,7 +592,7 @@ export default {
                     params: {
                         q: this.q, start: start.toString(), colloc_filter_choice: this.colloc_filter_choice,
                         colloc_within: this.colloc_within,
-                        filter_frequency: this.filter_frequency, map_field: field
+                        filter_frequency: this.filter_frequency, map_field: field.value
                     }
                 }).then((response) => {
                     if (response.data.more_results) {
@@ -582,6 +615,7 @@ export default {
                     }
                 }).then((response) => {
                     this.mostSimilarDistributions = response.data.most_similar_distributions
+                    this.mostDissimilarDistributions = response.data.most_dissimilar_distributions
                     this.cachedDistributions = filePath
                 }).catch((error) => {
                     this.debug(this, error);
@@ -687,5 +721,13 @@ input:focus::placeholder {
 #colloc-tab button {
     font-variant: small-caps;
     font-size: 1rem;
+}
+
+.sim-dist {
+    text-align: center;
+    font-variant: small-caps;
+    color: #fff;
+    background-color: $link-color;
+    padding: 0.5rem;
 }
 </style>
