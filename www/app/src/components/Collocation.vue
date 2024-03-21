@@ -228,7 +228,7 @@
                 </div>
             </div>
         </div>
-        <div v-if="collocMethod == 'similar'" class="ms-2 mt-2">
+        <div v-if="collocMethod == 'similar'" class="ms-2 mt-2 mb-2">
             <div class="btn-group mt-2" role="group">
                 <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid">
                     Field to compare collocations to:
@@ -245,7 +245,7 @@
                     </ul>
                 </div>
             </div>
-            <div class="card mt-2">
+            <div class="card mt-3" v-if="mostSimilarDistributions.length > 0">
                 <div class="row">
                     <div class="col-6 pe-0">
                         <h6 class="sim-dist">Most similar distributions</h6>
@@ -386,6 +386,9 @@ export default {
             this.underRepresented = [];
             this.other_corpus_metadata = {};
             this.comparativeSearchStarted = false
+            this.mostSimilarDistributions = []
+            this.mostDissimilarDistributions = []
+            this.similarFieldSelected = ""
             this.updateCollocation({}, 0);
         },
         buildMetadata(metadata) {
