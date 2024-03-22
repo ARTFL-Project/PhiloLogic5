@@ -255,7 +255,7 @@
             <div class="card mt-3" v-if="mostSimilarDistributions.length > 0">
                 <div class="row">
                     <div class="col-6 pe-0">
-                        <h6 class="sim-dist">Most similar distributions</h6>
+                        <h6 class="sim-dist">{{ $t("collocation.topSimilarUses") }}</h6>
                         <ul class="list-group list-group-flush mt-3">
                             <button type="button" class="list-group-item position-relative" style="text-align: justify"
                                 v-for="metadataValue in mostSimilarDistributions" :key="metadataValue"
@@ -267,7 +267,7 @@
                         </ul>
                     </div>
                     <div class="col-6 ps-0" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                        <h6 class="sim-dist">Most dissimilar distributions</h6>
+                        <h6 class="sim-dist">{{ $t("collocation.topDissimilarUses") }}</h6>
                         <ul class="list-group list-group-flush mt-3">
                             <button type="button" class="list-group-item" style="text-align: justify"
                                 v-for="metadataValue in mostDissimilarDistributions" :key="metadataValue"
@@ -417,6 +417,7 @@ export default {
             let params = {
                 ...this.$store.state.formData,
                 start: start.toString(),
+                max_time: 2
             };
             this.$http
                 .post(`${this.$dbUrl}/reports/collocation.py`, {
@@ -599,11 +600,17 @@ export default {
                 this.debug(this, error);
             });
         },
-        similarCollocDistributions(field, start) {
+        similarCollocDistributions(field, start, first) {
             this.similarFieldSelected = field.label
             this.similarSearching = true
             this.similarSearchProgress = this.$t("collocation.similarCollocGatheringMessage")
             this.mostSimilarDistributions = []
+            if (typeof first === 'undefined') {
+                first = true
+            }
+            else {
+                first = false
+            }
             this.$http
                 .post(`${this.$dbUrl}/reports/collocation.py`, {
                     current_collocates: [],
@@ -611,11 +618,13 @@ export default {
                     params: {
                         q: this.q, start: start.toString(), colloc_filter_choice: this.colloc_filter_choice,
                         colloc_within: this.colloc_within,
-                        filter_frequency: this.filter_frequency, map_field: field.value
+                        filter_frequency: this.filter_frequency, map_field: field.value,
+                        first: first,
+                        max_time: 2
                     }
                 }).then((response) => {
                     if (response.data.more_results) {
-                        this.similarCollocDistributions(field, response.data.hits_done);
+                        this.similarCollocDistributions(field, response.data.hits_done, first);
                     } else {
                         this.getMostSimilarCollocDistribution(response.data.file_path);
                     }

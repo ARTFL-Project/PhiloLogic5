@@ -28,7 +28,9 @@ def collocation_results(request, config, current_collocates):
         obj_level = db.locals.metadata_types[map_field]
         field_obj_index = OBJECT_LEVEL[obj_level]
         file_path = create_file_path(request, map_field, config.db_path)
-        if os.path.exists(file_path):
+        if request.first == "true":  # make sure we don't start from a previous count
+            collocate_map = {}
+        elif os.path.exists(file_path):
             with open(file_path, "rb") as f:
                 collocate_map = pickle.load(f)
         else:

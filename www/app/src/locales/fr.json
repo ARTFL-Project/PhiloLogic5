@@ -112,7 +112,9 @@
         "metadataFilter" : "Filtrez par les métadonnées suivantes",
         "runComparison": "Lancer la comparaison",
         "similarCollocGatheringMessage": "Récupération des collocations",
-        "similarCollocCompareMessage": "Comparaison des collocations"
+        "similarCollocCompareMessage": "Comparaison des collocations",
+        "topSimilarUses": "Utilisations les plus similaires",
+        "topDissimilarUses": "Utilisations les plus dissimilaires"
     },
     "concordance": {
         "more": "Plus",

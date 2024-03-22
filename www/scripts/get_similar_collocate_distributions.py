@@ -74,6 +74,7 @@ def get_similar_collocate_distributions(environ, start_response):
 def create_word_matrix(collocations_per_field, reference_collocates):
     """Creates a NumPy matrix from a dictionary of field names associated with word counts."""
     words = set([w for f in collocations_per_field for w in collocations_per_field[f]])
+    words.update(reference_collocates.keys())
     word_to_index = {word: i for i, word in enumerate(words)}
     author_word_matrix = np.zeros((len(collocations_per_field) + 1, len(words)))
 

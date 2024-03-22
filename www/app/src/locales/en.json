@@ -113,7 +113,9 @@
         "metadataFilter" : "Filter by the following metadata fields",
         "runComparison": "Run comparison",
         "similarCollocGatheringMessage": "Gathering all collocates",
-        "similarCollocCompareMessage": "Comparing collocate distributions"
+        "similarCollocCompareMessage": "Comparing collocate distributions",
+        "topSimilarUses": "Most similar uses",
+        "topDissimilarUses": "Most dissimilar uses"
     },
     "concordance": {
         "more": "More",
