@@ -408,6 +408,7 @@ def find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice):
 
 def merge_word_group(txn, words: list[str], chunk_size=None):
     # Initialize data structures for each word
+    print("Calling merge group", file=sys.stderr)
     word_data = {
         word: {"buffer": txn.get(word.encode("utf8")), "array": None, "index": 0, "start": 0} for word in words
     }
@@ -432,7 +433,7 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
         ]
 
         # Which word finishes first?
-        first_word_to_finish, _, first_finishing_row = sorted(words_first_last_row, key=lambda x: (x[2][0], x[2][1]))[0]
+        first_word_to_finish, _, first_finishing_row = min(words_first_last_row, key=lambda x: (x[2][0], x[2][1]))
 
         def is_greater(arr1, arr2):
             return arr1[0] > arr2[0] or (arr1[0] == arr2[0] and arr1[1] > arr2[1])
