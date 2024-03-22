@@ -110,7 +110,9 @@
         "overRepresentedCollocates": "Collocations sur-représentées",
         "emptySearch": "Notez qu'une recherche vide lancera une comparaison avec le reste du corpus",
         "metadataFilter" : "Filtrez par les métadonnées suivantes",
-        "runComparison": "Lancer la comparaison"
+        "runComparison": "Lancer la comparaison",
+        "similarCollocGatheringMessage": "Récupération des collocations",
+        "similarCollocCompareMessage": "Comparaison des collocations"
     },
     "concordance": {
         "more": "Plus",

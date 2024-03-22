@@ -5,13 +5,8 @@
                 <div class="card-body">
                     <h3 class="card-title text-center">Access Restricted to ARTFL subscribing institutions</h3>
                     <h6 class="card-subtitle mb-2 text-muted text-center">Please read the following below</h6>
-                    <form
-                        @submit.prevent
-                        @reset="onReset"
-                        @keyup.enter="submit()"
-                        id="password-access"
-                        class="mt-4 p-2"
-                    >
+                    <form @submit.prevent @reset="onReset" @keyup.enter="submit()" id="password-access"
+                        class="mt-4 p-2">
                         <h5 v-if="!accessDenied" class="mt-2 mb-3">
                             If you have a username and password, please enter them here:
                         </h5>
@@ -22,12 +17,8 @@
                             <div class="cols-12 cols-sm-6 cols-md-5 cols-lg-4">
                                 <div class="input-group">
                                     <button type="button" class="btn btn-outline-secondary">Username</button>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        style="max-width: 300px"
-                                        v-model="accessInput.username"
-                                    />
+                                    <input type="text" class="form-control" style="max-width: 300px"
+                                        v-model="accessInput.username" />
                                 </div>
                             </div>
                         </div>
@@ -35,12 +26,8 @@
                             <div class="cols-12 cols-sm-6 cols-md-5 cols-lg-4">
                                 <div class="input-group">
                                     <button type="button" class="btn btn-outline-secondary">Password</button>
-                                    <input
-                                        type="text"
-                                        class="form-control"
-                                        style="max-width: 300px"
-                                        v-model="accessInput.password"
-                                    />
+                                    <input type="text" class="form-control" style="max-width: 300px"
+                                        v-model="accessInput.password" />
                                 </div>
                             </div>
                         </div>
@@ -74,7 +61,7 @@
                             <a href="http://artfl-project.uchicago.edu/node/14">Subscription Information</a> to see how
                             your institution can gain access to ARTFL resources.
                         </p>
-                        <p ng-if="access.clientIp">
+                        <p v-if="access.clientIp">
                             Requesting Computer Address:
                             <code>{{ clientIp }}</code>
                         </p>

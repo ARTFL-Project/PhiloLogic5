@@ -111,7 +111,9 @@
         "overRepresentedCollocates": "Over-represented collocates",
         "emptySearch": "Note that an empty search will run a comparison against the rest of the corpus",
         "metadataFilter" : "Filter by the following metadata fields",
-        "runComparison": "Run comparison"
+        "runComparison": "Run comparison",
+        "similarCollocGatheringMessage": "Gathering all collocates",
+        "similarCollocCompareMessage": "Comparing collocate distributions"
     },
     "concordance": {
         "more": "More",

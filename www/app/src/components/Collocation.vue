@@ -228,7 +228,7 @@
                 </div>
             </div>
         </div>
-        <div v-if="collocMethod == 'similar'" class="ms-2 mt-2 mb-2">
+        <div v-if="collocMethod == 'similar'" class="ms-2 mt-2" style="margin-bottom: 6rem">
             <div class="btn-group mt-2" role="group">
                 <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid">
                     Field to compare collocations to:
@@ -245,15 +245,25 @@
                     </ul>
                 </div>
             </div>
+            <div class="alert alert-info mt-2 p-1" style="width: fit-content" role="alert" v-if="similarSearching">
+                {{ similarSearchProgress }}...
+                <div class="spinner-border text-secondary spinner-border-sm" role="status"><span
+                        class="visually-hidden">{{ $t("common.loading") }}...</span>
+                </div>
+            </div>
+
             <div class="card mt-3" v-if="mostSimilarDistributions.length > 0">
                 <div class="row">
                     <div class="col-6 pe-0">
                         <h6 class="sim-dist">Most similar distributions</h6>
                         <ul class="list-group list-group-flush mt-3">
-                            <button type="button" class="list-group-item" style="text-align: justify"
+                            <button type="button" class="list-group-item position-relative" style="text-align: justify"
                                 v-for="metadataValue in mostSimilarDistributions" :key="metadataValue"
                                 @click="similarToComparative(metadataValue[0])">{{
-                                metadataValue[0] }}: {{ metadataValue[1] }}</button>
+                                metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
+                                    style="right: 1rem">{{
+                                    metadataValue[1]
+                                    }}</span></button>
                         </ul>
                     </div>
                     <div class="col-6 ps-0" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
@@ -262,7 +272,8 @@
                             <button type="button" class="list-group-item" style="text-align: justify"
                                 v-for="metadataValue in mostDissimilarDistributions" :key="metadataValue"
                                 @click="similarToComparative(metadataValue[0])">{{
-                                metadataValue[0] }}: {{ metadataValue[1] }}</button>
+                                metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
+                                    style="right: 1rem">{{ metadataValue[1] }}</span></button>
                         </ul>
                     </div>
                 </div>
@@ -354,6 +365,8 @@ export default {
             mostDissimilarDistributions: [],
             cachedDistributions: "",
             similarFieldSelected: "",
+            similarSearchProgress: "",
+            similarSearching: false,
         };
     },
     created() {
@@ -588,6 +601,9 @@ export default {
         },
         similarCollocDistributions(field, start) {
             this.similarFieldSelected = field.label
+            this.similarSearching = true
+            this.similarSearchProgress = this.$t("collocation.similarCollocGatheringMessage")
+            this.mostSimilarDistributions = []
             this.$http
                 .post(`${this.$dbUrl}/reports/collocation.py`, {
                     current_collocates: [],
@@ -609,6 +625,7 @@ export default {
 
         },
         getMostSimilarCollocDistribution(filePath) {
+            this.similarSearchProgress = this.$t("collocation.similarCollocCompareMessage")
             this.$http.post(`${this.$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
                 collocates: this.collocateCounts,
             },
@@ -620,6 +637,7 @@ export default {
                     this.mostSimilarDistributions = response.data.most_similar_distributions
                     this.mostDissimilarDistributions = response.data.most_dissimilar_distributions
                     this.cachedDistributions = filePath
+                    this.similarSearching = false
                 }).catch((error) => {
                     this.debug(this, error);
                 });
