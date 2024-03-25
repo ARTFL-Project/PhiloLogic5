@@ -408,7 +408,6 @@ def find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice):
 
 def merge_word_group(txn, words: list[str], chunk_size=None):
     # Initialize data structures for each word
-    print("Calling merge group", file=sys.stderr)
     word_data = {
         word: {"buffer": txn.get(word.encode("utf8")), "array": None, "index": 0, "start": 0} for word in words
     }
@@ -424,19 +423,29 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
         except TypeError:  # failsafe in case a word is queried despite not existing in the database
             word_data[word]["array"] = np.array([], dtype="u4").reshape(-1, 9)
 
+    def build_first_last_rows():
+        first_finishing_row = np.array([np.iinfo(np.uint32).max, np.iinfo(np.uint32).max], dtype="u4")
+        result = []
+        for word, data in word_data.items():
+            array = data["array"]
+            array_size = array.size
+            if array_size > 0:
+                if array[0, 0] > first_finishing_row[0] or (
+                    array[0, 0] == first_finishing_row[0] and array[0, -1] > first_finishing_row[1]
+                ):  # row starts after finishing row
+                    continue
+                if array[-1, 0] < first_finishing_row[0] or (
+                    array[-1, 0] == first_finishing_row[0] and array[-1, -1] < first_finishing_row[1]
+                ):  # row ends before finishing row
+                    first_finishing_row[0] = array[-1, 0]
+                    first_finishing_row[1] = array[-1, -1]
+                    first_word = word
+                result.append((word, array[0, ::8], array[-1, ::8]))
+        return result, first_finishing_row, first_word
+
     # Merge sort and write loop
     while any(word_data[word]["array"].size > 0 for word in words):
-        words_first_last_row = [
-            (word, word_data[word]["array"][0, ::8], word_data[word]["array"][-1, ::8])
-            for word in words
-            if word_data[word]["array"].size > 0
-        ]
-
-        # Which word finishes first?
-        first_word_to_finish, _, first_finishing_row = min(words_first_last_row, key=lambda x: (x[2][0], x[2][1]))
-
-        def is_greater(arr1, arr2):
-            return arr1[0] > arr2[0] or (arr1[0] == arr2[0] and arr1[1] > arr2[1])
+        words_first_last_row, first_finishing_row, first_word_to_finish = build_first_last_rows()
 
         # Determine which words start before the first finishing word ends
         # Save index of first row that exceeds the first finishing word
@@ -445,8 +454,8 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
             if other_word == first_word_to_finish:
                 words_to_keep.append((other_word, None))
                 continue
-            elif is_greater(
-                other_first_row, first_finishing_row
+            elif other_first_row[0] > first_finishing_row[0] or (
+                other_first_row[0] == first_finishing_row[0] and other_first_row[1] > first_finishing_row[1]
             ):  # dismiss words that start before the first finishing word ends
                 continue
             else:
