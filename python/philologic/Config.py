@@ -613,6 +613,16 @@ WEB_CONFIG_DEFAULTS = {
             ]
         ),
     },
+    "collocation_fields_to_compare": {
+        "value": ["author", "title"],
+        "comment": "\n".join(
+            [
+                "# The collocation_fields_to_compare variable defines which metadata fields are used to compare collocation results.",
+                "# It is a list of metadata fields, such as ['author', 'title'].",
+                "",
+            ]
+        ),
+    },
     "time_series_year_field": {
         "value": "year",
         "comment": "\n".join(
