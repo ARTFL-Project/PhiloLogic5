@@ -3,9 +3,6 @@ FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Add the Node.js repository
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-
 # Install dependencies
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends libxml2-dev libxslt-dev zlib1g-dev apache2 libgdbm-dev python3-pip liblz4-tool brotli ripgrep gcc make python3-dev wget sudo && \
