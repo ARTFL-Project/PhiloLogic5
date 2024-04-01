@@ -747,7 +747,7 @@ class Loader:
         """Create inverted index"""
         print("\n### Create inverted index ###", flush=True)
         db_env = lmdb.open(
-            f"{cls.destination}/words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
+            f"{cls.destination}/temp_words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
         )  # 2TB limit
 
         print(f"{time.ctime()}: Creating word index...", flush=True)
@@ -917,15 +917,19 @@ class Loader:
                         txn.put(f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
                         count += 1
                 txn.commit()
-
-            db_env.close()
             print(f"{time.ctime()}: Stored {count} lemma word attributes.", flush=True)
+
+        print(f"{time.ctime()}: Optimizing word index for space...", flush=True)
+        os.mkdir(f"{cls.destination}/words.lmdb")
+        db_env.copy(f"{cls.destination}/words.lmdb", compact=True)
+        db_env.close()
+        os.system(f"rm -rf {cls.destination}/temp_words.lmdb")
 
         # Create a lemma lookup table where keys are philo_ids as bytes and values are lemmas in the form lemma:word
         if cls.lemma_count > 0:
-            print(f"{time.ctime()}: Creating lemma lookup table...", flush=True)
+            print(f"{time.ctime()}: Creating lemma lookup index...", flush=True)
             lemma_db_env = lmdb.open(
-                f"{cls.destination}/lemma_lookup.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
+                f"{cls.destination}/temp_lemma_lookup.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
             )
             commit_interval = 10000
             count = 0
@@ -943,8 +947,13 @@ class Loader:
                     if count % commit_interval == 0:
                         lemma_txn.commit()
                         lemma_txn = lemma_db_env.begin(write=True)
-            lemma_db_env.close()
             print(f"{time.ctime()}: Stored {count} lemma lookup entries.", flush=True)
+
+            print(f"{time.ctime()}: Optimizing lemma lookup index for space...", flush=True)
+            os.mkdir(f"{cls.destination}/lemmas.lmdb")
+            lemma_db_env.copy(f"{cls.destination}/lemmas.lmdb", compact=True)
+            lemma_db_env.close()
+            os.system(f"rm -rf {cls.destination}/temp_lemma_lookup.lmdb")
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""

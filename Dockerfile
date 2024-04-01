@@ -1,20 +1,22 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Add the Node.js repository
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 
 # Install dependencies
 RUN apt-get update && apt-get upgrade -y && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libxml2-dev libxslt-dev zlib1g-dev apache2 libgdbm-dev python3-pip liblz4-tool brotli ripgrep gcc make python3-dev wget sudo nodejs npm && \
+    apt-get install -y --no-install-recommends libxml2-dev libxslt-dev zlib1g-dev apache2 libgdbm-dev python3-pip liblz4-tool brotli ripgrep gcc make python3-dev wget sudo nodejs && \
     apt-get clean && rm -rf /var/lib/apt
 
 # Install PhiloLogic
-RUN wget https://github.com/ARTFL-Project/PhiloLogic4/archive/refs/tags/v4.7.3.5.tar.gz -O philologic.tar.gz
-RUN mkdir PhiloLogic4 && tar -xf philologic.tar.gz -C PhiloLogic4 --strip-components=1 && \
-    cd PhiloLogic4 && sh install.sh && \
-    a2enmod rewrite && a2enmod cgi && a2enmod brotli
+RUN sh install.sh && a2enmod rewrite && a2enmod cgi && a2enmod brotli
 
 # Configure global variables
-RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic4.cfg && \
-    sed -i 's/url_root = None/url_root = "http:\/\/localhost\/philologic\/"/' /etc/philologic/philologic4.cfg
+RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic5.cfg && \
+    sed -i 's/url_root = None/url_root = "http:\/\/localhost\/philologic\/"/' /etc/philologic/philologic5.cfg
 
 RUN echo "#!/bin/bash\nservice apache2 stop\nrm /var/run/apache2/*\napachectl -D FOREGROUND" > /autostart.sh && chmod +x /autostart.sh
 

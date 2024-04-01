@@ -97,8 +97,9 @@ def make_sentences_database(loader_obj, db_destination):
     attributes_to_skip.remove("lemma")
     attributes_to_skip = set(attributes_to_skip)
     attributes_to_skip.update({"token", "position", "philo_type"})
+    temp_destination = f"{db_destination}_temp"
     with tqdm(total=loader_obj.word_count, leave=False) as pbar:
-        env = lmdb.open(db_destination, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True)  # 2TB
+        env = lmdb.open(temp_destination, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True)  # 2TB
         count = 0
         with env.begin(write=True) as txn:
             for raw_words in os.scandir(f"{loader_obj.destination}/words_and_philo_ids"):
@@ -130,7 +131,12 @@ def make_sentences_database(loader_obj, db_destination):
                             pbar.update()
                     if sentence_id:
                         txn.put(sentence_id, msgpack.dumps(words))
+        pbar.close()  # Make sure to clear the tqdm bar
+        print(f"{time.ctime()}: Optimizing the sentences index for space...")
+        os.mkdir(db_destination)
+        env.copy(db_destination, compact=True)
         env.close()
+        os.system(f"rm -r {temp_destination}")
 
 
 def word_frequencies(loader_obj):
