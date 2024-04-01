@@ -830,15 +830,13 @@ class Loader:
         # Add word attributes to LMDB database
         # Keys follow the format word:word_attribute:attribute_value
         if cls.has_attributes is True:
-            print(f"{time.ctime()}: Creating word attributes index...", flush=True)
+            print(f"{time.ctime()}: Found word attributes, creating word attributes index...", flush=True)
             with lz4.frame.open(f"{cls.workdir}/all_words_sorted.lz4") as input_file:
                 txn = db_env.begin(write=True)
                 word_attributes: dict[str, dict[str, bytes]] = {}
                 current_word = None
                 count = 0
-                for line in tqdm(
-                    input_file, total=cls.word_count, desc="Storing word attributes (if found)", leave=False
-                ):
+                for line in tqdm(input_file, total=cls.word_count, desc="Storing word attributes", leave=False):
                     line = line.decode("utf-8")
                     _, word, philo_id, attributes = line.split("\t", 3)
                     hit = list(map(int, philo_id.split()))

@@ -241,10 +241,7 @@ def build_filter_list(request, config, count_lemmas):
                 word = line.split()[0]
             except IndexError:
                 continue
-            if count_lemmas is True:
-                word = word.replace("lemma:", "")
             filter_list.append(word)
-    filter_list.append(request["q"].replace("lemma:", ""))
     return filter_list
 
 

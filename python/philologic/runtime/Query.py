@@ -428,8 +428,7 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
         result = []
         for word, data in word_data.items():
             array = data["array"]
-            array_size = array.size
-            if array_size > 0:
+            if array.size > 0:
                 if array[0, 0] > first_finishing_row[0] or (
                     array[0, 0] == first_finishing_row[0] and array[0, -1] > first_finishing_row[1]
                 ):  # row starts after finishing row
