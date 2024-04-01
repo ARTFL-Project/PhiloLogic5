@@ -10,7 +10,6 @@ from philologic.runtime.reports import (
     bibliography_results,
     collocation_results,
     concordance_results,
-    filter_words_by_property,
     frequency_results,
     generate_text_object,
     generate_time_series,
