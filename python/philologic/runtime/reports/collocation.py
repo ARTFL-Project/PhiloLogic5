@@ -241,7 +241,10 @@ def build_filter_list(request, config, count_lemmas):
                 word = line.split()[0]
             except IndexError:
                 continue
-            filter_list.append(word)
+            if count_lemmas is True and "lemma:" not in word:
+                filter_list.append(f"lemma:{word}")
+            else:
+                filter_list.append(word)
     return filter_list
 
 
