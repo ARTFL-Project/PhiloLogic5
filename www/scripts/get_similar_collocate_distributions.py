@@ -11,7 +11,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 import orjson
 import numpy as np
 import pandas as pd
-import time
 
 
 sys.path.append("..")

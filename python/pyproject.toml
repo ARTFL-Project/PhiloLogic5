@@ -29,6 +29,8 @@ dependencies = [
     "lmdb",
     "numpy~=1.26",
     "numba~=0.59",
+    "scikit-learn~=1.4",
+    "pandas~=2.2",
 ]
 
 [project.scripts]
