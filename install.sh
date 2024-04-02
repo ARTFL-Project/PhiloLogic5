@@ -7,7 +7,7 @@ echo "$PYTHON_INSTALL"
 cd python;
 rm -rf dist/
 python3 -m build
-sudo -H pip3 install dist/*whl
+sudo -H pip3 install dist/*whl --force-reinstall
 sudo mkdir -p /etc/philologic/
 
 cd ..;
