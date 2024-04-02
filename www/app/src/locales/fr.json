@@ -114,7 +114,8 @@
         "similarCollocGatheringMessage": "Récupération des collocations",
         "similarCollocCompareMessage": "Comparaison des collocations",
         "topSimilarUses": "Utilisations les plus similaires",
-        "topDissimilarUses": "Utilisations les plus dissimilaires"
+        "topDissimilarUses": "Utilisations les plus dissimilaires",
+        "similarTo": "Trouver l'usage le plus similaire ou différent dans le champ suivant"
     },
     "concordance": {
         "more": "Plus",

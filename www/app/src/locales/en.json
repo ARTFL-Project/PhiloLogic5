@@ -115,7 +115,8 @@
         "similarCollocGatheringMessage": "Gathering all collocates",
         "similarCollocCompareMessage": "Comparing collocate distributions",
         "topSimilarUses": "Most similar uses",
-        "topDissimilarUses": "Most dissimilar uses"
+        "topDissimilarUses": "Most dissimilar uses",
+        "similarToField": "Find most similar/dissimilar usages from the following field"
     },
     "concordance": {
         "more": "More",

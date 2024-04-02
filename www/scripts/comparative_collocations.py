@@ -91,8 +91,6 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     # Over-representation score
     df_combined["over_representation_score"] = df_combined["sub_corpus_zscore"] - df_combined["other_corpus_zscore"]
 
-    df_combined.to_csv("/tmp/combined.csv")
-
     top_relative_proportions = [
         (word, value)
         for word, value in df_combined[df_combined["over_representation_score"] > 0]["over_representation_score"]

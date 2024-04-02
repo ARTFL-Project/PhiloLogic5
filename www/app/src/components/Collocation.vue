@@ -1,53 +1,27 @@
 <template>
-    <div class="container-fluid mt-4">
-        <results-summary :description="results.description" :running-total="runningTotal"
-            :filter-list="filterList"></results-summary>
-        <div class="row d-none d-sm-block mt-3" style="padding: 0 0.5rem">
-            <div class="col col-sm-7 col-lg-8">
-                <div class="btn-group" role="group" id="report_switch">
-                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'frequency' }"
-                        @click="getFrequency()">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.collocation") }}</span>
-                    </button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'compare' }"
-                        @click="toggleCompare()">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("collocation.compareTo") }}</span>
-                    </button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: collocMethod === 'similar' }"
-                        @click="toggleSimilar()">
-                        <span class="d-none d-sm-none d-md-inline">Similar word usage</span>
-                    </button>
-                </div>
-            </div>
+    <div id="collocation-container" class="container-fluid mt-4">
+        <div class="d-none d-sm-block mt-3" style="padding: 0 0.5rem">
+            <ul class="nav nav-tabs" id="colloc-method-switch" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active shadow-sm" id="frequency-tab" data-bs-toggle="tab"
+                        data-bs-target="#frequency-tab-pane" type="button" role="tab" aria-controls="frequency-tab-pane"
+                        aria-selected="true" @click="getFrequency()">{{ $t("collocation.collocation") }}</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="compare-tab" data-bs-toggle="tab"
+                        data-bs-target="#compare-tab-pane" type="button" role="tab" aria-controls="compare-tab-pane"
+                        aria-selected="false" @click="toggleCompare()">{{ $t("collocation.compareTo") }}</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="similar-tab" data-bs-toggle="tab"
+                        data-bs-target="#similar-tab-pane" type="button" role="tab" aria-controls="similar-tab-pane"
+                        aria-selected="false" @click="toggleSimilar()">Similar word usage</button>
+                </li>
+            </ul>
         </div>
-        <div class="row mt-2 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && collocMethod == 'frequency'">
-            <div class="col-12 col-sm-4">
-                <div class="card shadow-sm">
-                    <table class="table table-hover table-striped table-light table-borderless caption-top">
-                        <thead class="table-header">
-                            <tr>
-                                <th scope="col">{{ $t("collocation.collocate") }}</th>
-                                <th scope="col">{{ $t("collocation.count") }}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr style="line-height: 2rem" v-for="word in sortedList" :key="word.collocate"
-                                @click="collocateClick(word)">
-                                <td class="text-view">{{ word.collocate }}</td>
-                                <td>{{ word.count }}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="col-12 col-sm-8">
-                <div class="card shadow-sm">
-                    <word-cloud v-if="collocMethod == 'frequency' && sortedList.length > 0" :word-weights="sortedList"
-                        label="" :click-handler="collocateClick"></word-cloud>
-                </div>
-            </div>
-        </div>
-        <div v-if="collocMethod == 'compare'" class="row m-0 mt-1 mb-3" style="padding: 0 0.5rem">
+        <results-summary :description="results.description" :running-total="runningTotal" :filter-list="filterList"
+            v-if="collocMethod === 'frequency'" style="margin-top:0 !important;"></results-summary>
+        <div class="card shadow-sm mx-2 p-2" style="border-top-width: 0;" v-if="collocMethod == 'compare'">
             <button id="toggle-metadata" class="btn btn-link" style="text-align: start;" type="button"
                 data-bs-toggle="collapse" data-bs-target="#other-corpus-metadata" aria-expanded="false"
                 aria-controls="other-corpus-metadata" @click="filterMetadataOpen = !filterMetadataOpen">
@@ -64,13 +38,13 @@
                             v-if="metadataInputStyle[localField.value] == 'text'">
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + 'input-filter'">{{
-            localField.label
-        }}</label></button><input type="text" class="form-control"
+                            localField.label
+                        }}</label></button><input type="text" class="form-control"
                                 :id="localField.value + 'input-filter'" :name="localField.value"
                                 :placeholder="localField.example" v-model="comparedMetadataValues[localField.value]"
                                 v-if="metadataInputStyle[localField.value] == 'text' &&
-            metadataInputStyle[localField.value] != 'date'
-            " />
+                            metadataInputStyle[localField.value] != 'date'
+                            " />
                         </div>
                         <div class="input-group pb-2" :id="localField.value + '-group'"
                             v-if="metadataInputStyle[localField.value] == 'checkbox'">
@@ -86,8 +60,8 @@
                                     <input class="form-check-input" type="checkbox" :id="metadataChoice.value"
                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                     <label class="form-check-label" :for="metadataChoice.value">{{
-            metadataChoice.text
-        }}</label>
+                            metadataChoice.text
+                        }}</label>
                                 </div>
                             </div>
                         </div>
@@ -95,8 +69,8 @@
                             v-if="metadataInputStyle[localField.value] == 'dropdown'">
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + '-input-filter'">{{
-            localField.label
-        }}</label>
+                            localField.label
+                        }}</label>
                             </button>
                             <select class="form-select" :id="localField.value + '-select'"
                                 v-model="metadataChoiceSelected[localField.value]">
@@ -124,11 +98,11 @@
                                 <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
                                     <li @click="dateTypeToggle(localField.value, 'exact')">
                                         <a class="dropdown-item">{{
-            $t("searchForm.exactDate") }}</a>
+                            $t("searchForm.exactDate") }}</a>
                                     </li>
                                     <li @click="dateTypeToggle(localField.value, 'range')">
                                         <a class="dropdown-item">{{
-            $t("searchForm.rangeDate") }}</a>
+                            $t("searchForm.rangeDate") }}</a>
                                     </li>
                                 </ul>
                             </div>
@@ -140,8 +114,8 @@
                                 <div class="input-group ms-3">
                                     <button class="btn btn-outline-secondary" type="button">
                                         <label for="query-term-input">{{
-            $t("searchForm.dateFrom")
-        }}</label>
+                            $t("searchForm.dateFrom")
+                        }}</label>
                                     </button>
                                     <input type="text" class="form-control date-range"
                                         :id="localField.value + '-start-input-filter'"
@@ -149,8 +123,8 @@
                                         v-model="dateRange[localField.value].start" />
                                     <button class="btn btn-outline-secondary ms-3" type="button">
                                         <label for="query-term-input">{{
-            $t("searchForm.dateTo")
-        }}</label></button><input type="text" class="form-control date-range"
+                            $t("searchForm.dateTo")
+                        }}</label></button><input type="text" class="form-control date-range"
                                         :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
                                         :placeholder="localField.example" v-model="dateRange[localField.value].end" />
                                 </div>
@@ -160,11 +134,56 @@
                 </div>
                 <button type="button" class="btn btn-secondary" style="width: fit-content"
                     @click="getOtherCollocates({}, 0)">{{
-            $t('collocation.runComparison') }}
+                            $t('collocation.runComparison') }}
                 </button>
             </div>
-            <div v-if="comparativeSearchStarted" class="card shadow-sm py-3">
-                <div class="row">
+        </div>
+        <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'similar'">
+            <span>{{ $t("collocation.similarToField") }}:</span>
+            <div class="btn-group mt-2" style="width: fit-content" role="group">
+                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                    aria-expanded="false">
+                    {{ this.similarFieldSelected || "Select a field" }}
+                </button>
+                <ul class="dropdown-menu">
+                    <li v-for="field in fieldsToCompare" :key="field.value"
+                        @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label }}</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Results below -->
+        <div class="row my-3 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && collocMethod == 'frequency'">
+            <div class="col-12 col-sm-4">
+                <div class="card shadow-sm">
+                    <table class="table table-hover table-striped table-light table-borderless caption-top">
+                        <thead class="table-header">
+                            <tr>
+                                <th scope="col">{{ $t("collocation.collocate") }}</th>
+                                <th scope="col">{{ $t("collocation.count") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="line-height: 1.75rem" v-for="word in sortedList" :key="word.collocate"
+                                @click="collocateClick(word)">
+                                <td class="text-view">{{ word.collocate }}</td>
+                                <td>{{ word.count }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col-12 col-sm-8">
+                <div class="card shadow-sm">
+                    <word-cloud v-if="collocMethod == 'frequency' && sortedList.length > 0" :word-weights="sortedList"
+                        label="" :click-handler="collocateClick"></word-cloud>
+                </div>
+            </div>
+        </div>
+        <div v-if="collocMethod === 'compare'">
+            <div class="card shadow-sm mx-2 my-3 p-2" v-if="comparativeSearchStarted">
+                <div class="row mt-2">
                     <div class="col-6">
                         <bibliography-criteria :biblio="biblio" :query-report="report"
                             :results-length="resultsLength"></bibliography-criteria>
@@ -174,17 +193,18 @@
                             :results-length="resultsLength"></bibliography-criteria>
                     </div>
                 </div>
-                <ul class="nav nav-tabs mt-1" style="margin-left: -.75rem" id="colloc-tab" role="tablist">
+                <ul class="nav nav-tabs mt-2" style="margin-left: -.5rem" id="colloc-tab" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" style="border-left-width: 0" id="frequent-tab"
                             data-bs-toggle="tab" data-bs-target="#freq-tab-pane" type="button" role="tab"
-                            aria-controls="freq-tab-pane" aria-selected="true">{{ $t('collocation.frequentCollocates')
-                            }}</button>
+                            aria-controls="freq-tab-pane" aria-selected="true">{{
+                            $t('collocation.frequentCollocates')
+                        }}</button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="rep-tab" data-bs-toggle="tab" data-bs-target="#rep-tab-pane"
                             type="button" role="tab" aria-controls="rep-tab-pane" aria-selected="false">{{
-            $t('collocation.overRepresentedCollocates') }}</button>
+                                $t('collocation.overRepresentedCollocates') }}</button>
                     </li>
                 </ul>
                 <div class="tab-content" id="colloc-tab-content">
@@ -228,27 +248,12 @@
                 </div>
             </div>
         </div>
-        <div v-if="collocMethod == 'similar'" class="ms-2 mt-2" style="margin-bottom: 6rem">
-            <div class="btn-group mt-2" role="group">
-                <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid">
-                    Field to compare collocations to:
-                </button>
-                <div class="btn-group" role="group">
-                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                        aria-expanded="false">
-                        {{ this.similarFieldSelected || "Select a field" }}
-                    </button>
-                    <ul class="dropdown-menu">
-                        <li v-for="field in fieldsToCompare" :key="field.value"
-                            @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label }}</a>
-                        </li>
-                    </ul>
-                </div>
-            </div>
+        <div v-if="collocMethod == 'similar'" class="mx-2 my-3" style="margin-bottom: 6rem">
             <div class="alert alert-info mt-2 p-1" style="width: fit-content" role="alert" v-if="similarSearching">
                 {{ similarSearchProgress }}...
                 <div class="spinner-border text-secondary spinner-border-sm" role="status"><span
-                        class="visually-hidden">{{ $t("common.loading") }}...</span>
+                        class="visually-hidden">{{
+                            $t("common.loading") }}...</span>
                 </div>
             </div>
 
@@ -260,10 +265,10 @@
                             <button type="button" class="list-group-item position-relative" style="text-align: justify"
                                 v-for="metadataValue in mostSimilarDistributions" :key="metadataValue"
                                 @click="similarToComparative(metadataValue[0])">{{
-                                metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
+                            metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
                                     style="right: 1rem">{{
-                                    metadataValue[1]
-                                    }}</span></button>
+                            metadataValue[1]
+                        }}</span></button>
                         </ul>
                     </div>
                     <div class="col-6 ps-0" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
@@ -759,5 +764,12 @@ input:focus::placeholder {
     color: #fff;
     background-color: $link-color;
     padding: 0.5rem;
+}
+</style>
+<!-- Not scoped to apply to child -->
+<style>
+#results-summary-container .card {
+    border-top-width: 0 !important;
+    border-top-left-radius: 0%;
 }
 </style>
