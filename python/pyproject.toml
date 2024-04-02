@@ -35,6 +35,7 @@ dependencies = [
 philoload5 = "scripts.philoload5:main"
 
 [tool.setuptools_scm]
+root = ".."
 
 [tool.setuptools]
 packages = [
