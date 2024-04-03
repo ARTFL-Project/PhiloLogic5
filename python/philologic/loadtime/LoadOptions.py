@@ -183,9 +183,9 @@ class LoadOptions:
         self.values["data_destination"] = os.path.join(self.db_destination, "data")
         if self.plain_text_obj:
             plain_text_filter = LoadFilters.store_in_plain_text(*self.plain_text_obj)
-            self.load_filters.append(plain_text_filter)
+            self.values["load_filters"].append(plain_text_filter)
         if self.values["spacy_model"]:
-            self.load_filters = [LoadFilters.spacy_tagger] + self.load_filters
+            self.values["load_filters"].insert(-3, LoadFilters.spacy_tagger)
         if self.debug:
             print(self)
 
@@ -242,10 +242,6 @@ class LoadConfig:
                         if "load_filters" not in self.config:
                             self.config["load_filters"] = LoadFilters.DefaultLoadFilters
                         self.config["load_filters"].append(LoadFilters.store_in_plain_text(*value))
-                    elif a == "store_words_and_ids":
-                        if "load_filters" not in self.config:
-                            self.config["load_filters"] = LoadFilters.DefaultLoadFilters
-                        self.config["load_filters"].append(LoadFilters.store_words_and_philo_ids)
                     elif a == "pos_tagger":
                         if "load_filters" not in self.config:
                             self.config["load_filters"] = LoadFilters.DefaultLoadFilters

@@ -47,7 +47,7 @@ def generate_words_sorted(loader_obj, text):
     os.system(wordcommand)
 
 
-def spacy_tagger(loader_obj, text):
+def old_spacy_tagger(loader_obj, text):
     """Tag words with Spacy"""
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
         with open(text["raw"], encoding="utf8") as fh:
@@ -65,9 +65,8 @@ def spacy_tagger(loader_obj, text):
                         for saved_record, parsed_word in zip(sentence, parsed_sentence):
                             saved_record.attrib["pos"] = parsed_word.pos_
                             saved_record.attrib["tag"] = parsed_word.tag_
-                            saved_record.attrib["dep"] = parsed_word.dep_
                             saved_record.attrib["ent_type"] = parsed_word.ent_type_
-                            saved_record.attrib["lemma_"] = parsed_word.lemma_
+                            saved_record.attrib["lemma"] = parsed_word.lemma_
                             print(saved_record, file=tmp_file)
                         sentence = []
                     sentence.append(record)
@@ -78,10 +77,43 @@ def spacy_tagger(loader_obj, text):
             for saved_record, parsed_word in zip(sentence, parsed_sentence):
                 saved_record.attrib["pos"] = parsed_word.pos_
                 saved_record.attrib["tag"] = parsed_word.tag_
-                saved_record.attrib["dep"] = parsed_word.dep_
                 saved_record.attrib["ent_type"] = parsed_word.ent_type_
-                saved_record.attrib["lemma_"] = parsed_word.lemma_
+                saved_record.attrib["lemma"] = parsed_word.lemma_
                 print(saved_record, file=tmp_file)
+
+
+def spacy_tagger(loader_obj, text):
+    """Tag words with Spacy"""
+
+    def process_file():
+        with open(text["raw"], encoding="utf8") as fh:
+            sentence_records = []
+            current_sent_id = None
+            for line in fh:
+                philo_type, word, philo_id, attrib = line.split("\t")
+                if philo_type in ("word", "sent", "punct"):
+                    sent_id = " ".join(philo_id.split()[:6])
+                    record = Record(philo_type, word, philo_id.split())
+                    record.attrib = loads(attrib)
+                    if current_sent_id is not None and sent_id != current_sent_id:
+                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [r.name for r in sentence_records])
+                        yield spacy_sentence, sentence_records
+                        sentence_records = []
+                    sentence_records.append(record)
+                    current_sent_id = sent_id
+            if sentence_records:
+                spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [r.name for r in sentence_records])
+                yield spacy_sentence, sentence_records
+
+    with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
+        for spacy_sentence, sentence_records in loader_obj.nlp.pipe(process_file(), as_tuples=True):
+            for record, parsed_word in zip(sentence_records, spacy_sentence):
+                record.attrib["pos"] = parsed_word.pos_
+                record.attrib["tag"] = parsed_word.tag_
+                record.attrib["ent_type"] = parsed_word.ent_type_
+                record.attrib["lemma"] = parsed_word.lemma_
+                print(record, file=tmp_file)
+
     os.remove(text["raw"])
     os.rename(text["raw"] + ".tmp", text["raw"])
 
@@ -98,32 +130,6 @@ def get_lemmas(_, text):
                 if "lemma" in attribs:  # lemmas are all lowercased
                     print(f"lemma\t{loaded_attribs['lemma'].lower()}\t{philo_id}\t{attribs.strip()}", file=lemma_file)
     os.system(f"lz4 -z -q {text['raw']}.lemma {text['raw']}.lemma.lz4 && rm {text['raw']}.lemma")
-
-
-def make_object_ancestors(*philo_types):
-    """Find object ancestors for all stored object types"""
-    # We should add support for a 'div' philo_type in the future
-    philo_type_depth = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7, "page": 9}
-
-    def inner_make_object_ancestors(_, text):
-        temp_file = text["words"] + ".tmp"
-        output_file = open(temp_file, "w", encoding="utf8")
-        with open(text["words"], encoding="utf8") as filehandle:
-            for line in filehandle:
-                philo_type, word, philo_id, attrib = line.split("\t")
-                philo_id = philo_id.split()
-                record = Record(philo_type, word, philo_id)
-                record.attrib = loads(attrib)
-                for philo_type in philo_types:
-                    zeros_to_add = ["0" for i in range(7 - philo_type_depth[philo_type])]
-                    philo_id = philo_id[: philo_type_depth[philo_type]] + zeros_to_add
-                    record.attrib[philo_type + "_ancestor"] = " ".join(philo_id)
-                print(record, file=output_file)
-        output_file.close()
-        os.remove(text["words"])
-        os.rename(temp_file, text["words"])
-
-    return inner_make_object_ancestors
 
 
 def make_sorted_toms(*philo_types):
@@ -401,9 +407,6 @@ def generate_word_frequencies(loader_obj, text):
 DefaultNavigableObjects = ("doc", "div1", "div2", "div3", "para")
 DefaultLoadFilters = [
     get_word_counts,
-    get_lemmas,
-    generate_words_sorted,
-    make_object_ancestors,
     make_sorted_toms,
     prev_next_obj,
     generate_pages,
@@ -411,6 +414,8 @@ DefaultLoadFilters = [
     generate_refs,
     generate_graphics,
     generate_lines,
+    get_lemmas,
+    generate_words_sorted,
     store_words_and_philo_ids,
 ]
 
@@ -419,11 +424,11 @@ def set_load_filters(load_filters=DefaultLoadFilters, navigable_objects=DefaultN
     """Set default filters to run"""
     filters = []
     for load_filter in load_filters:
-        if (
-            load_filter.__name__ == "make_object_ancestors"
-            or load_filter.__name__ == "make_sorted_toms"
-            or load_filter.__name__ == "prev_next_obj"
-            or load_filter.__name__ == "store_in_plain_text"
+        if load_filter.__name__ in (
+            "make_object_ancestors",
+            "make_sorted_toms",
+            "prev_next_obj",
+            "store_in_plain_text",
         ):
             filters.append(load_filter(*navigable_objects))
         else:

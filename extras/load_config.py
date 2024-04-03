@@ -12,9 +12,6 @@ navigable_objects = ("doc", "div1", "div2", "div3", "para")
 ## For instance, this could be ['doc', 'div1']
 plain_text_obj = []
 
-## Define whether to store all words with their philo IDs. Useful for data-mining tasks
-## where keeping the index information (and byte offset) is important.
-store_words_and_ids = False
 
 #####################
 ## Parsing Options ##
@@ -275,6 +272,7 @@ lemma_file = ""
 
 # Define a SpaCy model to use for lemmatization, part-of-speech tagging, and named entity recognition.
 # Note that using SpaCy disables multiprocessing for parsing.
+# Only official SpaCy models are supported. If using a SpaCy Transformer model, make sure to set cores to 1.
 spacy_model = ""
 
 ###########################################

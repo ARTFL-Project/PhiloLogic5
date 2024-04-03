@@ -3,19 +3,22 @@
         <div class="d-none d-sm-block mt-3" style="padding: 0 0.5rem">
             <ul class="nav nav-tabs" id="colloc-method-switch" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active shadow-sm" id="frequency-tab" data-bs-toggle="tab"
-                        data-bs-target="#frequency-tab-pane" type="button" role="tab" aria-controls="frequency-tab-pane"
-                        aria-selected="true" @click="getFrequency()">{{ $t("collocation.collocation") }}</button>
+                    <button class="nav-link shadow-sm" id="frequency-tab" data-bs-toggle="tab"
+                        :class="{ active: collocMethod === 'frequency' }" data-bs-target="#frequency-tab-pane"
+                        type="button" role="tab" aria-controls="frequency-tab-pane" aria-selected="true"
+                        @click="getFrequency()">{{ $t("collocation.collocation") }}</button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="compare-tab" data-bs-toggle="tab"
-                        data-bs-target="#compare-tab-pane" type="button" role="tab" aria-controls="compare-tab-pane"
-                        aria-selected="false" @click="toggleCompare()">{{ $t("collocation.compareTo") }}</button>
+                        :class="{ active: collocMethod === 'compare' }" data-bs-target="#compare-tab-pane" type="button"
+                        role="tab" aria-controls="compare-tab-pane" aria-selected="false" @click="toggleCompare()">{{
+                            $t("collocation.compareTo") }}</button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="similar-tab" data-bs-toggle="tab"
-                        data-bs-target="#similar-tab-pane" type="button" role="tab" aria-controls="similar-tab-pane"
-                        aria-selected="false" @click="toggleSimilar()">Similar word usage</button>
+                        :class="{ active: collocMethod === 'similar' }" data-bs-target="#similar-tab-pane" type="button"
+                        role="tab" aria-controls="similar-tab-pane" aria-selected="false"
+                        @click="toggleSimilar()">Similar word usage</button>
                 </li>
             </ul>
         </div>
