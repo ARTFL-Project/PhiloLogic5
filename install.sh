@@ -6,8 +6,8 @@ sudo pip3 install build
 echo "$PYTHON_INSTALL"
 cd python;
 rm -rf dist/
-python3 -m build
-sudo -H pip3 install dist/*whl --force-reinstall
+python3 -m build --sdist
+sudo -H pip3 install dist/*gz
 sudo mkdir -p /etc/philologic/
 
 cd ..;

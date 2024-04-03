@@ -4,6 +4,7 @@
 import os
 import sqlite3
 import struct
+import subprocess
 import time
 from unidecode import unidecode
 from pickle import dump
@@ -16,6 +17,7 @@ from orjson import loads
 from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
 import pandas as pd
+from philologic.utils import count_lines
 
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
@@ -27,7 +29,7 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
         else:
             print(f"Loading the {table} SQLite table...")
         db_destination = os.path.join(loader_obj.destination, db_file)
-        line_count = sum(1 for _ in open(file_in, "rbU"))
+        line_count = count_lines(file_in)
         conn = sqlite3.connect(db_destination, detect_types=sqlite3.PARSE_DECLTYPES)
         conn.text_factory = str
         conn.row_factory = sqlite3.Row

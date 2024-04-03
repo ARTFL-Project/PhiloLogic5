@@ -34,6 +34,7 @@ from philologic.utils import (
     load_module,
     pretty_print,
     sort_list,
+    count_lines,
 )
 import spacy
 from tqdm import tqdm
@@ -606,7 +607,8 @@ class Loader:
                 raise ParserError(f"{text['name']} has caused parser to die.")
 
         os.system("lz4 --rm -c -q -3 %s > %s" % (text["words"], text["words"] + ".lz4"))
-        os.remove(text["raw"])
+        if cls.debug is False:
+            os.remove(text["raw"])
         return text["results"]
 
     def merge_objects(self):
@@ -733,21 +735,9 @@ class Loader:
         """Count words in all files"""
         print("\n### Counting total words ###", flush=True)
         print(f"{time.ctime()}: counting words in all files...", flush=True)
-        line_count_process = subprocess.run(
-            f"lz4 -dc {cls.workdir}/all_words_sorted.lz4 | wc -l",
-            shell=True,
-            text=True,
-            capture_output=True,
-        )
-        cls.word_count = int(line_count_process.stdout.strip())
+        cls.word_count = count_lines(f"{cls.workdir}/all_words_sorted.lz4", lz4=True)
         print(f"{time.ctime()}: counting lemmas in all files...", flush=True)
-        line_count_process = subprocess.run(
-            f"lz4 -dc {cls.workdir}/all_lemmas_sorted.lz4 | wc -l",
-            shell=True,
-            text=True,
-            capture_output=True,
-        )
-        cls.lemma_count = int(line_count_process.stdout.strip())
+        cls.lemma_count = count_lines(f"{cls.workdir}/all_lemmas_sorted.lz4", lz4=True)
 
     @classmethod
     def build_inverted_index(cls, commit_interval=5000):
@@ -989,8 +979,10 @@ class Loader:
                 file_in = self.destination + "/WORK/all_lines"
                 indices = [("doc_id", "start_byte", "end_byte")]
                 depth = 9
-            post_filter = make_sql_table(table, file_in, indices=indices, depth=depth, verbose=verbose)
-            self.post_filters.insert(0, post_filter)
+            # Only load if file is not empty:
+            if os.path.getsize(file_in) > 0:
+                post_filter = make_sql_table(table, file_in, indices=indices, depth=depth, verbose=verbose)
+                self.post_filters.insert(0, post_filter)
 
     @classmethod
     def post_processing(cls, *extra_filters, verbose=True):
