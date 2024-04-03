@@ -36,10 +36,11 @@ RUN sh install.sh && a2enmod rewrite && a2enmod cgi && a2enmod brotli
 RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic5.cfg && \
     sed -i 's/url_root = None/url_root = "http:\/\/localhost\/philologic\/"/' /etc/philologic/philologic5.cfg
 
+# Set up the autostart script
 COPY docker_apache_restart.sh /autostart.sh
 RUN chmod +x /autostart.sh
 
-# Set up Apache
+# Set up Apache configuration
 RUN perl -i -p0e 's/<Directory \/var\/www\/>\n\tOptions Indexes FollowSymLinks\n\tAllowOverride None/<Directory \/var\/www\/>\n\tOptions Indexes FollowSymLinks\n\tAllowOverride all/smg' /etc/apache2/apache2.conf
 EXPOSE 80
 ENTRYPOINT ["/autostart.sh"]

@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.scripts]
-philoload5 = "scripts.philoload5:main"
+philoload5 = "philologic.loadtime:philoload"
 
 [tool.setuptools_scm]
 root = ".."
