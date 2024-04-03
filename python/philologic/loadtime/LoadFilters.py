@@ -2,11 +2,10 @@
 """Load Filters used in Loader"""
 
 import os
-import pickle
 from collections import Counter
 from orjson import dumps, loads
 import lz4.frame
-
+from spacy.tokens import Doc as SpacyDoc
 from philologic.loadtime.OHCOVector import Record
 
 
@@ -46,6 +45,45 @@ def generate_words_sorted(loader_obj, text):
         text["words"],
     )
     os.system(wordcommand)
+
+
+def spacy_tagger(loader_obj, text):
+    """Tag words with Spacy"""
+    with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
+        with open(text["raw"], encoding="utf8") as fh:
+            sentence = []
+            current_sent_id = None
+            for line in fh:
+                philo_type, word, philo_id, attrib = line.split("\t")
+                if philo_type in ("word", "sent", "punct"):
+                    sent_id = " ".join(philo_id.split()[:6])
+                    record = Record(philo_type, word, philo_id.split())
+                    record.attrib = loads(attrib)
+                    if current_sent_id is not None and sent_id != current_sent_id:
+                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [r.name for r in sentence])
+                        parsed_sentence = loader_obj.nlp(spacy_sentence)
+                        for saved_record, parsed_word in zip(sentence, parsed_sentence):
+                            saved_record.attrib["pos"] = parsed_word.pos_
+                            saved_record.attrib["tag"] = parsed_word.tag_
+                            saved_record.attrib["dep"] = parsed_word.dep_
+                            saved_record.attrib["ent_type"] = parsed_word.ent_type_
+                            saved_record.attrib["lemma_"] = parsed_word.lemma_
+                            print(saved_record, file=tmp_file)
+                        sentence = []
+                    sentence.append(record)
+                    current_sent_id = sent_id
+        if sentence:
+            spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [r.name for r in sentence])
+            parsed_sentence = loader_obj.nlp(spacy_sentence)
+            for saved_record, parsed_word in zip(sentence, parsed_sentence):
+                saved_record.attrib["pos"] = parsed_word.pos_
+                saved_record.attrib["tag"] = parsed_word.tag_
+                saved_record.attrib["dep"] = parsed_word.dep_
+                saved_record.attrib["ent_type"] = parsed_word.ent_type_
+                saved_record.attrib["lemma_"] = parsed_word.lemma_
+                print(saved_record, file=tmp_file)
+    os.remove(text["raw"])
+    os.rename(text["raw"] + ".tmp", text["raw"])
 
 
 def get_lemmas(_, text):

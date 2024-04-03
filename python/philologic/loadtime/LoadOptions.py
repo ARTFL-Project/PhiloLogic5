@@ -76,6 +76,7 @@ class LoadOptions:
         self.values["pos"] = ""
         self.values["metadata_sql_types"] = {}
         self.values["lemma_file"] = None
+        self.values["spacy_model"] = None
 
     def setup_parser(self):
         """Set up parser options"""
@@ -183,6 +184,8 @@ class LoadOptions:
         if self.plain_text_obj:
             plain_text_filter = LoadFilters.store_in_plain_text(*self.plain_text_obj)
             self.load_filters.append(plain_text_filter)
+        if self.values["spacy_model"]:
+            self.load_filters = [LoadFilters.spacy_tagger] + self.load_filters
         if self.debug:
             print(self)
 

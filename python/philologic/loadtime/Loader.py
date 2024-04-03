@@ -35,6 +35,7 @@ from philologic.utils import (
     pretty_print,
     sort_list,
 )
+import spacy
 from tqdm import tqdm
 
 SORT_BY_WORD = "-k 2,2"
@@ -126,6 +127,7 @@ class Loader:
     word_count = 0
     lemma_count = 0
     has_attributes = False
+    nlp = None
 
     @classmethod
     def set_class_attributes(cls, loader_options):
@@ -144,7 +146,6 @@ class Loader:
         cls.cores = loader_options["cores"]
         cls.ascii_conversion = loader_options["ascii_conversion"]
         cls.metadata_sql_types = loader_options["metadata_sql_types"]
-        # cls.word_attributes = loader_options["word_attributes"]
         if loader_options["lemma_file"] is not None:
             cls.lemmas = {}
             with open(loader_options["lemma_file"], encoding="utf8") as lemma_file:
@@ -156,6 +157,9 @@ class Loader:
                 cls.parser_config[option] = loader_options[option]
             except KeyError:  # option hasn't been set
                 pass
+        if loader_options["spacy_model"]:
+            spacy.prefer_gpu()
+            cls.nlp = spacy.load(loader_options["spacy_model"], disable=["tokenizer"])
         return cls(**loader_options)
 
     def __init__(self, **loader_options):
@@ -526,8 +530,12 @@ class Loader:
             print("\n\n### Parsing files ###")
             print("%s: parsing %d files." % (time.ctime(), len(cls.filequeue)))
         with tqdm(total=len(cls.filequeue), smoothing=0, leave=False, desc="Parsing files") as pbar:
-            with Pool(workers) as pool:
-                for _ in pool.imap_unordered(cls.parse_file, range(len(cls.data_dicts))):
+            if cls.nlp is None:
+                with Pool(workers) as pool:
+                    for _ in pool.imap_unordered(cls.parse_file, range(len(cls.data_dicts))):
+                        pbar.update()
+            else:  # disable multiprocessing for spacy
+                for _ in map(cls.parse_file, range(len(cls.data_dicts))):
                     pbar.update()
         if verbose is True:
             print("%s: done parsing" % time.ctime())
@@ -591,7 +599,6 @@ class Loader:
                 except RuntimeError:
                     print("parse failure...", file=sys.stderr)
                     exit(1)
-
         for f in filters:
             try:
                 f(cls, text)

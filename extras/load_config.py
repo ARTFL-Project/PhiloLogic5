@@ -273,6 +273,9 @@ lowercase_index = True
 # Format is one word per line, separated by a tab from its lemma.
 lemma_file = ""
 
+# Define a SpaCy model to use for lemmatization, part-of-speech tagging, and named entity recognition.
+# Note that using SpaCy disables multiprocessing for parsing.
+spacy_model = ""
 
 ###########################################
 ####### ADVANCED CUSTOMIZATIONS ###########
