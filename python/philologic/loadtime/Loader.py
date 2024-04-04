@@ -858,7 +858,7 @@ class Loader:
                         word_attributes = {}
                     for attribute, attribute_value in local_word_attributes.items():
                         if attribute not in word_attributes:
-                            word_attributes[attribute] = defaultdict(bytes)
+                            word_attributes[attribute] = defaultdict(bytearray)
                         word_attributes[attribute][attribute_value] += philo_id_bytes
 
                 # Handle the last set of words
@@ -905,7 +905,7 @@ class Loader:
                         word_attributes = {}
                     for attribute, attribute_value in local_word_attributes.items():
                         if attribute not in word_attributes:
-                            word_attributes[attribute] = defaultdict(bytes)
+                            word_attributes[attribute] = defaultdict(bytearray)
                         word_attributes[attribute][attribute_value] += philo_id_bytes
 
                 # Handle the last set of words
