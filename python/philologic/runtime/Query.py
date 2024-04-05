@@ -262,7 +262,7 @@ def get_cooccurrence_groups(db_path, word_groups, level="sent", corpus_philo_ids
     cooc_slice = 6
     if level == "para":
         cooc_slice = 5
-    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False)
+    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
     with env.begin(buffers=True) as txn:
         # Determine which group has the smallest byte size
         byte_size_per_group = []

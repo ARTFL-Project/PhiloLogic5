@@ -260,5 +260,10 @@ def create_file_path(request, field, path):
     hash.update(request["q"].encode("utf-8"))
     hash.update(request["method"].encode("utf-8"))
     hash.update(str(request["arg"]).encode("utf-8"))
+    hash.update(request.colloc_filter_choice.encode("utf-8"))
+    hash.update(request.q_attribute.encode("utf-8"))
+    hash.update(request.q_attribute_value.encode("utf-8"))
+    hash.update(str(request.colloc_within).encode("utf-8"))
+    hash.update(str(request.filter_frequency).encode("utf-8"))
     hash.update(field.encode("utf-8"))
     return f"{path}/data/hitlists/{hash.hexdigest()}.pickle"

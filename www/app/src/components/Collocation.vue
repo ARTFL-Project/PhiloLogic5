@@ -310,6 +310,8 @@ export default {
             "formData.filter_frequency",
             "formData.arg_proxy",
             "formData.colloc_within",
+            "formData.q_attribute",
+            "formData.q_attribute_value",
             "currentReport",
             "resultsLength",
             "searching",
@@ -323,10 +325,8 @@ export default {
         fieldsToCompare() {
             let fields = []
             for (let field of this.philoConfig.collocation_fields_to_compare) {
-                console.log(field)
                 fields.push({ label: this.philoConfig.metadata_aliases[field] || field, value: field })
             }
-            console.log(fields)
             return fields
         }
 
@@ -546,6 +546,8 @@ export default {
                 colloc_filter_choice: this.colloc_filter_choice,
                 colloc_within: this.colloc_within,
                 filter_frequency: this.filter_frequency,
+                q_attribute: this.q_attribute,
+                q_attribute_value: this.q_attribute_value,
                 ...this.comparedMetadataValues,
                 start: start.toString(),
             };
@@ -620,13 +622,17 @@ export default {
                 first = false
             }
             this.$http
-                .post(`${this.$dbUrl}/reports/collocation.py`, {
+                .get(`${this.$dbUrl}/reports/collocation.py`, {
                     current_collocates: [],
                 }, {
                     params: {
-                        q: this.q, start: start.toString(), colloc_filter_choice: this.colloc_filter_choice,
+                        q: this.q, start: start.toString(),
+                        colloc_filter_choice: this.colloc_filter_choice,
                         colloc_within: this.colloc_within,
-                        filter_frequency: this.filter_frequency, map_field: field.value,
+                        filter_frequency: this.filter_frequency,
+                        map_field: field.value,
+                        q_attribute: this.q_attribute,
+                        q_attribute_value: this.q_attribute_value,
                         first: first,
                         max_time: 2
                     }

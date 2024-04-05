@@ -66,8 +66,7 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     df_other = pd.DataFrame.from_dict(dict(other_collocates), orient="index", columns=["other_corpus_count"])
 
     # Outer Join (Preserves all collocates)
-    df_combined = df_sub.join(df_other, how="outer").fillna(0)
-
+    df_combined = df_sub.join(df_other, how="outer").infer_objects(copy=False).fillna(0)
     # Adjust counts if comparing against the whole corpus
     if whole_corpus:
         df_combined["other_corpus_count"] = df_combined["other_corpus_count"] - df_combined["sub_corpus_count"]
