@@ -90,11 +90,6 @@ def collocation_results(request, config, current_collocates):
     collocation_object["filter_list"] = list(filter_list)
 
     hits_done = request.start or 0
-    if request.max_time is None:
-        max_time = None
-    else:
-        max_time = request.max_time or 2
-    start_time = timeit.default_timer()
 
     if current_collocates:
         all_collocates = dict(current_collocates)
@@ -106,6 +101,12 @@ def collocation_results(request, config, current_collocates):
         readonly=True,
         lock=False,
     )
+
+    if request.max_time is None:
+        max_time = None
+    else:
+        max_time = request.max_time or 2
+    start_time = timeit.default_timer()
 
     with env.begin() as txn:
         cursor = txn.cursor()
@@ -159,6 +160,7 @@ def collocation_results(request, config, current_collocates):
             else:
                 metadata_value = get_metadata_value(sql_cursor, map_field, parent_sentence, field_obj_index, obj_level)
                 if not metadata_value:
+                    hits_done += 1
                     continue
                 if metadata_value not in collocate_map:
                     collocate_map[metadata_value] = {}
@@ -184,24 +186,23 @@ def collocation_results(request, config, current_collocates):
                     break
     env.close()
     hits.finish()
+    collocation_object["results_length"] = len(hits)
+
+    if hits_done < collocation_object["results_length"]:
+        collocation_object["more_results"] = True
+        collocation_object["hits_done"] = hits_done
+    else:
+        collocation_object["more_results"] = False
+        collocation_object["hits_done"] = collocation_object["results_length"]
 
     if map_field is None:
         all_collocates = sorted(all_collocates.items(), key=lambda item: item[1], reverse=True)
         collocation_object["collocates"] = all_collocates
-        collocation_object["results_length"] = len(hits)
-        if hits_done < collocation_object["results_length"]:
-            collocation_object["more_results"] = True
-            collocation_object["hits_done"] = hits_done
-        else:
-            collocation_object["more_results"] = False
-            collocation_object["hits_done"] = collocation_object["results_length"]
         collocation_object["distance"] = collocate_distance
     else:
         file_path = create_file_path(request, map_field, config.db_path)
         with open(file_path, "wb") as f:
             pickle.dump(collocate_map, f)
-        collocation_object["results_length"] = len(hits)
-        collocation_object["hits_done"] = hits_done
         collocation_object["distance"] = collocate_distance
         collocation_object["file_path"] = file_path
 

@@ -20,6 +20,12 @@
                         role="tab" aria-controls="similar-tab-pane" aria-selected="false"
                         @click="toggleSimilar()">Similar word usage</button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="time-series-tab" data-bs-toggle="tab"
+                        :class="{ active: collocMethod === 'timeSeries' }" data-bs-target="#time-series-tab-pane"
+                        type="button" role="tab" aria-controls="time-series-tab-pane" aria-selected="false"
+                        @click="toggleTimeSeries()">{{ $t("collocation.timeSeries") }}</button>
+                </li>
             </ul>
         </div>
         <results-summary :description="results.description" :running-total="runningTotal" :filter-list="filterList"
@@ -155,6 +161,19 @@
                 </ul>
             </div>
         </div>
+        <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'timeSeries'">
+            <div class="input-group">
+                <button class="btn btn-outline-secondary">
+                    <label for="year_interval">{{ $t("searchForm.yearInterval") }}</label>
+                </button>
+                <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.every") }}</span>
+                <input type="text" class="form-control" name="year_interval" id="year_interval"
+                    style="max-width: 50px; text-align: center" v-model="timeSeriesInterval" />
+                <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years") }}</span>
+            </div>
+            <button type="button" class="btn btn-secondary mt-2" style="width: fit-content"
+                @click="getCollocatesOverTime(0, true)">{{ $t('collocation.searchEvolution') }}</button>
+        </div>
 
         <!-- Results below -->
         <div class="row my-3 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && collocMethod == 'frequency'">
@@ -280,9 +299,28 @@
                             <button type="button" class="list-group-item" style="text-align: justify"
                                 v-for="metadataValue in mostDissimilarDistributions" :key="metadataValue"
                                 @click="similarToComparative(metadataValue[0])">{{
-                                metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
+                            metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
                                     style="right: 1rem">{{ metadataValue[1] }}</span></button>
                         </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div v-if="collocMethod == 'timeSeries' && collocationTimePeriods.length > 0" class="mx-2 my-3">
+            <div class="card my-3 shadow-sm" v-for="timePeriods in collocationTimePeriods"
+                :key="timePeriods.periodsCompared">
+                <div class="row">
+                    <div class="col-6">
+                        <h6 class="py-2 colloc-cloud-title" style="margin-right: -.75rem;">{{
+                            timePeriods.firstPeriodYear }}</h6>
+                        <word-cloud class="px-2" :word-weights="timePeriods.firstPeriod" label=""
+                            :click-handler="collocateTimeSeriesClick(timePeriods.firstPeriodYear)"></word-cloud>
+                    </div>
+                    <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
+                        <h6 class="py-2 colloc-cloud-title" style="margin-left: -.75rem;">
+                            {{timePeriods.secondPeriodYear}}</h6>
+                        <word-cloud class="px-2" :word-weights="timePeriods.secondPeriod" label=""
+                            :click-handler="collocateTimeSeriesClick(timePeriods.secondPeriodYear)"></word-cloud>
                     </div>
                 </div>
             </div>
@@ -375,6 +413,8 @@ export default {
             similarFieldSelected: "",
             similarSearchProgress: "",
             similarSearching: false,
+            timeSeriesInterval: 10,
+            collocationTimePeriods: []
         };
     },
     created() {
@@ -534,6 +574,9 @@ export default {
         toggleSimilar() {
             this.collocMethod = "similar";
         },
+        toggleTimeSeries() {
+            this.collocMethod = "timeSeries";
+        },
         getOtherCollocates(fullResults, start) {
             if (Object.keys(this.comparedMetadataValues).length === 0) {
                 this.wholeCorpus = true
@@ -541,6 +584,7 @@ export default {
                 this.wholeCorpus = false
             }
             this.collocMethod = 'compare';
+            this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             let params = {
                 q: this.q,
                 colloc_filter_choice: this.colloc_filter_choice,
@@ -680,7 +724,77 @@ export default {
             }).catch((error) => {
                 this.debug(this, error);
             });
-        }
+        },
+        getCollocatesOverTime(start, first) {
+            this.collocationTimePeriods = []
+            this.$http.post(`${this.$dbUrl}/reports/collocation.py`, {
+                current_collocates: []
+            }, {
+                params: {
+                    q: this.q,
+                    colloc_filter_choice: this.colloc_filter_choice,
+                    colloc_within: this.colloc_within,
+                    filter_frequency: this.filter_frequency,
+                    q_attribute: this.q_attribute,
+                    q_attribute_value: this.q_attribute_value,
+                    max_time: 2,
+                    time_series_interval: this.timeSeriesInterval,
+                    map_field: "year",
+                    start: start.toString(),
+                    first: first
+                }
+            }).then((response) => {
+                if (response.data.more_results) {
+                    this.getCollocatesOverTime(response.data.hits_done, false);
+                } else {
+                    this.collocationTimeSeries(response.data.file_path, 0)
+                }
+
+            }).catch((error) => {
+                this.debug(this, error);
+            });
+        },
+        collocationTimeSeries(filePath, periodNumber) {
+            this.$http.get(`${this.$dbUrl}/scripts/collocation_time_series.py`, {
+                params: {
+                    file_path: filePath,
+                    year_interval: this.timeSeriesInterval,
+                    period_number: periodNumber
+                }
+            }).then((response) => {
+                this.collocationTimePeriods.push({
+                    firstPeriod: this.extractSurfaceFromCollocate(response.data.first_period.collocates),
+                    secondPeriod: this.extractSurfaceFromCollocate(response.data.second_period.collocates),
+                    firstPeriodYear: `${response.data.first_period.year}-${response.data.first_period.year + parseInt(this.timeSeriesInterval)}`,
+                    secondPeriodYear: `${response.data.second_period.year}-${response.data.second_period.year + parseInt(this.timeSeriesInterval)}`,
+                })
+                if (!response.data.done) {
+                    periodNumber += 1
+                    this.collocationTimeSeries(filePath, periodNumber)
+                }
+            }).catch((error) => {
+                this.debug(this, error);
+            });
+        },
+        collocateTimeSeriesClick(period) {
+            let localClick = (item) => {
+                let q = this.collocateCleanup(item)
+                let method = "cooc"
+                if (this.arg_proxy.length > 0) {
+                    method = 'proxy'
+                }
+                this.$router.push(
+                    this.paramsToRoute({
+                        ...this.$store.state.formData,
+                        report: "concordance",
+                        q: q,
+                        method: method,
+                        year: period
+                    })
+                );
+            }
+            return localClick
+        },
     },
 };
 </script>
@@ -773,6 +887,12 @@ input:focus::placeholder {
     color: #fff;
     background-color: $link-color;
     padding: 0.5rem;
+}
+
+.colloc-cloud-title {
+    text-align: center;
+    background: $link-color;
+    color: #fff;
 }
 </style>
 <!-- Not scoped to apply to child -->

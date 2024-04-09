@@ -115,7 +115,9 @@
         "similarCollocCompareMessage": "Comparaison des collocations",
         "topSimilarUses": "Utilisations les plus similaires",
         "topDissimilarUses": "Utilisations les plus dissimilaires",
-        "similarTo": "Trouver l'usage le plus similaire ou différent dans le champ suivant"
+        "similarTo": "Trouver l'usage le plus similaire ou différent dans le champ suivant",
+        "timeSeries": "Amplitude du changement dans le temps",
+        "searchEvolution": "Recherche l'évolution"
     },
     "concordance": {
         "more": "Plus",

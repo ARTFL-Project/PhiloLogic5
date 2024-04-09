@@ -116,7 +116,9 @@
         "similarCollocCompareMessage": "Comparing collocate distributions",
         "topSimilarUses": "Most similar uses",
         "topDissimilarUses": "Most dissimilar uses",
-        "similarToField": "Find most similar/dissimilar usages from the following field"
+        "similarToField": "Find most similar/dissimilar usages from the following field",
+        "timeSeries": "Magnitude of change over time",
+        "searchEvolution": "Search evolution"
     },
     "concordance": {
         "more": "More",

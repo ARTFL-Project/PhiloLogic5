@@ -10,7 +10,7 @@ import orjson
 
 import numpy as np
 import pandas as pd
-import numba as nb
+from sklearn.feature_extraction import DictVectorizer
 
 
 sys.path.append("..")
@@ -26,34 +26,24 @@ except ImportError:
     from philologic.runtime import WSGIHandler
 
 
-nb.config.CACHE_DIR = "/tmp/numba"
-
-
 def collocation_time_series(environ, start_response):
     """Reads in a pickled file containing collocations for each year. Then groups years by range
     and then compares the difference from one period to the next."""
-    if environ["REQUEST_METHOD"] == "OPTIONS":
-        # Handle preflight request
-        start_response(
-            "200 OK",
-            [
-                ("Content-Type", "text/plain"),
-                ("Access-Control-Allow-Origin", environ["HTTP_ORIGIN"]),  # Replace with your client domain
-                ("Access-Control-Allow-Methods", "POST, OPTIONS"),
-                ("Access-Control-Allow-Headers", "Content-Type"),  # Adjust if needed for your headers
-            ],
-        )
-        return [b""]  # Empty response body for OPTIONS
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
 
     config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
     request = WSGIHandler(environ, config)
+
     with open(request.file_path, "rb") as f:
         collocates_per_year = pickle.load(f)
     # We create a dataframe where rows are years and columns are collocates.
-    collocates_per_year_df = pd.DataFrame.from_dict(collocates_per_year, orient="index").fillna(0).astype(int)
+    vectorizer = DictVectorizer(dtype=int, sparse=True)
+    arrays = vectorizer.fit_transform(collocates_per_year.values())
+    collocates_per_year_df = pd.DataFrame(
+        arrays.toarray(), index=collocates_per_year.keys(), columns=vectorizer.feature_names_
+    )
 
     # We group the years by ranges
     period = int(request.year_interval)
@@ -61,37 +51,42 @@ def collocation_time_series(environ, start_response):
     collocates_per_period = collocates_per_year_df.groupby("period_group").sum() + 1  # + 1 for Laplace smoothing
     collocates_per_period.sort_index(inplace=True)
 
-    # Initialize an empty array to hold the cumulative sum
-    cumulative_sum = np.zeros_like(collocates_per_period.iloc[0].to_numpy())
-
     # We calculate the difference between each period as the cosine similarity between each period based on the z-score of the collocates
-    consecutive_similarities = []
-    for i in range(len(collocates_per_period) - 1):
-        # Update the cumulative sum to include the current period
-        cumulative_sum += collocates_per_period.iloc[i].to_numpy()
-        second_period = collocates_per_period.iloc[i + 1].to_numpy()
-        similarity = zscore_sim(cumulative_sum, second_period)
-        consecutive_similarities.append(
-            {
-                "range": f"{collocates_per_period.index[i]}-{collocates_per_period.index[i + 1]}",
-                "similarity": similarity,
-            }
-        )
+    period_number = int(request.period_number)
+    first_period = collocates_per_period.iloc[period_number].to_numpy()
+    second_period = collocates_per_period.iloc[period_number + 1].to_numpy()
+    first_period_diff, second_period_diff, similarity = zscore_diff(first_period, second_period)
+    first_period_series = (
+        pd.Series(first_period_diff, index=collocates_per_period.columns).sort_values(ascending=False).round(4)
+    )
+    first_period_over_representation = list(first_period_series[first_period_series > 0].head(100).items())
+    second_period_series = (
+        pd.Series(second_period_diff, index=collocates_per_period.columns).sort_values(ascending=False).round(4)
+    )
+    second_period_over_representation = list(second_period_series[second_period_series > 0].head(100).items())
 
-    # Get the mean similarity across all periods:
-    mean_similarity = np.mean([item["similarity"] for item in consecutive_similarities])
+    if collocates_per_period.iloc[period_number + 1].name == collocates_per_period.iloc[-1].name:
+        done = True
+    else:
+        done = False
 
-    # Adjusted similarity scores relative to the mean
-    adjusted_similarities = [
-        {"range": item["range"], "similarity": float(item["similarity"] - mean_similarity)}
-        for item in consecutive_similarities
-    ]
+    yield orjson.dumps(
+        {
+            "first_period": {
+                "year": int(collocates_per_period.index[period_number]),
+                "collocates": first_period_over_representation,
+            },
+            "second_period": {
+                "year": int(collocates_per_period.index[period_number + 1]),
+                "collocates": second_period_over_representation,
+            },
+            "similarity": float(similarity),
+            "done": done,
+        }
+    )
 
-    yield orjson.dumps({"consecutive_similarities": adjusted_similarities})
 
-
-@nb.jit(nopython=True, cache=True, fastmath=True)
-def zscore_sim(first_period, second_period):
+def zscore_diff(first_period, second_period):
     first_period = np.log(first_period) / first_period.sum()
     second_period = np.log(second_period) / second_period.sum()
 
@@ -106,11 +101,16 @@ def zscore_sim(first_period, second_period):
     first_period_z = (first_period - mean_count) / std_count
     second_period_z = (second_period - mean_count) / std_count
 
+    # Get the difference between the two periods
+    first_period_diff = first_period_z - second_period_z
+    second_period_diff = second_period_z - first_period_z
+
+    # Get similarity between the two periods
     similarity = cosine_similarity(first_period_z, second_period_z)
-    return similarity
+
+    return first_period_diff, second_period_diff, similarity
 
 
-@nb.jit(nopython=True, cache=True, fastmath=True)
 def cosine_similarity(a, b):
     """Calculate cosine similarity between two vectors."""
     dot_product = np.dot(a, b)

@@ -1,4 +1,5 @@
 """Report exports"""
+
 from philologic.runtime.reports.concordance import concordance_results
 from philologic.runtime.reports.bibliography import bibliography_results
 from philologic.runtime.reports.time_series import generate_time_series, get_start_end_date

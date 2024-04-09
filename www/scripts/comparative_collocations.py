@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Calculate mutual information between two words."""
+"""Compare collocations between two corpora."""
 
-import math
-import os
 import sys
 from wsgiref.handlers import CGIHandler
 import orjson
-from philologic.runtime.reports import collocation_results
 
 import numpy as np
 import pandas as pd
@@ -25,7 +22,7 @@ except ImportError:
     from philologic.runtime import WSGIHandler
 
 
-def get_collocation_relative_proportions(environ, start_response):
+def comparative_collocations(environ, start_response):
     """Calculate relative proportion of each collocate."""
     if environ["REQUEST_METHOD"] == "OPTIONS":
         # Handle preflight request
@@ -110,4 +107,4 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
 
 
 if __name__ == "__main__":
-    CGIHandler().run(get_collocation_relative_proportions)
+    CGIHandler().run(comparative_collocations)
