@@ -58,10 +58,10 @@ def get_similar_collocate_distributions(environ, start_response):
 
     first_row = author_word_matrix[0].reshape(1, -1)
     similarities = cosine_similarity(first_row, author_word_matrix[1:])[0]
-    similarity_series = pd.Series(similarities, index=collocations_per_field.keys()).astype(float)
+    similarity_series = pd.Series(similarities, index=collocations_per_field.keys()).astype(float).round(3)
     similarity_series.sort_values(ascending=False, inplace=True)
-    most_similar_distributions = [(k, round(v, 3)) for k, v in similarity_series.items() if v < 1.0][:50]
-    most_dissimilar_distributions = [(k, round(v, 3)) for k, v in similarity_series.iloc[::-1].items() if v < 1.0][:50]
+    most_similar_distributions = [(k, v) for k, v in similarity_series.items() if v < 1.0][:50]
+    most_dissimilar_distributions = [(k, v) for k, v in similarity_series.iloc[::-1].items() if v < 1.0][:50]
     yield orjson.dumps(
         {
             "most_similar_distributions": most_similar_distributions,

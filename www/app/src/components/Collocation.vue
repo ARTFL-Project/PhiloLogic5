@@ -239,10 +239,7 @@
                             </div>
                             <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
                                 <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
-                                    <div class="spinner-border text-secondary" role="status"
-                                        style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px">
-                                        <span class="visually-hidden">{{ $t("common.loading") }}...</span>
-                                    </div>
+                                    <progress-spinner :progress="progressPercent" :lg="true" />
                                 </div>
                                 <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates" label=""
                                     :click-handler="otherCollocateClick"></word-cloud>
@@ -257,10 +254,7 @@
                             </div>
                             <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
                                 <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
-                                    <div class="spinner-border text-secondary" role="status"
-                                        style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px">
-                                        <span class="visually-hidden">{{ $t("common.loading") }}...</span>
-                                    </div>
+                                    <progress-spinner :progress="progressPercent" :lg="true" />
                                 </div>
                                 <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
                                     :click-handler="otherCollocateClick"></word-cloud>
@@ -271,14 +265,12 @@
             </div>
         </div>
         <div v-if="collocMethod == 'similar'" class="mx-2 my-3" style="margin-bottom: 6rem">
-            <div class="alert alert-info mt-2 p-1" style="width: fit-content" role="alert" v-if="similarSearching">
-                {{ similarSearchProgress }}...
-                <div class="spinner-border text-secondary spinner-border-sm" role="status"><span
-                        class="visually-hidden">{{
-                            $t("common.loading") }}...</span>
+            <div style="display: flex; align-items: center;" v-if="similarSearching">
+                <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert">
+                    {{ similarSearchProgress }}...
                 </div>
+                <progress-spinner class="px-2" :progress="progressPercent" />
             </div>
-
             <div class="card mt-3" v-if="mostSimilarDistributions.length > 0">
                 <div class="row">
                     <div class="col-6 pe-0">
@@ -333,12 +325,13 @@ import { mapFields } from "vuex-map-fields";
 import ResultsSummary from "./ResultsSummary";
 import WordCloud from "./WordCloud.vue";
 import BibliographyCriteria from "./BibliographyCriteria";
+import ProgressSpinner from "./ProgressSpinner";
 import { Collapse, Tab } from "bootstrap";
 
 export default {
     name: "collocation-report",
     components: {
-        ResultsSummary, WordCloud, BibliographyCriteria
+        ResultsSummary, WordCloud, BibliographyCriteria, ProgressSpinner
     },
     computed: {
         ...mapFields([
@@ -414,7 +407,8 @@ export default {
             similarSearchProgress: "",
             similarSearching: false,
             timeSeriesInterval: 10,
-            collocationTimePeriods: []
+            collocationTimePeriods: [],
+            progressPercent: 0
         };
     },
     created() {
@@ -583,6 +577,9 @@ export default {
             } else {
                 this.wholeCorpus = false
             }
+            if (Object.keys(fullResults).length === 0) {
+                this.progressPercent = 0
+            }
             this.collocMethod = 'compare';
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             let params = {
@@ -590,8 +587,8 @@ export default {
                 colloc_filter_choice: this.colloc_filter_choice,
                 colloc_within: this.colloc_within,
                 filter_frequency: this.filter_frequency,
-                q_attribute: this.q_attribute,
-                q_attribute_value: this.q_attribute_value,
+                q_attribute: this.q_attribute || "",
+                q_attribute_value: this.q_attribute_value || "",
                 ...this.comparedMetadataValues,
                 start: start.toString(),
             };
@@ -611,7 +608,9 @@ export default {
                     let start = response.data.hits_done;
                     if (resultsLength) {
                         if (moreResults) {
+                            this.progressPercent = Math.trunc((start / resultsLength) * 100)
                             this.getOtherCollocates(response.data.collocates, start);
+                            console.log(this.progressPercent)
                         }
                         else {
                             this.compareSearching = false;
@@ -661,12 +660,13 @@ export default {
             this.mostSimilarDistributions = []
             if (typeof first === 'undefined') {
                 first = true
+                this.progressPercent = 0
             }
             else {
                 first = false
             }
             this.$http
-                .get(`${this.$dbUrl}/reports/collocation.py`, {
+                .post(`${this.$dbUrl}/reports/collocation.py`, {
                     current_collocates: [],
                 }, {
                     params: {
@@ -675,13 +675,14 @@ export default {
                         colloc_within: this.colloc_within,
                         filter_frequency: this.filter_frequency,
                         map_field: field.value,
-                        q_attribute: this.q_attribute,
-                        q_attribute_value: this.q_attribute_value,
+                        q_attribute: this.q_attribute || "",
+                        q_attribute_value: this.q_attribute_value || "",
                         first: first,
                         max_time: 2
                     }
                 }).then((response) => {
                     if (response.data.more_results) {
+                        this.progressPercent = Math.trunc((response.data.hits_done / response.data.results_length) * 100)
                         this.similarCollocDistributions(field, response.data.hits_done, first);
                     } else {
                         this.getMostSimilarCollocDistribution(response.data.file_path);
@@ -692,6 +693,7 @@ export default {
 
         },
         getMostSimilarCollocDistribution(filePath) {
+            this.progressPercent = 0
             this.similarSearchProgress = this.$t("collocation.similarCollocCompareMessage")
             this.$http.post(`${this.$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
                 collocates: this.collocateCounts,
@@ -893,6 +895,19 @@ input:focus::placeholder {
     text-align: center;
     background: $link-color;
     color: #fff;
+}
+
+.spinner-container {
+    position: relative;
+}
+
+.spinner-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: .75rem;
+    color: $link-color;
 }
 </style>
 <!-- Not scoped to apply to child -->

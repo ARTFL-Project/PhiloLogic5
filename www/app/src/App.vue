@@ -380,11 +380,6 @@ span.note {
     content: "*";
 }
 
-.xml-hi {
-    font-style: italic;
-    font-variant: small-caps;
-}
-
 .xml-w::before {
     margin: 0;
     padding: 0;
