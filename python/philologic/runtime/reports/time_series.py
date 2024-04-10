@@ -2,7 +2,7 @@
 """Time series"""
 
 import regex as re
-import timeit
+import time
 from collections import defaultdict
 
 from philologic.runtime.link import make_absolute_query_link
@@ -36,22 +36,21 @@ def generate_time_series(request, config):
         date_range = "%d-%d" % (start, end)
         date_ranges.append((start, date_range))
 
+        # Start running queries concurrently to avoid waiting for results in the below loop
+        request.metadata[config.time_series_year_field] = date_range
+        hits = db.query(request["q"], request["method"], request["arg"], raw_results=True, **request.metadata)
+
     absolute_count = defaultdict(int)
     date_counts = {}
     total_hits = 0
     last_date_done = start_date
-    start_time = timeit.default_timer()
-    max_time = request.max_time or 10
+    start_time = time.time()
+    max_time = int(request.max_time) or 2
     cursor = db.dbh.cursor()
     for start_range, date_range in date_ranges:
-        request.metadata[config.time_series_year_field] = date_range
-        hits = db.query(request["q"], request["method"], request["arg"], raw_results=True, **request.metadata)
-        hits.finish()
-        hit_len = len(hits)
         params = {"report": "concordance", "start": "0", "end": "0"}
         params[config.time_series_year_field] = date_range
         url = make_absolute_query_link(config, request, **params)
-        absolute_count[str(start_range)] = {"label": start_range, "count": hit_len, "url": url}
 
         # Get date total count
         if interval != 1:
@@ -67,12 +66,20 @@ def generate_time_series(request, config):
                 query = f"SELECT COUNT(*) FROM toms WHERE philo_type='{db.locals.default_object_level}' AND {config.time_series_year_field}='{start_range}'"
         cursor.execute(query)
         date_counts[start_range] = cursor.fetchone()[0] or 0
+
+        # Get absolute count
+        request.metadata[config.time_series_year_field] = date_range
+        hits = db.query(request["q"], request["method"], request["arg"], raw_results=True, **request.metadata)
+        hits.finish()
+        hit_len = len(hits)
+
+        absolute_count[str(start_range)] = {"label": start_range, "count": hit_len, "url": url}
         total_hits += hit_len
-        elapsed = timeit.default_timer() - start_time
+
         last_date_done = start_range
         # avoid timeouts by splitting the query if more than request.max_time
         # (in seconds) has been spent in the loop
-        if elapsed > int(max_time):
+        if time.time() - start_time > max_time:
             break
 
     time_series_object["results_length"] = total_hits
