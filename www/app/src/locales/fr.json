@@ -117,7 +117,8 @@
         "topDissimilarUses": "Utilisations les plus dissimilaires",
         "similarTo": "Trouver l'usage le plus similaire ou différent dans le champ suivant",
         "timeSeries": "Changement au fil du temps",
-        "searchEvolution": "Recherche l'évolution"
+        "searchEvolution": "Rechercher l'évolution",
+        "collocateBetweenPeriods": "Sur-représentation des collocations entre périodes"
     },
     "concordance": {
         "more": "Plus",

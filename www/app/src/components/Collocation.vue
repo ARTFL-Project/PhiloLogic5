@@ -162,7 +162,9 @@
             </div>
         </div>
         <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'timeSeries'">
-            <div class="input-group">
+            <bibliography-criteria :biblio="biblio" :query-report="report"
+                :results-length="resultsLength"></bibliography-criteria>
+            <div class="input-group mt-2">
                 <button class="btn btn-outline-secondary">
                     <label for="year_interval">{{ $t("searchForm.yearInterval") }}</label>
                 </button>
@@ -299,6 +301,7 @@
             </div>
         </div>
         <div v-if="collocMethod == 'timeSeries' && collocationTimePeriods.length > 0" class="mx-2 my-3">
+            <h4 style="text-align: center">{{ $t("collocation.collocateBetweenPeriods") }}</h4>
             <div class="card my-3 shadow-sm" v-for="timePeriods in collocationTimePeriods"
                 :key="timePeriods.periodsCompared">
                 <div class="row">
@@ -422,6 +425,7 @@ export default {
         urlUpdate() {
             if (this.$route.name == "collocation") {
                 this.fetchResults();
+                this.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
             }
         },
         searchableMetadata: {
@@ -443,6 +447,7 @@ export default {
             this.comparativeSearchStarted = false
             this.mostSimilarDistributions = []
             this.mostDissimilarDistributions = []
+            this.collocationTimePeriods = []
             this.similarFieldSelected = ""
             this.updateCollocation({}, 0);
         },
@@ -733,12 +738,7 @@ export default {
                 current_collocates: []
             }, {
                 params: {
-                    q: this.q,
-                    colloc_filter_choice: this.colloc_filter_choice,
-                    colloc_within: this.colloc_within,
-                    filter_frequency: this.filter_frequency,
-                    q_attribute: this.q_attribute,
-                    q_attribute_value: this.q_attribute_value,
+                    ...this.$store.state.formData,
                     max_time: 2,
                     time_series_interval: this.timeSeriesInterval,
                     map_field: "year",

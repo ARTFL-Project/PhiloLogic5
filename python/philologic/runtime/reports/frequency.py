@@ -32,8 +32,6 @@ def frequency_results(request, config, sorted_results=False):
             **request.metadata,
         )
 
-    if sorted_results is True:
-        hits.finish()
     metadata_type = db.locals["metadata_types"][request.frequency_field]
     cursor = db.dbh.cursor()
     if metadata_type != "div":
@@ -168,6 +166,8 @@ def frequency_results(request, config, sorted_results=False):
     except IndexError:
         frequency_object["results"] = {}
         frequency_object["more_results"] = False
+    if sorted_results is True:
+        hits.finish()
     frequency_object["results_length"] = len(hits)
     frequency_object["query"] = dict([i for i in request])
 

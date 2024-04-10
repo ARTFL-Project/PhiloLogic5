@@ -118,7 +118,8 @@
         "topDissimilarUses": "Most dissimilar uses",
         "similarToField": "Find most similar/dissimilar usages from the following field",
         "timeSeries": "Change over time",
-        "searchEvolution": "Search evolution"
+        "searchEvolution": "Search evolution",
+        "collocateBetweenPeriods": "Collocate over-representation between periods"
     },
     "concordance": {
         "more": "More",
