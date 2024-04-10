@@ -4,7 +4,7 @@
 * Integrate SpaCy in parser for part-of-speech tagging, lemmatization, and ner. 
 * Lemma searching in all reports enabled if present in TEI or if lemma mapping file provided
 * Word attribute searching
-* Completely rewritten collocations with better perfoamcen (1.5x) a LOT of new functionality:
+* Completely rewritten collocations with better performance (1.5x) and a LOT of new functionality:
    * Search within n words in collocations
    * Search for lemmas
    * Filter by word attribute (e.g. by part-of-speech)
