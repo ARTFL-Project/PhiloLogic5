@@ -11,6 +11,7 @@
    * Compare collocation distributions based on count and z-score difference.
    * Find most similar collocation distribution based on metadata (e.g. finding authors with most similar collocation distribution)
    * Collocations over time
+* Speed-up time series (5x or more)
 
 ### 4.7 ###
 - New aggregation report
