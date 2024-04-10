@@ -23,7 +23,7 @@ dependencies = [
     "tqdm",
     "orjson",
     "black",
-    "msgpack",
+    "msgspec",
     "unidecode",
     "lz4",
     "lmdb",

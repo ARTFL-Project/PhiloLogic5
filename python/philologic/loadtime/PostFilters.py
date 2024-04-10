@@ -4,15 +4,13 @@
 import os
 import sqlite3
 import struct
-import subprocess
 import time
 from unidecode import unidecode
-from pickle import dump
 
 import multiprocess as mp
 import lmdb
 import lz4.frame
-import msgpack
+import msgspec
 from orjson import loads
 from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -100,6 +98,9 @@ def make_sentences_database(loader_obj, db_destination):
     attributes_to_skip = set(attributes_to_skip)
     attributes_to_skip.update({"token", "position", "philo_type"})
     temp_destination = f"{db_destination}_temp"
+
+    msgpack = msgspec.msgpack.Encoder()
+
     with tqdm(total=loader_obj.word_count, leave=False) as pbar:
         env = lmdb.open(temp_destination, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True)  # 2TB
         count = 0
@@ -115,7 +116,7 @@ def make_sentences_database(loader_obj, db_destination):
                             sentence_id = struct.pack("6I", *map(int, word_obj["position"].split()[:6]))
                             if sentence_id != current_sentence:
                                 if current_sentence is not None:
-                                    txn.put(current_sentence, msgpack.dumps(words))
+                                    txn.put(current_sentence, msgpack.encode(words))
                                     words = []
                                     count += 1
                                 current_sentence = sentence_id
@@ -132,7 +133,7 @@ def make_sentences_database(loader_obj, db_destination):
                             )
                             pbar.update()
                     if sentence_id:
-                        txn.put(sentence_id, msgpack.dumps(words))
+                        txn.put(sentence_id, msgpack.encode(words))
         pbar.close()  # Make sure to clear the tqdm bar
         print(f"{time.ctime()}: Optimizing the sentences index for space...")
         os.mkdir(db_destination)

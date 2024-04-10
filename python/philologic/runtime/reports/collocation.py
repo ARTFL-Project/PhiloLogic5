@@ -9,7 +9,7 @@ import timeit
 import struct
 from typing import Any
 
-import msgpack
+import msgspec
 import lmdb
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_word_groups
@@ -38,21 +38,21 @@ def collocation_results(request, config, current_collocates):
         sql_cursor = db.dbh.cursor()
 
     hits = db.query(
-        request["q"],
+        request.q,
         "proxy",
-        request["arg"],
+        request.arg,
         raw_results=True,
         raw_bytes=True,
         **request.metadata,
     )
 
     try:
-        collocate_distance = int(request["arg_proxy"])
+        collocate_distance = int(request.arg_proxy)
     except ValueError:  # Getting an empty string since the keyword is not specificed in the URL
         collocate_distance = None
 
     # We turn on lemma counting if the query word is a lemma search
-    if "lemma:" in request["q"]:
+    if "lemma:" in request.q:
         count_lemmas = True
     else:
         count_lemmas = False
@@ -83,7 +83,7 @@ def collocation_results(request, config, current_collocates):
         else:
             filter_list = set(query_words)
             filter_list = filter_list.union(set(query_words))
-        filter_list.add(f"{request['q']}:{attribute}:{attribute_value}")
+        filter_list.add(f"{request.q}:{attribute}:{attribute_value}")
     else:
         filter_list = set(build_filter_list(request, config, count_lemmas))
         filter_list = filter_list.union(set(query_words))
@@ -108,6 +108,8 @@ def collocation_results(request, config, current_collocates):
         max_time = request.max_time or 2
     start_time = timeit.default_timer()
 
+    decoder = msgspec.msgpack.Decoder(list[tuple])
+
     with env.begin() as txn:
         cursor = txn.cursor()
         for hit in hits[hits_done:]:
@@ -115,48 +117,48 @@ def collocation_results(request, config, current_collocates):
             if collocate_distance is not None:
                 q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
             sentence = cursor.get(parent_sentence)
-            word_objects = msgpack.loads(sentence)
+            word_objects = decoder.decode(sentence)
 
             # If not attribute filter set, we just get the words/lemmas
             if attribute is None:
                 if count_lemmas is False:
-                    words = [(word, position) for word, _, position, _ in word_objects if word not in filter_list]
+                    words = ((word, position) for word, _, position, _ in word_objects if word not in filter_list)
                 else:
-                    words = [
-                        (attr.get("lemma"), position)
+                    words = (
+                        (lemma, position)
                         for _, _, position, attr in word_objects
-                        if attr.get("lemma") not in filter_list
-                    ]
+                        if (lemma := attr.get("lemma")) not in filter_list
+                    )
 
             # If attribute filter is set, we get the words/lemmas that match the filter
             else:
                 if count_lemmas is False:
-                    words = [
+                    words = (
                         (f"{word.lower()}:{attribute}:{attribute_value}", position)
                         for word, _, position, attr in word_objects
                         if attr.get(attribute) == attribute_value
-                    ]
+                    )
                 else:
-                    words = [
+                    words = (
                         (f"{attr['lemma']}:{attribute}:{attribute_value}", position)
                         for _, _, position, attr in word_objects
                         if attr.get(attribute) == attribute_value
-                    ]
+                    )
 
             if map_field is None:
-                for collocate, position in words:
-                    if collocate is not None:  # in the event lemma is None
-                        if collocate_distance is None:
+                if collocate_distance is None:
+                    for collocate, _ in words:
+                        if collocate not in all_collocates:
+                            all_collocates[collocate] = 1
+                        else:
+                            all_collocates[collocate] += 1
+                else:
+                    for collocate, position in words:
+                        if abs(position - q_word_position[0]) <= collocate_distance:
                             if collocate not in all_collocates:
                                 all_collocates[collocate] = 1
                             else:
                                 all_collocates[collocate] += 1
-                        else:
-                            if abs(position - q_word_position[0]) <= collocate_distance:  # type: ignore
-                                if collocate not in all_collocates:
-                                    all_collocates[collocate] = 1
-                                else:
-                                    all_collocates[collocate] += 1
             else:
                 metadata_value = get_metadata_value(sql_cursor, map_field, parent_sentence, field_obj_index, obj_level)
                 if not metadata_value:
@@ -164,19 +166,19 @@ def collocation_results(request, config, current_collocates):
                     continue
                 if metadata_value not in collocate_map:
                     collocate_map[metadata_value] = {}
-                for collocate, position in words:
-                    if collocate is not None:  # in the event lemma is None
-                        if collocate_distance is None:
+                if collocate_distance is None:
+                    for collocate, _ in words:
+                        if collocate not in collocate_map[metadata_value]:
+                            collocate_map[metadata_value][collocate] = 1
+                        else:
+                            collocate_map[metadata_value][collocate] += 1
+                else:
+                    for collocate, position in words:
+                        if abs(position - q_word_position[0]) <= collocate_distance:
                             if collocate not in collocate_map[metadata_value]:
                                 collocate_map[metadata_value][collocate] = 1
                             else:
                                 collocate_map[metadata_value][collocate] += 1
-                        else:
-                            if abs(position - q_word_position[0]) <= collocate_distance:  # type: ignore
-                                if collocate not in collocate_map[metadata_value]:
-                                    collocate_map[metadata_value][collocate] = 1
-                                else:
-                                    collocate_map[metadata_value][collocate] += 1
 
             hits_done += 1
             elapsed = timeit.default_timer() - start_time
@@ -196,11 +198,17 @@ def collocation_results(request, config, current_collocates):
         collocation_object["hits_done"] = collocation_object["results_length"]
 
     if map_field is None:
+        if None in all_collocates:  # in the case of lemmas returning None
+            del all_collocates[None]
         all_collocates = sorted(all_collocates.items(), key=lambda item: item[1], reverse=True)
         collocation_object["collocates"] = all_collocates
         collocation_object["distance"] = collocate_distance
     else:
         file_path = create_file_path(request, map_field, config.db_path)
+        for metadata_value, count in collocate_map.items():
+            if None in count:  # in the case of lemmas returning None
+                del count[None]
+                collocate_map[metadata_value] = count
         with open(file_path, "wb") as f:
             pickle.dump(collocate_map, f)
         collocation_object["distance"] = collocate_distance
@@ -233,7 +241,7 @@ def build_filter_list(request, config, count_lemmas):
             filter_num = int(request.filter_frequency)
         else:
             filter_num = 100  # default value in case it's not defined
-    filter_list = [request["q"]]
+    filter_list = [request.q]
     with open(filter_file, encoding="utf8") as filehandle:
         for line_count, line in enumerate(filehandle):
             if line_count == filter_num:
@@ -268,3 +276,33 @@ def create_file_path(request, field, path):
     hash.update(str(request.filter_frequency).encode("utf-8"))
     hash.update(field.encode("utf-8"))
     return f"{path}/data/hitlists/{hash.hexdigest()}.pickle"
+
+
+if __name__ == "__main__":
+    from collections import namedtuple
+
+    Request = namedtuple(
+        "request",
+        [
+            "q",
+            "method",
+            "arg",
+            "colloc_filter_choice",
+            "q_attribute",
+            "q_attribute_value",
+            "colloc_within",
+            "filter_frequency",
+            "start",
+            "max_time",
+            "map_field",
+            "metadata",
+            "arg_proxy",
+        ],
+    )
+    Config = namedtuple("config", ["db_path", "stopwords"])
+
+    request = Request("amour", "proxy", "", "frequency", "", "", "sent", 100, 0, 10, "", {}, "")
+
+    config = Config("/var/www/html/philologic/frantext", "")
+
+    collocation_results(request, config, {})
