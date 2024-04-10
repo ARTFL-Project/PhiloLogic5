@@ -279,30 +279,40 @@ def create_file_path(request, field, path):
 
 
 if __name__ == "__main__":
-    from collections import namedtuple
+    import sys
 
-    Request = namedtuple(
-        "request",
-        [
-            "q",
-            "method",
-            "arg",
-            "colloc_filter_choice",
-            "q_attribute",
-            "q_attribute_value",
-            "colloc_within",
-            "filter_frequency",
-            "start",
-            "max_time",
-            "map_field",
-            "metadata",
-            "arg_proxy",
-        ],
-    )
-    Config = namedtuple("config", ["db_path", "stopwords"])
+    db_path = sys.argv[1]
+    q = sys.argv[2]
 
-    request = Request("amour", "proxy", "", "frequency", "", "", "sent", 100, 0, 10, "", {}, "")
+    class Request:
+        def __init__(self, query):
+            self.q = query
+            self.method = "proxy"
+            self.arg = ""
+            self.colloc_filter_choice = "frequency"
+            self.q_attribute = ""
+            self.q_attribute_value = ""
+            self.colloc_within = "sent"
+            self.filter_frequency = 100
+            self.start = 0
+            self.max_time = 10
+            self.map_field = ""
+            self.metadata = {}
+            self.arg_proxy = ""
 
-    config = Config("/var/www/html/philologic/frantext", "")
+        def __getitem__(self, key):
+            return getattr(self, key)
+
+        def __iter__(self):
+            return iter(self.__dict__.items())
+
+    class Config:
+        def __init__(self, db_path):
+            self.db_path = db_path
+            self.stopwords = ""
+
+    request = Request(q)
+
+    config = Config("/var/www/html/philologic/frantext")
 
     collocation_results(request, config, {})
