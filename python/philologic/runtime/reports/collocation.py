@@ -313,6 +313,6 @@ if __name__ == "__main__":
 
     request = Request(q)
 
-    config = Config("/var/www/html/philologic/frantext")
+    config = Config(db_path)
 
     collocation_results(request, config, {})
