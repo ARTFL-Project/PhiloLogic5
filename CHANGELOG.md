@@ -1,7 +1,7 @@
 ### 5.0 ###
 * Rewriten core search routines from the old C to Python, move word index to LMDB
 * Count all co-occurrences (old behavior only counted one co-occurrence per sentence)
-* Integrate SpaCy in parser for part-of-soeech tagging, lemmatization, and ner. 
+* Integrate SpaCy in parser for part-of-speech tagging, lemmatization, and ner. 
 * Lemma searching in all reports enabled if present in TEI or if lemma mapping file provided
 * Word attribute searching
 * Completely rewritten collocations with better perfoamcen (1.5x) a LOT of new functionality:
