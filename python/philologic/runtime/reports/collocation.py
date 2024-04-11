@@ -87,7 +87,7 @@ def collocation_results(request, config, current_collocates):
     else:
         filter_list = set(build_filter_list(request, config, count_lemmas))
         filter_list = filter_list.union(set(query_words))
-    collocation_object["filter_list"] = list(filter_list)
+    collocation_object["filter_list"] = sorted(filter_list, key=lambda x: x.lower())
 
     hits_done = request.start or 0
 
