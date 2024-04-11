@@ -7,7 +7,7 @@ import timeit
 from wsgiref.handlers import CGIHandler
 import struct
 
-import msgpack
+import msgspec
 import orjson
 import regex as re
 from philologic.runtime.DB import DB
@@ -71,6 +71,7 @@ def get_neighboring_words(environ, start_response):
             readonly=True,
             lock=False,
         )
+        decoder = msgspec.msgpack.Decoder(list[tuple])
         with open(cache_path, "a") as cache_file, env.begin() as txn:
             cursor = txn.cursor()
             for hit in hits[index:]:
@@ -88,11 +89,11 @@ def get_neighboring_words(environ, start_response):
                 else:
                     offsets = hit.bytes
                     sentence = struct.pack("6I", *hit.hit[:6])
-                words = msgpack.loads(cursor.get(sentence))
+                words = decoder.decode(cursor.get(sentence))
                 left_side_text = []
                 right_side_text = []
                 query_words = []
-                for word, _, start_byte, _ in words:
+                for word, start_byte, _, _ in words:
                     if NUMBER.search(word):
                         continue
                     if db.locals.ascii_conversion is True:
