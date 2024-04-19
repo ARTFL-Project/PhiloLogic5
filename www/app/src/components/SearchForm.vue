@@ -623,7 +623,7 @@ export default {
         }
         if (this.collocFilteringSelected.value == "") {
             if (this.$philoConfig.stopwords.length > 0) {
-                this.collocFilteringSelected = this.collocationOptions[1];
+                this.collocFilteringSelected = this.collocationOptions[2];
             } else {
                 this.collocFilteringSelected = this.collocationOptions[0];
             }
