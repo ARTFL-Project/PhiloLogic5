@@ -52,10 +52,20 @@ def collocation_results(request, config, current_collocates):
         collocate_distance = None
 
     # We turn on lemma counting if the query word is a lemma search
+
     if "lemma:" in request.q:
         count_lemmas = True
     else:
         count_lemmas = False
+
+    # Does the query contain an attribute
+    query_with_attribs = False
+    query_attribute_type = None
+    query_attribute_value = None
+    if request.q.count(":") == 3:
+        query_with_attribs = True
+        query_attribute_type = request.q.split(":")[2]
+        query_attribute_value = request.q.split(":")[3]
 
     # Attribute filtering
     if request.colloc_filter_choice == "attribute":
@@ -109,7 +119,6 @@ def collocation_results(request, config, current_collocates):
     start_time = timeit.default_timer()
 
     decoder = msgspec.msgpack.Decoder(list[tuple])
-
     with env.begin() as txn:
         cursor = txn.cursor()
         for hit in hits[hits_done:]:
@@ -122,20 +131,49 @@ def collocation_results(request, config, current_collocates):
             # If not attribute filter set, we just get the words/lemmas
             if attribute is None:
                 if count_lemmas is False:
-                    words = ((word, position) for word, _, position, _ in word_objects if word not in filter_list)
-                else:
+                    if query_with_attribs is False:
+                        words = ((word, position) for word, _, position, _ in word_objects if word not in filter_list)
+                    else:
+                        words = (
+                            (word, position)
+                            for word, _, position, _ in word_objects
+                            if word not in filter_list
+                            and f"{word}:{query_attribute_type}:{query_attribute_value}" != request.q
+                        )
+                elif query_with_attribs is False:
                     words = (
                         (lemma, position)
                         for _, _, position, attr in word_objects
                         if (lemma := attr.get("lemma")) not in filter_list
                     )
+                else:
+                    words = (
+                        (attr["lemma"], position)
+                        for _, _, position, attr in word_objects
+                        if attr.get("lemma") not in filter_list
+                        and f"{attr['lemma']}:{query_attribute_type}:{query_attribute_value}" != request.q
+                    )
 
             # If attribute filter is set, we get the words/lemmas that match the filter
             else:
                 if count_lemmas is False:
+                    if query_with_attribs is False:
+                        words = (
+                            (f"{word.lower()}:{attribute}:{attribute_value}", position)
+                            for word, _, position, attr in word_objects
+                            if attr.get(attribute) == attribute_value
+                        )
+                    else:
+                        words = (
+                            (f"{word.lower()}:{attribute}:{attribute_value}", position)
+                            for word, _, position, attr in word_objects
+                            if attr.get(attribute) == attribute_value
+                            and f"{word.lower()}:{attribute}:{attribute_value}" != request.q
+                        )
+                elif query_with_attribs is False:
                     words = (
-                        (f"{word.lower()}:{attribute}:{attribute_value}", position)
-                        for word, _, position, attr in word_objects
+                        (f"{attr['lemma']}:{attribute}:{attribute_value}", position)
+                        for _, _, position, attr in word_objects
                         if attr.get(attribute) == attribute_value
                     )
                 else:
@@ -143,6 +181,7 @@ def collocation_results(request, config, current_collocates):
                         (f"{attr['lemma']}:{attribute}:{attribute_value}", position)
                         for _, _, position, attr in word_objects
                         if attr.get(attribute) == attribute_value
+                        and f"{attr['lemma']}:{attribute}:{attribute_value}" != request.q
                     )
 
             if map_field is None:
