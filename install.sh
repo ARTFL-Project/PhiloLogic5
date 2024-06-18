@@ -31,11 +31,6 @@ virtualenv -p $PYTHON_VERSION /var/lib/philologic/philologic_env
 # Activate the virtual environment
 source /var/lib/philologic/philologic_env/bin/activate
 
-# Set the Numba cache directory
-export NUMBA_CACHE_DIR="/tmp/numba"
-mkdir -p /tmp/numba
-chmod -R 775 /tmp/numba
-
 # Install required packages
 pip install build
 
