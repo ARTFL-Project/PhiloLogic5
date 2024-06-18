@@ -159,6 +159,8 @@ class LoadOptions:
                     self.values["files"].append(file_path.strip())
         elif len(args.files) == 1 and os.path.isdir(args.files[0]):
             self.values["files"] = glob(os.path.join(args.files[0], "*"))
+        elif len(args.files) == 1 and "*" in args.files[0]:
+            self.values["files"] = glob(args.files[0])
         else:
             self.values["files"] = args.files
         if args.bibliography is not None:

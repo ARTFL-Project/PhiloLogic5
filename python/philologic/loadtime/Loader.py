@@ -12,13 +12,11 @@ import time
 from glob import iglob
 from json import dump
 import csv
-import subprocess
 import struct
 from collections import defaultdict, Counter
 import sqlite3
 
 import lmdb
-import numpy as np
 import lz4.frame
 from orjson import loads
 import lxml.etree
@@ -35,6 +33,7 @@ from philologic.utils import (
     pretty_print,
     sort_list,
     count_lines,
+    update_shebang,
 )
 import spacy
 from tqdm import tqdm
@@ -1099,6 +1098,9 @@ class Loader:
             self.write_web_config()
         if self.debug is False:
             os.system(f"rm -rf {self.workdir}")
+
+        # Set path to Python executable for CGI script in the Web app directory (for virtual environments)
+        update_shebang(os.path.dirname(os.path.normpath(self.destination)))
 
         print("Building Web Client Application...", end=" ", flush=True)
         os.chdir(self.web_app_dir)
