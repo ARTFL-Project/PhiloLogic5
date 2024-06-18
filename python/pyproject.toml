@@ -10,7 +10,7 @@ authors = [
 ]
 license = { file = "LICENSE" }
 description = "A concordance search engine for TEI-XML"
-readme = "README" # If your readme file is named README 
+readme = "README"
 urls = { Homepage = "https://github.com/ARTFL-Project/PhiloLogic5" }
 
 requires-python = ">=3.10"
