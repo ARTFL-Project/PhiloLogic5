@@ -31,10 +31,8 @@ dependencies = [
     "numba~=0.59",
     "scikit-learn~=1.4",
     "pandas~=2.2",
+    "spacy~=3.7",
 ]
-
-[project.scripts]
-philoload5 = "philologic.loadtime:philoload"
 
 [tool.setuptools_scm]
 root = ".."
