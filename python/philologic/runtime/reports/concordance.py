@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Concordance report"""
 
 import regex as re
-from philologic.runtime.pages import page_interval
-from philologic.runtime.citations import citations, citation_links
-from philologic.runtime.get_text import get_concordance_text
+from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
+from philologic.runtime.get_text import get_concordance_text
 from philologic.runtime.HitList import CombinedHitlist
+from philologic.runtime.pages import page_interval
 
 
 def concordance_results(request, config):

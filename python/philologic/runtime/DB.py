@@ -1,4 +1,6 @@
 """DB class containing many niceties to retrieve data from SQL"""
+#!/var/lib/philologic5/philologic_env/bin/python3
+
 
 import hashlib
 import os

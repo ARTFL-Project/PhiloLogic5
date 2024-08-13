@@ -1,6 +1,9 @@
-import regex as re
+#!/var/lib/philologic5/philologic_env/bin/python3
+
+
 import sys
 
+import regex as re
 from philologic import shlax
 
 try:

@@ -1,3 +1,5 @@
+#!/var/lib/philologic5/philologic_env/bin/python3
+
 """All different types of hit objects"""
 
 TEXT_OBJECT_LEVELS = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}

@@ -1,7 +1,8 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 
 import os
+
 import regex as re
 from lxml import etree
 from philologic.runtime.DB import DB

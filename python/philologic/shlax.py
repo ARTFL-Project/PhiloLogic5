@@ -1,9 +1,10 @@
-#!/usr/bin/python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 # ShLaX-- a Shallow Lazy XML tokenizer.  Very useful for dirty, broken XML-like documents.
 
 
-import regex as re
 import sys
+
+import regex as re
 
 TextSE = "(?P<Text>[^<]+)"
 UntilHyphen = "[^-]*-"

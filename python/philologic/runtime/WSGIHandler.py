@@ -1,14 +1,14 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Parses queries stored in the environ object."""
 
 
-from http.cookies import SimpleCookie
 import hashlib
 import urllib.parse
+from http.cookies import SimpleCookie
 
+from philologic.runtime.DB import DB
 from philologic.runtime.find_similar_words import find_similar_words
 from philologic.runtime.Query import query_parse
-from philologic.runtime.DB import DB
 
 
 class WSGIHandler(object):

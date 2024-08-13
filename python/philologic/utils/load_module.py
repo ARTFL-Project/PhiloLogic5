@@ -1,8 +1,8 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Load Python source file"""
 
 from importlib.machinery import SourceFileLoader
-from importlib.util import spec_from_loader, module_from_spec
+from importlib.util import module_from_spec, spec_from_loader
 
 
 def load_module(module_name, path):

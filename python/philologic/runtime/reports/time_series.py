@@ -1,12 +1,12 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Time series"""
 
-import regex as re
 import time
 from collections import defaultdict
 
-from philologic.runtime.link import make_absolute_query_link
+import regex as re
 from philologic.runtime.DB import DB
+from philologic.runtime.link import make_absolute_query_link
 
 
 def generate_time_series(request, config):

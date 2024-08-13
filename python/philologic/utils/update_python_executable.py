@@ -11,7 +11,7 @@ def update_shebang(db_dir):
             file = input_file.readlines()
         with open(script, "w") as output_file:
             for line in file:
-                if line.startswith("#!/usr/bin/env python3"):
+                if line.startswith("#!/var/lib/philologic5/philologic_env/bin/python3"):
                     output_file.write(new_shebang)
                 else:
                     output_file.write(line)

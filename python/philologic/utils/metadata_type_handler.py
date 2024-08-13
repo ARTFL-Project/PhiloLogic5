@@ -1,6 +1,9 @@
+#!/var/lib/philologic5/philologic_env/bin/python3
+
 """Series of functions to extract and/or convert metadata field values to the right SQL type"""
 
 import datetime
+
 import regex as re
 
 INTEGER = re.compile(r"^(-?\d{1,})")

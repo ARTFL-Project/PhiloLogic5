@@ -1,7 +1,8 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 
 from html.entities import name2codepoint
+
 import regex as re
 
 entities_match = re.compile(r"&#?\w+;")

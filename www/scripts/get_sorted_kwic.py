@@ -1,14 +1,12 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
-import orjson
 import os
+import sys
 from wsgiref.handlers import CGIHandler
 
-from philologic.runtime.DB import DB
+import orjson
 from philologic.runtime import kwic_hit_object, page_interval
-
-import sys
-
+from philologic.runtime.DB import DB
 
 sys.path.append("..")
 import custom_functions

@@ -1,11 +1,10 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
-import orjson
 import os
+import sys
 from wsgiref.handlers import CGIHandler
 
-
-import sys
+import orjson
 
 sys.path.append("..")
 import custom_functions

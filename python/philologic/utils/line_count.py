@@ -1,3 +1,5 @@
+#!/var/lib/philologic5/philologic_env/bin/python3
+
 """Count number of lines in a file using subprocess module."""
 
 import subprocess

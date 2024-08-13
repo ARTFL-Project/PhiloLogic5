@@ -1,11 +1,11 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Bibliography results"""
 
 
-from philologic.runtime.pages import page_interval
-from philologic.runtime.citations import citations, citation_links
-from philologic.runtime.get_text import get_text_obj
+from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
+from philologic.runtime.get_text import get_text_obj
+from philologic.runtime.pages import page_interval
 
 
 def bibliography_results(request, config):

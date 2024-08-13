@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
-import orjson
 import os
+import sys
 from wsgiref.handlers import CGIHandler
 
+import orjson
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_expanded_query
-
-import sys
 
 sys.path.append("..")
 import custom_functions

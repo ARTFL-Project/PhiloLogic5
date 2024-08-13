@@ -1,14 +1,14 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """PhiloLogic5 main parser"""
 
 import os
-import regex as re
 import string
 import sys
+from collections import deque
 
+import regex as re
 from philologic.loadtime.OHCOVector import CompoundStack
 from philologic.utils import convert_entities, extract_full_date, extract_integer
-from collections import deque
 
 DEFAULT_TAG_TO_OBJ_MAP = {
     "div": "div",

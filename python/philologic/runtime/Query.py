@@ -1,21 +1,20 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
+import struct
 import subprocess
 import sys
-import struct
 from itertools import product
+from operator import eq, le
 from pathlib import Path
-from operator import le, eq
-import numpy as np
 
 import lmdb
-
+import numba
+import numpy as np
 import regex as re
 from philologic.runtime import HitList
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 from unidecode import unidecode
-import numba
 
 numba.config.CACHE_DIR = "/tmp/numba"
 

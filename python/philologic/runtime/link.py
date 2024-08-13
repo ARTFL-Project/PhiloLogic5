@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Build PhiloLogic links"""
 
 from urllib.parse import quote_plus

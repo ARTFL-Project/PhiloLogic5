@@ -1,3 +1,5 @@
+#!/var/lib/philologic5/philologic_env/bin/python3
+
 import os
 import sqlite3
 import struct

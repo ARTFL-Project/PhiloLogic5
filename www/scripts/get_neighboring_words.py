@@ -1,18 +1,18 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 import hashlib
 import os
+import struct
 import sys
 import timeit
 from wsgiref.handlers import CGIHandler
-import struct
 
+import lmdb
 import msgspec
 import orjson
 import regex as re
 from philologic.runtime.DB import DB
 from unidecode import unidecode
-import lmdb
 
 sys.path.append("..")
 import custom_functions

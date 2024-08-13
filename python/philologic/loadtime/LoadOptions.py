@@ -1,14 +1,14 @@
-#!/usr/bin env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """CLI parser for philoload4 command"""
 
-from collections.abc import Callable
 import os
 import sys
-from glob import glob
 from argparse import ArgumentParser
+from collections.abc import Callable
+from glob import glob
 
 from philologic.loadtime import Loader, LoadFilters, Parser, PlainTextParser, PostFilters
-from philologic.utils import pretty_print, load_module
+from philologic.utils import load_module, pretty_print
 
 # Load global config
 CONFIG_PATH = os.getenv("PHILOLOGIC_CONFIG", "/etc/philologic/philologic5.cfg")

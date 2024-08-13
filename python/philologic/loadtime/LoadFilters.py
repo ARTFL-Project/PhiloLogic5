@@ -1,12 +1,13 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Load Filters used in Loader"""
 
 import os
 from collections import Counter
-from orjson import dumps, loads
+
 import lz4.frame
-from spacy.tokens import Doc as SpacyDoc
+from orjson import dumps, loads
 from philologic.loadtime.OHCOVector import Record
+from spacy.tokens import Doc as SpacyDoc
 
 
 # Default filters

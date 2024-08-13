@@ -1,10 +1,12 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
-import time
 import struct
-from .HitWrapper import HitWrapper
+import time
+
 from unidecode import unidecode
+
+from .HitWrapper import HitWrapper
 
 obj_dict = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 

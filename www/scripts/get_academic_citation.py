@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
-import orjson
-from wsgiref.handlers import CGIHandler
-from philologic.runtime.DB import DB
-from philologic.runtime.citations import citations, citation_links
-
-
 import sys
+from wsgiref.handlers import CGIHandler
+
+import orjson
+from philologic.runtime.citations import citation_links, citations
+from philologic.runtime.DB import DB
 
 sys.path.append("..")
 import custom_functions

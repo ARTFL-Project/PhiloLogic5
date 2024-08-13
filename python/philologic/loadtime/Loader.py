@@ -1,41 +1,40 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Standard PhiloLogic5 loader.
 Calls all parsing functions and stores data in index"""
 
 import collections
+import csv
 import datetime
 import os
 import shutil
 import sqlite3
+import struct
 import sys
 import time
+from collections import Counter, defaultdict
 from glob import iglob
 from json import dump
-import csv
-import struct
-from collections import defaultdict, Counter
-import sqlite3
 
 import lmdb
-import lz4.frame
-from orjson import loads
 import lxml.etree
+import lz4.frame
 import regex as re
+import spacy
 from black import FileMode, format_str
 from multiprocess import Pool
+from orjson import loads
 from philologic.Config import MakeDBConfig, MakeWebConfig
 from philologic.loadtime.PostFilters import make_sentences_database, make_sql_table
 from philologic.utils import (
     convert_entities,
+    count_lines,
     extract_full_date,
     extract_integer,
     load_module,
     pretty_print,
     sort_list,
-    count_lines,
     update_shebang,
 )
-import spacy
 from tqdm import tqdm
 
 SORT_BY_WORD = "-k 2,2"
@@ -203,7 +202,7 @@ class Loader:
                         )
         else:
             with open(load_config_path, "w") as load_config_copy:
-                print("#!/usr/bin/env python3", file=load_config_copy)
+                print("#!/var/lib/philologic5/philologic_env/bin/python3", file=load_config_copy)
                 print(
                     '"""This is a dump of the default configuration used to load this database,',
                     file=load_config_copy,

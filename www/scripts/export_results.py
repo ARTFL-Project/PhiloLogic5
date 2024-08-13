@@ -1,13 +1,14 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Output results in JSON or CSV"""
 
 import csv
 import io
 import os
 import sys
-from orjson import dumps
-import regex as re
 from wsgiref.handlers import CGIHandler
+
+import regex as re
+from orjson import dumps
 
 sys.path.append("..")
 import custom_functions

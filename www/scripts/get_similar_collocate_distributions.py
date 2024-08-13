@@ -1,17 +1,16 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 """Get similar collocate distributions"""
 
 import os
 import pickle
-from wsgiref.handlers import CGIHandler
 import sys
+from wsgiref.handlers import CGIHandler
 
-from sklearn.metrics.pairwise import cosine_similarity
-import orjson
 import numpy as np
+import orjson
 import pandas as pd
-
+from sklearn.metrics.pairwise import cosine_similarity
 
 sys.path.append("..")
 import custom_functions

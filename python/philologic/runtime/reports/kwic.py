@@ -1,13 +1,13 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """KWIC results"""
 
 
 import regex as re
 from philologic.runtime.citations import citation_links, citations
+from philologic.runtime.DB import DB
 from philologic.runtime.get_text import get_text
 from philologic.runtime.ObjectFormatter import adjust_bytes, format_strip
 from philologic.runtime.pages import page_interval
-from philologic.runtime.DB import DB
 
 
 def kwic_results(request, config):

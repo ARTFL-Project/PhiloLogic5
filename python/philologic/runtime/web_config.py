@@ -1,9 +1,9 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 import sys
 
-from philologic.Config import MakeWebConfig
 from orjson import dumps
+from philologic.Config import MakeWebConfig
 
 
 class brokenConfig(object):

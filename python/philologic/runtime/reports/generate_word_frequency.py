@@ -1,16 +1,16 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Generate word frequency
 Currently unmaintained."""
 
 import timeit
 
-from philologic.runtime.link import make_absolute_query_link
 from philologic.runtime.DB import DB
+from philologic.runtime.link import make_absolute_query_link
 
 
 def generate_word_frequency(request, config):
     """reads through a hitlist. looks up request["field"] in each hit, and builds up a list of
-       unique values and their frequencies."""
+    unique values and their frequencies."""
     db = DB(config.db_path + "/data/")
     hits = db.query(request["q"], request["method"], request["arg"], **request.metadata)
     field = request["field"]

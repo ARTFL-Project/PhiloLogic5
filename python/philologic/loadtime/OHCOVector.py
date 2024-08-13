@@ -1,7 +1,7 @@
-#!/usr/bin/env python3
-
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 import sys
+
 from orjson import dumps
 
 ### CompoundStack is the class to use for all parsers.

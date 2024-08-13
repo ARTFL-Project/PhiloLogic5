@@ -1,12 +1,10 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Bootstrap Web app"""
 
 
 import os.path
 
-from philologic.runtime import WebConfig
-from philologic.runtime import WSGIHandler
-from philologic.runtime import access_control
+from philologic.runtime import WebConfig, WSGIHandler, access_control
 
 PATH = os.path.abspath(os.path.dirname(__file__))
 

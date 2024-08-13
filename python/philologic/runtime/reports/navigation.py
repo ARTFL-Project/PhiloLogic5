@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Navigate inside objects"""
 
 import regex as re
 from philologic.runtime.citations import citation_links, citations
-from philologic.runtime.get_text import get_text_obj
 from philologic.runtime.DB import DB
+from philologic.runtime.get_text import get_text_obj
 
 
 def generate_text_object(request, config, note=False):

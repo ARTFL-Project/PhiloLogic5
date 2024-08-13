@@ -1,19 +1,18 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Collocation results"""
 
 import hashlib
-import time
 import os
 import pickle
-import timeit
 import struct
+import time
+import timeit
 from typing import Any
 
-import msgspec
 import lmdb
+import msgspec
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_word_groups
-
 
 OBJECT_LEVEL = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5}
 

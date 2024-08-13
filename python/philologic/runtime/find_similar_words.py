@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Find similar words to query term."""
 
 

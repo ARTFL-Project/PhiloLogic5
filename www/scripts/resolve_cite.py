@@ -1,14 +1,12 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
-import regex as re
 import sys
 from wsgiref.handlers import CGIHandler
 
+import regex as re
 from philologic.runtime.DB import DB
 from philologic.runtime.HitWrapper import ObjectWrapper
-
-import sys
 
 sys.path.append("..")
 import custom_functions

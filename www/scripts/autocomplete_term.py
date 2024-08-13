@@ -1,15 +1,14 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
-import orjson
 import os
 import subprocess
 import sys
 from wsgiref.handlers import CGIHandler
 
+import orjson
 from philologic.runtime.DB import DB
-from philologic.runtime.Query import grep_exact, grep_word, split_terms, grep_word_attributes
+from philologic.runtime.Query import grep_exact, grep_word, grep_word_attributes, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
-
 
 sys.path.append("..")
 import custom_functions

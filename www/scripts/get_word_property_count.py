@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
 import sys
@@ -8,7 +8,6 @@ import lmdb
 import orjson
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_word_groups
-
 
 sys.path.append("..")
 import custom_functions

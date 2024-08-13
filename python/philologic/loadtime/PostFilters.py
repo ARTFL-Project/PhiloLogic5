@@ -1,21 +1,21 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 
 
 import os
 import sqlite3
 import struct
 import time
-from unidecode import unidecode
 
-import multiprocess as mp
 import lmdb
 import lz4.frame
 import msgspec
-from orjson import loads
-from tqdm import tqdm
-from sklearn.feature_extraction.text import TfidfVectorizer
+import multiprocess as mp
 import pandas as pd
+from orjson import loads
 from philologic.utils import count_lines
+from sklearn.feature_extraction.text import TfidfVectorizer
+from tqdm import tqdm
+from unidecode import unidecode
 
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):

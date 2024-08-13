@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
+#!/var/lib/philologic5/philologic_env/bin/python3
 """Compare collocations between two corpora."""
 
 import sys
 from wsgiref.handlers import CGIHandler
-import orjson
 
 import numpy as np
+import orjson
 import pandas as pd
-
 
 sys.path.append("..")
 import custom_functions
