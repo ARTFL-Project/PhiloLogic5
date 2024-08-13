@@ -1,10 +1,10 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel", "build", "setuptools_scm[toml]>=6.2"]
+requires = ["setuptools>=61.0", "wheel", "build"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "philologic"
-dynamic = ["version"]
+version = "5.0.0"
 authors = [
     { name = "Clovis Gladstone", email = "clovisgladstone@artfl.uchicago.edu" },
 ]
@@ -34,8 +34,8 @@ dependencies = [
     "spacy~=3.7",
 ]
 
-[tool.setuptools_scm]
-root = ".."
+[project.scripts]
+philoload5 = "philologic.loadtime:philoload"
 
 [tool.setuptools]
 packages = [

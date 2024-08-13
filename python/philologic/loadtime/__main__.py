@@ -3,14 +3,14 @@
 import os
 import sys
 
-from philologic.loadtime.LoadOptions import LoadOptions, CONFIG_FILE
 from philologic.loadtime.Loader import Loader, setup_db_dir
+from philologic.loadtime.LoadOptions import CONFIG_FILE, LoadOptions
 
 os.environ["LC_ALL"] = "C"  # Exceedingly important to get uniform sort order.
 os.environ["PYTHONIOENCODING"] = "utf-8"
 
 
-def philoload():
+if __name__ == "__main__":
     load_options = LoadOptions()
     load_options.parse(sys.argv)
     setup_db_dir(load_options["db_destination"], load_options["web_app_dir"], force_delete=load_options.force_delete)

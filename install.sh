@@ -26,10 +26,10 @@ then
 fi
 
 # Create the virtual environment
-virtualenv -p $PYTHON_VERSION /var/lib/philologic/philologic_env
+virtualenv -p $PYTHON_VERSION /var/lib/philologic5/philologic_env
 
 # Activate the virtual environment
-source /var/lib/philologic/philologic_env/bin/activate
+source /var/lib/philologic5/philologic_env/bin/activate
 
 # Install required packages
 pip install build
@@ -44,17 +44,18 @@ pip install dist/*gz
 deactivate
 
 cd ..
-sudo cp philoload5 /usr/local/bin/
-sudo mkdir -p /etc/philologic/
-sudo mkdir -p /var/lib/philologic5/web_app/
-sudo rm -rf /var/lib/philologic5/web_app/*
+cp philoload5 /usr/local/bin/
+chmod 775 /usr/local/bin/philoload5
+mkdir -p /etc/philologic/
+mkdir -p /var/lib/philologic5/web_app/
+rm -rf /var/lib/philologic5/web_app/*
 
 if [ -d www/app/node_modules ]; then
     sudo rm -rf www/app/node_modules
 fi
 
-sudo cp -R www/* /var/lib/philologic5/web_app/
-sudo cp www/.htaccess /var/lib/philologic5/web_app/
+cp -R www/* /var/lib/philologic5/web_app/
+cp www/.htaccess /var/lib/philologic5/web_app/
 
 if [ ! -f /etc/philologic/philologic5.cfg ]; then
     db_url="# Set the filesystem path to the root web directory for your PhiloLogic install.

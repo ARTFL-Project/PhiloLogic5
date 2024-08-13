@@ -1,0 +1,5 @@
+#!/bin/bash
+
+source /var/lib/philologic5/philologic_env/bin/activate
+python3 -m philologic.loadtime "$@"
+deactivate
