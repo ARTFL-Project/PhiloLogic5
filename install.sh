@@ -26,6 +26,8 @@ then
 fi
 
 # Create the virtual environment
+sudo mkdir -p /var/lib/philologic5
+sudo chown -R $USER:$USER /var/lib/philologic5
 virtualenv -p $PYTHON_VERSION /var/lib/philologic5/philologic_env
 
 # Activate the virtual environment
@@ -44,34 +46,34 @@ pip install dist/*gz
 deactivate
 
 cd ..
-cp philoload5 /usr/local/bin/
-chmod 775 /usr/local/bin/philoload5
-mkdir -p /etc/philologic/
-mkdir -p /var/lib/philologic5/web_app/
-rm -rf /var/lib/philologic5/web_app/*
+sudo cp philoload5 /usr/local/bin/
+sudo chmod 775 /usr/local/bin/philoload5
+sudo mkdir -p /etc/philologic/
+sudo mkdir -p /var/lib/philologic5/web_app/
+sudo rm -rf /var/lib/philologic5/web_app/*
 
 if [ -d www/app/node_modules ]; then
     sudo rm -rf www/app/node_modules
 fi
 
-cp -R www/* /var/lib/philologic5/web_app/
-cp www/.htaccess /var/lib/philologic5/web_app/
+sudo cp -R www/* /var/lib/philologic5/web_app/
+sudo cp www/.htaccess /var/lib/philologic5/web_app/
 
 if [ ! -f /etc/philologic/philologic5.cfg ]; then
     db_url="# Set the filesystem path to the root web directory for your PhiloLogic install.
     database_root = None
     # /var/www/html/philologic/ is conventional for linux,
     # /Library/WebServer/Documents/philologic for Mac OS.\n"
-    echo -e "$db_url" | sed "s/^ *//g" | sudo tee /etc/philologic/philologic5.cfg > /dev/null
+    sudo echo -e "$db_url" | sed "s/^ *//g" | sudo tee /etc/philologic/philologic5.cfg > /dev/null
 
     url_root="# Set the URL path to the same root directory for your philologic install.
     url_root = None
     # http://localhost/philologic/ is appropriate if you don't have a DNS hostname.\n"
-    echo -e "$url_root" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
+    sudo echo -e "$url_root" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 
     web_app_dir="## This should be set to the location of the PhiloLogic5 www directory
     web_app_dir = '/var/lib/philologic5/web_app/'"
-    echo -e "$web_app_dir" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
+    sudo echo -e "$web_app_dir" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 else
     echo -e "\n## WARNING ##"
     echo "/etc/philologic/philologic5.cfg already exists"
