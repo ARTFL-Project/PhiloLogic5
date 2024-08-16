@@ -93,7 +93,7 @@ def get_lemmas(_, text):
                 if philo_type != "word":
                     continue
                 loaded_attribs = loads(attribs)
-                if "lemma" in attribs:  # lemmas are all lowercased
+                if "lemma" in loaded_attribs:  # lemmas are all lowercased
                     print(f"lemma\t{loaded_attribs['lemma'].lower()}\t{philo_id}\t{attribs.strip()}", file=lemma_file)
     os.system(f"lz4 -z -q {text['raw']}.lemma {text['raw']}.lemma.lz4 && rm {text['raw']}.lemma")
 

@@ -102,7 +102,7 @@ def make_sentences_database(loader_obj, db_destination):
     msgpack = msgspec.msgpack.Encoder()
 
     with tqdm(total=loader_obj.word_count, leave=False) as pbar:
-        env = lmdb.open(temp_destination, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True)  # 2TB
+        env = lmdb.open(temp_destination, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True, sync=False)  # 2TB
         count = 0
         with env.begin(write=True) as txn:
             for raw_words in os.scandir(f"{loader_obj.destination}/words_and_philo_ids"):

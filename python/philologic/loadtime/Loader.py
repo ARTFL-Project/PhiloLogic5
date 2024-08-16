@@ -742,7 +742,7 @@ class Loader:
         """Create inverted index"""
         print("\n### Create inverted index ###", flush=True)
         db_env = lmdb.open(
-            f"{cls.destination}/temp_words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
+            f"{cls.destination}/temp_words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True, sync=False
         )  # 2TB limit
 
         print(f"{time.ctime()}: Creating word index...", flush=True)
@@ -758,9 +758,8 @@ class Loader:
                 local_word_attributes = {k for k in loads(attribs) if k not in cls.attributes_to_skip}
                 if local_word_attributes:
                     cls.has_attributes = True
-                hit = list(map(int, philo_id.split()))
-                hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
-                word_id = struct.pack("9I", *hit)
+                pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
+                word_id = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
                 if word != current_word:
                     if current_word is not None:
                         txn.put(
@@ -773,7 +772,7 @@ class Loader:
                             txn = db_env.begin(write=True)
                     current_word = word
                     philo_ids.clear()
-                philo_ids.extend(word_id)
+                philo_ids += word_id
 
             # Commit any remaining words
             if philo_ids:
@@ -796,9 +795,8 @@ class Loader:
                 for line in tqdm(input_file, total=cls.lemma_count, leave=False, desc="Storing lemmas"):
                     line = line.decode("utf-8")
                     _, lemma, philo_id, _ = line.strip().split("\t")
-                    hit = list(map(int, philo_id.split()))
-                    hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
-                    lemma_id = struct.pack("9I", *hit)
+                    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
+                    lemma_id = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
                     if lemma != current_lemma:
                         if current_lemma is not None:
                             txn.put(
@@ -811,7 +809,7 @@ class Loader:
                                 txn = db_env.begin(write=True)
                         current_lemma = lemma
                         philo_ids.clear()
-                    philo_ids.extend(lemma_id)
+                    philo_ids += lemma_id
                 # Commit any remaining lemmas
                 if philo_ids:
                     txn.put(
@@ -834,9 +832,8 @@ class Loader:
                 for line in tqdm(input_file, total=cls.word_count, desc="Storing word attributes", leave=False):
                     line = line.decode("utf-8")
                     _, word, philo_id, attributes = line.split("\t", 3)
-                    hit = list(map(int, philo_id.split()))
-                    hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
-                    philo_id_bytes = struct.pack("9I", *hit)
+                    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
+                    philo_id_bytes = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
                     local_word_attributes = {
                         k: v for k, v in loads(attributes).items() if k not in cls.attributes_to_skip
                     }
@@ -881,9 +878,8 @@ class Loader:
                 ):
                     line = line.decode("utf-8")
                     _, lemma, philo_id, attributes = line.split("\t", 3)
-                    hit = list(map(int, philo_id.split()))
-                    hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
-                    philo_id_bytes = struct.pack("9I", *hit)
+                    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
+                    philo_id_bytes = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
                     local_word_attributes = {
                         k: v for k, v in loads(attributes).items() if k not in cls.attributes_to_skip
                     }
@@ -924,7 +920,10 @@ class Loader:
         if cls.lemma_count > 0:
             print(f"{time.ctime()}: Creating lemma lookup index...", flush=True)
             lemma_db_env = lmdb.open(
-                f"{cls.destination}/temp_lemma_lookup.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True
+                f"{cls.destination}/temp_lemma_lookup.lmdb",
+                map_size=2 * 1024 * 1024 * 1024 * 1024,
+                writemap=True,
+                sync=False,
             )
             commit_interval = 10000
             count = 0
@@ -934,9 +933,8 @@ class Loader:
                     line = line.decode("utf-8")
                     _, word, philo_id, _ = line.strip().split("\t")
                     lemma_utf8 = f"lemma:{word}".encode("utf-8")
-                    hit = list(map(int, philo_id.split()))
-                    hit = hit[:6] + [hit[8]] + [hit[6], hit[7]]
-                    lemma_id = struct.pack("9I", *hit)
+                    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
+                    lemma_id = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
                     lemma_txn.put(lemma_id, lemma_utf8)
                     count += 1
                     if count % commit_interval == 0:
