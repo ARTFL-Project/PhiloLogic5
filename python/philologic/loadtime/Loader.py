@@ -1263,7 +1263,7 @@ class Loader:
 
         filename = self.destination + "/web_config.cfg"
         web_config = MakeWebConfig(filename, **config_values)
-        with open(os.path.join(filename), "w") as output_file:
+        with open(os.path.join(filename), "w", encoding="utf8") as output_file:
             print(format_str(str(web_config), mode=FileMode()), file=output_file)
         print(f"wrote Web application info to {filename}")
 
