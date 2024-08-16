@@ -151,10 +151,12 @@ def word_frequencies(loader_obj):
     )
     frequencies = loader_obj.destination + "/frequencies"
     os.system("mkdir %s" % frequencies)
-    output = open(frequencies + "/word_frequencies", "w", encoding="utf8")
-    for line in open(loader_obj.destination + "/WORK/all_frequencies"):
-        count, word = tuple(line.split())
-        print(word + "\t" + count, file=output)
+    with open(frequencies + "/all_frequencies", "w", encoding="utf8") as output, open(
+        loader_obj.workdir + "/all_frequencies", encoding="utf8"
+    ) as input:
+        for line in input:
+            count, word = tuple(line.split())
+            print(word + "\t" + count, file=output)
     output.close()
 
 
@@ -162,14 +164,16 @@ def normalized_word_frequencies(loader_obj):
     """Generate normalized word frequencies"""
     print("%s: Generating normalized word frequencies..." % time.ctime())
     frequencies = loader_obj.destination + "/frequencies"
-    output = open(frequencies + "/normalized_word_frequencies", "w", encoding="utf8")
-    for line in open(frequencies + "/word_frequencies"):
-        word, _ = line.split("\t")
-        norm_word = word.lower()
-        if loader_obj.ascii_conversion is True:
-            norm_word = unidecode(norm_word)
-        norm_word = "".join(norm_word)
-        print(norm_word + "\t" + word, file=output)
+    with open(frequencies + "/normalized_word_frequencies", "w", encoding="utf8") as output, open(
+        frequencies + "/all_frequencies", encoding="utf8"
+    ) as input:
+        for line in input:
+            word, _ = line.split("\t")
+            norm_word = word.lower()
+            if loader_obj.ascii_conversion is True:
+                norm_word = unidecode(norm_word)
+            norm_word = "".join(norm_word)
+            print(norm_word + "\t" + word, file=output)
     output.close()
 
 
@@ -183,7 +187,7 @@ def metadata_frequencies(loader_obj):
         query = "select %s, count(*) from toms group by %s order by count(%s) desc" % (field, field, field)
         try:
             cursor.execute(query)
-            with open(frequencies + "/%s_frequencies" % field, "w") as output:
+            with open(frequencies + "/%s_frequencies" % field, "w", encoding="utf8") as output:
                 for result in cursor:
                     if result[0] is not None:
                         val = result[0]
@@ -210,8 +214,8 @@ def normalized_metadata_frequencies(loader_obj):
     frequencies = loader_obj.destination + "/frequencies"
     for field in loader_obj.metadata_fields:
         try:
-            output = open(frequencies + "/normalized_" + field + "_frequencies", "w")
-            for line in open(frequencies + "/" + field + "_frequencies"):
+            output = open(frequencies + "/normalized_" + field + "_frequencies", "w", encoding="utf8")
+            for line in open(frequencies + "/" + field + "_frequencies", encoding="utf8"):
                 word, _ = line.split("\t")
                 norm_word = word.lower()
                 if loader_obj.ascii_conversion is True:

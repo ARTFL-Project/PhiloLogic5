@@ -25,6 +25,12 @@ then
     pip install virtualenv
 fi
 
+# Delete the virtual environment if it exists
+if [ -d /var/lib/philologic5 ]; then
+    echo "Deleting existing PhiloLogic5 installation..."
+    sudo rm -rf /var/lib/philologic5
+fi
+
 # Create the virtual environment
 sudo mkdir -p /var/lib/philologic5
 sudo chown -R $USER:$USER /var/lib/philologic5
