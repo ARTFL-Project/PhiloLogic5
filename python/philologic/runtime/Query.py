@@ -27,6 +27,7 @@ def query(
     corpus_file=None,
     method=None,
     method_arg=None,
+    cooc_order=True,
     filename="",
     query_debug=False,
     sort_order=None,
@@ -61,14 +62,23 @@ def query(
                 expand_query_not(
                     split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
                 )
-            if method == "proxy":
+            if method == "single_term":
+                # Search for one term
                 search_word(db.path, filename, corpus_file=corpus_file)
             elif method == "exact_phrase":
+                # Phrase searching where words need to be in a specific order with no words in between
                 search_phrase(db.path, filename, corpus_file=corpus_file)
-            elif method == "cooc":
-                search_within_text_object(db.path, filename, object_level, corpus_file=corpus_file)
-            elif method == "phrase":
-                search_within_word_span(db.path, filename, method_arg or 1, bool(exact), corpus_file=corpus_file)
+            elif method == "proxy":
+                # Phrase searching with possible words in between
+                search_within_word_span(
+                    db.path, filename, method_arg or 1, cooc_order, bool(exact), corpus_file=corpus_file
+                )
+            elif method == "exact_cooc":
+                # Co-occurrence searching where words need to be within n words of each other
+                search_within_word_span(db.path, filename, method_arg or 1, cooc_order, True, corpus_file=corpus_file)
+            elif method == "sentence":  # no support for para search for now
+                # Co-occurrence searching where words need to be within an object irrespective of word order
+                search_within_text_object(db.path, filename, object_level, cooc_order, corpus_file=corpus_file)
 
             with open(filename + ".done", "w") as flag:  # do something to mark query as finished
                 flag.write(" ".join(sys.argv) + "\n")
@@ -161,7 +171,7 @@ def search_phrase(db_path, hitlist_filename, corpus_file=None):
     if corpus_file is not None:
         corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
     common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level, phrase=True
+        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level, cooc_order=True
     )
     sorted_indices = next(common_object_ids)
 
@@ -179,7 +189,7 @@ def search_phrase(db_path, hitlist_filename, corpus_file=None):
                     output_file.write(starting_id)
 
 
-def search_within_word_span(db_path, hitlist_filename, n, exact_distance, corpus_file=None):
+def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_distance, corpus_file=None):
     """Search for co-occurrences of multiple words within n words of each other in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
     object_level = None
@@ -187,7 +197,7 @@ def search_within_word_span(db_path, hitlist_filename, n, exact_distance, corpus
     if corpus_file is not None:
         corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
     common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level
+        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level, cooc_order=cooc_order
     )
 
     if len(word_groups) > 1 and n == 1:
@@ -215,7 +225,7 @@ def search_within_word_span(db_path, hitlist_filename, n, exact_distance, corpus
                         output_file.write(starting_id)
 
 
-def search_within_text_object(db_path, hitlist_filename, level, corpus_file=None):
+def search_within_text_object(db_path, hitlist_filename, level, cooc_order, corpus_file=None):
     """Search for co-occurrences of multiple words in the same sentence in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
     object_level = None
@@ -223,7 +233,12 @@ def search_within_text_object(db_path, hitlist_filename, level, corpus_file=None
     if corpus_file is not None:
         corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
     common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, level=level, corpus_philo_ids=corpus_philo_ids, object_level=object_level
+        db_path,
+        word_groups,
+        level=level,
+        corpus_philo_ids=corpus_philo_ids,
+        object_level=object_level,
+        cooc_order=cooc_order,
     )
     with open(hitlist_filename, "wb") as output_file:
         for philo_id_groups in common_object_ids:
@@ -257,7 +272,9 @@ def get_word_groups(terms_file):
     return word_groups
 
 
-def get_cooccurrence_groups(db_path, word_groups, level="sent", corpus_philo_ids=None, object_level=None, phrase=False):
+def get_cooccurrence_groups(
+    db_path, word_groups, level="sent", corpus_philo_ids=None, object_level=None, cooc_order=False
+):
     cooc_slice = 6
     if level == "para":
         cooc_slice = 5
@@ -272,8 +289,8 @@ def get_cooccurrence_groups(db_path, word_groups, level="sent", corpus_philo_ids
             byte_size_per_group.append(byte_size)
         # Perform an argsort on the list to get the indices of the groups sorted by byte size
         sorted_indices = np.argsort(byte_size_per_group)
-        if phrase is True:
-            yield sorted_indices[::-1]  # we only need the sorted indices for phrases
+        if cooc_order is True:
+            yield sorted_indices[::-1]  # we only need the sorted indices for when words need to be in order
 
         def one_word_generator(word):
             yield np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9)
@@ -485,8 +502,14 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
             [word_data[word]["array"][:index] for word, index in words_to_keep],
             dtype="u4",
         )
-        sorted_indices = np.lexsort((combined_arrays[:, -1], combined_arrays[:, 0]))  # sort by doc id and byte offset
-        yield combined_arrays[sorted_indices]
+
+        # The lexsort is 3 times slower as the composite key sort
+        # sorted_indices = np.lexsort((combined_arrays[:, -1], combined_arrays[:, 0]))
+        # yield combined_arrays[sorted_indices]
+
+        # Sort by doc id and byte offset
+        composite_key = combined_arrays[:, 0].astype(np.uint64) << 32 | combined_arrays[:, -1]
+        yield combined_arrays[np.argsort(composite_key, kind="stable")]
 
         # Load next chunks for all words based on the indices we saved
         for word, index in words_to_keep:

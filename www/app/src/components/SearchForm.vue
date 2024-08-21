@@ -98,6 +98,7 @@
                 $t("searchForm.approximateMatch") }}
                                     </label>
                                 </div>
+
                                 <select class="form-select form-select-sm d-inline-block"
                                     style="max-width: fit-content; margin-left: 0.5rem" v-model="approximate_ratio"
                                     :disabled="!approximateSelected" aria-label=".form-select-sm">
@@ -106,6 +107,14 @@
                                     </option>
                                     >
                                 </select>
+                                <!-- Checkbox to determine if we follow co-occurrence word order -->
+                                <div class="form-check form-switch" id="co-occurrence-order" style="height: 31px">
+                                    <input class="form-check-input" type="checkbox" id="co-occurrence-order-input"
+                                        v-model="coocOrder" />
+                                    <label class=" form-check-label" for="co-occurrence-order-input">Respect
+                                        co-occurrence word
+                                        order</label>
+                                </div>
                                 <div class="input-group mb-4" v-if="currentReport != 'collocation'">
                                     <button class="btn btn-outline-secondary" type="button">
                                         {{ $t("searchForm.searchCoOccurrences") }}</button><select class="form-select"
@@ -115,18 +124,19 @@
                                         </option>
                                     </select>
                                     <button class="btn btn-outline-secondary" type="button"
-                                        v-if="method == 'proxy' || method == 'phrase'">
+                                        v-if="method == 'proxy' || method == 'exact_cooc'">
                                         <label for="arg-proxy" v-if="method == 'proxy'">{{ $t("searchForm.howMany")
                                             }}?</label>
-                                        <label for="arg-phrase" v-if="method == 'phrase'">{{ $t("searchForm.howMany")
-                                            }}?</label>
+                                        <label for="arg-exact_cooc" v-if="method == 'exact_cooc'">{{
+                $t("searchForm.howMany")
+            }}?</label>
                                     </button>
                                     <input class="form-control" type="text" name="arg_proxy" id="arg-proxy"
                                         v-model="arg_proxy" v-if="method == 'proxy'" />
-                                    <input class="form-control" type="text" name="arg_phrase" id="arg-phrase"
-                                        v-model="arg_phrase" v-if="method == 'phrase'" />
+                                    <input class="form-control" type="text" name="arg_exact_cooc" id="arg-exact_cooc"
+                                        v-model="arg_exact_cooc" v-if="method == 'exact_cooc'" />
                                     <span class="input-group-text ms-0"
-                                        v-if="method == 'proxy' || method == 'phrase'">{{
+                                        v-if="method == 'proxy' || method == 'exact_cooc'">{{
                 $t("searchForm.wordsSentence") }}</span>
                                 </div>
                                 <div class="mt-1" id="collocation-params" v-if="currentReport == 'collocation'">
@@ -343,13 +353,16 @@
                                 <button class="btn btn-outline-secondary">
                                     <label for="year_interval">{{ $t("searchForm.yearInterval") }}</label>
                                 </button>
-                                <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.every") }}</span>
+                                <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.every")
+                                    }}</span>
                                 <input type="text" class="form-control" name="year_interval" id="year_interval"
                                     style="max-width: 50px; text-align: center" v-model="year_interval" />
-                                <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years") }}</span>
+                                <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years")
+                                    }}</span>
                             </div>
                             <div class="input-group mt-4" v-if="currentReport === 'aggregation'">
-                                <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy") }}</button>
+                                <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy")
+                                    }}</button>
                                 <select v-once class="form-select" :aria-label="aggregationOptions[0].text"
                                     style="max-width: fit-content" v-model="group_by">
                                     <option v-for="aggregationOption in aggregationOptions"
@@ -363,7 +376,8 @@
                             </h5>
                             <div class="input-group pb-2"
                                 v-if="['concordance', 'bibliography'].includes(currentReport)">
-                                <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy") }}</button>
+                                <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy")
+                                    }}</button>
                                 <select v-once class="form-select" style="max-width: fit-content"
                                     aria-label="select fields" v-model="sort_by">
                                     <option v-for="sortValue in sortValues" :key="sortValue.value"
@@ -376,7 +390,8 @@
                 currentReport != 'time_series' &&
                 currentReport != 'aggregation'
                 ">
-                                <button class="btn btn-outline-secondary">{{ $t("searchForm.resultsPerPage") }}</button>
+                                <button class="btn btn-outline-secondary">{{ $t("searchForm.resultsPerPage")
+                                    }}</button>
                                 <span v-for="resultsPerPage in resultsPerPageOptions" :key="resultsPerPage" v-once>
                                     <input type="radio" class="btn-check" :id="`page-${resultsPerPage}`"
                                         :value="`${resultsPerPage}`" v-model="results_per_page" />
@@ -421,7 +436,7 @@ export default {
             "formData.approximate_ratio",
             "formData.method",
             "formData.arg_proxy",
-            "formData.arg_phrase",
+            "formData.arg_exact_cooc",
             "formData.start_date",
             "formData.end_date",
             "formData.year_interval",
@@ -432,6 +447,7 @@ export default {
             "formData.byte",
             "formData.group_by",
             "formData.colloc_within",
+            "formData.cooc_order",
             "searching",
             "currentReport",
             "metadataUpdate",
@@ -491,10 +507,11 @@ export default {
                 { text: this.$t("searchForm.similarity", { n: 80 }), value: "80" },
             ],
             approximateSelected: false,
+            coocOrder: true,
             methodOptions: [
                 { text: this.$t("searchForm.within"), value: "proxy" },
-                { text: this.$t("searchForm.withinExactly"), value: "phrase" },
-                { text: this.$t("common.sameSentence"), value: "cooc" },
+                { text: this.$t("searchForm.withinExactly"), value: "exact_cooc" },
+                { text: this.$t("common.sameSentence"), value: "sentence" },
             ],
             metadataDisplay: [],
             metadataValues: {},
@@ -702,6 +719,7 @@ export default {
                     ...metadataChoices,
                     ...metadataSelected,
                     approximate: this.approximateSelected ? "yes" : "no",
+                    cooc_order: this.coocOrder ? "yes" : "no",
                     q: this.queryTermTyped.trim(),
                     start: "",
                     end: "",

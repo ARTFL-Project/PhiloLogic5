@@ -771,7 +771,7 @@ class Loader:
                             txn.commit()
                             txn = db_env.begin(write=True)
                     current_word = word
-                    philo_ids.clear()
+                    philo_ids = bytearray()
                 philo_ids += word_id
 
             # Commit any remaining words
@@ -808,7 +808,7 @@ class Loader:
                                 txn.commit()
                                 txn = db_env.begin(write=True)
                         current_lemma = lemma
-                        philo_ids.clear()
+                        philo_ids = bytearray()
                     philo_ids += lemma_id
                 # Commit any remaining lemmas
                 if philo_ids:

@@ -56,21 +56,21 @@ class WSGIHandler(object):
         if "byte" in self.cgi:
             self.byte = self.cgi["byte"]
 
-        # Temporary fix for search term arguments before new core merge
         method = self["method"] or "proxy"
-        arg = self["arg"]
+        self.arg = 0
         if method == "proxy":
-            if not arg:
-                arg = self["arg_proxy"]
-        elif method == "phrase":
-            if not arg:
-                arg = self["arg_phrase"]
-        elif method == "sentence" or method == "cooc":
-            arg = "6"
-        if not arg:
-            arg = 0
-        self.arg = arg
-        self.cgi["arg"] = [arg]
+            try:
+                self.arg = int(self["arg_proxy"])
+            except ValueError:
+                pass
+        elif method == "exact_cooc":
+            try:
+                self.arg = int(self["arg_exact_cooc"])
+            except ValueError:
+                pass
+        elif method == "sentence":
+            self.arg = 6
+        self.cgi["arg"] = [self.arg]
 
         self.metadata_fields = db.locals["metadata_fields"]
         self.metadata = {}

@@ -40,12 +40,7 @@ class HitList(object):
         self.raw_bytes = raw_bytes  # if true, this returns the raw hitlist consisting of an iterable of bytes
         self.dbh = dbh
         self.encoding = encoding or "utf-8"
-        if method != "cooc":
-            self.has_word_id = 1
-            self.length = 7 + 2 * (words)
-        else:
-            self.has_word_id = 0  # unfortunately.  fix this next time I have 3 months to spare.
-            self.length = 7 + 2 * (words)
+        self.length = 7 + 2 * (words)
         self.fh = open(self.filename, "rb")  # need a full path here.
         self.format = "%dI" % self.length  # short for object id's, int for byte offset.
         self.hitsize = struct.calcsize(self.format)

@@ -110,6 +110,7 @@ class DB:
         method_arg="",
         limit="",
         sort_order=["rowid"],
+        cooc_order=True,
         raw_results=False,
         raw_bytes=False,
         get_word_count_field=None,
@@ -117,29 +118,22 @@ class DB:
     ):  # pylint: disable=dangerous-default-value
         """query the PhiloLogic database"""
         method = method or "proxy"
-        if isinstance(method_arg, str):
-            try:
-                method_arg = int(method_arg)
-            except (TypeError, ValueError):
-                if method == "cooc" or method == "sentence":
-                    method_arg = 6
-                else:
-                    method_arg = 0
-        exact = 1
         words = [w for w in qs.split() if w]
-        if len(words) > 1 and qs.count('"') == 2 and qs.startswith('"') and qs.endswith('"'):
-            method = "exact_phrase"
-            unquoted = qs[1:-1]
-            qs = " ".join(f'"{word}"' for word in unquoted.split())
-        else:
-            if qs and method in ("proxy", ""):
-                if len(words) == 1:
-                    method = "proxy"
-                else:
-                    method = "phrase"
-                    exact = 0
+        exact = 0  # no exact distance by default
+
+        # TODO: fix this mess
+        if len(words) == 1:
+            method = "proxy"
+        if qs and method in ("proxy", ""):
             if len(words) == 1:
-                method = "proxy"
+                method = "single_term"
+            else:  # Co-occurrence searching
+                if cooc_order is True and method_arg == 0:
+                    method = "exact_phrase"  # search for exact phrase with no words in between
+                elif cooc_order is True and method_arg > 0:
+                    method = "phrase"  # search for phrase with words in between
+        if method == "exact_cooc":
+            exact = 1  # search for exact co-occurrence
 
         if isinstance(limit, str):
             try:

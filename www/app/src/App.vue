@@ -20,10 +20,10 @@
 
 <script>
 import { defineAsyncComponent } from "vue";
+import { mapFields } from "vuex-map-fields";
 import Header from "./components/Header.vue";
 const SearchForm = defineAsyncComponent(() => import("./components/SearchForm.vue"));
 const AccessControl = defineAsyncComponent(() => import("./components/AccessControl.vue"));
-import { mapFields } from "vuex-map-fields";
 
 export default {
     name: "app",
@@ -48,6 +48,7 @@ export default {
                 report: "home",
                 q: "",
                 method: "proxy",
+                cooc_order: "yes",
                 arg_proxy: "",
                 arg_phrase: "",
                 results_per_page: "25",
@@ -80,8 +81,9 @@ export default {
             reportValues.concordance = new Set([
                 ...commonFields,
                 "method",
+                "cooc_order",
                 "arg_proxy",
-                "arg_phrase",
+                "arg_exact_cooc",
                 "results_per_page",
                 "sort_by",
                 "hit_num",
@@ -93,8 +95,9 @@ export default {
             reportValues.kwic = new Set([
                 ...commonFields,
                 "method",
+                "cooc_order",
                 "arg_proxy",
-                "arg_phrase",
+                "arg_exact_cooc",
                 "results_per_page",
                 "first_kwic_sorting_option",
                 "second_kwic_sorting_option",
@@ -108,14 +111,15 @@ export default {
             reportValues.time_series = new Set([
                 ...commonFields,
                 "method",
+                "cooc_order",
                 "arg_proxy",
-                "arg_phrase",
+                "arg_exact_cooc",
                 "start_date",
                 "end_date",
                 "year_interval",
                 "max_time",
             ]);
-            reportValues.aggregation = new Set([...commonFields, "method", "arg_proxy", "arg_phrase", "group_by"]);
+            reportValues.aggregation = new Set([...commonFields, "method", "cooc_order", "arg_proxy", "arg_exact_cooc", "group_by"]);
             return reportValues;
         },
     },
