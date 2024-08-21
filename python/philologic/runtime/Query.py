@@ -474,9 +474,10 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
             ):  # dismiss words that start before the first finishing word ends
                 continue
             else:
-                first_exceeding_indices = np.where(word_data[other_word]["array"][:, 0] > first_finishing_row[0])
-                if first_exceeding_indices[0].size != 0:
-                    first_exceeding_index = first_exceeding_indices[0][0]
+                first_exceeding_index = np.searchsorted(
+                    word_data[other_word]["array"][:, 0], first_finishing_row[0], side="right"
+                )
+                if first_exceeding_index < word_data[other_word]["array"].shape[0]:
                     remaining_array = word_data[other_word]["array"][:first_exceeding_index]
                 else:
                     remaining_array = word_data[other_word]["array"]
