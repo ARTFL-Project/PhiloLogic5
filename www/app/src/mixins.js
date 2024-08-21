@@ -1,130 +1,151 @@
 export function paramsFilter(formValues) {
-    let localFormData = {}
-    let validFields = []
-    if ("report" in formValues && formValues.report in this.$store.state.reportValues) {
-        validFields = this.$store.state.reportValues[formValues.report]
+    let localFormData = {};
+    let validFields = [];
+    if (
+        "report" in formValues &&
+        formValues.report in this.$store.state.reportValues
+    ) {
+        validFields = this.$store.state.reportValues[formValues.report];
     } else {
-        validFields = new Set(Object.keys(formValues))
+        validFields = new Set(Object.keys(formValues));
     }
     if (formValues.approximate == "no") {
-        formValues.approximate_ratio = ""
+        formValues.approximate_ratio = "";
     }
     for (const field in formValues) {
-        let value = formValues[field]
-        if (field === 'report') {
-            continue
+        let value = formValues[field];
+        if (field === "report") {
+            continue;
         }
         if (!validFields.has(field)) {
-            continue
+            continue;
         }
-        if (value.length > 0 || field === 'results_per_page') {
+        if (value.length > 0 || field === "results_per_page") {
             if (
-                (field === 'method' && value === 'proxy') ||
-                (field === 'approximate' && value == 'no') ||
-                (field === 'sort_by' && value === 'rowid')
+                (field === "method" && value === "proxy") ||
+                (field === "approximate" && value == "no") ||
+                (field === "sort_by" && value === "rowid")
             ) {
-                continue
-            } else if ((field == 'start' && value == 0) || (field == 'end' && value == 0)) {
-                continue
+                continue;
+            } else if (
+                (field == "start" && value == 0) ||
+                (field == "end" && value == 0)
+            ) {
+                continue;
             } else {
-                localFormData[field] = value
+                localFormData[field] = value;
             }
-        } else if (field == 'hit_num' || field == "start_date" || field == "end_date" || field == "arg_proxy") {
-            localFormData[field] = value
+        } else if (
+            field == "hit_num" ||
+            field == "start_date" ||
+            field == "end_date" ||
+            field == "method_arg"
+        ) {
+            localFormData[field] = value;
         }
     }
-    return localFormData
+    return localFormData;
 }
 export function paramsToRoute(formValues) {
-    let report
-    if (formValues.q.length == 0 && !["bibliography", "aggregation", "time_series"].includes(formValues.report)) {
-        report = "bibliography"
+    let report;
+    if (
+        formValues.q.length == 0 &&
+        !["bibliography", "aggregation", "time_series"].includes(
+            formValues.report
+        )
+    ) {
+        report = "bibliography";
     } else {
-        report = formValues.report
+        report = formValues.report;
     }
-    let localFormData = this.paramsFilter(formValues)
+    let localFormData = this.paramsFilter(formValues);
     let routeObject = {
         path: `/${report}`,
-        query: localFormData
-    }
-    return routeObject
+        query: localFormData,
+    };
+    return routeObject;
 }
 export function paramsToUrlString(params) {
-    let filteredParams = this.paramsFilter(params)
-    let queryParams = []
+    let filteredParams = this.paramsFilter(params);
+    let queryParams = [];
     for (let param in filteredParams) {
-        queryParams.push(`${param}=${encodeURIComponent(filteredParams[param])}`)
+        queryParams.push(
+            `${param}=${encodeURIComponent(filteredParams[param])}`
+        );
     }
-    return queryParams.join('&')
+    return queryParams.join("&");
 }
 export function copyObject(objectToCopy) {
-    return JSON.parse(JSON.stringify(objectToCopy))
+    return JSON.parse(JSON.stringify(objectToCopy));
 }
 export function saveToLocalStorage(urlString, results) {
     try {
-        sessionStorage[urlString] = JSON.stringify(results)
-        console.log('saved results to localStorage')
+        sessionStorage[urlString] = JSON.stringify(results);
+        console.log("saved results to localStorage");
     } catch (e) {
-        sessionStorage.clear()
-        console.log('Clearing sessionStorage for space...')
+        sessionStorage.clear();
+        console.log("Clearing sessionStorage for space...");
         try {
-            sessionStorage[urlString] = JSON.stringify(results)
-            console.log('saved results to localStorage')
+            sessionStorage[urlString] = JSON.stringify(results);
+            console.log("saved results to localStorage");
         } catch (e) {
-            sessionStorage.clear()
-            console.log('Quota exceeded error: the JSON object is too big...')
+            sessionStorage.clear();
+            console.log("Quota exceeded error: the JSON object is too big...");
         }
     }
 }
 export function mergeResults(fullResults, newData, sortKey) {
-    if (typeof fullResults === 'undefined' || Object.keys(fullResults).length === 0) {
-        fullResults = newData
+    if (
+        typeof fullResults === "undefined" ||
+        Object.keys(fullResults).length === 0
+    ) {
+        fullResults = newData;
     } else {
         for (let key in newData) {
-            let value = newData[key]
-            if (typeof value.count !== 'undefined') {
+            let value = newData[key];
+            if (typeof value.count !== "undefined") {
                 if (key in fullResults) {
-                    fullResults[key].count += value.count
+                    fullResults[key].count += value.count;
                 } else {
-                    fullResults[key] = value
+                    fullResults[key] = value;
                 }
             }
         }
     }
-    let sortedList = this.sortResults(fullResults, sortKey)
+    let sortedList = this.sortResults(fullResults, sortKey);
     return {
         sorted: sortedList,
-        unsorted: fullResults
-    }
+        unsorted: fullResults,
+    };
 }
 export function sortResults(fullResults, sortKey) {
-    let sortedList = []
+    let sortedList = [];
     for (let key in fullResults) {
         sortedList.push({
             label: key,
             count: parseFloat(fullResults[key].count),
-            metadata: fullResults[key].metadata
-        })
+            metadata: fullResults[key].metadata,
+        });
     }
-    if (sortKey === 'label') {
-        sortedList.sort(function(a, b) {
-            return a.label - b.label
-        })
+    if (sortKey === "label") {
+        sortedList.sort(function (a, b) {
+            return a.label - b.label;
+        });
     } else {
-        sortedList.sort(function(a, b) {
-            return b.count - a.count
-        })
+        sortedList.sort(function (a, b) {
+            return b.count - a.count;
+        });
     }
-    return sortedList
+    return sortedList;
 }
 export function deepEqual(x, y) {
     const ok = Object.keys,
         tx = typeof x,
         ty = typeof y;
-    return x && y && tx === 'object' && tx === ty ? (
-        ok(x).length === ok(y).length &&
-        ok(x).every(key => this.deepEqual(x[key], y[key]))
-    ) : (x === y);
+    return x && y && tx === "object" && tx === ty
+        ? ok(x).length === ok(y).length &&
+              ok(x).every((key) => this.deepEqual(x[key], y[key]))
+        : x === y;
 }
 export function dictionaryLookup(event, year) {
     if (event.key === "d") {
@@ -134,26 +155,52 @@ export function dictionaryLookup(event, year) {
         if (range == "NaN00-NaN00") {
             range = "";
         }
-        var link = this.$philoConfig.dictionary_lookup + "?docyear=" + range + "&strippedhw=" + selection;
+        var link =
+            this.$philoConfig.dictionary_lookup +
+            "?docyear=" +
+            range +
+            "&strippedhw=" +
+            selection;
         window.open(link);
     }
 }
 
-export function dateRangeHandler(metadataInputStyle, dateRange, dateType, metadataValues) {
+export function dateRangeHandler(
+    metadataInputStyle,
+    dateRange,
+    dateType,
+    metadataValues
+) {
     for (let metadata in metadataInputStyle) {
-        if (["date", "int"].includes(metadataInputStyle[metadata]) && dateType[metadata] != "exact") {
+        if (
+            ["date", "int"].includes(metadataInputStyle[metadata]) &&
+            dateType[metadata] != "exact"
+        ) {
             let separator = "-";
             if (metadataInputStyle[metadata] == "date") {
                 separator = "<=>";
             }
-            if (dateRange[metadata].start.length > 0 && dateRange[metadata].end.length > 0) {
+            if (
+                dateRange[metadata].start.length > 0 &&
+                dateRange[metadata].end.length > 0
+            ) {
                 metadataValues[
                     metadata
                 ] = `${dateRange[metadata].start}${separator}${dateRange[metadata].end}`;
-            } else if (dateRange[metadata].start.length > 0 && dateRange[metadata].end.length == 0) {
-                metadataValues[metadata] = `${dateRange[metadata].start}${separator}`;
-            } else if (dateRange[metadata].start.length == 0 && dateRange[metadata].end.length > 0) {
-                metadataValues[metadata] = `${separator}${dateRange[metadata].end}`;
+            } else if (
+                dateRange[metadata].start.length > 0 &&
+                dateRange[metadata].end.length == 0
+            ) {
+                metadataValues[
+                    metadata
+                ] = `${dateRange[metadata].start}${separator}`;
+            } else if (
+                dateRange[metadata].start.length == 0 &&
+                dateRange[metadata].end.length > 0
+            ) {
+                metadataValues[
+                    metadata
+                ] = `${separator}${dateRange[metadata].end}`;
             }
         }
     }
@@ -206,7 +253,7 @@ export function buildBiblioCriteria(philoConfig, query, formData) {
 }
 
 export function debug(component, message) {
-    console.log(`MESSAGE FROM ${component.$options.name}:`, message)
+    console.log(`MESSAGE FROM ${component.$options.name}:`, message);
 }
 
 export default {
@@ -221,5 +268,5 @@ export default {
     dictionaryLookup,
     dateRangeHandler,
     buildBiblioCriteria,
-    debug
-}
+    debug,
+};

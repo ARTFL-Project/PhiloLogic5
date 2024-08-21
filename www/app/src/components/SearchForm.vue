@@ -706,6 +706,8 @@ export default {
                 this.wordAttributeSelected = "";
             }
 
+            console.log(this.method_arg)
+
             this.$router.push(
                 this.paramsToRoute({
                     ...this.$store.state.formData,
@@ -722,6 +724,7 @@ export default {
                     end_date: this.end_date,
                     q_attribute: this.attributeSelected,
                     q_attribute_value: this.wordAttributeSelected,
+                    method_arg: this.method_arg
                 })
             );
         },

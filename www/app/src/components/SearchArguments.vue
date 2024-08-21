@@ -78,7 +78,7 @@ export default {
         ...mapFields([
             "formData.report",
             "formData.q",
-            "formData.arg_proxy",
+            "formData.method_arg",
             "formData.arg_phrase",
             "formData.method",
             "formData.start",
@@ -162,22 +162,22 @@ export default {
                 }
                 if (queryParams.q.split(" ").length > 1) {
                     if (method === "proxy") {
-                        if (typeof queryParams.arg_proxy !== "undefined" || queryParams.arg_proxy) {
+                        if (typeof queryParams.method_arg !== "undefined" || queryParams.method_arg) {
                             this.queryArgs.proximity = this.$t("searchArgs.withinProximity", {
-                                n: queryParams.arg_proxy,
+                                n: queryParams.method_arg,
                             });
                         } else {
                             this.queryArgs.proximity = "";
                         }
-                    } else if (method === "phrase") {
-                        if (typeof queryParams.arg_proxy !== "undefined" || queryParams.arg_phrase) {
+                    } else if (method === "exac_cooc") {
+                        if (typeof queryParams.method_arg !== "undefined" || queryParams.arg_phrase) {
                             this.queryArgs.proximity = this.$t("searchArgs.withinExactlyProximity", {
                                 n: queryParams.arg_phrase,
                             });
                         } else {
                             this.queryArgs.proximity = "";
                         }
-                    } else if (method === "cooc") {
+                    } else if (method === "sentence") {
                         this.queryArgs.proximity = this.$t("searchArgs.sameSentence");
                     }
                 } else {
@@ -211,7 +211,7 @@ export default {
         },
         proximity() {
             return this.$t("searchArgs.withinProximity", {
-                n: this.arg_proxy,
+                n: this.method_arg,
             });
         },
         removeMetadata(metadata) {
@@ -277,7 +277,7 @@ export default {
             this.end = 0;
             if (queryTermGroup.length == 1) {
                 this.method = "proxy";
-                this.arg_proxy = "";
+                this.method_arg = "";
                 this.arg_phrase = "";
             }
             this.$store.commit("updateDescription", {

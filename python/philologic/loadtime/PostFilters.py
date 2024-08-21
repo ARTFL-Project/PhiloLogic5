@@ -151,7 +151,7 @@ def word_frequencies(loader_obj):
     )
     frequencies = loader_obj.destination + "/frequencies"
     os.system("mkdir %s" % frequencies)
-    with open(frequencies + "/all_frequencies", "w", encoding="utf8") as output, open(
+    with open(frequencies + "/word_frequencies", "w", encoding="utf8") as output, open(
         loader_obj.workdir + "/all_frequencies", encoding="utf8"
     ) as input:
         for line in input:

@@ -38,7 +38,7 @@ def collocation_results(request, config, current_collocates):
 
     hits = db.query(
         request.q,
-        "proxy",
+        "single_term",
         request.arg,
         raw_results=True,
         raw_bytes=True,

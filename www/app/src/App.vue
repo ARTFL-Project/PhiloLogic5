@@ -49,7 +49,7 @@ export default {
                 q: "",
                 method: "proxy",
                 cooc_order: "yes",
-                arg_proxy: "",
+                arg_method: "",
                 arg_phrase: "",
                 results_per_page: "25",
                 start: "",
@@ -105,7 +105,7 @@ export default {
                 "frequency_field",
                 "word_property"
             ]);
-            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "q_attribute", "q_attribute_value"]);
+            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "method_arg", "q_attribute", "q_attribute_value"]);
             reportValues.time_series = new Set([
                 ...commonFields,
                 "method",

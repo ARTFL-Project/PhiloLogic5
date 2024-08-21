@@ -324,12 +324,12 @@
 </template>
 
 <script>
+import { Collapse } from "bootstrap";
 import { mapFields } from "vuex-map-fields";
-import ResultsSummary from "./ResultsSummary";
-import WordCloud from "./WordCloud.vue";
 import BibliographyCriteria from "./BibliographyCriteria";
 import ProgressSpinner from "./ProgressSpinner";
-import { Collapse, Tab } from "bootstrap";
+import ResultsSummary from "./ResultsSummary";
+import WordCloud from "./WordCloud.vue";
 
 export default {
     name: "collocation-report",
@@ -342,7 +342,7 @@ export default {
             "formData.colloc_filter_choice",
             "formData.q",
             "formData.filter_frequency",
-            "formData.arg_proxy",
+            "formData.method_arg",
             "formData.colloc_within",
             "formData.q_attribute",
             "formData.q_attribute_value",
@@ -524,9 +524,9 @@ export default {
         },
         collocateClick(item) {
             let q = this.collocateCleanup(item)
-            let method = "cooc"
-            if (this.arg_proxy.length > 0) {
-                method = 'proxy'
+            let method = "sentence"
+            if (this.colloc_within == "n") {
+                method = "proxy"
             }
             this.$router.push(
                 this.paramsToRoute({
@@ -534,14 +534,15 @@ export default {
                     report: "concordance",
                     q: q,
                     method: method,
+                    cooc_order: "no"
                 })
             );
         },
         otherCollocateClick(item) {
             let q = this.collocateCleanup(item)
-            let method = "cooc"
-            if (this.arg_proxy.length > 0) {
-                method = 'proxy'
+            let method = "sentence"
+            if (this.colloc_within == "n") {
+                method = "proxy"
             }
             this.$router.push(
                 this.paramsToRoute({
@@ -549,6 +550,7 @@ export default {
                     report: "concordance",
                     q: q,
                     method: method,
+                    cooc_order: "no"
                 })
             );
         },
@@ -781,9 +783,9 @@ export default {
         collocateTimeSeriesClick(period) {
             let localClick = (item) => {
                 let q = this.collocateCleanup(item)
-                let method = "cooc"
-                if (this.arg_proxy.length > 0) {
-                    method = 'proxy'
+                let method = "sentence_unordered"
+                if (this.colloc_within == "n") {
+                    method = "proxy_unordered"
                 }
                 this.$router.push(
                     this.paramsToRoute({
