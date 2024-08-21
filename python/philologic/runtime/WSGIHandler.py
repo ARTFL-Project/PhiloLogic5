@@ -104,6 +104,7 @@ class WSGIHandler(object):
                 method = "sentence_ordered"
             else:
                 method = "sentence_unordered"
+        self.arg = str(self.arg)
         self.cgi["arg"] = [self.arg]
         self.cgi["method"] = [method]
 

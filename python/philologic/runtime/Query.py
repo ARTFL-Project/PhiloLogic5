@@ -62,6 +62,7 @@ def query(
                 expand_query_not(
                     split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
                 )
+            method_arg = int(method_arg) if method_arg else 0
             if method == "single_term":
                 # Search for one term
                 search_word(db.path, filename, corpus_file=corpus_file)
