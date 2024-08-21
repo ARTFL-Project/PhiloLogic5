@@ -16,6 +16,7 @@ def concordance_results(request, config):
         request["q"],
         request["method"],
         request["arg"],
+        request["cooc_order"],
         sort_order=request["sort_order"],
         **request.metadata,
     )

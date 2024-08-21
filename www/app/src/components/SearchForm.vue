@@ -125,16 +125,11 @@
                                     </select>
                                     <button class="btn btn-outline-secondary" type="button"
                                         v-if="method == 'proxy' || method == 'exact_cooc'">
-                                        <label for="arg-proxy" v-if="method == 'proxy'">{{ $t("searchForm.howMany")
+                                        <label for="method-arg">{{ $t("searchForm.howMany")
                                             }}?</label>
-                                        <label for="arg-exact_cooc" v-if="method == 'exact_cooc'">{{
-                $t("searchForm.howMany")
-            }}?</label>
                                     </button>
-                                    <input class="form-control" type="text" name="arg_proxy" id="arg-proxy"
-                                        v-model="arg_proxy" v-if="method == 'proxy'" />
-                                    <input class="form-control" type="text" name="arg_exact_cooc" id="arg-exact_cooc"
-                                        v-model="arg_exact_cooc" v-if="method == 'exact_cooc'" />
+                                    <input class="form-control" type="text" name="method_arg" id="method-arg"
+                                        v-if="method == 'proxy' || method == 'exact_cooc'" v-model="method_arg" />
                                     <span class="input-group-text ms-0"
                                         v-if="method == 'proxy' || method == 'exact_cooc'">{{
                 $t("searchForm.wordsSentence") }}</span>
@@ -153,9 +148,9 @@
                                             id="collocWithinN" value="n" v-model="colloc_within">
                                         <label class="form-check-label" for="collocWithinN">
                                             {{ $t("searchForm.collocatesWithin") }} <input type="number"
-                                                name="arg_proxy" class="form-control form-control-sm" id="collocNWords"
+                                                name="method_arg" class="form-control form-control-sm" id="collocNWords"
                                                 style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
-    min-height: initial; min-height: fit-content;" v-model="arg_proxy"> {{ $t("searchForm.words") }}
+    min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("searchForm.words") }}
                                         </label>
                                     </div>
                                     <div class="mt-2">
@@ -435,8 +430,7 @@ export default {
             "formData.approximate",
             "formData.approximate_ratio",
             "formData.method",
-            "formData.arg_proxy",
-            "formData.arg_exact_cooc",
+            "formData.method_arg",
             "formData.start_date",
             "formData.end_date",
             "formData.year_interval",
@@ -704,7 +698,7 @@ export default {
             this.metadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.metadataValues)
             this.clearAutoCompletePopup();
             if (this.currentReport == 'collocation' && this.colloc_within == "sent") {
-                this.arg_proxy = "";
+                this.method_arg = "";
             }
             this.colloc_filter_choice = this.collocFilteringSelected.value;
             if (this.colloc_filter_choice == "frequency" || this.colloc_filter_choice == "stopwords") {

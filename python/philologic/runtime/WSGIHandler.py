@@ -56,21 +56,56 @@ class WSGIHandler(object):
         if "byte" in self.cgi:
             self.byte = self.cgi["byte"]
 
+        if "approximate" in self.cgi:
+            if "approximate_ratio" in self.cgi:
+                self.approximate_ratio = float(self.cgi["approximate_ratio"][0]) / 100
+            else:
+                self.approximate_ratio = 1
+
+        if "q" in self.cgi:
+            self.cgi["q"][0] = query_parse(self.cgi["q"][0], config)
+            if self.approximate == "yes":
+                self.cgi["original_q"] = self.cgi["q"][:]
+                self.cgi["q"][0] = find_similar_words(db, config, self)
+            if self.cgi["q"][0] != "":
+                self.no_q = False
+            else:
+                self.no_q = True
+            # self.cgi['q'][0] = self.cgi['q'][0].encode('utf8')
+        else:
+            self.no_q = True
+
+        words = [w for w in self.q.split() if w]
         method = self["method"] or "proxy"
-        self.arg = 0
+        try:
+            self.arg = int(self["method_arg"])
+        except ValueError:
+            self.arg = 0
+        if len(words) == 1:
+            method = "single_term"
+        elif self.arg == 0 and method in ("proxy", "exact_cooc"):
+            if self.cooc_order == "yes":
+                method = "phrase_ordered"
+            else:
+                method = "phrase_unordered"
         if method == "proxy":
-            try:
-                self.arg = int(self["arg_proxy"])
-            except ValueError:
-                pass
+            if self.cooc_order == "yes" and self.arg > 0:  # Co-occurrence search within n words ordered
+                method = "proxy_ordered"
+            else:  # Co-occurrence search within n words unordered
+                method = "proxy_unordered"
         elif method == "exact_cooc":
-            try:
-                self.arg = int(self["arg_exact_cooc"])
-            except ValueError:
-                pass
+            if self.cooc_order == "yes":
+                method = "exact_cooc_ordered"
+            else:
+                method = "exact_cooc_unordered"
         elif method == "sentence":
             self.arg = 6
+            if self.cooc_order == "yes":
+                method = "sentence_ordered"
+            else:
+                method = "sentence_unordered"
         self.cgi["arg"] = [self.arg]
+        self.cgi["method"] = [method]
 
         self.metadata_fields = db.locals["metadata_fields"]
         self.metadata = {}
@@ -119,25 +154,6 @@ class WSGIHandler(object):
             self.path_components = [c for c in self.path_info.split("/") if c]
         except:
             self.path_components = []
-
-        if "approximate" in self.cgi:
-            if "approximate_ratio" in self.cgi:
-                self.approximate_ratio = float(self.cgi["approximate_ratio"][0]) / 100
-            else:
-                self.approximate_ratio = 1
-
-        if "q" in self.cgi:
-            self.cgi["q"][0] = query_parse(self.cgi["q"][0], config)
-            if self.approximate == "yes":
-                self.cgi["original_q"] = self.cgi["q"][:]
-                self.cgi["q"][0] = find_similar_words(db, config, self)
-            if self.cgi["q"][0] != "":
-                self.no_q = False
-            else:
-                self.no_q = True
-            # self.cgi['q'][0] = self.cgi['q'][0].encode('utf8')
-        else:
-            self.no_q = True
 
         if "sort_order" in self.cgi:
             sort_order = []

@@ -27,7 +27,6 @@ def query(
     corpus_file=None,
     method=None,
     method_arg=None,
-    cooc_order=True,
     filename="",
     query_debug=False,
     sort_order=None,
@@ -35,7 +34,6 @@ def query(
     raw_bytes=False,
     ascii_conversion=True,
     object_level="sent",
-    exact=1,
 ):
     """Runs concordance queries"""
     sys.stdout.flush()
@@ -58,6 +56,8 @@ def query(
         if pid > 0:
             os._exit(0)
         else:
+            print("METHOD USED:", method, file=sys.stderr)
+            print("METHOD ARGUMENT:", method_arg, file=sys.stderr)
             with open(f"{filename}.terms", "w") as terms_file:
                 expand_query_not(
                     split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
@@ -65,20 +65,30 @@ def query(
             if method == "single_term":
                 # Search for one term
                 search_word(db.path, filename, corpus_file=corpus_file)
-            elif method == "exact_phrase":
+            elif method == "phrase_ordered":
                 # Phrase searching where words need to be in a specific order with no words in between
                 search_phrase(db.path, filename, corpus_file=corpus_file)
-            elif method == "proxy":
-                # Phrase searching with possible words in between
-                search_within_word_span(
-                    db.path, filename, method_arg or 1, cooc_order, bool(exact), corpus_file=corpus_file
-                )
-            elif method == "exact_cooc":
+            elif method == "phrase_unordered":
+                # Phrase searching where words need to be in a specific order with possible words in between
+                search_within_word_span(db.path, filename, method_arg or 1, False, False, corpus_file=corpus_file)
+            elif method == "proxy_ordered":
+                # Proximity searching with possible words in between
+                search_within_word_span(db.path, filename, method_arg or 1, True, False, corpus_file=corpus_file)
+            elif method == "proxy_unordered":
+                # Proximity searching with possible words in between unordered
+                search_within_word_span(db.path, filename, method_arg or 1, False, False, corpus_file=corpus_file)
+            elif method == "exact_cooc_ordered":
                 # Co-occurrence searching where words need to be within n words of each other
-                search_within_word_span(db.path, filename, method_arg or 1, cooc_order, True, corpus_file=corpus_file)
-            elif method == "sentence":  # no support for para search for now
+                search_within_word_span(db.path, filename, method_arg or 1, True, True, corpus_file=corpus_file)
+            elif method == "exact_cooc_unordered":
+                # Co-occurrence searching where words need to be within n words of each othera and can be unordered
+                search_within_word_span(db.path, filename, method_arg or 1, False, True, corpus_file=corpus_file)
+            elif method == "sentence_ordered":  # no support for para search for now
                 # Co-occurrence searching where words need to be within an object irrespective of word order
-                search_within_text_object(db.path, filename, object_level, cooc_order, corpus_file=corpus_file)
+                search_within_text_object(db.path, filename, object_level, True, corpus_file=corpus_file)
+            elif method == "sentence_unordered":
+                # Co-occurrence searching where words need to be within an object irrespective of word order
+                search_within_text_object(db.path, filename, object_level, False, corpus_file=corpus_file)
 
             with open(filename + ".done", "w") as flag:  # do something to mark query as finished
                 flag.write(" ".join(sys.argv) + "\n")
@@ -200,6 +210,9 @@ def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_dist
         db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level, cooc_order=cooc_order
     )
 
+    if cooc_order is True:
+        sorted_indices = next(common_object_ids)
+
     if len(word_groups) > 1 and n == 1:
         n = len(word_groups) - 1
 
@@ -211,8 +224,14 @@ def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_dist
         for philo_id_groups in common_object_ids:
             hit_cache = set()
             for group_combination in product(*philo_id_groups):
+                if cooc_order is True:
+                    raw_positions: list[int] = [group_combination[index][7:8][0] for index in sorted_indices]
+                    positions = sorted(raw_positions)
+                    if positions != raw_positions:  # are positions in sorted order?
+                        continue
+                else:
+                    positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
                 # we now need to check if the positions are within n words of each other
-                positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
                 if len(positions) != len(word_groups):  # we had duplicate words
                     continue
                 if comp(positions[-1] - positions[0], n):
@@ -240,11 +259,21 @@ def search_within_text_object(db_path, hitlist_filename, level, cooc_order, corp
         object_level=object_level,
         cooc_order=cooc_order,
     )
+
+    if cooc_order is True:
+        sorted_indices = next(common_object_ids)
+
     with open(hitlist_filename, "wb") as output_file:
         for philo_id_groups in common_object_ids:
             hit_cache = set()
             for group_combination in product(*philo_id_groups):
-                positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
+                if cooc_order is True:
+                    raw_positions: list[int] = [group_combination[index][7:8][0] for index in sorted_indices]
+                    positions = sorted(raw_positions)
+                    if positions != raw_positions:  # are positions in sorted order?
+                        continue
+                else:
+                    positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
                 if len(positions) != len(word_groups):  # we had duplicate words
                     continue
                 group_combination = sorted(group_combination, key=lambda x: x[-1])

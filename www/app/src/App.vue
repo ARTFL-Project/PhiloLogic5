@@ -82,8 +82,7 @@ export default {
                 ...commonFields,
                 "method",
                 "cooc_order",
-                "arg_proxy",
-                "arg_exact_cooc",
+                "method_arg",
                 "results_per_page",
                 "sort_by",
                 "hit_num",
@@ -96,8 +95,7 @@ export default {
                 ...commonFields,
                 "method",
                 "cooc_order",
-                "arg_proxy",
-                "arg_exact_cooc",
+                "method_arg",
                 "results_per_page",
                 "first_kwic_sorting_option",
                 "second_kwic_sorting_option",
@@ -107,19 +105,18 @@ export default {
                 "frequency_field",
                 "word_property"
             ]);
-            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "arg_proxy", "q_attribute", "q_attribute_value"]);
+            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "q_attribute", "q_attribute_value"]);
             reportValues.time_series = new Set([
                 ...commonFields,
                 "method",
                 "cooc_order",
-                "arg_proxy",
-                "arg_exact_cooc",
+                "method_arg",
                 "start_date",
                 "end_date",
                 "year_interval",
                 "max_time",
             ]);
-            reportValues.aggregation = new Set([...commonFields, "method", "cooc_order", "arg_proxy", "arg_exact_cooc", "group_by"]);
+            reportValues.aggregation = new Set([...commonFields, "method", "cooc_order", "method_arg", "group_by"]);
             return reportValues;
         },
     },

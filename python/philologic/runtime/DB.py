@@ -110,31 +110,12 @@ class DB:
         method_arg="",
         limit="",
         sort_order=["rowid"],
-        cooc_order=True,
         raw_results=False,
         raw_bytes=False,
         get_word_count_field=None,
         **metadata,
     ):  # pylint: disable=dangerous-default-value
         """query the PhiloLogic database"""
-        method = method or "proxy"
-        words = [w for w in qs.split() if w]
-        exact = 0  # no exact distance by default
-
-        # TODO: fix this mess
-        if len(words) == 1:
-            method = "proxy"
-        if qs and method in ("proxy", ""):
-            if len(words) == 1:
-                method = "single_term"
-            else:  # Co-occurrence searching
-                if cooc_order is True and method_arg == 0:
-                    method = "exact_phrase"  # search for exact phrase with no words in between
-                elif cooc_order is True and method_arg > 0:
-                    method = "phrase"  # search for phrase with words in between
-        if method == "exact_cooc":
-            exact = 1  # search for exact co-occurrence
-
         if isinstance(limit, str):
             try:
                 limit = int(limit)
@@ -216,7 +197,6 @@ class DB:
             hash.update(method.encode("utf8"))
             hash.update(str(method_arg).encode("utf8"))
             hash.update(str(limit).encode("utf8"))
-            hash.update(str(exact).encode("utf8"))
             search_hash = hash.hexdigest()
             search_file = self.path + "/hitlists/" + search_hash + ".hitlist"
             if sort_order == ["rowid"]:
@@ -233,7 +213,6 @@ class DB:
                     raw_results=raw_results,
                     raw_bytes=raw_bytes,
                     ascii_conversion=self.locals.ascii_conversion,
-                    exact=exact,
                 )
             parsed = QuerySyntax.parse_query(qs)
             grouped = QuerySyntax.group_terms(parsed)
