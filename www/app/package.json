@@ -1,6 +1,6 @@
 {
     "name": "philologic",
-    "version": "4.7",
+    "version": "5.0",
     "private": true,
     "scripts": {
         "serve": "npm i && vite preview",

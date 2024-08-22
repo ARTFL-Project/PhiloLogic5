@@ -38,6 +38,7 @@
         "approximateMatch": "Approximate match",
         "similarity": "At least {n}% similar",
         "searchCoOccurrences": "Search co-occurrences",
+        "coOccurrenceWordOrder": "Respect co-occurrence word order",
         "within": "within",
         "withinExactly": "within exactly",
         "howMany": "how many",
@@ -110,7 +111,7 @@
         "frequentCollocates": "Most frequent collocates",
         "overRepresentedCollocates": "Over-represented collocates",
         "emptySearch": "Note that an empty search will run a comparison against the rest of the corpus",
-        "metadataFilter" : "Filter by the following metadata fields",
+        "metadataFilter": "Filter by the following metadata fields",
         "runComparison": "Run comparison",
         "similarCollocGatheringMessage": "Gathering all collocates",
         "similarCollocCompareMessage": "Comparing collocate distributions",
@@ -156,9 +157,7 @@
         "browseByLetter": "Browse by letter",
         "seeResults": "See all {n} results"
     },
-    "searchTips": {
-
-    },
+    "searchTips": {},
     "textNav": {
         "backToTop": "Back to top",
         "top": "Top",

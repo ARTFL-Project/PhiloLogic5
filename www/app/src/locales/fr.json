@@ -37,6 +37,7 @@
         "approximateMatch": "Inclure les mots proches",
         "similarity": "Degré de proximité: {n}%",
         "searchCoOccurrences": "Recherche de co-occurrences",
+        "coOccurrenceWordOrder": "Respecter l'ordre des mots co-occurrents",
         "within": "au sein de",
         "withinExactly": "exactement",
         "howMany": "combien ",
@@ -109,7 +110,7 @@
         "frequentCollocates": "Collocations les plus fréquentes",
         "overRepresentedCollocates": "Collocations sur-représentées",
         "emptySearch": "Notez qu'une recherche vide lancera une comparaison avec le reste du corpus",
-        "metadataFilter" : "Filtrez par les métadonnées suivantes",
+        "metadataFilter": "Filtrez par les métadonnées suivantes",
         "runComparison": "Lancer la comparaison",
         "similarCollocGatheringMessage": "Récupération des collocations",
         "similarCollocCompareMessage": "Comparaison des collocations",
@@ -155,9 +156,7 @@
         "browseByLetter": "Naviguer par lettre",
         "seeResults": "Afficher les {n} résultats"
     },
-    "searchTips": {
-
-    },
+    "searchTips": {},
     "textNav": {
         "backToTop": "Retour en haut de la page",
         "top": "En haut",

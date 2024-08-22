@@ -108,12 +108,12 @@
                                     >
                                 </select>
                                 <!-- Checkbox to determine if we follow co-occurrence word order -->
-                                <div class="form-check form-switch" id="co-occurrence-order" style="height: 31px">
+                                <div class="form-check form-switch" id="co-occurrence-order" style="height: 31px"
+                                    v-if="currentReport != 'collocation'">
                                     <input class="form-check-input" type="checkbox" id="co-occurrence-order-input"
                                         v-model="coocOrder" />
-                                    <label class=" form-check-label" for="co-occurrence-order-input">Respect
-                                        co-occurrence word
-                                        order</label>
+                                    <label class=" form-check-label" for="co-occurrence-order-input">{{
+                $t("searchForm.coOccurrenceWordOrder") }}</label>
                                 </div>
                                 <div class="input-group mb-4" v-if="currentReport != 'collocation'">
                                     <button class="btn btn-outline-secondary" type="button">
