@@ -33,7 +33,6 @@ from philologic.utils import (
     load_module,
     pretty_print,
     sort_list,
-    update_shebang,
 )
 from tqdm import tqdm
 
@@ -1095,9 +1094,6 @@ class Loader:
             self.write_web_config()
         if self.debug is False:
             os.system(f"rm -rf {self.workdir}")
-
-        # Set path to Python executable for CGI script in the Web app directory (for virtual environments)
-        update_shebang(os.path.dirname(os.path.normpath(self.destination)))
 
         print("Building Web Client Application...", end=" ", flush=True)
         os.chdir(self.web_app_dir)
