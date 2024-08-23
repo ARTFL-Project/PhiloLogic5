@@ -126,6 +126,7 @@ class Loader:
     lemma_count = 0
     has_attributes = False
     nlp = None
+    suppress_word_attributes = set()
 
     @classmethod
     def set_class_attributes(cls, loader_options):
@@ -158,6 +159,7 @@ class Loader:
         if loader_options["spacy_model"]:
             spacy.prefer_gpu()
             cls.nlp = spacy.load(loader_options["spacy_model"], disable=["tokenizer"])
+        cls.suppress_word_attributes = set(loader_options["suppress_word_attributes"])
         return cls(**loader_options)
 
     def __init__(self, **loader_options):

@@ -70,6 +70,7 @@ class LoadOptions:
         self.values["file_list"] = False
         self.values["bibliography"] = ""
         self.values["words_to_index"] = set([])
+        self.values["suppress_word_attributes"] = set()
         self.values["file_type"] = "xml"
         self.values["sentence_breakers"] = []
         self.values["punctuation"] = Parser.PUNCTUATION
@@ -188,6 +189,8 @@ class LoadOptions:
             self.values["load_filters"].append(plain_text_filter)
         if self.values["spacy_model"]:
             self.values["load_filters"].insert(-3, LoadFilters.spacy_tagger)
+        if self.values["suppress_word_attributes"]:
+            self.values["load_filters"].insert(-3, LoadFilters.suppress_word_attributes)
         if self.debug:
             print(self)
 

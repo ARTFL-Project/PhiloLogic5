@@ -225,6 +225,10 @@ unicode_word_breakers = [
     b"\xe2\x80\xa6",  # U+2026 &hellip; HORIZONTAL ELLIPSIS
 ]
 
+# Define a list of word attributes to ingore at parse time. These will not be stored.
+# This should be a list of attribute names, such as ["type", "id"]
+suppress_word_attributes = []
+
 #  ----------------- Set Long Word Limit  -------------------
 #  Words greater than 235 characters (bytes) cause an indexing
 #  error.  This sets a limit.  Words are then truncated to fit.
