@@ -40,13 +40,14 @@ virtualenv -p $PYTHON_VERSION /var/lib/philologic5/philologic_env
 source /var/lib/philologic5/philologic_env/bin/activate
 
 # Install required packages
-pip install build
+python -m ensurepip --upgrade
+python -m pip install build
 
 echo -e "$PYTHON_INSTALL"
 cd python
 rm -rf dist/
 python3 -m build --sdist
-pip install dist/*gz
+python -m pip install dist/*gz
 
 # Deactivate the virtual environment
 deactivate
