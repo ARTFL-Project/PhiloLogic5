@@ -49,7 +49,7 @@ export default {
                 q: "",
                 method: "proxy",
                 cooc_order: "yes",
-                arg_method: "",
+                method_arg: "",
                 arg_phrase: "",
                 results_per_page: "25",
                 start: "",

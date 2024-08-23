@@ -706,8 +706,6 @@ export default {
                 this.wordAttributeSelected = "";
             }
 
-            console.log(this.method_arg)
-
             this.$router.push(
                 this.paramsToRoute({
                     ...this.$store.state.formData,
