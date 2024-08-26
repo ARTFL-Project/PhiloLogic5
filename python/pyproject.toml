@@ -34,9 +34,6 @@ dependencies = [
     "spacy~=3.7",
 ]
 
-[project.scripts]
-philoload5 = "philologic.loadtime:philoload"
-
 [tool.setuptools]
 packages = [
     "philologic",

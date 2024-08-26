@@ -16,7 +16,7 @@
             </transition>
             <transition name="slide-fade">
                 <div class="list-group" flush id="select-word-properties"
-                    v-if="showFacetSelection && report != 'bibliography' && philoConfig.config.words_facets.length > 0">
+                    v-if="showFacetSelection && report != 'bibliography' && philoConfig.words_facets.length > 0">
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
                     <div class="list-group-item facet-selection" v-for="facet in philoConfig.words_facets" :key="facet"
                         @click="getFacet({ facet: facet, type: 'property' })">
@@ -90,7 +90,7 @@
                         total: fullResults.unsorted[result.label].count,
                         wordCount: fullRelativeFrequencies[result.label].total_count,
                     })
-                }}
+                            }}
                         </div>
                     </div>
                 </div>

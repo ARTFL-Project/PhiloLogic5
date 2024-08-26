@@ -1041,14 +1041,6 @@ class Loader:
                             if stored_string not in word_attributes:
                                 print(stored_string, file=freq_file)
                                 word_attributes.add(stored_string)
-            for attribute, attribute_counter in total_count_per_attribute.items():
-                for attribute_value, count in attribute_counter.items():
-                    with open(
-                        f"{self.destination}/frequencies/total_{attribute}_{attribute_value}_count.txt",
-                        "w",
-                        encoding="utf8",
-                    ) as output_file:
-                        output_file.write(str(count))
 
         # Write word attributes to frequency file with lemma info
         if self.lemma_count > 0:
@@ -1069,22 +1061,6 @@ class Loader:
                             if stored_string not in word_attributes:
                                 print(stored_string, file=freq_file)
                                 word_attributes.add(stored_string)
-        if self.has_attributes is True:
-            for attribute, attribute_counter in total_count_per_attribute.items():
-                for attribute_value, count in attribute_counter.items():
-                    with open(
-                        f"{self.destination}/frequencies/total_lemma_{attribute}_{attribute_value}_count.txt",
-                        "w",
-                        encoding="utf8",
-                    ) as output_file:
-                        output_file.write(str(count))
-
-        # Save total word counts for words and lemma
-        with open(self.destination + "/frequencies/total_word_count.txt", "w") as output:
-            output.write(str(self.word_count))
-        if self.lemma_count > 0:
-            with open(self.destination + "/frequencies/total_lemma_count.txt", "w") as output:
-                output.write(str(self.lemma_count))
 
         # Make data directory inaccessible from the outside
         fh = open(self.destination + "/.htaccess", "w")
@@ -1252,8 +1228,7 @@ class Loader:
                         word_attributes[attribute] = set()
                     word_attributes[attribute].add(attribute_value)
             config_values["word_attributes"] = {k: list(v) for k, v in word_attributes.items()}
-            for attribute in word_attributes:
-                config_values["word_facets"].append(attribute)
+            config_values["words_facets"] = list(word_attributes.keys())
 
         config_values["ascii_conversion"] = Loader.ascii_conversion
 
