@@ -165,7 +165,7 @@ def normalized_word_frequencies(loader_obj):
     print("%s: Generating normalized word frequencies..." % time.ctime())
     frequencies = loader_obj.destination + "/frequencies"
     with open(frequencies + "/normalized_word_frequencies", "w", encoding="utf8") as output, open(
-        frequencies + "/all_frequencies", encoding="utf8"
+        frequencies + "/word_frequencies", encoding="utf8"
     ) as input:
         for line in input:
             word, _ = line.split("\t")
