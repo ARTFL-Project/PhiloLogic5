@@ -60,8 +60,11 @@ class DB:
         """Retrieve page data"""
         page_id_s = " ".join(str(s) for s in item)
         c = self.dbh.cursor()
-        c.execute("SELECT * FROM pages WHERE philo_id=? LIMIT 1;", (page_id_s,))
-        return c.fetchone()
+        try:
+            c.execute("SELECT * FROM pages WHERE philo_id=? LIMIT 1;", (page_id_s,))
+            return c.fetchone()
+        except sqlite3.OperationalError:
+            return ""
 
     def get_line(self, byte_offset, doc_id):
         """Retrieve line data"""
