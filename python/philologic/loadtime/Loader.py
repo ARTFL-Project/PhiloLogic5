@@ -1211,9 +1211,9 @@ class Loader:
                 "end_date": "",
             }
 
-        # Check if the lemmas file is empty
-        if self.lemma_count > 0:
-            config_values["word_facets"] = ["lemma"]
+        words_facets = []
+        if self.lemma_count > 0:  # Check if the lemmas file is empty
+            words_facets.append("lemma")
 
         # Compile all possible word attributes with their types from the frequency file
         if self.has_attributes is True:
@@ -1228,8 +1228,8 @@ class Loader:
                         word_attributes[attribute] = set()
                     word_attributes[attribute].add(attribute_value)
             config_values["word_attributes"] = {k: list(v) for k, v in word_attributes.items()}
-            config_values["words_facets"] = list(word_attributes.keys())
-
+            words_facets.extend((word_attributes.keys()))
+            config_values["words_facets"] = words_facets
         config_values["ascii_conversion"] = Loader.ascii_conversion
 
         filename = self.destination + "/web_config.cfg"
