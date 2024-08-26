@@ -16,7 +16,7 @@
             </transition>
             <transition name="slide-fade">
                 <div class="list-group" flush id="select-word-properties"
-                    v-if="showFacetSelection && report != 'bibliography'">
+                    v-if="showFacetSelection && report != 'bibliography' && philoConfig.config.words_facets.length > 0">
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
                     <div class="list-group-item facet-selection" v-for="facet in philoConfig.words_facets" :key="facet"
                         @click="getFacet({ facet: facet, type: 'property' })">
@@ -25,7 +25,8 @@
                 </div>
             </transition>
             <transition name="slide-fade">
-                <div class="list-group mt-2" style="border-top: 0" v-if="showFacetSelection && report != 'bibliography'">
+                <div class="list-group mt-2" style="border-top: 0"
+                    v-if="showFacetSelection && report != 'bibliography'">
                     <span class="dropdown-header text-center">{{ $t("facets.collocates") }}</span>
                     <div class="list-group-item facet-selection" @click="getFacet(collocationFacet)"
                         v-if="report !== 'bibliography'">
@@ -65,7 +66,8 @@
             <div class="m-2 text-center" style="opacity: 0.7">
                 {{ $t("facets.top500Results", { label: selectedFacet.alias }) }}
             </div>
-            <div class="progress my-3 mb-3" :max="resultsLength" show-progress variant="secondary" v-if="percent != 100">
+            <div class="progress my-3 mb-3" :max="resultsLength" show-progress variant="secondary"
+                v-if="percent != 100">
                 <div class="progress-bar" :value="runningTotal"
                     :label="`${((runningTotal / resultsLength) * 100).toFixed(2)}%`"></div>
             </div>
@@ -80,14 +82,15 @@
                             @click.prevent="collocationToConcordance(result.label)">{{ result.label }}</a>
                         <div class="badge bg-secondary rounded-pill float-end">{{ result.count }}</div>
                     </div>
-                    <div style="line-height: 70%; padding-bottom: 15px; font-size: 85%" v-if="showingRelativeFrequencies">
+                    <div style="line-height: 70%; padding-bottom: 15px; font-size: 85%"
+                        v-if="showingRelativeFrequencies">
                         <div style="display: inline-block; opacity: 0.8">
                             {{
-                                $t("facets.relativeFrequencyDescription", {
-                                    total: fullResults.unsorted[result.label].count,
-                                    wordCount: fullRelativeFrequencies[result.label].total_count,
-                                })
-                            }}
+                    $t("facets.relativeFrequencyDescription", {
+                        total: fullResults.unsorted[result.label].count,
+                        wordCount: fullRelativeFrequencies[result.label].total_count,
+                    })
+                }}
                         </div>
                     </div>
                 </div>
@@ -457,4 +460,3 @@ export default {
     opacity: 0;
 }
 </style>
-

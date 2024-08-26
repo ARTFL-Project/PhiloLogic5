@@ -2,6 +2,7 @@
 
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from wsgiref.handlers import CGIHandler
 
 import lmdb
@@ -26,6 +27,23 @@ OBJECT_LEVEL = {"doc": 6, "div1": 5, "div2": 4, "div3": 3, "para": 2, "sent": 1}
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
 
+def query_word_property(db, query, request):
+    hits = db.query(
+        query,
+        request["method"],
+        request["arg"],
+        raw_results=True,
+        raw_bytes=True,
+        **request.metadata,
+    )
+    hits.finish()
+    result = {"label": query.split(":")[-1], "count": len(hits), "q": query}
+    os.remove(hits.filename)  # we don't want to clog up the server with hitlist files
+    os.remove(hits.filename + ".done")
+    os.remove(hits.filename + ".terms")
+    return result
+
+
 def get_word_property_count(environ, start_response):
     """Get word property count"""
     status = "200 OK"
@@ -43,18 +61,19 @@ def get_word_property_count(environ, start_response):
         # Get all word properties from config
         possible_word_properties = config.word_attributes[request.word_property]
 
-        for word_property in possible_word_properties:
-            query = f"{request.q}:{request.word_property}:{word_property}"
-            hits = db.query(
-                query,
-                request["method"],
-                request["arg"],
-                raw_results=True,
-                raw_bytes=True,
-                **request.metadata,
-            )
-            hits.finish()
-            word_property_count.append({"label": word_property, "count": len(hits), "q": query})
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            future_to_property = {
+                executor.submit(
+                    query_word_property, db, f"{request.q}:{request.word_property}:{word_property}", request
+                ): word_property
+                for word_property in possible_word_properties
+            }
+            for future in as_completed(future_to_property):
+                word_property = future_to_property[future]
+                try:
+                    word_property_count.append(future.result())
+                except Exception as e:
+                    print(f"Exception occurred during processing {word_property}: {e}")
     else:
         # Get all lemmas
         hits = db.query(
