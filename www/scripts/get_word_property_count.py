@@ -84,7 +84,7 @@ def get_word_property_count(environ, start_response):
             raw_bytes=True,
             **request.metadata,
         )
-        lemma_db_env = lmdb.open(f"{config.db_path}/data/lemma_lookup.lmdb", readonly=True, lock=False)
+        lemma_db_env = lmdb.open(f"{config.db_path}/data/lemmas.lmdb", readonly=True, lock=False)
         lemma_count = {}
         with lemma_db_env.begin() as txn:
             for hit in hits:
