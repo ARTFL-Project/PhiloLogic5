@@ -226,7 +226,7 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
             el.tag = "span"
             el.attrib["class"] = "xml-q"
         if (
-            "id" in el.attrib and el.tag != "l"
+            "id" in el.attrib and el.tag != "l" and el.tag != "w"
         ):  ## kill ids in order to avoid the risk of having duplicate ids in the HTML
             del el.attrib["id"]
         if el.tag == "sc" or el.tag == "scx":
