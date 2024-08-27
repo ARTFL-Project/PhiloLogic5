@@ -56,8 +56,6 @@ def query(
         if pid > 0:
             os._exit(0)
         else:
-            print("METHOD USED:", method, file=sys.stderr)
-            print("METHOD ARGUMENT:", method_arg, file=sys.stderr)
             with open(f"{filename}.terms", "w") as terms_file:
                 expand_query_not(
                     split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]

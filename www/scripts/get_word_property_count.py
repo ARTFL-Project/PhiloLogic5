@@ -8,7 +8,6 @@ from wsgiref.handlers import CGIHandler
 import lmdb
 import orjson
 from philologic.runtime.DB import DB
-from philologic.runtime.Query import get_word_groups
 
 sys.path.append("..")
 import custom_functions
@@ -71,9 +70,10 @@ def get_word_property_count(environ, start_response):
             for future in as_completed(future_to_property):
                 word_property = future_to_property[future]
                 try:
-                    word_property_count.append(future.result())
+                    if future.result()["count"] > 0:
+                        word_property_count.append(future.result())
                 except Exception as e:
-                    print(f"Exception occurred during processing {word_property}: {e}")
+                    print(f"Exception occurred during processing {word_property}: {e}", file=sys.stderr)
     else:
         # Get all lemmas
         hits = db.query(

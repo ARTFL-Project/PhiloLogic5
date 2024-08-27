@@ -562,6 +562,7 @@ export default {
         },
     },
     created() {
+        this.coocOrder = this.cooc_order == "yes" ? true : false
         for (let metadataField of this.$philoConfig.metadata) {
             let metadataObj = {
                 label: metadataField[0].toUpperCase() + metadataField.slice(1),
@@ -676,6 +677,7 @@ export default {
                     this.metadataChoiceChecked[field] = this.formData[field].split(" | ");
                 }
             }
+            this.coocOrder = this.cooc_order == "yes" ? true : false
         },
         getLoadedStatField() {
             let queryParam = this.$store.state.formData.group_by;
