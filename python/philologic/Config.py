@@ -424,8 +424,8 @@ WEB_CONFIG_DEFAULTS = {
         "value": "default",
         "comment": "\n".join(
             [
-                "# The landing_page_browsing variable defines what type of landing page. There are 3 built-in reports available: 'default',",
-                "# 'dictionary' or 'simple'. You can otherwise supply a relative path to a custom HTML template. Note that this path is relative",
+                "# The landing_page_browsing variable defines what type of landing page. There are 4 built-in reports available: 'default',",
+                "# 'dictionary', 'simple', or 'toc'. You can otherwise supply a relative path to a custom HTML template. Note that this path is relative",
                 "# to the database root. The only constraint for custom templates is that the HTML must be encapsulated inside a div",
             ]
         ),

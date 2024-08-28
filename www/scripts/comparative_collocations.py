@@ -7,6 +7,7 @@ from wsgiref.handlers import CGIHandler
 import numpy as np
 import orjson
 import pandas as pd
+from scipy import stats
 
 sys.path.append("..")
 import custom_functions
@@ -66,7 +67,14 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     # Adjust counts if comparing against the whole corpus
     if whole_corpus:
         df_combined["other_corpus_count"] = df_combined["other_corpus_count"] - df_combined["sub_corpus_count"]
-        df_combined.loc[df_combined["other_corpus_count"] == 0, "other_corpus_count"] = 1
+        df_combined.loc[df_combined["other_corpus_count"] == 0, "other_corpus_count"] = 1  # Avoid division by zero
+
+    # Median Absolute Deviation filtering
+    df_combined["total_freq"] = df_combined["sub_corpus_count"] + df_combined["other_corpus_count"]  # Total frequency
+    median = np.median(df_combined["total_freq"])  # Median frequency
+    mad = np.median(np.abs(df_combined["total_freq"] - median))  # Median Absolute Deviation
+    lower_bound = max(1, median * mad)  # ensure lower bound is at least 1
+    df_combined = df_combined[df_combined["total_freq"] > lower_bound]  # Filter out low frequency collocates
 
     # Calculate Proportions
     df_combined["sub_corpus_proportion"] = (

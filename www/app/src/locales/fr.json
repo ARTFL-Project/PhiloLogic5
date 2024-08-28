@@ -108,7 +108,7 @@
         "collocation": "Collocation",
         "compareTo": "Collocation comparative",
         "frequentCollocates": "Collocations les plus fréquentes",
-        "overRepresentedCollocates": "Collocations sur-représentées",
+        "overRepresentedCollocates": "Collocations distinctives",
         "emptySearch": "Notez qu'une recherche vide lancera une comparaison avec le reste du corpus",
         "metadataFilter": "Filtrez par les métadonnées suivantes",
         "runComparison": "Lancer la comparaison",

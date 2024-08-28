@@ -109,7 +109,7 @@
         "collocation": "Collocation",
         "compareTo": "Comparative Collocation",
         "frequentCollocates": "Most frequent collocates",
-        "overRepresentedCollocates": "Over-represented collocates",
+        "overRepresentedCollocates": "Distinctive collocates",
         "emptySearch": "Note that an empty search will run a comparison against the rest of the corpus",
         "metadataFilter": "Filter by the following metadata fields",
         "runComparison": "Run comparison",
@@ -120,7 +120,7 @@
         "similarToField": "Find most similar/dissimilar usages from the following field",
         "timeSeries": "Change over time",
         "searchEvolution": "Search evolution",
-        "collocateBetweenPeriods": "Collocate over-representation between periods"
+        "collocateBetweenPeriods": "Distinctive Collocates between {start} and {end}"
     },
     "concordance": {
         "more": "More",
