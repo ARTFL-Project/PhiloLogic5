@@ -306,7 +306,7 @@ def create_file_path(request, field, path):
     hash = hashlib.sha1()
     hash.update(request["q"].encode("utf-8"))
     hash.update(request["method"].encode("utf-8"))
-    hash.update(str(request["arg"]).encode("utf-8"))
+    hash.update(str(request["method_arg"]).encode("utf-8"))
     hash.update(request.colloc_filter_choice.encode("utf-8"))
     hash.update(request.q_attribute.encode("utf-8"))
     hash.update(request.q_attribute_value.encode("utf-8"))

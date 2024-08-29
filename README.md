@@ -11,4 +11,4 @@ Note that as of version 4.7.3, PhiloLogic can now parse plain text files. See do
 ### IMPORTANT ###
 * PhiloLogic 5 will only work on Unix-based systems (Linux, *BSD) though MacOS is not supported and guaranteed to work.
 * PhiloLogic 5 will only run on the Apache Webserver
-* PhiloLogic 5 has only been tested on Python 3.10 and up. For a Python 2 version, use the [latest PhiloLogic 4.5 release](https://github.com/ARTFL-Project/PhiloLogic4/releases/tag/v4.5.9).
+* PhiloLogic 5 has only been tested on Python 3.10 and up.
