@@ -229,49 +229,6 @@ def generate_lines(_, text):
     os.system(lines_command)
 
 
-def store_in_plain_text(*philo_types):
-    """Store indexed words in plain text"""
-    object_types = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
-    obj_to_track = []
-    for obj in philo_types:
-        obj_to_track.append(object_types[obj])
-
-    def inner_store_in_plain_text(loader_obj, text):
-        files_path = loader_obj.destination + "/plain_text_objects/"
-        try:
-            os.mkdir(files_path)
-        except OSError:
-            # Path was already created
-            pass
-        for obj_depth in obj_to_track:
-            old_philo_id = []
-            philo_id = []
-            words = []
-            stored_objects = []
-            with open(text["raw"], encoding="utf8") as filehandle:
-                for line in filehandle:
-                    philo_type, word, philo_id, _ = line.split("\t")
-                    if word == "__philo_virtual":
-                        continue
-                    if philo_type == "word" or philo_type == "sent":
-                        philo_id = philo_id.split()[:obj_depth]
-                        if not old_philo_id:
-                            old_philo_id = philo_id
-                        if philo_id != old_philo_id:
-                            stored_objects.append({"philo_id": old_philo_id, "words": words})
-                            words = []
-                            old_philo_id = philo_id
-                        words.append(word)
-            if words:
-                stored_objects.append({"philo_id": philo_id, "words": words})
-            for stored_obj in stored_objects:
-                path = os.path.join(files_path, "_".join(stored_obj["philo_id"]))
-                with open(path, "w", encoding="utf8") as output:
-                    output.write(" ".join(stored_obj["words"]))
-
-    return inner_store_in_plain_text
-
-
 def suppress_word_attributes(loader_obj, text):
     """Suppress word attributes"""
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
@@ -417,3 +374,19 @@ def set_load_filters(load_filters=DefaultLoadFilters, navigable_objects=DefaultN
         else:
             filters.append(load_filter)
     return filters
+
+
+def update_navigable_objects(filters, navigable_objects):
+    """Update navigable objects"""
+    updated_filters = []
+    for filter in filters:
+        if filter.__name__ in (
+            "make_object_ancestors",
+            "make_sorted_toms",
+            "prev_next_obj",
+            "store_in_plain_text",
+        ):
+            updated_filters.append(filter(*navigable_objects))
+        else:
+            updated_filters.append(filter)
+    return updated_filters

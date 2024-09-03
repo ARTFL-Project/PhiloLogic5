@@ -1,7 +1,5 @@
 #!/bin/bash
 
-PYTHON_INSTALL="\n## INSTALLING PYTHON LIBRARY ##"
-
 # Default Python version
 PYTHON_VERSION="python3"
 
@@ -25,31 +23,31 @@ then
     pip install virtualenv
 fi
 
-# Delete the virtual environment if it exists
+# Delete virtual environment if it already exists
 if [ -d /var/lib/philologic5 ]; then
     echo "Deleting existing PhiloLogic5 installation..."
     sudo rm -rf /var/lib/philologic5
 fi
 
-# Create the virtual environment
+# Create virtual environment
 sudo mkdir -p /var/lib/philologic5
 sudo chown -R $USER:$USER /var/lib/philologic5
 virtualenv -p $PYTHON_VERSION /var/lib/philologic5/philologic_env
 
-# Activate the virtual environment
+# Activate virtual environment
 source /var/lib/philologic5/philologic_env/bin/activate
 
 # Install required packages
 python -m ensurepip --upgrade
 python -m pip install build
 
-echo -e "$PYTHON_INSTALL"
+echo -e "\n## INSTALLING PYTHON LIBRARY ##"
 cd python
 rm -rf dist/
 python3 -m build --sdist
 python -m pip install dist/*gz
 
-# Deactivate the virtual environment
+# Deactivate virtual environment
 deactivate
 
 cd ..

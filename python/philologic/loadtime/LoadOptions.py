@@ -175,6 +175,9 @@ class LoadOptions:
             load_config.parse(args.load_config)
             for config_key, config_value in load_config.config.items():
                 self.values[config_key] = config_value
+            self.values["load_filters"] = LoadFilters.update_navigable_objects(
+                self.values["load_filters"], self.values["navigable_objects"]
+            )
             self.values["load_config"] = os.path.abspath(args.load_config)
         self.values["file_type"] = args.file_type
         if args.file_type == "plain_text":
@@ -235,22 +238,12 @@ class LoadConfig:
             elif not a.startswith("__") and not isinstance(getattr(load_config_file, a), Callable):
                 value = getattr(load_config_file, a)
                 if value or value is False:
-                    if a == "navigable_objects":
-                        self.config["load_filters"] = LoadFilters.set_load_filters(navigable_objects=value)
                     if a == "words_to_index":
-                        word_list = set([])
+                        word_list = set()
                         with open(value) as fh:
                             for line in fh:
                                 word_list.add(line.strip())
                         self.config["words_to_index"] = word_list
-                    elif a == "plain_text_obj":
-                        if "load_filters" not in self.config:
-                            self.config["load_filters"] = LoadFilters.DefaultLoadFilters
-                        self.config["load_filters"].append(LoadFilters.store_in_plain_text(*value))
-                    elif a == "pos_tagger":
-                        if "load_filters" not in self.config:
-                            self.config["load_filters"] = LoadFilters.DefaultLoadFilters
-                        self.config["load_filters"].append(LoadFilters.pos_tagger(value))
                     else:
                         self.config[a] = value
                 elif a == "sort_order":
