@@ -116,10 +116,11 @@
         "similarCollocCompareMessage": "Comparaison des collocations",
         "topSimilarUses": "Utilisations les plus similaires",
         "topDissimilarUses": "Utilisations les plus dissimilaires",
-        "similarTo": "Trouver l'usage le plus similaire ou différent dans le champ suivant",
         "timeSeries": "Changement au fil du temps",
         "searchEvolution": "Rechercher l'évolution",
-        "collocateBetweenPeriods": "Sur-représentation des collocations entre périodes"
+        "collocateBetweenPeriods": "Sur-représentation des collocations entre périodes",
+        "similarUsage": "Usage similaire",
+        "mostSimilarUsage": "avec l'emploi le plus similaire/différent à"
     },
     "concordance": {
         "more": "Plus",

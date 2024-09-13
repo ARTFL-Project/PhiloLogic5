@@ -1,5 +1,5 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
-"""CLI parser for philoload4 command"""
+"""CLI parser for philoload5 command"""
 
 import os
 import sys

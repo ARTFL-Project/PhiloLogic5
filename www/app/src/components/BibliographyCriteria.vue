@@ -1,7 +1,7 @@
 <template>
     <div>
         <div>
-            {{ $t("searchArgs.biblioCriteria") }}:
+            <span v-if="!hideCriteriaString">{{ $t("searchArgs.biblioCriteria") }}:&nbsp;</span>
             <span class="metadata-args rounded-pill" v-for="metadata in biblio" :key="metadata.key">
                 <span class="metadata-label">{{ metadata.alias }}</span>
                 <span class="metadata-value">{{ metadata.value.replace("<=>", "&#8212;") }}</span>
@@ -35,6 +35,7 @@ export default {
         start_date: String || null,
         end_date: String | null,
         removeMetadata: Function || null,
+        hideCriteriaString: Boolean || null,
     },
     computed: {
         removable() {

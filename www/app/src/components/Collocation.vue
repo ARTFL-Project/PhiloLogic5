@@ -17,8 +17,8 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="similar-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'similar' }" data-bs-target="#similar-tab-pane" type="button"
-                        role="tab" aria-controls="similar-tab-pane" aria-selected="false"
-                        @click="toggleSimilar()">Similar word usage</button>
+                        role="tab" aria-controls="similar-tab-pane" aria-selected="false" @click="toggleSimilar()">{{
+                            $t("collocation.similarUsage") }}</button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="time-series-tab" data-bs-toggle="tab"
@@ -29,7 +29,8 @@
             </ul>
         </div>
         <results-summary :description="results.description" :running-total="runningTotal" :filter-list="filterList"
-            v-if="collocMethod === 'frequency'" style="margin-top:0 !important;"></results-summary>
+            :colloc-method="collocMethod" v-if="collocMethod === 'frequency'"
+            style="margin-top:0 !important;"></results-summary>
         <div class="card shadow-sm mx-2 p-2" style="border-top-width: 0;" v-if="collocMethod == 'compare'">
             <button id="toggle-metadata" class="btn btn-link" style="text-align: start;" type="button"
                 data-bs-toggle="collapse" data-bs-target="#other-corpus-metadata" aria-expanded="false"
@@ -147,11 +148,10 @@
                 </button>
             </div>
         </div>
-        <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'similar'">
-            <span>{{ $t("collocation.similarToField") }}:</span>
-            <div class="btn-group mt-2" style="width: fit-content" role="group">
-                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                    aria-expanded="false">
+        <div class="card mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'similar'">
+            <div class="btn-group mt-2" style="width: fit-content;" role="group">
+                <button class="btn btn-secondary dropdown-toggle" style="border-bottom-right-radius: 0%" type="button"
+                    data-bs-toggle="dropdown" aria-expanded="false">
                     {{ this.similarFieldSelected || "Select a field" }}
                 </button>
                 <ul class="dropdown-menu">
@@ -159,7 +159,19 @@
                         @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label }}</a>
                     </li>
                 </ul>
+                <span style="display: inline-block; margin-left: .5rem; padding-top: .5rem;">{{
+                            $t("collocation.mostSimilarUsage") }}</span>
+                <bibliography-criteria class="ms-2 pt-1" :biblio="biblio" :query-report="report"
+                    :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
+                <div class="ms-3" style="display: flex; align-items: center;" v-if="similarSearching">
+                    <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert">
+                        {{ similarSearchProgress }}...
+                    </div>
+                    <progress-spinner class="px-2" :progress="progressPercent" />
+                </div>
+
             </div>
+
         </div>
         <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'timeSeries'">
             <bibliography-criteria :biblio="biblio" :query-report="report"
@@ -266,14 +278,8 @@
                 </div>
             </div>
         </div>
-        <div v-if="collocMethod == 'similar'" class="mx-2 my-3" style="margin-bottom: 6rem">
-            <div style="display: flex; align-items: center;" v-if="similarSearching">
-                <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert">
-                    {{ similarSearchProgress }}...
-                </div>
-                <progress-spinner class="px-2" :progress="progressPercent" />
-            </div>
-            <div class="card mt-3" v-if="mostSimilarDistributions.length > 0">
+        <div v-if="collocMethod == 'similar'" class="mx-2" style="margin-bottom: 6rem;">
+            <div class="card" v-if="mostSimilarDistributions.length > 0">
                 <div class="row">
                     <div class="col-6 pe-0">
                         <h6 class="sim-dist">{{ $t("collocation.topSimilarUses") }}</h6>

@@ -117,10 +117,11 @@
         "similarCollocCompareMessage": "Comparing collocate distributions",
         "topSimilarUses": "Most similar uses",
         "topDissimilarUses": "Most dissimilar uses",
-        "similarToField": "Find most similar/dissimilar usages from the following field",
         "timeSeries": "Change over time",
         "searchEvolution": "Search evolution",
-        "collocateBetweenPeriods": "Distinctive Collocates between {start} and {end}"
+        "collocateBetweenPeriods": "Distinctive Collocates between {start} and {end}",
+        "similarUsage": "Similar Usage",
+        "mostSimilarUsage": "with most similar/dissimilar usage to"
     },
     "concordance": {
         "more": "More",
