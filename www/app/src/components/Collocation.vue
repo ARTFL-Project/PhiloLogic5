@@ -163,15 +163,13 @@
                             $t("collocation.mostSimilarUsage") }}</span>
                 <bibliography-criteria class="ms-2 pt-1" :biblio="biblio" :query-report="report"
                     :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
-                <div class="ms-3" style="display: flex; align-items: center;" v-if="similarSearching">
-                    <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert">
-                        {{ similarSearchProgress }}...
-                    </div>
-                    <progress-spinner class="px-2" :progress="progressPercent" />
-                </div>
-
             </div>
-
+            <div class="mt-2" style="display: flex; align-items: center;" v-if="similarSearching">
+                <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert">
+                    {{ similarSearchProgress }}...
+                </div>
+                <progress-spinner class="px-2" :progress="progressPercent" />
+            </div>
         </div>
         <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'timeSeries'">
             <bibliography-criteria :biblio="biblio" :query-report="report"
@@ -307,7 +305,12 @@
             </div>
         </div>
         <div v-if="collocMethod == 'timeSeries' && collocationTimePeriods.length > 0" class="mx-2 my-3">
-            <h4 style="text-align: center">{{ $t("collocation.collocateBetweenPeriods") }}</h4>
+            <h4 style="text-align: center">{{ $t("collocation.collocateBetweenPeriods", {
+                            start:
+                                collocationTimePeriods[0].firstPeriodYear.split('-')[0], end:
+                                collocationTimePeriods[collocationTimePeriods.length -
+                                    1].secondPeriodYear.split('-')[1]
+                        }) }}</h4>
             <div class="card my-3 shadow-sm" v-for="timePeriods in collocationTimePeriods"
                 :key="timePeriods.periodsCompared">
                 <div class="row">
@@ -319,7 +322,7 @@
                     </div>
                     <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
                         <h6 class="py-2 colloc-cloud-title" style="margin-left: -.75rem;">
-                            {{timePeriods.secondPeriodYear}}</h6>
+                            {{ timePeriods.secondPeriodYear }}</h6>
                         <word-cloud class="px-2" :word-weights="timePeriods.secondPeriod" label=""
                             :click-handler="collocateTimeSeriesClick(timePeriods.secondPeriodYear)"></word-cloud>
                     </div>
