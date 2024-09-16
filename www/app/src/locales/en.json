@@ -119,7 +119,7 @@
         "topDissimilarUses": "Most dissimilar uses",
         "timeSeries": "Change over time",
         "searchEvolution": "Search evolution",
-        "collocateBetweenPeriods": "Distinctive Collocates between {start} and {end}",
+        "collocateBetweenPeriods": "Distinctive Collocations Over Time: {start} vs. {end}",
         "similarUsage": "Similar Usage",
         "mostSimilarUsage": "with most similar/dissimilar usage to"
     },

@@ -150,8 +150,8 @@
         </div>
         <div class="card mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'similar'">
             <div class="btn-group mt-2" style="width: fit-content;" role="group">
-                <button class="btn btn-secondary dropdown-toggle" style="border-bottom-right-radius: 0%" type="button"
-                    data-bs-toggle="dropdown" aria-expanded="false">
+                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                    aria-expanded="false">
                     {{ this.similarFieldSelected || "Select a field" }}
                 </button>
                 <ul class="dropdown-menu">
@@ -305,26 +305,29 @@
             </div>
         </div>
         <div v-if="collocMethod == 'timeSeries' && collocationTimePeriods.length > 0" class="mx-2 my-3">
-            <h4 style="text-align: center">{{ $t("collocation.collocateBetweenPeriods", {
-                            start:
-                                collocationTimePeriods[0].firstPeriodYear.split('-')[0], end:
-                                collocationTimePeriods[collocationTimePeriods.length -
-                                    1].secondPeriodYear.split('-')[1]
-                        }) }}</h4>
-            <div class="card my-3 shadow-sm" v-for="timePeriods in collocationTimePeriods"
-                :key="timePeriods.periodsCompared">
-                <div class="row">
-                    <div class="col-6">
-                        <h6 class="py-2 colloc-cloud-title" style="margin-right: -.75rem;">{{
+
+            <div v-for="timePeriods in collocationTimePeriods" :key="timePeriods.periodsCompared">
+                <h6 class="time-series-colloc-title mb-0 mt-4">{{
+                            $t("collocation.collocateBetweenPeriods",
+                                {
+                                    start:
+                                        timePeriods.firstPeriodYear, end:
+                                        timePeriods.secondPeriodYear
+                                }) }}</h6>
+                <div class="card mb-3 shadow-sm">
+                    <div class="row">
+                        <div class="col-6">
+                            <h6 class="py-2 colloc-cloud-title" style="margin-right: -.75rem;">{{
                             timePeriods.firstPeriodYear }}</h6>
-                        <word-cloud class="px-2" :word-weights="timePeriods.firstPeriod" label=""
-                            :click-handler="collocateTimeSeriesClick(timePeriods.firstPeriodYear)"></word-cloud>
-                    </div>
-                    <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                        <h6 class="py-2 colloc-cloud-title" style="margin-left: -.75rem;">
-                            {{ timePeriods.secondPeriodYear }}</h6>
-                        <word-cloud class="px-2" :word-weights="timePeriods.secondPeriod" label=""
-                            :click-handler="collocateTimeSeriesClick(timePeriods.secondPeriodYear)"></word-cloud>
+                            <word-cloud class="px-2" :word-weights="timePeriods.firstPeriod" label=""
+                                :click-handler="collocateTimeSeriesClick(timePeriods.firstPeriodYear)"></word-cloud>
+                        </div>
+                        <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
+                            <h6 class="py-2 colloc-cloud-title" style="margin-left: -.75rem;">
+                                {{ timePeriods.secondPeriodYear }}</h6>
+                            <word-cloud class="px-2" :word-weights="timePeriods.secondPeriod" label=""
+                                :click-handler="collocateTimeSeriesClick(timePeriods.secondPeriodYear)"></word-cloud>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -908,17 +911,13 @@ input:focus::placeholder {
     color: #fff;
 }
 
-.spinner-container {
-    position: relative;
-}
-
-.spinner-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-size: .75rem;
-    color: $link-color;
+.time-series-colloc-title {
+    border: solid 1px rgba(0, 0, 0, 0.176);
+    border-radius: 0.25rem 0.25rem 0 0;
+    border-bottom-width: 0;
+    padding: 0.5rem;
+    width: fit-content;
+    font-variant: small-caps;
 }
 </style>
 <!-- Not scoped to apply to child -->
