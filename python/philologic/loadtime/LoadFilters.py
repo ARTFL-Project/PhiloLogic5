@@ -246,6 +246,28 @@ def suppress_word_attributes(loader_obj, text):
     os.rename(text["raw"] + ".tmp", text["raw"])
 
 
+def index_word_transformation(transform_function):
+    """This function is used to transform words before indexing. It could be anything from transliteration to modernization.
+    Takes a function as an argument that transforms the word"""
+
+    def inner_index_word_transformation(_, text):
+        with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
+            with open(text["raw"], encoding="utf8") as fh:
+                for line in fh:
+                    philo_type, word, philo_id, attrib = line.split("\t")
+                    philo_id = philo_id.split()
+                    attrib = loads(attrib)
+                    if philo_type == "word":
+                        word = transform_function(word)
+                    record = Record(philo_type, word, philo_id)
+                    record.attrib = attrib
+                    print(record, file=tmp_file)
+        os.remove(text["raw"])
+        os.rename(text["raw"] + ".tmp", text["raw"])
+
+    return inner_index_word_transformation
+
+
 def store_words_and_philo_ids(loader_obj, text):
     """Store words and philo ids file for data-mining"""
     files_path = loader_obj.destination + "/words_and_philo_ids/"

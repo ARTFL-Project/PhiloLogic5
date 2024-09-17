@@ -170,30 +170,32 @@ class LoadOptions:
         self.values["cores"] = args.cores
         self.values["debug"] = args.debug
         self.values["header"] = args.header
+        self.values["db_destination"] = os.path.join(self.database_root, self.dbname)
+        self.values["data_destination"] = os.path.join(self.db_destination, "data")
+        if args.web_config is not None:
+            with open(args.web_config) as f:
+                self.values["web_config"] = f.read()
         if args.load_config is not None:
+            preconfigured_filters = False
             load_config = LoadConfig()
             load_config.parse(args.load_config)
             for config_key, config_value in load_config.config.items():
                 self.values[config_key] = config_value
-            self.values["load_filters"] = LoadFilters.update_navigable_objects(
-                self.values["load_filters"], self.values["navigable_objects"]
-            )
-            self.values["load_config"] = os.path.abspath(args.load_config)
+                if config_key == "load_filters":
+                    preconfigured_filters = True  # This means we override all other filter configurations
+            if not preconfigured_filters:
+                self.values["load_filters"] = LoadFilters.update_navigable_objects(
+                    self.values["load_filters"], self.values["navigable_objects"]
+                )
+                self.values["load_config"] = os.path.abspath(args.load_config)
+                if self.values["spacy_model"]:
+                    self.values["load_filters"].insert(-3, LoadFilters.spacy_tagger)
+                if self.values["suppress_word_attributes"]:
+                    self.values["load_filters"].insert(-3, LoadFilters.suppress_word_attributes)
         self.values["file_type"] = args.file_type
         if args.file_type == "plain_text":
             self.values["parser_factory"] = PlainTextParser.PlainTextParser
-        if args.web_config is not None:
-            with open(args.web_config) as f:
-                self.values["web_config"] = f.read()
-        self.values["db_destination"] = os.path.join(self.database_root, self.dbname)
-        self.values["data_destination"] = os.path.join(self.db_destination, "data")
-        if self.plain_text_obj:
-            plain_text_filter = LoadFilters.store_in_plain_text(*self.plain_text_obj)
-            self.values["load_filters"].append(plain_text_filter)
-        if self.values["spacy_model"]:
-            self.values["load_filters"].insert(-3, LoadFilters.spacy_tagger)
-        if self.values["suppress_word_attributes"]:
-            self.values["load_filters"].insert(-3, LoadFilters.suppress_word_attributes)
+
         if self.debug:
             print(self)
 

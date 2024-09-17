@@ -8,10 +8,6 @@ default_object_level = "doc"
 # Define navigable objects: doc, div1, div2, div3, para.
 navigable_objects = ("doc", "div1", "div2", "div3", "para")
 
-## Define text objects to generate plain text files for various machine learning tasks
-## For instance, this could be ['doc', 'div1']
-plain_text_obj = []
-
 
 #####################
 ## Parsing Options ##
@@ -288,3 +284,7 @@ spacy_model = ""
 from philologic.loadtime import XMLParser
 
 parser_factory = XMLParser
+
+# This should be a list of load_filters which overrides the default load_filters.
+# This requires intimate knowledge of the parser and the load_filters, use very carefully.
+load_filters = []
