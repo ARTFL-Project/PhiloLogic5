@@ -526,7 +526,9 @@ class Loader:
         chunksize is setable from the philoload script and can be helpful when loading
         many small files"""
         if len(cls.filequeue) == 0:
-            print("\n\nThe path you provided for your source texts contains no parsable files. Exiting...\n")
+            print(
+                r"\n\n ¯\_(ツ)_/¯\nThe path you provided for your source texts contains no parsable files. Exiting...\n"
+            )
             sys.exit(1)
         os.chdir(cls.workdir)
         if verbose is True:
