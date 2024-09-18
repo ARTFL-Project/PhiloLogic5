@@ -2,6 +2,11 @@
     "name": "philologic",
     "version": "5.0",
     "private": true,
+    "type": "module",
+    "engines": {
+        "node": ">=20.0.0",
+        "npm": ">=10.0.0"
+    },
     "scripts": {
         "serve": "npm i && vite preview",
         "build": "npm i && vite build && rm -rf node_modules",
@@ -10,27 +15,27 @@
     "dependencies": {
         "@intlify/unplugin-vue-i18n": "^0.8.2",
         "@popperjs/core": "^2.9.2",
-        "axios": "^0.21.0",
+        "axios": "^1.7.0",
         "bootstrap": "^5.2.1",
         "chart.js": "^2.9.3",
         "core-js": "^3.13.1",
         "glightbox": "^3.2.0",
         "gsap": "^3.9.1",
-        "vue": "^3.2.0",
+        "vue": "^3.5.0",
         "vue-i18n": "^9.2.2",
-        "vue-router": "^4.0.0",
+        "vue-router": "^4.4.0",
         "vue-scrollto": "^2.17.1",
         "vuex": "^4.0.0",
         "vuex-map-fields": "^1.4.0"
     },
     "devDependencies": {
         "@originjs/vite-plugin-commonjs": "^1.0.3",
-        "@vitejs/plugin-vue": "^4.0.0",
+        "@vitejs/plugin-vue": "^5.0.0",
         "@vue/compiler-sfc": "^3.1.0",
         "eslint": "^7.5.0",
         "eslint-plugin-vue": "^8.5.0",
         "sass": "^1.49.9",
-        "vite": "^4.1.1"
+        "vite": "^5.0.0"
     },
     "eslintConfig": {
         "root": true,
@@ -50,7 +55,6 @@
         }
     },
     "browserslist": [
-        "> 1%",
-        "last 2 versions"
+        "> 0.5%, last 2 versions, not dead, not IE 11"
     ]
 }

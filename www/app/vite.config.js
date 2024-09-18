@@ -1,8 +1,9 @@
-import { defineConfig } from "vite";
-import vue from "@vitejs/plugin-vue";
 import VueI18nPlugin from "@intlify/unplugin-vue-i18n/vite";
+import vue from "@vitejs/plugin-vue";
+import fs from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath, URL } from "node:url";
-import { resolve, dirname } from "node:path";
+import { defineConfig } from "vite";
 
 export default defineConfig({
     plugins: [
@@ -30,7 +31,6 @@ export default defineConfig({
 });
 
 function getBaseUrl() {
-    const fs = require("fs");
     let appConfig = fs.readFileSync("appConfig.json");
     let dbUrl = JSON.parse(appConfig).dbUrl;
     if (dbUrl == "") {
