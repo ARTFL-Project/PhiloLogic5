@@ -1224,8 +1224,8 @@ class Loader:
 
         # Compile all possible word attributes with their types from the frequency file
         if self.has_attributes is True:
-            if "word_facets" not in config_values:
-                config_values["word_facets"] = []
+            if "words_facets" not in config_values:
+                config_values["words_facets"] = []
             word_attributes = {}
             with open(f"{self.destination}/frequencies/word_attributes", "r", encoding="utf8") as freq_file:
                 for line in freq_file:

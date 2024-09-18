@@ -263,7 +263,7 @@ WEB_CONFIG_DEFAULTS = {
         "value": [],
         "comment": "\n".join(
             [
-                "# The word_facets variable functions much like the facets variable, but describes metadata attached to words,",
+                "# The words_facets variable functions much like the facets variable, but describes metadata attached to words,",
                 "# such as lemma or part of speech. The object format is a list of metadata like the following: ['lemma', 'pos'}",
             ]
         ),
