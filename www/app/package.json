@@ -13,14 +13,14 @@
         "host": "npm i && vite --host"
     },
     "dependencies": {
-        "@intlify/unplugin-vue-i18n": "^0.8.2",
+        "@intlify/unplugin-vue-i18n": "^3.0.0",
         "@popperjs/core": "^2.9.2",
         "axios": "^1.7.0",
         "bootstrap": "^5.2.1",
         "chart.js": "^2.9.3",
         "core-js": "^3.13.1",
         "glightbox": "^3.2.0",
-        "gsap": "^3.9.1",
+        "gsap": "^3.12.0",
         "vue": "^3.5.0",
         "vue-i18n": "^9.2.2",
         "vue-router": "^4.4.0",
