@@ -1,10 +1,6 @@
-import Vuex from 'vuex'
+import Vuex from "vuex";
 
-import {
-    getField,
-    updateField
-} from 'vuex-map-fields'
-
+import { getField, updateField } from "vuex-map-fields";
 
 export default new Vuex.Store({
     strict: true,
@@ -13,10 +9,10 @@ export default new Vuex.Store({
         reportValues: {},
         resultsLength: 0,
         textNavigationCitation: {},
-        textObject: '',
-        navBar: '',
+        textObject: "",
+        navBar: "",
         tocElements: {},
-        byte: '',
+        byte: "",
         searching: false,
         currentReport: "concordance",
         description: {
@@ -27,58 +23,58 @@ export default new Vuex.Store({
         },
         aggregationCache: {
             results: [],
-            query: {}
+            query: {},
         },
         sortedKwicCache: {
             queryParams: {},
             results: [],
-            totalResults: 0
+            totalResults: 0,
         },
         totalResultsDone: false,
         showFacets: true,
         urlUpdate: "",
         metadataUpdate: {},
-        searchableMetadata: {display: [], inputStyle: [], choiceValues: []},
+        searchableMetadata: { display: [], inputStyle: [], choiceValues: [] },
     },
     getters: {
-        getField
+        getField,
     },
     mutations: {
         updateField,
         updateFormData(state, payload) {
-            state.formData = payload
+            state.formData = payload;
         },
         setDefaultFields(state, payload) {
             for (let field in payload) {
-                state.formData[field] = payload[field]
+                state.formData[field] = payload[field];
             }
         },
         updateFormDataField(state, payload) {
-            state.formData[payload.key] = payload.value
+            state.formData[payload.key] = payload.value;
         },
         updateAllMetadata(state, payload) {
-            state.formData = { ...state.formData, ...payload }
+            state.formData = { ...state.formData, ...payload };
         },
         setReportValues(state, payload) {
-            state.reportValues = payload
+            state.reportValues = payload;
         },
         updateCitation(state, payload) {
-            state.textNavigationCitation = payload
+            state.textNavigationCitation = payload;
         },
         updateDescription(state, payload) {
-            state.description = payload
+            state.description = payload;
         },
         updateResultsLength(state, payload) {
-            state.resultsLength = payload
-        }
+            state.resultsLength = payload;
+        },
     },
     actions: {
         updateStartEndDate(context, payload) {
             context.commit("updateFormData", {
                 ...context.state.formData,
                 start_date: payload.startDate,
-                end_date: payload.endDate
-            })
+                end_date: payload.endDate,
+            });
         },
-    }
-})
+    },
+});

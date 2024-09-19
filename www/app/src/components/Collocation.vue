@@ -48,13 +48,13 @@
                             v-if="metadataInputStyle[localField.value] == 'text'">
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + 'input-filter'">{{
-                            localField.label
-                        }}</label></button><input type="text" class="form-control"
+                                    localField.label
+                                    }}</label></button><input type="text" class="form-control"
                                 :id="localField.value + 'input-filter'" :name="localField.value"
                                 :placeholder="localField.example" v-model="comparedMetadataValues[localField.value]"
                                 v-if="metadataInputStyle[localField.value] == 'text' &&
-                            metadataInputStyle[localField.value] != 'date'
-                            " />
+                                    metadataInputStyle[localField.value] != 'date'
+                                " />
                         </div>
                         <div class="input-group pb-2" :id="localField.value + '-group'"
                             v-if="metadataInputStyle[localField.value] == 'checkbox'">
@@ -70,8 +70,8 @@
                                     <input class="form-check-input" type="checkbox" :id="metadataChoice.value"
                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                     <label class="form-check-label" :for="metadataChoice.value">{{
-                            metadataChoice.text
-                        }}</label>
+                                        metadataChoice.text
+                                        }}</label>
                                 </div>
                             </div>
                         </div>
@@ -79,8 +79,8 @@
                             v-if="metadataInputStyle[localField.value] == 'dropdown'">
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + '-input-filter'">{{
-                            localField.label
-                        }}</label>
+                                    localField.label
+                                    }}</label>
                             </button>
                             <select class="form-select" :id="localField.value + '-select'"
                                 v-model="metadataChoiceSelected[localField.value]">
@@ -108,11 +108,11 @@
                                 <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
                                     <li @click="dateTypeToggle(localField.value, 'exact')">
                                         <a class="dropdown-item">{{
-                            $t("searchForm.exactDate") }}</a>
+                                            $t("searchForm.exactDate") }}</a>
                                     </li>
                                     <li @click="dateTypeToggle(localField.value, 'range')">
                                         <a class="dropdown-item">{{
-                            $t("searchForm.rangeDate") }}</a>
+                                            $t("searchForm.rangeDate") }}</a>
                                     </li>
                                 </ul>
                             </div>
@@ -124,8 +124,8 @@
                                 <div class="input-group ms-3">
                                     <button class="btn btn-outline-secondary" type="button">
                                         <label for="query-term-input">{{
-                            $t("searchForm.dateFrom")
-                        }}</label>
+                                            $t("searchForm.dateFrom")
+                                            }}</label>
                                     </button>
                                     <input type="text" class="form-control date-range"
                                         :id="localField.value + '-start-input-filter'"
@@ -133,8 +133,8 @@
                                         v-model="dateRange[localField.value].start" />
                                     <button class="btn btn-outline-secondary ms-3" type="button">
                                         <label for="query-term-input">{{
-                            $t("searchForm.dateTo")
-                        }}</label></button><input type="text" class="form-control date-range"
+                                            $t("searchForm.dateTo")
+                                            }}</label></button><input type="text" class="form-control date-range"
                                         :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
                                         :placeholder="localField.example" v-model="dateRange[localField.value].end" />
                                 </div>
@@ -144,7 +144,7 @@
                 </div>
                 <button type="button" class="btn btn-secondary" style="width: fit-content"
                     @click="getOtherCollocates({}, 0)">{{
-                            $t('collocation.runComparison') }}
+                        $t('collocation.runComparison') }}
                 </button>
             </div>
         </div>
@@ -160,7 +160,7 @@
                     </li>
                 </ul>
                 <span style="display: inline-block; margin-left: .5rem; padding-top: .5rem;">{{
-                            $t("collocation.mostSimilarUsage") }}</span>
+                    $t("collocation.mostSimilarUsage") }}</span>
                 <bibliography-criteria class="ms-2 pt-1" :biblio="biblio" :query-report="report"
                     :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
             </div>
@@ -232,8 +232,8 @@
                         <button class="nav-link active" style="border-left-width: 0" id="frequent-tab"
                             data-bs-toggle="tab" data-bs-target="#freq-tab-pane" type="button" role="tab"
                             aria-controls="freq-tab-pane" aria-selected="true">{{
-                            $t('collocation.frequentCollocates')
-                        }}</button>
+                                $t('collocation.frequentCollocates')
+                            }}</button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="rep-tab" data-bs-toggle="tab" data-bs-target="#rep-tab-pane"
@@ -285,10 +285,10 @@
                             <button type="button" class="list-group-item position-relative" style="text-align: justify"
                                 v-for="metadataValue in mostSimilarDistributions" :key="metadataValue"
                                 @click="similarToComparative(metadataValue[0])">{{
-                            metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
+                                    metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
                                     style="right: 1rem">{{
-                            metadataValue[1]
-                        }}</span></button>
+                                        metadataValue[1]
+                                    }}</span></button>
                         </ul>
                     </div>
                     <div class="col-6 ps-0" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
@@ -297,7 +297,7 @@
                             <button type="button" class="list-group-item" style="text-align: justify"
                                 v-for="metadataValue in mostDissimilarDistributions" :key="metadataValue"
                                 @click="similarToComparative(metadataValue[0])">{{
-                            metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
+                                    metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
                                     style="right: 1rem">{{ metadataValue[1] }}</span></button>
                         </ul>
                     </div>
@@ -308,17 +308,17 @@
 
             <div v-for="timePeriods in collocationTimePeriods" :key="timePeriods.periodsCompared">
                 <h6 class="time-series-colloc-title mb-0 mt-4">{{
-                            $t("collocation.collocateBetweenPeriods",
-                                {
-                                    start:
-                                        timePeriods.firstPeriodYear, end:
-                                        timePeriods.secondPeriodYear
-                                }) }}</h6>
+                    $t("collocation.collocateBetweenPeriods",
+                        {
+                            start:
+                                timePeriods.firstPeriodYear, end:
+                                timePeriods.secondPeriodYear
+                        }) }}</h6>
                 <div class="card mb-3 shadow-sm">
                     <div class="row">
                         <div class="col-6">
                             <h6 class="py-2 colloc-cloud-title" style="margin-right: -.75rem;">{{
-                            timePeriods.firstPeriodYear }}</h6>
+                                timePeriods.firstPeriodYear }}</h6>
                             <word-cloud class="px-2" :word-weights="timePeriods.firstPeriod" label=""
                                 :click-handler="collocateTimeSeriesClick(timePeriods.firstPeriodYear)"></word-cloud>
                         </div>
@@ -659,10 +659,6 @@ export default {
                 all_collocates: this.collocateCounts,
                 other_collocates: otherCollocates,
                 whole_corpus: this.wholeCorpus,
-            }, {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
             }).then((response) => {
                 this.overRepresented = this.extractSurfaceFromCollocate(response.data.top);
                 this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
