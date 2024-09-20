@@ -7,6 +7,7 @@ import pickle
 import struct
 import time
 import timeit
+from collections import Counter
 from typing import Any
 
 import lmdb
@@ -51,20 +52,10 @@ def collocation_results(request, config, current_collocates):
         collocate_distance = None
 
     # We turn on lemma counting if the query word is a lemma search
-
     if "lemma:" in request.q:
         count_lemmas = True
     else:
         count_lemmas = False
-
-    # Does the query contain an attribute
-    query_with_attribs = False
-    query_attribute_type = None
-    query_attribute_value = None
-    if request.q.count(":") == 3:
-        query_with_attribs = True
-        query_attribute_type = request.q.split(":")[2]
-        query_attribute_value = request.q.split(":")[3]
 
     # Attribute filtering
     if request.colloc_filter_choice == "attribute":
@@ -101,9 +92,9 @@ def collocation_results(request, config, current_collocates):
     hits_done = request.start or 0
 
     if current_collocates:
-        all_collocates = dict(current_collocates)
+        all_collocates = Counter(current_collocates)
     else:
-        all_collocates = {}
+        all_collocates = Counter()
 
     env = lmdb.open(
         os.path.join(db.path, "sentences.lmdb"),
@@ -122,81 +113,51 @@ def collocation_results(request, config, current_collocates):
         cursor = txn.cursor()
         for hit in hits[hits_done:]:
             parent_sentence = hit[:24]  # 24 bytes for the first 6 integers
-            if collocate_distance is not None:
-                q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
+            q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
             sentence = cursor.get(parent_sentence)
             word_objects = decoder.decode(sentence)
 
             # If not attribute filter set, we just get the words/lemmas
             if attribute is None:
-                if count_lemmas is False:
-                    if query_with_attribs is False:
-                        words = ((word, position) for word, _, position, _ in word_objects if word not in filter_list)
-                    else:
-                        words = (
-                            (word, position)
-                            for word, _, position, _ in word_objects
-                            if word not in filter_list
-                            and f"{word}:{query_attribute_type}:{query_attribute_value}" != request.q
-                        )
-                elif query_with_attribs is False:
+                if not count_lemmas:
                     words = (
-                        (lemma, position)
-                        for _, _, position, attr in word_objects
-                        if (lemma := attr.get("lemma")) not in filter_list
+                        (word, position)
+                        for word, _, position, _ in word_objects
+                        if word not in filter_list and position != q_word_position[0]
                     )
                 else:
                     words = (
-                        (attr["lemma"], position)
+                        (lemma, position)
                         for _, _, position, attr in word_objects
-                        if attr.get("lemma") not in filter_list
-                        and f"{attr['lemma']}:{query_attribute_type}:{query_attribute_value}" != request.q
+                        if (lemma := attr.get("lemma")) not in filter_list and position != q_word_position[0]
                     )
 
             # If attribute filter is set, we get the words/lemmas that match the filter
             else:
-                if count_lemmas is False:
-                    if query_with_attribs is False:
-                        words = (
-                            (f"{word.lower()}:{attribute}:{attribute_value}", position)
-                            for word, _, position, attr in word_objects
-                            if attr.get(attribute) == attribute_value
-                        )
-                    else:
-                        words = (
-                            (f"{word.lower()}:{attribute}:{attribute_value}", position)
-                            for word, _, position, attr in word_objects
-                            if attr.get(attribute) == attribute_value
-                            and f"{word.lower()}:{attribute}:{attribute_value}" != request.q
-                        )
-                elif query_with_attribs is False:
+                if not count_lemmas:
                     words = (
-                        (f"{attr['lemma']}:{attribute}:{attribute_value}", position)
-                        for _, _, position, attr in word_objects
-                        if attr.get(attribute) == attribute_value
+                        (f"{word.lower()}:{attribute}:{attribute_value}", position)
+                        for word, _, position, attr in word_objects
+                        if attr.get(attribute) == attribute_value and position != q_word_position[0]
                     )
                 else:
                     words = (
                         (f"{attr['lemma']}:{attribute}:{attribute_value}", position)
                         for _, _, position, attr in word_objects
-                        if attr.get(attribute) == attribute_value
-                        and f"{attr['lemma']}:{attribute}:{attribute_value}" != request.q
+                        if attr.get(attribute) == attribute_value and position != q_word_position[0]
                     )
 
             if map_field is None:
                 if collocate_distance is None:
-                    for collocate, _ in words:
-                        if collocate not in all_collocates:
-                            all_collocates[collocate] = 1
-                        else:
-                            all_collocates[collocate] += 1
+                    collocate_list = [collocate for collocate, _ in words]
+                    all_collocates.update(collocate_list)
                 else:
-                    for collocate, position in words:
-                        if abs(position - q_word_position[0]) <= collocate_distance:
-                            if collocate not in all_collocates:
-                                all_collocates[collocate] = 1
-                            else:
-                                all_collocates[collocate] += 1
+                    collocate_list = [
+                        collocate
+                        for collocate, position in words
+                        if abs(position - q_word_position[0]) <= collocate_distance
+                    ]
+                    all_collocates.update(collocate_list)
             else:
                 metadata_value = get_metadata_value(sql_cursor, map_field, parent_sentence, field_obj_index, obj_level)
                 if not metadata_value:
@@ -279,7 +240,7 @@ def build_filter_list(request, config, count_lemmas):
             filter_num = int(request.filter_frequency)
         else:
             filter_num = 100  # default value in case it's not defined
-    filter_list = [request.q]
+    filter_list = []
     with open(filter_file, encoding="utf8") as filehandle:
         for line_count, line in enumerate(filehandle):
             if line_count == filter_num:
