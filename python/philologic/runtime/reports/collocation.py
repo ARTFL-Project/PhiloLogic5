@@ -150,34 +150,29 @@ def collocation_results(request, config, current_collocates):
             if map_field is None:
                 if collocate_distance is None:
                     collocate_list = [collocate for collocate, _ in words]
-                    all_collocates.update(collocate_list)
                 else:
                     collocate_list = [
                         collocate
                         for collocate, position in words
                         if abs(position - q_word_position[0]) <= collocate_distance
                     ]
-                    all_collocates.update(collocate_list)
+                all_collocates.update(collocate_list)
             else:
                 metadata_value = get_metadata_value(sql_cursor, map_field, parent_sentence, field_obj_index, obj_level)
                 if not metadata_value:
                     hits_done += 1
                     continue
                 if metadata_value not in collocate_map:
-                    collocate_map[metadata_value] = {}
+                    collocate_map[metadata_value] = Counter()
                 if collocate_distance is None:
-                    for collocate, _ in words:
-                        if collocate not in collocate_map[metadata_value]:
-                            collocate_map[metadata_value][collocate] = 1
-                        else:
-                            collocate_map[metadata_value][collocate] += 1
+                    collocate_list = [collocate for collocate, _ in words]
                 else:
-                    for collocate, position in words:
-                        if abs(position - q_word_position[0]) <= collocate_distance:
-                            if collocate not in collocate_map[metadata_value]:
-                                collocate_map[metadata_value][collocate] = 1
-                            else:
-                                collocate_map[metadata_value][collocate] += 1
+                    collocate_list = [
+                        collocate
+                        for collocate, position in words
+                        if abs(position - q_word_position[0]) <= collocate_distance
+                    ]
+                collocate_map[metadata_value].update(collocate_list)
 
             hits_done += 1
             elapsed = timeit.default_timer() - start_time
@@ -199,8 +194,8 @@ def collocation_results(request, config, current_collocates):
     if map_field is None:
         if None in all_collocates:  # in the case of lemmas returning None
             del all_collocates[None]
-        all_collocates = sorted(all_collocates.items(), key=lambda item: item[1], reverse=True)
-        collocation_object["collocates"] = all_collocates
+        # all_collocates = sorted(all_collocates.items(), key=lambda item: item[1], reverse=True)
+        collocation_object["collocates"] = all_collocates.most_common()
         collocation_object["distance"] = collocate_distance
     else:
         file_path = create_file_path(request, map_field, config.db_path)
