@@ -17,5 +17,17 @@ RewriteRule ^bibliography(.*) dispatcher.py$1 [PT,QSA]
 
 
 <IfModule mod_brotli.c>
-    AddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/xml text/css text/javascript application/javascript application/xhtml+xml
+    RewriteEngine On
+
+    AddEncoding br .br
+
+    # Serve `.js.br` and `.css.br` if client supports Brotli
+    RewriteCond %{HTTP:Accept-Encoding} br
+    RewriteCond %{REQUEST_FILENAME}\.br -f
+    RewriteRule ^(.+)\.(js|css)$ $1.$2.br [QSA,L]
+
+    <FilesMatch "\.(js|css)\.br$">
+        Header set Content-Encoding br
+        Header set Vary Accept-Encoding
+    </FilesMatch>
 </IfModule>

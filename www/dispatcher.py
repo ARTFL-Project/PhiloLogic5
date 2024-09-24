@@ -40,7 +40,7 @@ def philo_dispatcher(environ, start_response):
     elif request.full_bibliography is True:
         yield b"".join(reports.bibliography(environ, start_response))
     else:
-        yield start_web_app(environ, start_response).encode("utf8")
+        yield start_web_app(environ, start_response)
 
     # clean-up hitlist every now and then
     if randint(0, 10) == 1:

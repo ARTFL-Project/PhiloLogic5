@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
+import compression from "vite-plugin-compression2";
 
 export default defineConfig({
     plugins: [
@@ -13,6 +14,14 @@ export default defineConfig({
                 dirname(fileURLToPath(import.meta.url)),
                 "./src/locales/**"
             ),
+        }),
+        compression({
+            algorithm: "brotliCompress", // Use Brotli for compression
+            ext: ".br", // File extension for Brotli compressed files
+            threshold: 0, // Compress all assets (even small ones)
+            deleteOriginFile: false, // Keep the original files for fallback
+            compressionOptions: { level: 11 }, // Maximize compression level for Brotli
+            filter: /\.(js|css|html|svg|json)$/i, // Only compress specific file types
         }),
     ],
     base: process.env.NODE_ENV === "production" ? getBaseUrl() : "/",
