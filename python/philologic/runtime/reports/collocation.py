@@ -92,7 +92,7 @@ def collocation_results(request, config, current_collocates):
     hits_done = request.start or 0
 
     if current_collocates:
-        all_collocates = Counter(current_collocates)
+        all_collocates = Counter(dict(current_collocates))
     else:
         all_collocates = Counter()
 
@@ -194,7 +194,6 @@ def collocation_results(request, config, current_collocates):
     if map_field is None:
         if None in all_collocates:  # in the case of lemmas returning None
             del all_collocates[None]
-        # all_collocates = sorted(all_collocates.items(), key=lambda item: item[1], reverse=True)
         collocation_object["collocates"] = all_collocates.most_common()
         collocation_object["distance"] = collocate_distance
     else:
