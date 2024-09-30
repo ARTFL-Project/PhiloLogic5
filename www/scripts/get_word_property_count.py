@@ -86,6 +86,7 @@ def get_word_property_count(environ, start_response):
         )
         lemma_db_env = lmdb.open(f"{config.db_path}/data/lemmas.lmdb", readonly=True, lock=False)
         lemma_count = {}
+        total_count_per_lemma = {}
         with lemma_db_env.begin() as txn:
             for hit in hits:
                 lemma = txn.get(hit)
@@ -95,6 +96,20 @@ def get_word_property_count(environ, start_response):
                         lemma_count[lemma] += 1
                     else:
                         lemma_count[lemma] = 1
+                        # local_hits = db.query(
+                        #     lemma,
+                        #     request["method"],
+                        #     request["arg"],
+                        #     raw_results=True,
+                        #     raw_bytes=True,
+                        #     **request.metadata,
+                        # )
+                        # local_hits.finish()
+                        # total_count_per_lemma[lemma] = len(local_hits)
+        # word_property_count = [
+        #     {"label": k.replace("lemma:", ""), "count": v, "overall_count": total_count_per_lemma[k], "q": k}
+        #     for k, v in lemma_count.items()
+        # ]
         word_property_count = [{"label": k.replace("lemma:", ""), "count": v, "q": k} for k, v in lemma_count.items()]
 
     word_property_count.sort(key=lambda x: x["count"], reverse=True)

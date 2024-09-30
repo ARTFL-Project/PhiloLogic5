@@ -19,7 +19,7 @@
                     v-if="showFacetSelection && report != 'bibliography' && philoConfig.words_facets.length > 0">
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
                     <div class="list-group-item facet-selection" v-for="facet in philoConfig.words_facets" :key="facet"
-                        @click="getFacet({ facet: facet, type: 'property' })">
+                        @click="getFacet({ facet: facet, type: 'property', alias: facet })">
                         {{ facet }}
                     </div>
                 </div>
@@ -76,9 +76,12 @@
                     <div>
                         <a href class="sidebar-text text-content-area text-view" v-if="facet.type == 'facet'"
                             @click.prevent="facetClick(result.metadata)">{{ result.label }}</a>
-                        <a href class="sidebar-text text-content-area" text-view v-else-if="facet.type == 'property'"
+                        <a href class="sidebar-text text-content-area" text-view
+                            v-else-if="facet.type == 'property' && facet.facet != 'lemma'"
                             @click.prevent="propertyToConcordance(result.q)">{{ result.label }}</a>
-                        <a href class="sidebar-text text-content-area" v-else
+                        <span class="text-content-area" text-view
+                            v-else-if="facet.type == 'property' && facet.facet == 'lemma'">{{ result.label }}</span>
+                        <a href class="sidebar-text text-content-area" v-else-if="facet.type == 'collocationFacet'"
                             @click.prevent="collocationToConcordance(result.collocate)">{{ result.collocate }}</a>
                         <div class="badge bg-secondary rounded-pill float-end">{{ result.count }}</div>
                     </div>
@@ -126,7 +129,7 @@ export default {
             showFacetResults: false,
             collocationFacet: {
                 facet: "all_collocates",
-                alias: "in the same sentence",
+                alias: this.$t("facets.collocate"),
                 type: "collocationFacet",
             },
             loading: false,
@@ -243,7 +246,7 @@ export default {
                     })
                         .then((response) => {
                             let results = response.data.results;
-                            if (facet.type !== "property") {
+                            if (facet.type == "facet") {
                                 this.moreResults = response.data.more_results;
                                 let merge;
                                 if (!this.interrupt && this.selected == facet.alias) {
@@ -265,13 +268,16 @@ export default {
                             } else {
                                 this.loading = false;
                                 this.showFacetResults = true;
+                                this.moreResults = false;
                                 this.facetResults = results;
+                                this.populateSidebar(facet, results, start, queryParams);
                             }
                         })
                         .catch((error) => {
                             this.debug(this, error);
                             this.loading = false;
                         });
+
                 } else {
                     this.$http
                         .post(`${this.$dbUrl}/reports/collocation.py`, {
