@@ -407,7 +407,7 @@ class Loader:
     def create_year_field(self, metadata):
         """Create year field from date fields in header"""
         year_finder = re.compile(r"^.*?(\-?\d{1,}).*")  # we are assuming positive years
-        earliest_year = 2500
+        earliest_year = float("inf")
         metadata_with_year = ""
         for field in ["date", "create_date", "pub_date", "period"]:
             if field in metadata:
@@ -424,8 +424,8 @@ class Loader:
                         break
                     if year < earliest_year:
                         earliest_year = year
-        if earliest_year != 2500:
-            if re.search(r"BC", metadata[metadata_with_year], re.I):
+        if earliest_year != float("inf"):
+            if re.search(r"BC", metadata[metadata_with_year], re.I) and "-" not in metadata[metadata_with_year]:
                 metadata["year"] = int(f"-{earliest_year}")
             else:
                 metadata["year"] = earliest_year

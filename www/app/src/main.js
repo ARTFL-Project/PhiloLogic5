@@ -1,24 +1,25 @@
+import axios from "axios";
+import "bootstrap";
 import { createApp } from "vue";
 import vueScrollTo from "vue-scrollto";
 import App from "./App.vue";
-import router from "./router";
-import store from "./store";
 import {
+    buildBiblioCriteria,
+    copyObject,
+    dateRangeHandler,
+    debug,
+    deepEqual,
+    dictionaryLookup,
+    extractSurfaceFromCollocate,
+    mergeResults,
     paramsFilter,
     paramsToRoute,
     paramsToUrlString,
-    copyObject,
     saveToLocalStorage,
-    mergeResults,
     sortResults,
-    deepEqual,
-    dictionaryLookup,
-    dateRangeHandler,
-    buildBiblioCriteria,
-    debug,
 } from "./mixins.js";
-import axios from "axios";
-import "bootstrap";
+import router from "./router";
+import store from "./store";
 
 import appConfig from "../appConfig.json";
 import i18n from "./i18n";
@@ -49,6 +50,7 @@ axios
                 dictionaryLookup,
                 dateRangeHandler,
                 buildBiblioCriteria,
+                extractSurfaceFromCollocate,
                 debug,
             },
         });

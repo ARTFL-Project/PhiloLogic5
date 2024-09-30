@@ -79,17 +79,17 @@
                         <a href class="sidebar-text text-content-area" text-view v-else-if="facet.type == 'property'"
                             @click.prevent="propertyToConcordance(result.q)">{{ result.label }}</a>
                         <a href class="sidebar-text text-content-area" v-else
-                            @click.prevent="collocationToConcordance(result.label)">{{ result.label }}</a>
+                            @click.prevent="collocationToConcordance(result.collocate)">{{ result.collocate }}</a>
                         <div class="badge bg-secondary rounded-pill float-end">{{ result.count }}</div>
                     </div>
                     <div style="line-height: 70%; padding-bottom: 15px; font-size: 85%"
                         v-if="showingRelativeFrequencies">
                         <div style="display: inline-block; opacity: 0.8">
                             {{
-                    $t("facets.relativeFrequencyDescription", {
-                        total: fullResults.unsorted[result.label].count,
-                        wordCount: fullRelativeFrequencies[result.label].total_count,
-                    })
+                                $t("facets.relativeFrequencyDescription", {
+                                    total: fullResults.unsorted[result.label].count,
+                                    wordCount: fullRelativeFrequencies[result.label].total_count,
+                                })
                             }}
                         </div>
                     </div>
@@ -232,49 +232,77 @@ export default {
                     ...queryParams,
                     start: start.toString(),
                 })
+                this.showFacetSelection = false;
                 let scriptName = "/scripts/get_frequency.py";
-                if (facet.type === "collocationFacet") {
-                    scriptName = "/reports/collocation.py";
-
-                } else if (facet.type === "property") {
+                if (facet.type === "property") {
                     scriptName = "/scripts/get_word_property_count.py";
                 }
-                this.showFacetSelection = false;
-                this.$http.get(`${this.$dbUrl}/${scriptName}`, {
-                    params: params
-                })
-                    .then((response) => {
-                        let results = response.data.results;
-                        if (facet.type !== "property") {
-                            this.moreResults = response.data.more_results;
-                            let merge;
-                            if (!this.interrupt && this.selected == facet.alias) {
-                                if (facet.type === "collocationFacet") {
-                                    merge = this.mergeResults(fullResults.unsorted, response.data.collocates);
+                if (facet.type != "collocationFacet") {
+                    this.$http.get(`${this.$dbUrl}/${scriptName}`, {
+                        params: params
+                    })
+                        .then((response) => {
+                            let results = response.data.results;
+                            if (facet.type !== "property") {
+                                this.moreResults = response.data.more_results;
+                                let merge;
+                                if (!this.interrupt && this.selected == facet.alias) {
+                                    if (facet.type === "collocationFacet") {
+                                        merge = this.mergeResults(fullResults.unsorted, response.data.collocates);
+                                    } else {
+                                        merge = this.mergeResults(fullResults.unsorted, results);
+                                    }
+                                    this.facetResults = merge.sorted.slice(0, 500);
+                                    this.loading = false;
+                                    this.showFacetResults = true;
+                                    fullResults = merge;
+                                    this.runningTotal = response.data.hits_done;
+                                    start = response.data.hits_done;
+                                    this.populateSidebar(facet, fullResults, start, queryParams);
                                 } else {
-                                    merge = this.mergeResults(fullResults.unsorted, results);
+                                    this.interrupt = false;
                                 }
-                                this.facetResults = merge.sorted.slice(0, 500);
+                            } else {
                                 this.loading = false;
                                 this.showFacetResults = true;
-                                fullResults = merge;
-                                this.runningTotal = response.data.hits_done;
-                                start = response.data.hits_done;
-                                this.populateSidebar(facet, fullResults, start, queryParams);
-                            } else {
-                                // this won't affect the full collocation report which can't be interrupted when on the page
-                                this.interrupt = false;
+                                this.facetResults = results;
                             }
-                        } else {
+                        })
+                        .catch((error) => {
+                            this.debug(this, error);
                             this.loading = false;
-                            this.showFacetResults = true;
-                            this.facetResults = results;
-                        }
-                    })
-                    .catch((error) => {
-                        this.debug(this, error);
-                        this.loading = false;
-                    });
+                        });
+                } else {
+                    this.$http
+                        .post(`${this.$dbUrl}/reports/collocation.py`, {
+                            current_collocates: fullResults,
+                        },
+                            {
+                                params: this.paramsFilter(params),
+                            })
+                        .then((response) => {
+                            this.moreResults = response.data.more_results;
+                            this.runningTotal = response.data.hits_done;
+                            start = response.data.hits_done;
+                            this.loading = false;
+                            if (response.data.results_length) {
+                                this.showFacetResults = true;
+                                if (this.moreResults) {
+                                    this.facetResults = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
+                                    this.populateSidebar(facet, response.data.collocates, start, queryParams);
+                                }
+                                else {
+                                    this.facetResults = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
+                                    this.populateSidebar(facet, response.data.collocates, start, queryParams);
+                                }
+                            }
+
+                        })
+                        .catch((error) => {
+                            this.loading = false;
+                            this.debug(this, error);
+                        });
+                }
             } else {
                 this.loading = false;
                 this.runningTotal = this.resultsLength;

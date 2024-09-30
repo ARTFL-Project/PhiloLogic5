@@ -226,7 +226,6 @@ export function buildBiblioCriteria(philoConfig, query, formData) {
         if (typeof facet == "string") {
             facets.push(facet);
         } else {
-            //facets.push(facet)
             for (let value of facets) {
                 if (facets.indexOf(value) < 0) {
                     facets.push(value);
@@ -252,6 +251,23 @@ export function buildBiblioCriteria(philoConfig, query, formData) {
     return biblio;
 }
 
+export function extractSurfaceFromCollocate(words) {
+    let newWords = [];
+    for (let wordObj of words) {
+        let collocate = `${wordObj[0]}`.replace(/lemma:/, "");
+        if (collocate.search(/\w+:.*/) != -1) {
+            collocate = collocate.replace(/(\p{L}+):.*/u, "$1");
+        }
+        let surfaceForm = wordObj[0];
+        newWords.push({
+            collocate: collocate,
+            surfaceForm: surfaceForm,
+            count: wordObj[1],
+        });
+    }
+    return newWords;
+}
+
 export function debug(component, message) {
     console.log(`MESSAGE FROM ${component.$options.name}:`, message);
 }
@@ -268,5 +284,6 @@ export default {
     dictionaryLookup,
     dateRangeHandler,
     buildBiblioCriteria,
+    extractSurfaceFromCollocate,
     debug,
 };
