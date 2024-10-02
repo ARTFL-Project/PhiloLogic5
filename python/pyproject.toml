@@ -31,7 +31,7 @@ dependencies = [
     "numba~=0.59",
     "scikit-learn~=1.4",
     "pandas~=2.2",
-    "spacy~=3.7",
+    "spacy==3.7.5",
 ]
 
 [tool.setuptools]
