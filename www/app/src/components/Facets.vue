@@ -18,9 +18,9 @@
                 <div class="list-group" flush id="select-word-properties"
                     v-if="showFacetSelection && report != 'bibliography' && philoConfig.words_facets.length > 0">
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
-                    <div class="list-group-item facet-selection" v-for="facet in philoConfig.words_facets" :key="facet"
-                        @click="getFacet({ facet: facet, type: 'property', alias: facet })">
-                        {{ facet }}
+                    <div class="list-group-item facet-selection" v-for="facet in wordFacets" :key="facet.facet"
+                        @click="getFacet(facet)">
+                        {{ facet.alias }}
                     </div>
                 </div>
             </transition>
@@ -148,6 +148,7 @@ export default {
     },
     created() {
         this.facets = this.populateFacets();
+        this.wordFacets = this.populateWordFacets();
     },
     watch: {
         urlUpdate() {
@@ -179,6 +180,21 @@ export default {
                 });
             }
             return facets;
+        },
+        populateWordFacets() {
+            let wordFacets = [];
+            for (let wordProperty of this.philoConfig.words_facets) {
+                let alias = wordProperty;
+                if (wordProperty in this.$philoConfig.word_property_aliases) {
+                    alias = this.$philoConfig.word_property_aliases[wordProperty];
+                }
+                wordFacets.push({
+                    facet: wordProperty,
+                    alias: alias,
+                    type: "property",
+                });
+            }
+            return wordFacets;
         },
         getFacet(facetObj) {
             this.relativeFrequencies = [];

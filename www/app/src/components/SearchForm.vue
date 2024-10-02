@@ -178,12 +178,14 @@
                                                 style="border-top-left-radius: 0; border-bottom-left-radius: 0"
                                                 type="button" id="attribute-selector'" data-bs-toggle="dropdown"
                                                 aria-expanded="false">
-                                                {{ attributeSelected.toUpperCase() }}
+                                                {{ $philoConfig.word_property_aliases[attributeSelected] ||
+                                                    attributeSelected || $t("searchForm.selectAttributeType") }}
                                             </button>
                                             <ul class="dropdown-menu" aria-labelledby="attribute-selector">
                                                 <li v-for="(_, attribute) in wordAttributes" :key="attribute">
-                                                    <a class="dropdown-item" @click="attributeSelected = attribute">{{
-                                                        attribute.toUpperCase() }}</a>
+                                                    <a class="dropdown-item" @click="attributeSelected = attribute">
+                                                        {{ $philoConfig.word_property_aliases[attribute] || attribute }}
+                                                    </a>
                                                 </li>
                                             </ul>
                                         </div>
@@ -641,14 +643,15 @@ export default {
         if (Object.keys(this.$philoConfig.word_attributes).length > 0) {
             // place the word attribute option at the second position
             this.collocationOptions.splice(1, 0, { text: this.$t("searchForm.selectAttribute"), value: "attribute" })
-            this.attributeSelected = Object.keys(this.$philoConfig.word_attributes)[0];
+            // let attributeSelected = Object.keys(this.$philoConfig.word_attributes)[0];
+            // this.attributeSelected = this.$philoConfig.word_property_aliases[attributeSelected] || attributeSelected;
         }
         if (this.colloc_filter_choice.length > 0) {
             for (let collocFilter of this.collocationOptions) {
                 if (collocFilter.value == this.colloc_filter_choice) {
                     this.collocFilteringSelected = collocFilter;
                     if (this.collocFilteringSelected.value == "attribute") {
-                        this.attributeSelected = this.$route.query.q_attribute;
+                        this.attributeSelected = this.$philoConfig.word_property_aliases[this.$route.query.q_attribute] || this.$route.query.q_attribute;
                         this.wordAttributeSelected = this.$route.query.q_attribute_value;
                     }
                     break

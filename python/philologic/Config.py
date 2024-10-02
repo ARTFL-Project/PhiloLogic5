@@ -244,6 +244,16 @@ WEB_CONFIG_DEFAULTS = {
             ]
         ),
     },
+    "word_property_aliases": {
+        "value": {},
+        "comment": "\n".join(
+            [
+                "# The word_property_aliases variable allows to display a word property variable under a different name in the HTML",
+                "# For example, you could rename the lemma metadata to Lemma, and the pos variable to Part of Speech like so:",
+                "# word_property_aliases = {'lemma': 'Lemma', 'pos': 'Part of Speech'}",
+            ]
+        ),
+    },
     "autocomplete": {
         "value": ["q"],
         "comment": "# The autocomplete variable determines which fields have autocomplete enabled. Note that the value 'q' is for term autocomplete",

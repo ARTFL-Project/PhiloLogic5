@@ -50,9 +50,10 @@
                 <span v-else>
                     {{ proximity() }}</span>
                 <div v-if="collocationFilter">
-                    {{ $t("searchArgs.collocateFilter") }}:&nbsp; <b>{{ collocationFilter.attrib }} = {{
-            collocationFilter.value
-        }}</b>
+                    {{ $t("searchArgs.collocateFilter") }}:&nbsp; <b>{{
+                        $philoConfig.word_property_aliases[collocationFilter.attrib] || collocationFilter.attrib }} = {{
+                            collocationFilter.value
+                        }}</b>
                 </div>
             </div>
         </div>

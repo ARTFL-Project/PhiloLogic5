@@ -1024,7 +1024,7 @@ class Loader:
                 for line in input_file:
                     line = line.decode("utf-8")
                     _, lemma, _, _ = line.split("\t", 3)
-                    lemma_count[f"lemma:{lemma.lower()}"] += 1
+                    lemma_count[f"lemma:{lemma}"] += 1
             with open(f"{self.destination}/frequencies/lemmas", "w", encoding="utf8") as freq_file:
                 for lemma, _ in lemma_count.most_common():
                     print(lemma, file=freq_file)
@@ -1064,7 +1064,7 @@ class Loader:
                                 continue
                             if attribute_value:
                                 total_count_per_attribute[attribute][attribute_value] += 1
-                            stored_string = f"lemma:{lemma.lower()}:{attribute}:{attribute_value}"
+                            stored_string = f"lemma:{lemma}:{attribute}:{attribute_value}"
                             if stored_string not in word_attributes:
                                 print(stored_string, file=freq_file)
                                 word_attributes.add(stored_string)

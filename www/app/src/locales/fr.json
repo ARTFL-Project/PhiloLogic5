@@ -27,6 +27,7 @@
         "searchTerms": "Recherche par mots",
         "collocationParams": "Paramètres de collocation",
         "selectAttribute": "attribut de mot",
+        "selectAttributeType": "Sélectionner un attribut de mot",
         "selectAttributeValue": "Sélectionner une valeur pour l'attribut",
         "tips": "Conseils",
         "search": "Rechercher",
