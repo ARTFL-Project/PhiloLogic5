@@ -25,7 +25,6 @@ OBJECT_LEVEL = {"para": 5, "sent": 6}
 class WordData(msgspec.Struct):
     buffer: bytes = None
     array: np.ndarray = None
-    index: int = 0
     start: int = 0
     first_doc: int = 0
 
