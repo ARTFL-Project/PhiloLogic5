@@ -28,7 +28,6 @@ class WordData(msgspec.Struct):
     index: int = 0
     start: int = 0
     first_doc: int = 0
-    size: int = 0
 
 
 def query(
@@ -475,7 +474,6 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
             array = np.frombuffer(buffer[0:3600], dtype="u4").reshape(-1, 9)
             word_data[word].array = array
             word_data[word].first_doc = array[0, 0]
-            word_data[word].size = array.size
         except TypeError:  # Handle cases where word doesn't exist in the database
             word_data[word].array = np.array([], dtype="u4").reshape(-1, 9)
 
@@ -485,27 +483,26 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
         result = []
 
         for word, data in word_data.items():
-            if data.size > 0:
-                if data.first_doc > first_finishing_doc or (
-                    data.array[0, 0] == first_finishing_doc and data.array[0, -1] > first_finishing_byte
-                ):  # row starts after finishing row
-                    continue
-                if data.array[-1, 0] < first_finishing_doc or (
-                    data.array[-1, 0] == first_finishing_doc and data.array[-1, -1] < first_finishing_byte
-                ):  # row ends before finishing row
-                    first_finishing_doc = data.array[-1, 0]
-                    first_finishing_byte = data.array[-1, -1]
-                    first_word = word
-                result.append((word, data.array[0, ::8], data.array[-1, ::8]))
+            if data.first_doc > first_finishing_doc or (
+                data.array[0, 0] == first_finishing_doc and data.array[0, -1] > first_finishing_byte
+            ):  # row starts after finishing row
+                continue
+            if data.array[-1, 0] < first_finishing_doc or (
+                data.array[-1, 0] == first_finishing_doc and data.array[-1, -1] < first_finishing_byte
+            ):  # row ends before finishing row
+                first_finishing_doc = data.array[-1, 0]
+                first_finishing_byte = data.array[-1, -1]
+                first_word = word
+            result.append((word, data.array[0, ::8], data.array[-1, ::8]))
 
         return result, np.array([first_finishing_doc, first_finishing_byte], dtype="u4"), first_word
 
     # Merge sort and write loop
-    while any(word_data[word].array.size > 0 for word in words):
-        words_first_last_row, first_finishing_row, first_word_to_finish = build_first_last_rows()
-
+    while word_data:
         # Determine which words start before the first finishing word ends
         # Save index of first row that exceeds the first finishing word
+        words_first_last_row, first_finishing_row, first_word_to_finish = build_first_last_rows()
+
         words_to_keep = []
         for other_word, other_first_row, _ in words_first_last_row:
             if other_word == first_word_to_finish:
@@ -561,9 +558,10 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
             word_data[word].array = np.frombuffer(
                 word_data[word].buffer[word_data[word].start : end], dtype="u4"
             ).reshape(-1, 9)
-            word_data[word].size = word_data[word].array.size
-            if word_data[word].size > 0:
+            if word_data[word].array.size > 0:
                 word_data[word].first_doc = word_data[word].array[0, 0]
+            else:
+                del word_data[word]
 
 
 def get_corpus_philo_ids(corpus_file) -> tuple[np.ndarray, int]:
