@@ -460,7 +460,7 @@ def find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice):
 
 def merge_word_group(txn, words: list[str], chunk_size=None):
     # Initialize data structures for each word
-    word_data = {word: WordData(buffer=txn.get(word.encode("utf8"))) for word in words}
+    word_data = {}
     if chunk_size is None:
         chunk_size = (
             36 * 10000
@@ -471,10 +471,12 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
         buffer = txn.get(word.encode("utf8"))
         try:
             array = np.frombuffer(buffer[0:3600], dtype="u4").reshape(-1, 9)
-            word_data[word].array = array
-            word_data[word].first_doc = array[0, 0]
+            # word_data[word].array = array
+            first_doc = array[0, 0]
         except TypeError:  # Handle cases where word doesn't exist in the database
-            word_data[word].array = np.array([], dtype="u4").reshape(-1, 9)
+            array = np.array([], dtype="u4").reshape(-1, 9)
+            first_doc = 0
+        word_data[word] = WordData(buffer=buffer, array=array, start=0, first_doc=first_doc)
 
     def build_first_last_rows():
         first_finishing_doc = np.iinfo(np.uint32).max
@@ -483,7 +485,7 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
 
         for word, data in word_data.items():
             if data.first_doc > first_finishing_doc or (
-                data.array[0, 0] == first_finishing_doc and data.array[0, -1] > first_finishing_byte
+                data.first_doc == first_finishing_doc and data.array[0, -1] > first_finishing_byte
             ):  # row starts after finishing row
                 continue
             if data.array[-1, 0] < first_finishing_doc or (
