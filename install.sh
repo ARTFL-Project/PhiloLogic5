@@ -51,7 +51,9 @@ python -m pip install dist/*gz
 deactivate
 
 cd ..
-sudo cp philoload5 /usr/local/bin/
+
+# Install philoload5 script
+sudo echo -e '#!/bin/bash\nsource /var/lib/philologic5/philologic_env/bin/activate\npython3 -m philologic.loadtime "$@"ndeactivate' > /usr/local/bin/philoload5
 sudo chmod 775 /usr/local/bin/philoload5
 sudo mkdir -p /etc/philologic/
 sudo mkdir -p /var/lib/philologic5/web_app/
