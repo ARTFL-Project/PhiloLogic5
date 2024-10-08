@@ -53,7 +53,7 @@ deactivate
 cd ..
 
 # Install philoload5 script
-sudo echo -e '#!/bin/bash\nsource /var/lib/philologic5/philologic_env/bin/activate\npython3 -m philologic.loadtime "$@"\ndeactivate' > /usr/local/bin/philoload5
+echo -e '#!/bin/bash\nsource /var/lib/philologic5/philologic_env/bin/activate\npython3 -m philologic.loadtime "$@"\ndeactivate' > philoload5 && sudo mv philoload5 /usr/local/bin/
 sudo chmod 775 /usr/local/bin/philoload5
 sudo mkdir -p /etc/philologic/
 sudo mkdir -p /var/lib/philologic5/web_app/
