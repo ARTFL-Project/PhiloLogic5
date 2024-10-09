@@ -18,10 +18,6 @@ if CONFIG_FILE.url_root is None:
     print("url_root variable is not set in /etc/philologic/philologic5.cfg", file=sys.stderr)
     print("See https://github.com/ARTFL-Project/PhiloLogic5/blob/master/docs/installation.md.", file=sys.stderr)
     exit()
-elif CONFIG_FILE.web_app_dir is None:
-    print("web_app_dir variable is not set in /etc/philologic/philologic5.cfg", file=sys.stderr)
-    print("See https://github.com/ARTFL-Project/PhiloLogic5/blob/master/docs/installation.md.", file=sys.stderr)
-    exit()
 elif CONFIG_FILE.database_root is None:
     print("database_root variable is not set in /etc/philologic/philologic5.cfg", file=sys.stderr)
     print("See https://github.com/ARTFL-Project/PhiloLogic5/blob/master/docs/installation.md.", file=sys.stderr)
@@ -34,7 +30,6 @@ class LoadOptions:
     def __init__(self):
         self.values = {}
         self.values["database_root"] = CONFIG_FILE.database_root
-        self.values["web_app_dir"] = CONFIG_FILE.web_app_dir
         self.values["url_root"] = CONFIG_FILE.url_root
         self.values["destination"] = "./"
         self.values["load_config"] = ""

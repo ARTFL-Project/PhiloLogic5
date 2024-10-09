@@ -1251,7 +1251,7 @@ def shellquote(s):
     return "'" + s.replace("'", "'\\''") + "'"
 
 
-def setup_db_dir(db_destination, web_app_dir, force_delete=False):
+def setup_db_dir(db_destination, force_delete=False):
     """Setup database directory"""
     try:
         os.mkdir(db_destination)
@@ -1269,10 +1269,7 @@ def setup_db_dir(db_destination, web_app_dir, force_delete=False):
             else:
                 sys.exit()
 
-    if web_app_dir:
-        for f in os.listdir(web_app_dir):
-            if f != "data":
-                cp_command = "cp -r %s %s" % (web_app_dir + f, db_destination + "/" + f)
-                os.system(cp_command)
-        os.system("mkdir -p %s/custom_functions" % db_destination)
-        os.system("touch %s/custom_functions/__init__.py" % db_destination)
+    os.system(f"cp -R /var/lib/philologic5/web_app/* {db_destination}")
+    os.system(f"cp /var/lib/philologic5/web_app/.htaccess {db_destination}")
+    os.system("mkdir -p %s/custom_functions" % db_destination)
+    os.system("touch %s/custom_functions/__init__.py" % db_destination)

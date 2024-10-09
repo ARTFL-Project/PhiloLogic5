@@ -13,7 +13,7 @@ os.environ["PYTHONIOENCODING"] = "utf-8"
 if __name__ == "__main__":
     load_options = LoadOptions()
     load_options.parse(sys.argv)
-    setup_db_dir(load_options["db_destination"], load_options["web_app_dir"], force_delete=load_options.force_delete)
+    setup_db_dir(load_options["db_destination"], force_delete=load_options.force_delete)
 
     # Database load
     l = Loader.set_class_attributes(load_options.values)

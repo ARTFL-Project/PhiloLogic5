@@ -77,10 +77,6 @@ if [ ! -f /etc/philologic/philologic5.cfg ]; then
     url_root = None
     # http://localhost/philologic/ is appropriate if you don't have a DNS hostname.\n"
     sudo echo -e "$url_root" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
-
-    web_app_dir="## This should be set to the location of the PhiloLogic5 www directory
-    web_app_dir = '/var/lib/philologic5/web_app/'"
-    sudo echo -e "$web_app_dir" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 else
     echo -e "\n## WARNING ##"
     echo "/etc/philologic/philologic5.cfg already exists"
