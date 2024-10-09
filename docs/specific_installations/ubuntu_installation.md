@@ -1,5 +1,5 @@
 ---
-title: Installing PhiloLogic4 on Ubuntu
+title: Installing PhiloLogic5 on Ubuntu
 ---
 
 -   The following dependencies need to be installed:
@@ -8,18 +8,16 @@ title: Installing PhiloLogic4 on Ubuntu
     -   libxslt-dev
     -   zlib1g-dev
     -   apache2
-    -   libgdbm-dev
     -   python3-pip
-    -   libgdbm-dev
     -   liblz4-tool
     -   brotli
     -   ripgrep
 
     Run the following command:
 
-    `sudo apt-get install libxml2-dev libxslt-dev zlib1g-dev apache2 libgdbm-dev python3-pip liblz4-tool brotli ripgrep gfortan libopenblas-dev`
+    `sudo apt-get install libxml2-dev libxslt-dev zlib1g-dev apache2 python3-pip liblz4-tool brotli ripgrep`
 
--   Run install script inside the PhiloLogic4 directory
+-   Run install script inside the PhiloLogic5 directory
 
     `./install.sh`
 
