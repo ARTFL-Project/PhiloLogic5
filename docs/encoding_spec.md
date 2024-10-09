@@ -2,7 +2,7 @@
 title: Text Encoding Specification
 ---
 
--   Starting from version 4.5, PhiloLogic will now parse non-valid XML since it no longer relies on an XML lib for document parsing.
+-   PhiloLogic can parse non-valid XML and does not rely on an XML lib for document parsing (with the exception of the TEI Header).
 
 -   The only requirement is that files are encoded in **UTF-8**.
 
@@ -136,21 +136,21 @@ Example of a search reference
 
 ### Date tags
 
-You can use <date> tags inside the body of your document. The date will be attached to the parent div element. We only support two attributes for `when` and `value`. You can use either attribute to express the date. The date should be using the ISO date format YYYY-MM-DD. 
-    
+You can use <date> tags inside the body of your document. The date will be attached to the parent div element. We only support two attributes for `when` and `value`. You can use either attribute to express the date. The date should be using the ISO date format YYYY-MM-DD.
+
 Example of <date> tags:
-    
+
 ```xml
 <date when="1999-12-23"/>
 <date value="1999-12-23"/>
 ```
 
-Note that you can also add additional attributes in the <date> tag such as 
+Note that you can also add additional attributes in the <date> tag such as
 ```xml
 <date when="1795-11-01" revdate="10-brumaire-IV">Du 10 Brumaire.</date>
-``` 
+```
 However, you will need to tell the parser to extract that information by customizing your load_config.py file.
-    
+
 ### Using ISO dates in the TEI header
 You can use ISO dates for the pub_date and create_date tags in the TEI header. But in order to make those dates searchable, you need to specify the 'date' type in load_config.py in the metadata_sql_types variable. For instance:
 
