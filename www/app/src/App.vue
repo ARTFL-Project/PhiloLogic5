@@ -1,5 +1,9 @@
 <template>
-    <div id="app">
+    <div v-if="!$philoConfig.valid_config" class="error">
+        <h2>Invalid web config file: {{ $philoConfig.web_config_path }}</h2>
+        <p>Check for syntax errors in the configuration file.</p>
+    </div>
+    <div id="app" v-else>
         <Header />
         <SearchForm v-if="accessAuthorized" />
         <router-view v-if="accessAuthorized" />
@@ -19,6 +23,7 @@
 </template>
 
 <script>
+import DOMPurify from "dompurify";
 import { defineAsyncComponent } from "vue";
 import { mapFields } from "vuex-map-fields";
 import Header from "./components/Header.vue";
@@ -121,10 +126,8 @@ export default {
         },
     },
     created() {
-        if (!this.$philoConfig.valid_config) {
-            document.body.innerHTML = `<h2>Invalid web config file: ${this.$philoConfig.web_config_path}<br/>Check for python syntax error in the config file</h2>`;
-        } else {
-            document.title = this.$philoConfig.dbname.replace(/<[^>]+>/, "");
+        if (this.$philoConfig.valid_config) {
+            document.title = DOMPurify.sanitize(this.$philoConfig.dbname);
             const html = document.documentElement;
             html.setAttribute("lang", "sv");
             this.$i18n.locale = localStorage.getItem("lang") || "en";
