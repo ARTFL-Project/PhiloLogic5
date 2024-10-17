@@ -462,7 +462,6 @@ class XMLParser:
         self.metadata_sql_types = parse_options["metadata_sql_types"]
 
         self.lowercase_index = lowercase_index
-
         self.in_the_text = False
         self.in_text_quote = False
         self.in_front_matter = False

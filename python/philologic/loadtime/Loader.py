@@ -581,6 +581,7 @@ class Loader:
             "sentence_breakers",
             "punctuation",
             "metadata_sql_types",
+            "lowercase_index",
         ]:
             try:
                 options[option] = cls.parser_config[option]
@@ -850,7 +851,7 @@ class Loader:
                             for attribute, attribute_dict in word_attributes.items():
                                 for attribute_value, philo_ids in attribute_dict.items():
                                     txn.put(
-                                        f"{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"),
+                                        f"{current_word}:{attribute}:{attribute_value}".encode("utf-8"),
                                         philo_ids,
                                     )
                                     count += 1
@@ -867,7 +868,7 @@ class Loader:
                 # Handle the last set of words
                 for attribute, attribute_dict in word_attributes.items():
                     for attribute_value, philo_ids in attribute_dict.items():
-                        txn.put(f"{current_word.lower()}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+                        txn.put(f"{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
                         count += 1
                 txn.commit()
             print(f"{time.ctime()}: Stored {count} word attributes.", flush=True)
@@ -1044,7 +1045,7 @@ class Loader:
                                 continue
                             if attribute_value:
                                 total_count_per_attribute[attribute][attribute_value] += 1
-                            stored_string = f"{word.lower()}:{attribute}:{attribute_value}"
+                            stored_string = f"{word}:{attribute}:{attribute_value}"
                             if stored_string not in word_attributes:
                                 print(stored_string, file=freq_file)
                                 word_attributes.add(stored_string)
