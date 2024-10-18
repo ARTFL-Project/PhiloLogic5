@@ -36,7 +36,7 @@ class ParallelRecord(object):
         return [self.id[0], 0, 0, 0, 0, 0, 0, 0, self.id[1]]
 
 
-class CompoundRecord(object):
+class CompoundRecord:
     """CompoundRecord is the base Record type for the CompoundStack."""
 
     def __init__(self, type, name, id):
@@ -101,6 +101,7 @@ class CompoundStack:
         line="",
         graphic="",
         punctuation="punct",
+        apostrophe="apos",
         factory=CompoundRecord,
         p_factory=ParallelRecord,
     ):
@@ -119,6 +120,9 @@ class CompoundStack:
         self.punctuation = punctuation
         self.current_punctuation = None
         self.punctuation_count = 0
+        self.apostrophe = apostrophe
+        self.current_apostrophe = None
+        self.apostrophe_count = 0
         self.p = 0
         self.r = 0
         self.l = 0
@@ -189,7 +193,6 @@ class CompoundStack:
             return self.current_graphic
         elif type == self.punctuation:
             self.punctuation_count += 1
-            # current_sent_id = self.stack["sent"].id[:6]
             try:
                 current_sent_id = self.stack["sent"].id[:6]
             except IndexError:
@@ -208,6 +211,11 @@ class CompoundStack:
                                 current_sent_id = self.stack["doc"].id[:1] + [1, 1, 1, 1, 1]
             self.current_punctuation = Record("punct", name, current_sent_id + [0, 0, self.punctuation_count])
             self.current_punctuation.attrib["start_byte"] = byte
+        elif type == self.apostrophe:
+            # current_apostrophe_id shares the first 7 ids as the word it is attached to, which is the previous word in the stack
+            current_apostrophe_id = self.stack.last_record.id[:7] + [byte] + [self.stack.last_record.id[8]]
+            self.current_apostrophe = Record("apos", name, current_apostrophe_id)
+            self.current_apostrophe.attrib["start_byte"] = byte
         else:
             self.stack.push(type, name, byte)
             if self.current_p:
@@ -235,6 +243,9 @@ class CompoundStack:
         elif text_obj_type == self.punctuation:
             self.current_punctuation.attrib["end_byte"] = byte
             print(self.current_punctuation, file=self.out)
+        elif text_obj_type == self.apostrophe:
+            self.current_apostrophe.attrib["end_byte"] = byte
+            print(self.current_apostrophe, file=self.out)
         else:
             return self.stack.pull(text_obj_type, byte)
 
@@ -251,6 +262,7 @@ class NewStack:
         self.current_objects = []
         self.out = out or sys.stdout
         self.factory = factory or Record
+        self.last_record = None
 
         for type in self.types:
             self.v.append(0)
@@ -291,9 +303,6 @@ class NewStack:
         raise IndexError
 
     def push(self, type, name, byte):
-        # create any necessary virtual ancestors
-        #        print [x.name for x in self.current_objects]
-
         i = self.index(type)
         if type in self.types:
             while len(self) < i:
@@ -307,12 +316,11 @@ class NewStack:
             r = self.factory(type, name, self.v[:])
             r.attrib["start_byte"] = byte
             self.current_objects.append(r)
+            self.last_record = r
         elif type in self.v_types:
-            #           print "trying to push %s out of %s" % (type, self.v_types[type])
             possible_types = self.v_types[type][:]
             for t in possible_types:
                 if t in self and self[t].name == "__philo_virtual":
-                    #                    print "found at %s" % t
                     break
                 if t not in self:
                     break
@@ -357,7 +365,6 @@ class Record:
         self.attrib = {}
 
     def __str__(self):
-        # Using json.dumps to write dict as it is much faster to read from a json string
         return f"{self.type}\t{self.name}\t{' '.join(map(str, self.id))}\t{dumps(self.attrib).decode('utf8')}"
 
     def __repr__(self):

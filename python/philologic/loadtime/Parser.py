@@ -4,11 +4,11 @@
 import os
 import string
 import sys
-from collections import deque
 
 import regex as re
-from philologic.loadtime.OHCOVector import CompoundStack
 from philologic.utils import convert_entities, extract_full_date, extract_integer
+
+from .OHCOVector import CompoundStack
 
 DEFAULT_TAG_TO_OBJ_MAP = {
     "div": "div",
@@ -239,6 +239,7 @@ seg_attrib = re.compile(r"<seg \w+=", re.I)
 abbrev_expand = re.compile(r'(<abbr .*expan=")([^"]*)("[^>]*>)([^>]*)(</abbr>)', re.I | re.M)
 semi_colon_strip = re.compile(r"\A;?(\w+);?\Z")
 h_tag = re.compile(r"<h(\d)>", re.I)
+apostrophe = re.compile(r"^['\u2019]$")  # match tokens that contain at most one apostrophe
 
 ## Build a list of control characters to remove
 ## http://stackoverflow.com/questions/92438/stripping-non-printable-characters-from-a-string-in-python/93029#93029
@@ -357,6 +358,7 @@ class XMLParser:
             line="line",
             graphic="graphic",
             punctuation="punct",
+            apostrophe="apos",
         )
 
         self.filesize = filesize
@@ -485,6 +487,8 @@ class XMLParser:
         self.current_div_id = ""
         self.current_div_level = 0
         self.in_seg = False
+
+        self.last_sentence_marker = ""  # Caching the last sentence marker in case we need it for <s> tags
 
     def parse(self, text_input):
         """Top level function for reading a file and printing out the output."""
@@ -818,11 +822,13 @@ class XMLParser:
             # sentence and to turn off automatic sentence tagging
             elif sentence_tag.search(tag):
                 if self.open_sent or self.in_tagged_sentence:
+                    self.v["sent"].name = self.last_sentence_marker
                     self.v.pull("sent", self.bytes_read_in)  # should cache name
                 self.v.push("sent", tag_name, start_byte)
                 self.in_tagged_sentence = True
                 self.open_sent = True
             elif closed_sentence_tag.search(tag):
+                self.v["sent"].name = self.last_sentence_marker
                 self.v.pull("sent", self.bytes_read_in)
                 self.in_tagged_sentence = False
                 self.open_sent = False
@@ -1080,6 +1086,7 @@ class XMLParser:
             word_list = words.split("\n")
             last_word = ""
             next_word = ""
+            previous_word = ""
             if self.in_the_text:
                 for word in word_list:
                     word_in_utf8 = word.encode("utf8")
@@ -1088,11 +1095,27 @@ class XMLParser:
                         next_word = word_list[count + 1]
                     except IndexError:
                         pass
+                    if count != 0:
+                        previous_word = word_list[count - 1]
+
                     count += 1
 
                     # Keep track of your bytes since this is where you are getting
                     # the byte offsets for words.
                     current_pos += word_length
+
+                    # Do we have an apostrophe?
+                    if (
+                        apostrophe.search(word)
+                        and check_if_char_word.search(previous_word)
+                        and check_if_char_word.search(next_word)
+                    ):
+                        word_pos = current_pos - len(word_in_utf8)
+                        self.v.push("apos", word, word_pos)
+                        if self.current_tag == "w":
+                            for attrib, value in self.word_tag_attributes:
+                                self.v["word"][attrib] = value
+                        self.v.pull("apos", current_pos)
 
                     # Do we have a word? At least one of these characters.
                     converted_word = word
@@ -1163,29 +1186,7 @@ class XMLParser:
 
                     # Sentence break handler
                     elif not self.in_line_group and not self.in_tagged_sentence:
-                        is_sent = False
-
-                        # Always break on ! and ?
-                        # TODO: why test if word > 2 in p3?
-                        if "!" in word or "?" in word:
-                            is_sent = True
-
-                        # Periods are messy. Let's try by length of previous word and
-                        # capital letters to avoid hitting abbreviations.
-                        elif "." in word:
-                            is_sent = True
-                            if len(last_word) < 3:
-                                if cap_char_or_num.search(last_word):
-                                    is_sent = False
-
-                            # Periods in numbers don't break sentences.
-                            if next_word.islower() or next_word.isdigit():
-                                is_sent = False
-
-                        elif word in self.sentence_breakers:
-                            is_sent = True
-
-                        if is_sent:
+                        if self.is_word_sentence_breaker(word, last_word, next_word):
                             # a little hack--we don't know the punctuation mark that will end a sentence
                             # until we encounter it--so instead, we let the push on "word" create a
                             # implicit philo_virtual sentence, then change its name once we actually encounter
@@ -1204,9 +1205,35 @@ class XMLParser:
                                     self.v.push("punct", single_punct, punc_pos)
                                     self.v.pull("punct", punc_pos + len(single_punct.encode("utf8")))
                                 punc_pos += len(single_punct.encode("utf8"))
+                    if self.is_word_sentence_breaker(word, last_word, next_word):
+                        self.last_sentence_marker = word
+
+    def is_word_sentence_breaker(self, word, last_word, next_word):
+        is_sent = False
+        # Always break on ! and ?
+        # TODO: why test if word > 2 in p3?
+        if "!" in word or "?" in word:
+            is_sent = True
+
+        # Periods are messy. Let's try by length of previous word and
+        # capital letters to avoid hitting abbreviations.
+        elif "." in word:
+            is_sent = True
+            if len(last_word) < 3:
+                if cap_char_or_num.search(last_word):
+                    is_sent = False
+
+            # Periods in numbers don't break sentences.
+            if next_word.islower() or next_word.isdigit():
+                is_sent = False
+
+        elif word in self.sentence_breakers:
+            is_sent = True
+        return is_sent
 
     def close_sent(self, end_byte):
         """Close sentence objects."""
+        self.v["sent"].name = self.last_sentence_marker
         self.v.pull("sent", end_byte)
         self.open_sent = False
 
@@ -1538,7 +1565,13 @@ class XMLParser:
 
 
 if __name__ == "__main__":
-    for docid, fn in enumerate(sys.argv[1:], 1):
+    if os.path.isfile(sys.argv[1]):
+        files = sys.argv[1:]
+    else:
+        import glob
+
+        files = glob.glob(sys.argv[1] + "/*")
+    for docid, fn in enumerate(files, 1):
         print(docid, fn, file=sys.stderr)
         size = os.path.getsize(fn)
         fh = open(fn)
@@ -1550,7 +1583,6 @@ if __name__ == "__main__":
             tag_to_obj_map=DEFAULT_TAG_TO_OBJ_MAP,
             metadata_to_parse=DEFAULT_METADATA_TO_PARSE,
             metadata_sql_types={},
-            sentence_breakers=["。"],
             file_type="html",
             token_regex=r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+",
         )
