@@ -287,7 +287,7 @@ def store_words_and_philo_ids(loader_obj, text):
                 if word == "__philo_virtual":
                     continue
                 attrib = loads(attrib)
-                if philo_type in ("word", "sent", "punct", "apos"):
+                if philo_type in ("word", "sent", "punct"):
                     if philo_type == "sent":
                         attrib["start_byte"] = attrib["end_byte"] - len(
                             word.encode("utf8")

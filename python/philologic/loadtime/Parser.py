@@ -6,9 +6,8 @@ import string
 import sys
 
 import regex as re
+from philologic.loadtime.OHCOVector import CompoundStack
 from philologic.utils import convert_entities, extract_full_date, extract_integer
-
-from .OHCOVector import CompoundStack
 
 DEFAULT_TAG_TO_OBJ_MAP = {
     "div": "div",
@@ -144,29 +143,9 @@ TAG_EXCEPTIONS = [
 # For Asian script, try using this slightly-modified regex: r"[\p{L}\p{M}\p{N}\p{Po}]+|[&\p{L};]+"
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 
-PUNCTUATION = r"""[;,:=+()"]"""
+PUNCTUATION = r"\p{P}+"
 
 CHARS_NOT_TO_INDEX = r"[\[\{\]\}]"
-
-UNICODE_WORD_BREAKERS = [
-    b"\xe2\x80\x93",  # U+2013 &ndash; EN DASH
-    b"\xe2\x80\x94",  # U+2014 &mdash; EM DASH
-    b"\xc2\xab",  # &laquo;
-    b"\xc2\xbb",  # &raquo;
-    b"\xef\xbc\x89",  # fullwidth right parenthesis
-    b"\xef\xbc\x88",  # fullwidth left parenthesis
-    b"\xe2\x80\x90",  # U+2010 hyphen for greek stuff
-    b"\xce\x87",  # U+00B7 ano teleia
-    b"\xe2\x80\xa0",  # U+2020 dagger
-    b"\xe2\x80\x98",  # U+2018 &lsquo; LEFT SINGLE QUOTATION
-    b"\xe2\x80\x99",  # U+2019 &rsquo; RIGHT SINGLE QUOTATION
-    b"\xe2\x80\x9c",  # U+201C &ldquo; LEFT DOUBLE QUOTATION
-    b"\xe2\x80\x9d",  # U+201D &rdquo; RIGHT DOUBLE QUOTATION
-    b"\xe2\x80\xb9",  # U+2039 &lsaquo; SINGLE LEFT-POINTING ANGLE QUOTATION
-    b"\xe2\x80\xba",  # U+203A &rsaquo; SINGLE RIGHT-POINTING ANGLE QUOTATION
-    b"\xe2\x80\xa6",  # U+2026 &hellip; HORIZONTAL ELLIPSIS
-]
-
 
 # Pre-compiled regexes used for parsing
 join_hyphen_with_lb = re.compile(r"(\&shy;[\n \t]*<lb\/>)", re.I | re.M)
@@ -434,15 +413,6 @@ class XMLParser:
             self.join_hyphen_in_words = parse_options["join_hyphen_in_words"]
         else:
             self.join_hyphen_in_words = True
-
-        if "unicode_word_breakers" in parse_options:
-            unicode_word_breakers = parse_options["unicode_word_breakers"]
-        else:
-            unicode_word_breakers = UNICODE_WORD_BREAKERS
-        self.unicode_word_breakers = []
-        for char in unicode_word_breakers:
-            compiled_char = re.compile(rb"(%s)" % char, re.I)
-            self.unicode_word_breakers.append(compiled_char)
 
         if "abbrev_expand" in parse_options:
             self.abbrev_expand = parse_options["abbrev_expand"]
@@ -822,14 +792,12 @@ class XMLParser:
             # sentence and to turn off automatic sentence tagging
             elif sentence_tag.search(tag):
                 if self.open_sent or self.in_tagged_sentence:
-                    self.v["sent"].name = self.last_sentence_marker
-                    self.v.pull("sent", self.bytes_read_in)  # should cache name
+                    self.close_sent(self.bytes_read_in)
                 self.v.push("sent", tag_name, start_byte)
                 self.in_tagged_sentence = True
                 self.open_sent = True
             elif closed_sentence_tag.search(tag):
-                self.v["sent"].name = self.last_sentence_marker
-                self.v.pull("sent", self.bytes_read_in)
+                self.close_sent(self.bytes_read_in)
                 self.in_tagged_sentence = False
                 self.open_sent = False
 
@@ -1066,18 +1034,13 @@ class XMLParser:
             if char_ents.search(words):
                 words = self.clear_char_ents(words)
 
-            if self.unicode_word_breakers:
-                for word_breaker in self.unicode_word_breakers:
-                    words = word_breaker.sub(lambda match: b" " * len(match.group(1)), words.encode("utf8")).decode(
-                        "utf8"
-                    )
-
             # we're splitting the line of words into distinct words
             # separated by "\n"
             words = self.token_regex.sub(r"\n\1\n", words)
 
             if self.break_apost:
                 words = words.replace("'", "\n'\n")
+                words = words.replace("’", "\n’\n")
 
             words = newline_shortener.sub(r"\n", words)
 
@@ -1086,7 +1049,6 @@ class XMLParser:
             word_list = words.split("\n")
             last_word = ""
             next_word = ""
-            previous_word = ""
             if self.in_the_text:
                 for word in word_list:
                     word_in_utf8 = word.encode("utf8")
@@ -1095,27 +1057,11 @@ class XMLParser:
                         next_word = word_list[count + 1]
                     except IndexError:
                         pass
-                    if count != 0:
-                        previous_word = word_list[count - 1]
-
                     count += 1
 
                     # Keep track of your bytes since this is where you are getting
                     # the byte offsets for words.
                     current_pos += word_length
-
-                    # Do we have an apostrophe?
-                    if (
-                        apostrophe.search(word)
-                        and check_if_char_word.search(previous_word)
-                        and check_if_char_word.search(next_word)
-                    ):
-                        word_pos = current_pos - len(word_in_utf8)
-                        self.v.push("apos", word, word_pos)
-                        if self.current_tag == "w":
-                            for attrib, value in self.word_tag_attributes:
-                                self.v["word"][attrib] = value
-                        self.v.pull("apos", current_pos)
 
                     # Do we have a word? At least one of these characters.
                     converted_word = word
@@ -1166,6 +1112,7 @@ class XMLParser:
                         word = word.replace("_", "").strip()
                         word = word.replace(" ", "")
                         if word:
+
                             if self.defined_words_to_index:
                                 if word not in self.words_to_index:
                                     continue
@@ -1195,16 +1142,16 @@ class XMLParser:
                                 self.v.push("sent", word.replace("\t", " ").strip(), current_pos)
                             self.v["sent"].name = word.replace("\t", " ").strip()
                             self.v.pull("sent", current_pos + len(word.encode("utf8")))
-                        elif self.punct_regex.search(word):
-                            punc_pos = current_pos - len(word.encode("utf8"))
-                            punct = word.strip()
-                            punct = punct.replace("\t", " ")
-                            punct = self.remove_control_chars(punct)
-                            for single_punct in punct:
-                                if single_punct != " ":
-                                    self.v.push("punct", single_punct, punc_pos)
-                                    self.v.pull("punct", punc_pos + len(single_punct.encode("utf8")))
-                                punc_pos += len(single_punct.encode("utf8"))
+                    if self.punct_regex.search(word):
+                        punc_pos = current_pos - len(word.encode("utf8"))
+                        punct = word.strip()
+                        punct = punct.replace("\t", " ")
+                        punct = self.remove_control_chars(punct)
+                        for single_punct in punct:
+                            if single_punct != " ":
+                                self.v.push("punct", single_punct, punc_pos)
+                                self.v.pull("punct", punc_pos + len(single_punct.encode("utf8")))
+                            punc_pos += len(single_punct.encode("utf8"))
                     if self.is_word_sentence_breaker(word, last_word, next_word):
                         self.last_sentence_marker = word
 
@@ -1233,7 +1180,10 @@ class XMLParser:
 
     def close_sent(self, end_byte):
         """Close sentence objects."""
-        self.v["sent"].name = self.last_sentence_marker
+        try:
+            self.v["sent"].name = self.last_sentence_marker
+        except IndexError:
+            pass
         self.v.pull("sent", end_byte)
         self.open_sent = False
 

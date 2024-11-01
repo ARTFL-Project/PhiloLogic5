@@ -101,7 +101,6 @@ class CompoundStack:
         line="",
         graphic="",
         punctuation="punct",
-        apostrophe="apos",
         factory=CompoundRecord,
         p_factory=ParallelRecord,
     ):
@@ -120,9 +119,6 @@ class CompoundStack:
         self.punctuation = punctuation
         self.current_punctuation = None
         self.punctuation_count = 0
-        self.apostrophe = apostrophe
-        self.current_apostrophe = None
-        self.apostrophe_count = 0
         self.p = 0
         self.r = 0
         self.l = 0
@@ -211,11 +207,6 @@ class CompoundStack:
                                 current_sent_id = self.stack["doc"].id[:1] + [1, 1, 1, 1, 1]
             self.current_punctuation = Record("punct", name, current_sent_id + [0, 0, self.punctuation_count])
             self.current_punctuation.attrib["start_byte"] = byte
-        elif type == self.apostrophe:
-            # current_apostrophe_id shares the first 7 ids as the word it is attached to, which is the previous word in the stack
-            current_apostrophe_id = self.stack.last_record.id[:7] + [byte] + [self.stack.last_record.id[8]]
-            self.current_apostrophe = Record("apos", name, current_apostrophe_id)
-            self.current_apostrophe.attrib["start_byte"] = byte
         else:
             self.stack.push(type, name, byte)
             if self.current_p:
@@ -243,9 +234,6 @@ class CompoundStack:
         elif text_obj_type == self.punctuation:
             self.current_punctuation.attrib["end_byte"] = byte
             print(self.current_punctuation, file=self.out)
-        elif text_obj_type == self.apostrophe:
-            self.current_apostrophe.attrib["end_byte"] = byte
-            print(self.current_apostrophe, file=self.out)
         else:
             return self.stack.pull(text_obj_type, byte)
 

@@ -196,31 +196,6 @@ tag_exceptions = [
     r"</sup>",
 ]
 
-# ------------- UTF8 Strings to consider as word breakers -----------
-# In SGML, these are ents.  But in Unicode, these are characters
-# like any others.  Consult the table at:
-# www.utf8-chartable.de/unicode-utf8-table.pl?start=8016&utf8=dec&htmlent=1
-# to see about others. An empty list disables the feature.
-# Note that these strings must be marked as binary as they are UTF8 strings
-unicode_word_breakers = [
-    b"\xe2\x80\x93",  # U+2013 &ndash; EN DASH
-    b"\xe2\x80\x94",  # U+2014 &mdash; EM DASH
-    b"\xc2\xab",  # &laquo;
-    b"\xc2\xbb",  # &raquo;
-    b"\xef\xbc\x89",  # fullwidth right parenthesis
-    b"\xef\xbc\x88",  # fullwidth left parenthesis
-    b"\xe2\x80\x90",  # U+2010 hyphen for greek stuff
-    b"\xce\x87",  # U+00B7 ano teleia
-    b"\xe2\x80\xa0",  # U+2020 dagger
-    b"\xe2\x80\x98",  # U+2018 &lsquo; LEFT SINGLE QUOTATION
-    b"\xe2\x80\x99",  # U+2019 &rsquo; RIGHT SINGLE QUOTATION
-    b"\xe2\x80\x9c",  # U+201C &ldquo; LEFT DOUBLE QUOTATION
-    b"\xe2\x80\x9d",  # U+201D &rdquo; RIGHT DOUBLE QUOTATION
-    b"\xe2\x80\xb9",  # U+2039 &lsaquo; SINGLE LEFT-POINTING ANGLE QUOTATION
-    b"\xe2\x80\xba",  # U+203A &rsaquo; SINGLE RIGHT-POINTING ANGLE QUOTATION
-    b"\xe2\x80\xa6",  # U+2026 &hellip; HORIZONTAL ELLIPSIS
-]
-
 # Define a list of word attributes to ingore at parse time. These will not be stored.
 # This should be a list of attribute names, such as ["type", "id"]
 suppress_word_attributes = []
@@ -252,10 +227,6 @@ flatten_ligatures = True
 # Define a list of strings which mark the end of a sentence.
 # Note that this list will be added to the current one which is [".", "?", "!"]
 sentence_breakers = []
-
-# Define which punctuation should be flagged as such. This should NOT include
-# any punctuation which mark sentence breaks. Use regex to match characters.
-punctuation = ""
 
 # Define a language for the POS tagger. For language available, see Spacy documentation.
 # You will need to install the relevant language and use the proper language code in the value
