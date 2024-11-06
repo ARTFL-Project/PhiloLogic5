@@ -366,7 +366,7 @@ def get_cooccurrence_groups(
             philo_id_object = index[:cooc_slice]
             if previous_row is not None and compare_rows(philo_id_object, previous_row) == 0:
                 if match is True:
-                    results[-1] = index.reshape(-1, 9)  # replace the previous row with the current row
+                    results[0] = index.reshape(-1, 9)  # replace the previous row with the current row
                     yield tuple(results)
                 continue
             results = deque()
