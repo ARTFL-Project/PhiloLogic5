@@ -115,6 +115,8 @@ def collocation_results(request, config, current_collocates):
             parent_sentence = hit[:24]  # 24 bytes for the first 6 integers
             q_word_position = struct.unpack("1I", hit[28:32])  # 4 bytes for the 8th integer
             sentence = cursor.get(parent_sentence)
+            if sentence is None:  # Should this really happen?
+                continue
             word_objects = decoder.decode(sentence)
 
             # If not attribute filter set, we just get the words/lemmas

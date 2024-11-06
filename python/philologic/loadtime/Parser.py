@@ -218,7 +218,6 @@ seg_attrib = re.compile(r"<seg \w+=", re.I)
 abbrev_expand = re.compile(r'(<abbr .*expan=")([^"]*)("[^>]*>)([^>]*)(</abbr>)', re.I | re.M)
 semi_colon_strip = re.compile(r"\A;?(\w+);?\Z")
 h_tag = re.compile(r"<h(\d)>", re.I)
-apostrophe = re.compile(r"^['\u2019]$")  # match tokens that contain at most one apostrophe
 
 ## Build a list of control characters to remove
 ## http://stackoverflow.com/questions/92438/stripping-non-printable-characters-from-a-string-in-python/93029#93029
@@ -337,7 +336,6 @@ class XMLParser:
             line="line",
             graphic="graphic",
             punctuation="punct",
-            apostrophe="apos",
         )
 
         self.filesize = filesize
@@ -1142,7 +1140,9 @@ class XMLParser:
                                 self.v.push("sent", word.replace("\t", " ").strip(), current_pos)
                             self.v["sent"].name = word.replace("\t", " ").strip()
                             self.v.pull("sent", current_pos + len(word.encode("utf8")))
-                    if self.punct_regex.search(word):
+                    if self.is_word_sentence_breaker(word, last_word, next_word):
+                        self.last_sentence_marker = word
+                    elif self.punct_regex.search(word):
                         punc_pos = current_pos - len(word.encode("utf8"))
                         punct = word.strip()
                         punct = punct.replace("\t", " ")
@@ -1152,8 +1152,6 @@ class XMLParser:
                                 self.v.push("punct", single_punct, punc_pos)
                                 self.v.pull("punct", punc_pos + len(single_punct.encode("utf8")))
                             punc_pos += len(single_punct.encode("utf8"))
-                    if self.is_word_sentence_breaker(word, last_word, next_word):
-                        self.last_sentence_marker = word
 
     def is_word_sentence_breaker(self, word, last_word, next_word):
         is_sent = False
