@@ -4,6 +4,7 @@ import os
 import struct
 import subprocess
 import sys
+from collections import deque
 from itertools import product
 from operator import eq, le
 from pathlib import Path
@@ -190,13 +191,15 @@ def search_phrase(db_path, hitlist_filename, corpus_file=None):
     common_object_ids = get_cooccurrence_groups(
         db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level, cooc_order=True
     )
-    sorted_indices = next(common_object_ids)
+    mapping_order = next(common_object_ids)
 
     with open(hitlist_filename, "wb") as output_file:
         for philo_id_groups in common_object_ids:
             for group_combination in product(*philo_id_groups):
-                positions: list[int] = [group_combination[index][7:8][0] for index in sorted_indices]
-                if sorted(positions) != positions:  # are positions in sorted order?
+                raw_positions = [a[7] for a in group_combination]
+                mapped_raw_positions = [p for _, p in sorted(zip(mapping_order, raw_positions))]
+                positions = sorted(mapped_raw_positions)
+                if positions != mapped_raw_positions:  # are positions in sorted order?
                     continue
                 # we now need to check if the positions are within 1 word of each other
                 if positions[0] + len(word_groups) - 1 == positions[-1]:
@@ -218,7 +221,7 @@ def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_dist
     )
 
     if cooc_order is True:
-        sorted_indices = next(common_object_ids)
+        mapping_order = next(common_object_ids)
 
     if len(word_groups) > 1 and n == 1:
         n = len(word_groups) - 1
@@ -232,9 +235,10 @@ def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_dist
             hit_cache = set()
             for group_combination in product(*philo_id_groups):
                 if cooc_order is True:
-                    raw_positions: list[int] = [group_combination[index][7:8][0] for index in sorted_indices]
-                    positions = sorted(raw_positions)
-                    if positions != raw_positions:  # are positions in sorted order?
+                    raw_positions = [a[7] for a in group_combination]
+                    mapped_raw_positions = [p for _, p in sorted(zip(mapping_order, raw_positions))]
+                    positions = sorted(mapped_raw_positions)
+                    if positions != mapped_raw_positions:  # are positions in sorted order?
                         continue
                 else:
                     positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
@@ -268,20 +272,21 @@ def search_within_text_object(db_path, hitlist_filename, level, cooc_order, corp
     )
 
     if cooc_order is True:
-        sorted_indices = next(common_object_ids)
+        mapping_order = next(common_object_ids)
 
     with open(hitlist_filename, "wb") as output_file:
         for philo_id_groups in common_object_ids:
             hit_cache = set()
             for group_combination in product(*philo_id_groups):
                 if cooc_order is True:
-                    raw_positions: list[int] = [group_combination[index][7:8][0] for index in sorted_indices]
-                    positions = sorted(raw_positions)
-                    if positions != raw_positions:  # are positions in sorted order?
+                    raw_positions = [a[7] for a in group_combination]
+                    mapped_raw_positions = [p for _, p in sorted(zip(mapping_order, raw_positions))]
+                    positions = sorted(mapped_raw_positions)
+                    if positions != mapped_raw_positions:  # are positions in sorted order?
                         continue
                 else:
-                    positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
-                if len(positions) != len(word_groups):  # we had duplicate words
+                    positions: list[int] = sorted({philo_id[7] for philo_id in group_combination})
+                if len(set(positions)) != len(word_groups):  # we had duplicate words
                     continue
                 group_combination = sorted(group_combination, key=lambda x: x[-1])
                 starting_id = group_combination[0].tobytes()
@@ -318,7 +323,7 @@ def get_cooccurrence_groups(
     with env.begin(buffers=True) as txn:
         # Determine which group has the smallest byte size
         byte_size_per_group = []
-        for group in word_groups:
+        for index, group in enumerate(word_groups):
             byte_size = 0
             for word in group:
                 byte_size += len(txn.get(word.encode("utf8")))
@@ -326,7 +331,7 @@ def get_cooccurrence_groups(
         # Perform an argsort on the list to get the indices of the groups sorted by byte size
         sorted_indices = np.argsort(byte_size_per_group)
         if cooc_order is True:
-            yield sorted_indices[::-1]  # we only need the sorted indices for when words need to be in order
+            yield sorted_indices
 
         def one_word_generator(word):
             yield np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9)
@@ -364,7 +369,7 @@ def get_cooccurrence_groups(
                     results[-1] = index.reshape(-1, 9)  # replace the previous row with the current row
                     yield tuple(results)
                 continue
-            results = []
+            results = deque()
             match = True
             previous_row = philo_id_object
             for group_index, philo_id_group in enumerate(group_generators):
@@ -415,7 +420,7 @@ def get_cooccurrence_groups(
             if break_out is True:
                 break
             elif match is True:
-                results.append(index.reshape(-1, 9))  # We only keep the first instance of a hit in the first group
+                results.appendleft(index.reshape(-1, 9))  # We only keep the first instance of a hit in the first group
                 yield tuple(results)
 
     env.close()
