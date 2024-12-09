@@ -8,6 +8,7 @@ import struct
 import time
 import timeit
 from collections import Counter
+from operator import itemgetter
 from typing import Any
 
 import lmdb
@@ -47,7 +48,7 @@ def collocation_results(request, config, current_collocates):
     )
 
     try:
-        collocate_distance = int(request.arg_proxy)
+        collocate_distance = int(request.method_arg)
     except ValueError:  # Getting an empty string since the keyword is not specificed in the URL
         collocate_distance = None
 
@@ -108,7 +109,12 @@ def collocation_results(request, config, current_collocates):
         max_time = request.max_time or 2
     start_time = timeit.default_timer()
 
-    decoder = msgspec.msgpack.Decoder(list[tuple])
+    Word = msgspec.defstruct(
+        "Word", [("token", str), ("position", int)] + [(k, str) for k in db.locals.word_attributes], array_like=True
+    )
+    Sentence = msgspec.defstruct("Sentence", [("words", list[Word])], array_like=True)
+    decoder = msgspec.msgpack.Decoder(type=Sentence)
+
     with env.begin() as txn:
         cursor = txn.cursor()
         for hit in hits[hits_done:]:
@@ -117,48 +123,48 @@ def collocation_results(request, config, current_collocates):
             sentence = cursor.get(parent_sentence)
             if sentence is None:  # Should this really happen?
                 continue
-            word_objects = decoder.decode(sentence)
+            word_objects = decoder.decode(sentence).words
 
             # If not attribute filter set, we just get the words/lemmas
             if attribute is None:
                 if not count_lemmas:
                     words = (
-                        (word, position)
-                        for word, _, position, _ in word_objects
-                        if word not in filter_list and position != q_word_position[0]
+                        (word_obj.token, word_obj.position)
+                        for word_obj in word_objects
+                        if word_obj.token not in filter_list and word_obj.position != q_word_position[0]
                     )
                 else:
                     words = (
-                        (lemma, position)
-                        for _, _, position, attr in word_objects
-                        if (lemma := attr.get("lemma")) not in filter_list and position != q_word_position[0]
+                        (word_obj.lemma, word_obj.position)
+                        for word_obj in word_objects
+                        if word_obj.lemma not in filter_list and word_obj.position != q_word_position[0]
                     )
 
             # If attribute filter is set, we get the words/lemmas that match the filter
             else:
                 if not count_lemmas:
                     words = (
-                        (f"{word.lower()}:{attribute}:{attribute_value}", position)
-                        for word, _, position, attr in word_objects
-                        if attr.get(attribute) == attribute_value and position != q_word_position[0]
+                        (f"{word_obj.token.lower()}:{attribute}:{attribute_value}", word_obj.position)
+                        for word_obj in word_objects
+                        if getattr(word_obj, attribute) == attribute_value and word_obj.position != q_word_position[0]
                     )
                 else:
                     words = (
-                        (f"{attr['lemma']}:{attribute}:{attribute_value}", position)
-                        for _, _, position, attr in word_objects
-                        if attr.get(attribute) == attribute_value and position != q_word_position[0]
+                        (f"{word_obj.lemma}:{attribute}:{attribute_value}", word_obj.position)
+                        for word_obj in word_objects
+                        if getattr(word_obj, attribute) == attribute_value and word_obj.position != q_word_position[0]
                     )
-
             if map_field is None:
                 if collocate_distance is None:
-                    collocate_list = [collocate for collocate, _ in words]
+                    all_collocates.update(map(itemgetter(0), words))
                 else:
-                    collocate_list = [
-                        collocate
-                        for collocate, position in words
-                        if abs(position - q_word_position[0]) <= collocate_distance
-                    ]
-                all_collocates.update(collocate_list)
+                    all_collocates.update(
+                        (
+                            collocate
+                            for collocate, position in words
+                            if abs(position - q_word_position[0]) <= collocate_distance
+                        )
+                    )
             else:
                 metadata_value = get_metadata_value(sql_cursor, map_field, parent_sentence, field_obj_index, obj_level)
                 if not metadata_value:
@@ -167,14 +173,15 @@ def collocation_results(request, config, current_collocates):
                 if metadata_value not in collocate_map:
                     collocate_map[metadata_value] = Counter()
                 if collocate_distance is None:
-                    collocate_list = [collocate for collocate, _ in words]
+                    collocate_map[metadata_value].update(map(itemgetter(0), words))
                 else:
-                    collocate_list = [
-                        collocate
-                        for collocate, position in words
-                        if abs(position - q_word_position[0]) <= collocate_distance
-                    ]
-                collocate_map[metadata_value].update(collocate_list)
+                    collocate_map[metadata_value].update(
+                        (
+                            collocate
+                            for collocate, position in words
+                            if abs(position - q_word_position[0]) <= collocate_distance
+                        )
+                    )
 
             hits_done += 1
             elapsed = timeit.default_timer() - start_time
@@ -182,6 +189,7 @@ def collocation_results(request, config, current_collocates):
             if max_time is not None:
                 if elapsed > int(max_time):
                     break
+
     env.close()
     hits.finish()
     collocation_object["results_length"] = len(hits)

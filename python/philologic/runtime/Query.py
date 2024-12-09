@@ -367,7 +367,7 @@ def get_cooccurrence_groups(
             if previous_row is not None and compare_rows(philo_id_object, previous_row) == 0:
                 if match is True:
                     results[0] = index.reshape(-1, 9)  # replace the previous row with the current row
-                    yield tuple(results)
+                    yield results
                 continue
             results = deque()
             match = True
@@ -421,7 +421,7 @@ def get_cooccurrence_groups(
                 break
             elif match is True:
                 results.appendleft(index.reshape(-1, 9))  # We only keep the first instance of a hit in the first group
-                yield tuple(results)
+                yield results
 
     env.close()
 

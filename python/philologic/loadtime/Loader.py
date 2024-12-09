@@ -126,6 +126,7 @@ class Loader:
     has_attributes = False
     nlp = None
     suppress_word_attributes = set()
+    word_attributes = []
 
     @classmethod
     def set_class_attributes(cls, loader_options):
@@ -998,6 +999,19 @@ class Loader:
                 f(cls)
 
         # Set up sentences database
+        # We need to find which word attributes were found in the collection
+        attributes_to_skip = list(cls.attributes_to_skip)
+        attributes_to_skip.remove("lemma")
+        attributes_to_skip = set(attributes_to_skip)
+        attributes_to_skip.update({"token", "position", "philo_type"})
+        word_attributes = set()
+        if cls.has_attributes is True:
+            with lz4.frame.open(f"{cls.workdir}/all_words_sorted.lz4") as input_file:
+                for line in input_file:
+                    line = line.decode("utf-8")
+                    _, _, _, attributes = line.split("\t", 3)
+                    word_attributes.update(loads(attributes).keys())
+        cls.word_attributes = list(word_attributes.difference(attributes_to_skip))
         db_destination = os.path.join(cls.destination, "sentences.lmdb")
         make_sentences_database(cls, db_destination)
 
@@ -1114,6 +1128,7 @@ class Loader:
         }
         db_values["token_regex"] = self.token_regex
         db_values["default_object_level"] = self.default_object_level
+        db_values["word_attributes"] = self.word_attributes
 
         db_config = MakeDBConfig(filename, **db_values)
         with open(filename, "w") as db_file:

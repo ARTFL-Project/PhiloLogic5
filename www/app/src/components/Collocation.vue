@@ -49,7 +49,7 @@
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + 'input-filter'">{{
                                     localField.label
-                                }}</label></button><input type="text" class="form-control"
+                                    }}</label></button><input type="text" class="form-control"
                                 :id="localField.value + 'input-filter'" :name="localField.value"
                                 :placeholder="localField.example" v-model="comparedMetadataValues[localField.value]"
                                 v-if="metadataInputStyle[localField.value] == 'text' &&
@@ -71,7 +71,7 @@
                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                     <label class="form-check-label" :for="metadataChoice.value">{{
                                         metadataChoice.text
-                                    }}</label>
+                                        }}</label>
                                 </div>
                             </div>
                         </div>
@@ -80,7 +80,7 @@
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + '-input-filter'">{{
                                     localField.label
-                                }}</label>
+                                    }}</label>
                             </button>
                             <select class="form-select" :id="localField.value + '-select'"
                                 v-model="metadataChoiceSelected[localField.value]">
@@ -125,7 +125,7 @@
                                     <button class="btn btn-outline-secondary" type="button">
                                         <label for="query-term-input">{{
                                             $t("searchForm.dateFrom")
-                                        }}</label>
+                                            }}</label>
                                     </button>
                                     <input type="text" class="form-control date-range"
                                         :id="localField.value + '-start-input-filter'"
@@ -134,7 +134,7 @@
                                     <button class="btn btn-outline-secondary ms-3" type="button">
                                         <label for="query-term-input">{{
                                             $t("searchForm.dateTo")
-                                        }}</label></button><input type="text" class="form-control date-range"
+                                            }}</label></button><input type="text" class="form-control date-range"
                                         :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
                                         :placeholder="localField.example" v-model="dateRange[localField.value].end" />
                                 </div>
@@ -896,7 +896,8 @@ input:focus::placeholder {
 }
 
 .time-series-colloc-title {
-    border: solid 1px rgba(0, 0, 0, 0.176);
+    color: $link-color;
+    border: solid 1px $link-color;
     border-radius: 0.25rem 0.25rem 0 0;
     border-bottom-width: 0;
     padding: 0.5rem;

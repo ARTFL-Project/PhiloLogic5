@@ -93,13 +93,13 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
 def make_sentences_database(loader_obj, db_destination):
     """Generate an LMDB database where keys are sentence IDs and values the associated sentence containing all the words in it"""
     print(f"{time.ctime()}: Loading the sentences LMDB database...")
-    attributes_to_skip = list(loader_obj.attributes_to_skip)
-    attributes_to_skip.remove("lemma")
-    attributes_to_skip = set(attributes_to_skip)
-    attributes_to_skip.update({"token", "position", "philo_type"})
     temp_destination = f"{db_destination}_temp"
 
     msgpack = msgspec.msgpack.Encoder()
+    Word = msgspec.defstruct(
+        "Word", [("word", str), ("position", int)] + [(k, str) for k in loader_obj.word_attributes], array_like=True
+    )
+    Sentence = msgspec.defstruct("Sentence", [("words", list[Word])], array_like=True)
 
     with tqdm(total=loader_obj.word_count, leave=False) as pbar:
         env = lmdb.open(temp_destination, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True, sync=False)  # 2TB
@@ -116,24 +116,19 @@ def make_sentences_database(loader_obj, db_destination):
                             sentence_id = struct.pack("6I", *map(int, word_obj["position"].split()[:6]))
                             if sentence_id != current_sentence:
                                 if current_sentence is not None:
-                                    txn.put(current_sentence, msgpack.encode(words))
+                                    txn.put(current_sentence, msgpack.encode(Sentence(words=words)))
                                     words = []
                                     count += 1
                                 current_sentence = sentence_id
-                            attribs = {k: v for k, v in word_obj.items() if k not in attributes_to_skip}
-                            if "lemma" in attribs:
-                                attribs["lemma"] = f'lemma:{attribs["lemma"]}'
-                            words.append(
-                                (
-                                    word_obj["token"],
-                                    word_obj["start_byte"],
-                                    int(word_obj["position"].split()[6]),
-                                    attribs,
-                                )
-                            )
+                            if "lemma" in word_obj:
+                                word_obj["lemma"] = f'lemma:{word_obj["lemma"]}'
+                            word_args = [word_obj["token"], int(word_obj["position"].split()[6])] + [
+                                word_obj.get(k, "") for k in loader_obj.word_attributes
+                            ]
+                            words.append(Word(*word_args))
                             pbar.update()
                     if sentence_id:
-                        txn.put(sentence_id, msgpack.encode(words))
+                        txn.put(sentence_id, msgpack.encode(Sentence(words=words)))
         pbar.close()  # Make sure to clear the tqdm bar
         print(f"{time.ctime()}: Optimizing the sentences index for space...")
         os.mkdir(db_destination)
