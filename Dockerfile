@@ -27,7 +27,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - &&\
 # Install PhiloLogic
 COPY . /PhiloLogic5
 WORKDIR /PhiloLogic5
-RUN ./install.sh -p python3.12 && a2enmod rewrite && a2enmod cgi && a2enmod brotli
+RUN ./install.sh -p python3.12 && a2enmod rewrite && a2enmod cgi && a2enmod brotli && a2enmod headers
 
 # Configure global variables
 RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic5.cfg && \
