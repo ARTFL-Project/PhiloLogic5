@@ -69,7 +69,7 @@ export default {
         return {
             philoConfig: this.$philoConfig,
             date: this.getDate(),
-            docCitation: { citation: [], link: "" },
+            docCitation: { citation: [], link: this.$philoConfig.academic_citation.link },
         };
     },
     created() {
