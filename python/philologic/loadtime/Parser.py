@@ -1128,7 +1128,6 @@ class XMLParser:
                                 else:
                                     self.v["word"]["lemma"] = self.lemmas[word]
                             self.v.pull("word", current_pos)
-
                     # Sentence break handler
                     elif not self.in_line_group and not self.in_tagged_sentence:
                         if self.is_word_sentence_breaker(word, last_word, next_word):
@@ -1141,7 +1140,7 @@ class XMLParser:
                             self.v["sent"].name = word.replace("\t", " ").strip()
                             self.v.pull("sent", current_pos + len(word.encode("utf8")))
                     if self.is_word_sentence_breaker(word, last_word, next_word):
-                        self.last_sentence_marker = word
+                        self.last_sentence_marker = word.replace("\t", " ").strip()
                     elif self.punct_regex.search(word):
                         punc_pos = current_pos - len(word.encode("utf8"))
                         punct = word.strip()
