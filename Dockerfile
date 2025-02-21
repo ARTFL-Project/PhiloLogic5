@@ -37,6 +37,8 @@ RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic
 COPY docker_apache_restart.sh /autostart.sh
 RUN chmod +x /autostart.sh
 
+WORKDIR /
+
 # Set up Apache configuration
 RUN perl -i -p0e 's/<Directory \/var\/www\/>\n\tOptions Indexes FollowSymLinks\n\tAllowOverride None/<Directory \/var\/www\/>\n\tOptions Indexes FollowSymLinks\n\tAllowOverride all/smg' /etc/apache2/apache2.conf
 EXPOSE 80

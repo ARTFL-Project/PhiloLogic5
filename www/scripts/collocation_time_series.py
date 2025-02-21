@@ -25,9 +25,33 @@ except ImportError:
     from philologic.runtime import WSGIHandler
 
 
+def calculate_distinctive_collocates(current_period, prev_period, next_period, collocates_per_period):
+    """Calculate distinctive collocates using z-scores"""
+    if prev_period is None and next_period is None:
+        return []
+
+    # Create combined neighbor period
+    if prev_period is None:
+        neighbor_period = next_period
+    elif next_period is None:
+        neighbor_period = prev_period
+    else:
+        # Simple sum of neighbors - zscore_diff will handle normalization
+        neighbor_period = prev_period + next_period
+
+    # Calculate distinctiveness using zscore_diff
+    diff, _, _ = zscore_diff(current_period, neighbor_period)
+
+    # Convert to series and sort
+    diff_series = pd.Series(diff, index=collocates_per_period.columns)
+    diff_series = diff_series[diff_series > 0].sort_values(ascending=False).round(4)
+
+    distinctive = [(word, float(score)) for word, score in diff_series.head(100).items()]
+    return distinctive
+
+
 def collocation_time_series(environ, start_response):
-    """Reads in a pickled file containing collocations for each year. Then groups years by range
-    and then compares the difference from one period to the next."""
+    """Reads in a pickled file containing collocations for each year."""
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
@@ -50,36 +74,34 @@ def collocation_time_series(environ, start_response):
     collocates_per_period = collocates_per_year_df.groupby("period_group").sum() + 1  # + 1 for Laplace smoothing
     collocates_per_period.sort_index(inplace=True)
 
-    # We calculate the difference between each period as the cosine similarity between each period based on the z-score of the collocates
     period_number = int(request.period_number)
-    first_period = collocates_per_period.iloc[period_number].to_numpy()
-    second_period = collocates_per_period.iloc[period_number + 1].to_numpy()
-    first_period_diff, second_period_diff, similarity = zscore_diff(first_period, second_period)
-    first_period_series = (
-        pd.Series(first_period_diff, index=collocates_per_period.columns).sort_values(ascending=False).round(4)
-    )
-    first_period_over_representation = list(first_period_series[first_period_series > 0].head(100).items())
-    second_period_series = (
-        pd.Series(second_period_diff, index=collocates_per_period.columns).sort_values(ascending=False).round(4)
-    )
-    second_period_over_representation = list(second_period_series[second_period_series > 0].head(100).items())
+    current_year = int(collocates_per_period.index[period_number])
+    current_period = collocates_per_period.iloc[period_number].to_numpy()
 
-    if collocates_per_period.iloc[period_number + 1].name == collocates_per_period.iloc[-1].name:
-        done = True
-    else:
-        done = False
+    # Get frequent collocates for current period
+    current_freq = np.log(current_period) / current_period.sum()
+    frequent_collocates = pd.Series(current_freq, index=collocates_per_period.columns).sort_values(ascending=False)
+    frequent_collocates = [(word, float(score)) for word, score in frequent_collocates.head(100).items()]
+
+    # Get neighboring periods
+    prev_period = collocates_per_period.iloc[period_number - 1].to_numpy() if period_number > 0 else None
+    next_period = (
+        collocates_per_period.iloc[period_number + 1].to_numpy()
+        if period_number < len(collocates_per_period) - 1
+        else None
+    )
+
+    # Calculate distinctive collocates compared to both neighbors
+    distinctive = calculate_distinctive_collocates(current_period, prev_period, next_period, collocates_per_period)
+
+    done = period_number == len(collocates_per_period) - 1
 
     yield orjson.dumps(
         {
-            "first_period": {
-                "year": int(collocates_per_period.index[period_number]),
-                "collocates": first_period_over_representation,
+            "period": {
+                "year": current_year,
+                "collocates": {"frequent": frequent_collocates, "distinctive": distinctive},
             },
-            "second_period": {
-                "year": int(collocates_per_period.index[period_number + 1]),
-                "collocates": second_period_over_representation,
-            },
-            "similarity": float(similarity),
             "done": done,
         }
     )

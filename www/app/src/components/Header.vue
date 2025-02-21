@@ -49,8 +49,8 @@
                             <citations :citation="docCitation.citation" separator=",&nbsp;" />,
                         </span>
                         <span v-html="philoConfig.academic_citation.collection"></span>:
-                        <a :href="docCitation.link">{{ docCitation.link }}</a>
-                        <span>. Accessed on {{ date }}</span>
+                        <a :href="docCitation.link">{{ docCitation.link }}.&nbsp;</a>
+                        <span>Accessed on {{ date }}</span>
                     </div>
                 </div>
             </div>

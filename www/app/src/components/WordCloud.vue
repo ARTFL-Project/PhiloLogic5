@@ -12,7 +12,8 @@ export default {
     props: {
         wordWeights: {
             type: Array,
-            required: true
+            required: true,
+            default: () => []  // Ensure default empty array
         },
         clickHandler: {
             type: Function,
@@ -64,6 +65,9 @@ export default {
     },
     methods: {
         buildWordCloud() {
+            if (!this.wordWeights || this.wordWeights.length === 0) {
+                return;  // Don't try to build if no data
+            }
             let lowestValue = this.wordWeights[this.wordWeights.length - 1].count;
             let higestValue = this.wordWeights[0].count;
             let diff = higestValue - lowestValue;

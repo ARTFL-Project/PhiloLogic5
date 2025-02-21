@@ -49,7 +49,7 @@
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + 'input-filter'">{{
                                     localField.label
-                                    }}</label></button><input type="text" class="form-control"
+                                }}</label></button><input type="text" class="form-control"
                                 :id="localField.value + 'input-filter'" :name="localField.value"
                                 :placeholder="localField.example" v-model="comparedMetadataValues[localField.value]"
                                 v-if="metadataInputStyle[localField.value] == 'text' &&
@@ -71,7 +71,7 @@
                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                     <label class="form-check-label" :for="metadataChoice.value">{{
                                         metadataChoice.text
-                                        }}</label>
+                                    }}</label>
                                 </div>
                             </div>
                         </div>
@@ -80,7 +80,7 @@
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + '-input-filter'">{{
                                     localField.label
-                                    }}</label>
+                                }}</label>
                             </button>
                             <select class="form-select" :id="localField.value + '-select'"
                                 v-model="metadataChoiceSelected[localField.value]">
@@ -96,7 +96,7 @@
                             <button type="button" class="btn btn-outline-secondary"
                                 style="border-top-right-radius: 0; border-bottom-right-radius: 0">
                                 <label :for="localField.value + '-date'">{{ localField.label
-                                    }}</label>
+                                }}</label>
                             </button>
                             <div class="btn-group" role="group">
                                 <button class="btn btn-secondary dropdown-toggle"
@@ -125,7 +125,7 @@
                                     <button class="btn btn-outline-secondary" type="button">
                                         <label for="query-term-input">{{
                                             $t("searchForm.dateFrom")
-                                            }}</label>
+                                        }}</label>
                                     </button>
                                     <input type="text" class="form-control date-range"
                                         :id="localField.value + '-start-input-filter'"
@@ -134,7 +134,7 @@
                                     <button class="btn btn-outline-secondary ms-3" type="button">
                                         <label for="query-term-input">{{
                                             $t("searchForm.dateTo")
-                                            }}</label></button><input type="text" class="form-control date-range"
+                                        }}</label></button><input type="text" class="form-control date-range"
                                         :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
                                         :placeholder="localField.example" v-model="dateRange[localField.value].end" />
                                 </div>
@@ -305,28 +305,28 @@
             </div>
         </div>
         <div v-if="collocMethod == 'timeSeries' && collocationTimePeriods.length > 0" class="mx-2 my-3">
-
-            <div v-for="timePeriods in collocationTimePeriods" :key="timePeriods.periodsCompared">
-                <h6 class="time-series-colloc-title mb-0 mt-4">{{
-                    $t("collocation.collocateBetweenPeriods",
-                        {
-                            start:
-                                timePeriods.firstPeriodYear, end:
-                                timePeriods.secondPeriodYear
-                        }) }}</h6>
-                <div class="card mb-3 shadow-sm">
-                    <div class="row">
-                        <div class="col-6">
-                            <h6 class="py-2 colloc-cloud-title" style="margin-right: -.75rem;">{{
-                                timePeriods.firstPeriodYear }}</h6>
-                            <word-cloud class="px-2" :word-weights="timePeriods.firstPeriod" label=""
-                                :click-handler="collocateTimeSeriesClick(timePeriods.firstPeriodYear)"></word-cloud>
+            <div class="row">
+                <div class="col-12 col-md-6" v-for="(period, index) in collocationTimePeriods" :key="period.year">
+                    <div class="card mb-3">
+                        <div class="card-header p-2 d-flex align-items-center">
+                            <h6 class="mb-0">{{ period.periodYear }}</h6>
                         </div>
-                        <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                            <h6 class="py-2 colloc-cloud-title" style="margin-left: -.75rem;">
-                                {{ timePeriods.secondPeriodYear }}</h6>
-                            <word-cloud class="px-2" :word-weights="timePeriods.secondPeriod" label=""
-                                :click-handler="collocateTimeSeriesClick(timePeriods.secondPeriodYear)"></word-cloud>
+                        <div class="btn-group w-100 rounded-0">
+                            <button class="btn btn-sm rounded-0"
+                                :class="period.showDistinctive ? 'btn-secondary' : 'btn-outline-secondary'"
+                                @click="period.showDistinctive = true">
+                                {{ $t('collocation.overRepresentedCollocates') }}
+                            </button>
+                            <button class="btn btn-sm rounded-0"
+                                :class="!period.showDistinctive ? 'btn-secondary' : 'btn-outline-secondary'"
+                                @click="period.showDistinctive = false">
+                                {{ $t('collocation.frequentCollocates') }}
+                            </button>
+                        </div>
+                        <div class="card-body pt-2">
+                            <word-cloud :word-weights="period.showDistinctive ? period.distinctive : period.frequent"
+                                label="" :click-handler="collocateTimeSeriesClick(period.periodYear)">
+                            </word-cloud>
                         </div>
                     </div>
                 </div>
@@ -423,7 +423,8 @@ export default {
             similarSearching: false,
             timeSeriesInterval: 10,
             collocationTimePeriods: [],
-            progressPercent: 0
+            progressPercent: 0,
+            distinctiveView: 'prev' // Default to showing comparison with previous period
         };
     },
     created() {
@@ -732,24 +733,48 @@ export default {
         },
         getCollocatesOverTime(start, first) {
             this.collocationTimePeriods = []
+            const interval = parseInt(this.timeSeriesInterval)
+            let params = {
+                ...this.$store.state.formData,
+                max_time: 2,
+                time_series_interval: interval,
+                map_field: "year",
+                start: start.toString(),
+                first: first
+            }
+
+            // Handle year range modifications
+            if (this.formData.year) {
+                const yearParts = this.formData.year.split('-')
+                if (yearParts.length === 2) {
+                    const [startYear, endYear] = yearParts
+                    if (startYear && endYear) {
+                        // Both start and end years provided
+                        params.year = `${parseInt(startYear) - interval}-${parseInt(endYear) + interval}`
+                    } else if (startYear) {
+                        // Only start year provided
+                        params.year = `${parseInt(startYear)}-${parseInt(startYear) + interval}`
+                    } else if (endYear) {
+                        // Only end year provided
+                        params.year = `${parseInt(endYear) - interval}-${endYear}`
+                    }
+                } else if (yearParts[0]) {
+                    // Single year
+                    const year = parseInt(yearParts[0])
+                    params.year = `${year - interval}-${year + interval}`
+                }
+            }
+
             this.$http.post(`${this.$dbUrl}/reports/collocation.py`, {
                 current_collocates: []
             }, {
-                params: {
-                    ...this.$store.state.formData,
-                    max_time: 2,
-                    time_series_interval: this.timeSeriesInterval,
-                    map_field: "year",
-                    start: start.toString(),
-                    first: first
-                }
+                params: params
             }).then((response) => {
                 if (response.data.more_results) {
                     this.getCollocatesOverTime(response.data.hits_done, false);
                 } else {
                     this.collocationTimeSeries(response.data.file_path, 0)
                 }
-
             }).catch((error) => {
                 this.debug(this, error);
             });
@@ -762,19 +787,45 @@ export default {
                     period_number: periodNumber
                 }
             }).then((response) => {
-                this.collocationTimePeriods.push({
-                    firstPeriod: this.extractSurfaceFromCollocate(response.data.first_period.collocates),
-                    secondPeriod: this.extractSurfaceFromCollocate(response.data.second_period.collocates),
-                    firstPeriodYear: `${response.data.first_period.year}-${response.data.first_period.year + parseInt(this.timeSeriesInterval)}`,
-                    secondPeriodYear: `${response.data.second_period.year}-${response.data.second_period.year + parseInt(this.timeSeriesInterval)}`,
-                })
+                if (response.data.period) {
+                    const period = response.data.period;
+                    const year = period.year;
+                    const interval = parseInt(this.timeSeriesInterval);
+
+                    const frequent = this.extractSurfaceFromCollocate(period.collocates.frequent || []);
+                    const distinctive = this.extractSurfaceFromCollocate(period.collocates.distinctive || []);
+
+                    this.collocationTimePeriods.push({
+                        year: year,
+                        frequent: frequent,
+                        distinctive: distinctive,
+                        periodYear: `${year}-${year + interval}`,
+                        showDistinctive: true  // Default to showing distinctive collocates
+                    });
+                }
+
                 if (!response.data.done) {
-                    periodNumber += 1
-                    this.collocationTimeSeries(filePath, periodNumber)
+                    periodNumber += 1;
+                    this.collocationTimeSeries(filePath, periodNumber);
                 }
             }).catch((error) => {
                 this.debug(this, error);
             });
+        },
+
+        getDistinctiveCollocates(period) {
+            if (!period) {
+                console.log('Period is null/undefined');  // Debug missing period
+                return [];
+            }
+            const result = this.distinctiveView === 'prev' ?
+                period.distinctive_prev :
+                period.distinctive_next;
+            console.log('Distinctive collocates for period:', {
+                view: this.distinctiveView,
+                result: result
+            });  // Debug result
+            return result;
         },
         collocateTimeSeriesClick(period) {
             let localClick = (item) => {
@@ -895,14 +946,25 @@ input:focus::placeholder {
     color: #fff;
 }
 
-.time-series-colloc-title {
-    color: $link-color;
-    border: solid 1px $link-color;
-    border-radius: 0.25rem 0.25rem 0 0;
-    border-bottom-width: 0;
-    padding: 0.5rem;
-    width: fit-content;
-    font-variant: small-caps;
+.card-header {
+    text-align: center;
+
+    h6 {
+        width: 100%;
+        font-variant: small-caps;
+        font-size: 1rem;
+    }
+}
+
+.btn-group {
+    border: none;
+    border-bottom: solid 1px rgba(0, 0, 0, 0.176);
+}
+
+.btn-sm {
+    font-size: 0.8rem;
+    padding: 0.4rem 0.5rem;
+    flex: 1;
 }
 </style>
 <!-- Not scoped to apply to child -->
