@@ -121,7 +121,8 @@
         "searchEvolution": "Rechercher l'évolution",
         "collocateBetweenPeriods": "Collocations distinctives à travers le temps: {start} vs. {end}",
         "similarUsage": "Usage similaire",
-        "mostSimilarUsage": "avec l'emploi le plus similaire/différent à"
+        "mostSimilarUsage": "avec l'emploi le plus similaire/différent à",
+        "gatheringTimeSeriesPeriod": "Récupération de la période"
     },
     "concordance": {
         "more": "Plus",

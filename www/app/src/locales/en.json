@@ -122,7 +122,8 @@
         "searchEvolution": "Search evolution",
         "collocateBetweenPeriods": "Distinctive Collocations Over Time: {start} vs. {end}",
         "similarUsage": "Similar Usage",
-        "mostSimilarUsage": "with most similar/dissimilar usage to"
+        "mostSimilarUsage": "with most similar/dissimilar usage to",
+        "gatheringTimeSeriesPeriod": "Fetching period"
     },
     "concordance": {
         "more": "More",

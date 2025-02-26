@@ -7,6 +7,9 @@
         <div class="spinner-text" v-if="progress > 0" :class="{ 'spinner-text-large': lg }">
             {{ progress }}%
         </div>
+        <div class="spinner-text" v-else-if="text" :class="{ 'spinner-text-large': lg }">
+            {{ text }}
+        </div>
     </div>
 </template>
 <script>
@@ -15,6 +18,10 @@ export default {
     props: {
         progress: {
             default: 0
+        },
+        text: {
+            type: String,
+            default: ''
         },
         sm: {
             type: Boolean,

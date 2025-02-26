@@ -49,7 +49,7 @@
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + 'input-filter'">{{
                                     localField.label
-                                }}</label></button><input type="text" class="form-control"
+                                    }}</label></button><input type="text" class="form-control"
                                 :id="localField.value + 'input-filter'" :name="localField.value"
                                 :placeholder="localField.example" v-model="comparedMetadataValues[localField.value]"
                                 v-if="metadataInputStyle[localField.value] == 'text' &&
@@ -71,7 +71,7 @@
                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                     <label class="form-check-label" :for="metadataChoice.value">{{
                                         metadataChoice.text
-                                    }}</label>
+                                        }}</label>
                                 </div>
                             </div>
                         </div>
@@ -80,7 +80,7 @@
                             <button type="button" class="btn btn-outline-secondary">
                                 <label :for="localField.value + '-input-filter'">{{
                                     localField.label
-                                }}</label>
+                                    }}</label>
                             </button>
                             <select class="form-select" :id="localField.value + '-select'"
                                 v-model="metadataChoiceSelected[localField.value]">
@@ -96,7 +96,7 @@
                             <button type="button" class="btn btn-outline-secondary"
                                 style="border-top-right-radius: 0; border-bottom-right-radius: 0">
                                 <label :for="localField.value + '-date'">{{ localField.label
-                                }}</label>
+                                    }}</label>
                             </button>
                             <div class="btn-group" role="group">
                                 <button class="btn btn-secondary dropdown-toggle"
@@ -125,7 +125,7 @@
                                     <button class="btn btn-outline-secondary" type="button">
                                         <label for="query-term-input">{{
                                             $t("searchForm.dateFrom")
-                                        }}</label>
+                                            }}</label>
                                     </button>
                                     <input type="text" class="form-control date-range"
                                         :id="localField.value + '-start-input-filter'"
@@ -134,7 +134,7 @@
                                     <button class="btn btn-outline-secondary ms-3" type="button">
                                         <label for="query-term-input">{{
                                             $t("searchForm.dateTo")
-                                        }}</label></button><input type="text" class="form-control date-range"
+                                            }}</label></button><input type="text" class="form-control date-range"
                                         :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
                                         :placeholder="localField.example" v-model="dateRange[localField.value].end" />
                                 </div>
@@ -304,10 +304,13 @@
                 </div>
             </div>
         </div>
-        <div v-if="collocMethod == 'timeSeries' && collocationTimePeriods.length > 0" class="mx-2 my-3">
-            <div class="row">
+        <div v-if="collocMethod == 'timeSeries'" class="mx-2 my-3">
+            <div v-if="searching">
+                {{ $t('collocation.similarCollocGatheringMessage') }}...
+            </div>
+            <div v-if="collocationTimePeriods.length > 0" class="row">
                 <div class="col-12 col-md-6" v-for="(period, index) in collocationTimePeriods" :key="period.year">
-                    <div class="card mb-3">
+                    <div class="card mb-3" v-if="period.done">
                         <div class="card-header p-2 d-flex align-items-center">
                             <h6 class="mb-0">{{ period.periodYear }}</h6>
                         </div>
@@ -328,6 +331,10 @@
                                 label="" :click-handler="collocateTimeSeriesClick(period.periodYear)">
                             </word-cloud>
                         </div>
+                    </div>
+                    <div style="margin-top: 5em; width: 100%; text-align: center" v-else>
+                        <p class="mb-1">{{ $t('collocation.gatheringTimeSeriesPeriod') }}...</p>
+                        <progress-spinner />
                     </div>
                 </div>
             </div>
@@ -733,6 +740,7 @@ export default {
         },
         getCollocatesOverTime(start, first) {
             this.collocationTimePeriods = []
+            this.searching = true
             const interval = parseInt(this.timeSeriesInterval)
             let params = {
                 ...this.$store.state.formData,
@@ -753,10 +761,10 @@ export default {
                         params.year = `${parseInt(startYear) - interval}-${parseInt(endYear) + interval}`
                     } else if (startYear) {
                         // Only start year provided
-                        params.year = `${parseInt(startYear)}-${parseInt(startYear) + interval}`
+                        params.year = `${parseInt(startYear) - interval}-`
                     } else if (endYear) {
                         // Only end year provided
-                        params.year = `${parseInt(endYear) - interval}-${endYear}`
+                        params.year = `-${parseInt(endYear) + interval}`
                     }
                 } else if (yearParts[0]) {
                     // Single year
@@ -773,6 +781,7 @@ export default {
                 if (response.data.more_results) {
                     this.getCollocatesOverTime(response.data.hits_done, false);
                 } else {
+                    this.searching = false
                     this.collocationTimeSeries(response.data.file_path, 0)
                 }
             }).catch((error) => {
@@ -780,6 +789,7 @@ export default {
             });
         },
         collocationTimeSeries(filePath, periodNumber) {
+            this.collocationTimePeriods[periodNumber] = { year: periodNumber, done: false }
             this.$http.get(`${this.$dbUrl}/scripts/collocation_time_series.py`, {
                 params: {
                     file_path: filePath,
@@ -795,13 +805,14 @@ export default {
                     const frequent = this.extractSurfaceFromCollocate(period.collocates.frequent || []);
                     const distinctive = this.extractSurfaceFromCollocate(period.collocates.distinctive || []);
 
-                    this.collocationTimePeriods.push({
+                    this.collocationTimePeriods[periodNumber] = {
                         year: year,
                         frequent: frequent,
                         distinctive: distinctive,
                         periodYear: `${year}-${year + interval}`,
-                        showDistinctive: true  // Default to showing distinctive collocates
-                    });
+                        showDistinctive: true,  // Default to showing distinctive collocates
+                        done: true
+                    };
                 }
 
                 if (!response.data.done) {
