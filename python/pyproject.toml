@@ -33,6 +33,7 @@ dependencies = [
     "pandas~=2.2",
     "spacy==3.7.5",
     "spacy-transformers==1.3.5",
+    "netaddr",
 ]
 
 [tool.setuptools]
