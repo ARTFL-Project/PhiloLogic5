@@ -6,20 +6,33 @@ $popover-max-width: 50%;
     max-height: 60%;
 }
 
-// Theme colors
-$header-color: rgb(245, 219, 157);
-$button-color: rgba(143, 57, 49, .8);
-$button-color-active: rgb(143, 57, 49);
-$link-color: #8f3931;
-$passage-color: rgb(180, 106, 85);
+// Theme colors - using variations of red instead of just opacity
+$header-color: rgb(95, 2, 2);
+$button-color: rgb(120, 15, 15);     // Brighter, more vibrant
+$button-color-active: rgb(155, 25, 25);  // Even brighter, more noticeable
+$button-color-hover: rgb(140, 20, 10);   // More distinct from normal state
+$link-color: rgb(130, 20, 10);       // More saturated, slightly orange-leaning
+$passage-color: rgb(90, 20, 20);     // Deeper, richer
+
 // Themed elements
 nav.navbar {
     background-color: $header-color !important;
 }
 
+.navbar-brand, .nav-link, .navbar .navbar-nav .nav-link {
+    color: #fff !important;
+}
+
 $secondary: $button-color;
 .btn-secondary.active {
     background-color: $button-color-active !important;
+    border-color: darken($button-color-active, 10%) !important;
+}
+
+.btn-secondary:hover:not(.active) {
+    background-color: $button-color-hover !important;
+    box-shadow: 0 2px 3px rgba(0,0,0,0.2) !important;  // Keep subtle shadow on hover
+    transition: all 0.15s ease-in-out !important;
 }
 
 .btn-outline-secondary.active {
@@ -32,7 +45,8 @@ $info: $button-color;
 }
 
 .btn-light.active {
-    background-color: #eee !important;
+    background-color: rgba(155, 25, 25, 0.15) !important;
+    border-color: rgba(155, 25, 25, 0.2) !important;
 }
 
 .link-color {
@@ -49,8 +63,17 @@ a.btn-secondary {
 
 .number,
 .card-header {
-    background-color: $header-color !important;
-    color: $link-color !important;
+    background-color: $button-color !important;
+    color: #fff !important;
+}
+
+.form-check-input:focus {
+    border-color: $button-color !important;
+}
+
+.form-check-input:checked {
+    background-color: $button-color-active !important;
+    border-color: $button-color-active !important;
 }
 
 .input-group-text,
@@ -72,8 +95,13 @@ a.btn-secondary {
 .remove-metadata:hover,
 .term-group-word:hover,
 .close-pill:hover {
-    background-color: $button-color !important;
+    background-color: $button-color-hover !important;
     color: #fff !important;
+}
+
+.metadata-label.active,
+.term-group-word.active {
+    background-color: $button-color-active !important;
 }
 
 .custom-control-label::after {
@@ -86,8 +114,13 @@ a.btn-secondary {
 
 .letter:hover,
 #dico-landing-volume .list-group-item:hover {
-    background-color: $button-color !important;
+    background-color: $button-color-hover !important;
     color: #fff !important;
+}
+
+a:hover:not(.btn-secondary):not(.nav-link) {
+    color: $button-color-hover !important;
+    text-decoration: underline !important;
 }
 
 #dico-landing-volume a:hover {
@@ -117,4 +150,45 @@ input[type="text"]:focus {
 
 :export {
     color: $link-color
+}
+
+// Add a base transition for smoother effects
+.btn, a, .letter, .metadata-label, .remove-metadata, .term-group-word, .close-pill {
+    transition: all 0.2s ease-in-out !important;
+}
+
+// Fix focus state for secondary buttons
+.btn-secondary:focus,
+.btn-secondary.focus {
+    background-color: $button-color-active !important;
+    border-color: darken($button-color-active, 10%) !important;
+    box-shadow: 0 0 0 0.2rem rgba(95, 2, 2, 0.25) !important;  // Subtle focus ring
+}
+
+// Fix focus state for secondary outline buttons
+.btn-outline-secondary:focus,
+.btn-outline-secondary.focus {
+    color: #fff !important;
+    background-color: $button-color-active !important;
+    box-shadow: 0 0 0 0.2rem rgba(95, 2, 2, 0.25) !important;
+}
+
+// Fix focus state for light buttons
+.btn-light:focus,
+.btn-light.focus {
+    background-color: rgba(155, 25, 25, 0.15) !important;
+    border-color: rgba(155, 25, 25, 0.2) !important;
+    box-shadow: 0 0 0 0.2rem rgba(95, 2, 2, 0.15) !important;
+}
+
+// Fix focus state for all other buttons
+.btn:focus,
+.btn.focus {
+    outline: none !important;
+}
+
+#report button:focus {
+    background-color: $button-color-active !important;
+    border-color: darken($button-color-active, 10%) !important;
+    mix-blend-mode: normal;
 }

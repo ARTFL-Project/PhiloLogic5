@@ -454,8 +454,7 @@ export default {
 
 .close-box {
     position: absolute;
-    line-height: 1.9;
-    top: 0;
+    top: 1px;
     right: 0;
 }
 
