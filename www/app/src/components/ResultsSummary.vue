@@ -1,6 +1,6 @@
 <template>
     <div id="results-summary-container" class="mt-4 ms-2 me-2">
-        <div class="card shadow-sm px-3 py-2">
+        <div class="card shadow-sm px-3 py-2" :class="{ 'colloc-no-top-border': report == 'collocation' }">
             <div id="initial_report">
                 <div id="description">
                     <button type="button" class="btn btn-secondary btn-sm"
@@ -19,27 +19,27 @@
                                 <span>{{ $t("resultsSummary.spreadAcross") }}&nbsp;</span>
                                 <progress-spinner progress="0" :sm="true" v-if="!hitlistStatsDone" />
                                 <span v-else>
-                                    <span v-for="( stat, statIndex ) in  statsDescription " :key="stat.field">
+                                    <span v-for="(stat, statIndex) in statsDescription" :key="stat.field">
                                         <router-link :to="`/aggregation?${stat.link}&group_by=${stat.field}`"
                                             class="stat-link" v-if="stat.link.length > 0">{{ stat.count }} {{
-                            stat.label
-                        }}(s)</router-link>
+                                                stat.label
+                                            }}(s)</router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{
-                            $t("common.and")
-                        }}&nbsp;</span>
+                                            $t("common.and")
+                                            }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
                         </div>
                         <div id="search-hits">
                             <b v-if="resultsLength > 0">{{
-                            $t("resultsSummary.displayingHits", {
-                                start: descriptionStart,
-                                end: descriptionEnd,
-                                total: resultsLength,
-                            })
-                        }}</b>
+                                $t("resultsSummary.displayingHits", {
+                                    start: descriptionStart,
+                                    end: descriptionEnd,
+                                    total: resultsLength,
+                                })
+                            }}</b>
                             <b v-else>{{ $t("resultsSummary.noResults") }}</b>
                             <button type="button" class="btn rounded-pill btn-outline-secondary btn-sm ms-1"
                                 style="margin-top: -0.05rem" data-bs-toggle="modal"
@@ -54,12 +54,12 @@
                     <div v-if="report == 'aggregation' && groupByLabel">
                         <div id="result-stats" class="pb-2" v-if="resultsLength > 0">
                             {{
-                            $t("resultsSummary.groupByOccurrences", {
-                                total: resultsLength,
-                                n: groupLength,
-                                label: groupByLabel.toLowerCase(),
-                            })
-                        }}
+                                $t("resultsSummary.groupByOccurrences", {
+                                    total: resultsLength,
+                                    n: groupLength,
+                                    label: groupByLabel.toLowerCase(),
+                                })
+                            }}
                         </div>
                         <div id="result-stats" class="pb-2" v-else>
                             <b>{{ $t("resultsSummary.noResults") }}</b>
@@ -78,10 +78,10 @@
                                 <span tooltip tooltip-title="Click to display filtered words">
                                     <a href @click="toggleFilterList($event)"
                                         v-if="colloc_filter_choice === 'frequency'">{{
-                            $t("resultsSummary.commonWords", { n: filter_frequency }) }}</a>
+                                            $t("resultsSummary.commonWords", { n: filter_frequency }) }}</a>
                                     <a href @click="toggleFilterList($event)"
                                         v-if="colloc_filter_choice === 'stopwords'">{{
-                            $t("resultsSummary.commonStopwords") }}</a>
+                                            $t("resultsSummary.commonStopwords") }}</a>
                                     {{ $t("resultsSummary.filtered") }}.
                                 </span>
                             </span>
@@ -91,9 +91,9 @@
                                     &times;
                                 </button>
                                 <div class="row mt-4">
-                                    <div class="col" v-for=" wordGroup  in  splitFilterList " :key="wordGroup[0]">
+                                    <div class="col" v-for="wordGroup in splitFilterList" :key="wordGroup[0]">
                                         <div class="list-group list-group-flush">
-                                            <div class="list-group-item" v-for=" word  in  wordGroup " :key="word">
+                                            <div class="list-group-item" v-for="word in wordGroup" :key="word">
                                                 {{ word }}
                                             </div>
                                         </div>
@@ -126,11 +126,11 @@
 </template>
 
 <script>
-import searchArguments from "./SearchArguments";
-import ResultsBibliography from "./ResultsBibliography";
+import { Modal } from "bootstrap";
 import ExportResults from "./ExportResults";
 import ProgressSpinner from "./ProgressSpinner";
-import { Modal } from "bootstrap";
+import ResultsBibliography from "./ResultsBibliography";
+import searchArguments from "./SearchArguments";
 
 import { mapFields } from "vuex-map-fields";
 
@@ -392,5 +392,10 @@ export default {
 
 .stat-link {
     text-decoration: none;
+}
+
+.colloc-no-top-border {
+    border-top-width: 0 !important;
+    border-top-left-radius: 0%;
 }
 </style>

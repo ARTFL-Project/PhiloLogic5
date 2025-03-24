@@ -149,21 +149,26 @@
             </div>
         </div>
         <div class="card mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'similar'">
-            <div class="btn-group mt-2" style="width: fit-content;" role="group">
-                <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                    aria-expanded="false">
-                    {{ this.similarFieldSelected || "Select a field" }}
-                </button>
-                <ul class="dropdown-menu">
-                    <li v-for="field in fieldsToCompare" :key="field.value"
-                        @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label }}</a>
-                    </li>
-                </ul>
-                <span style="display: inline-block; margin-left: .5rem; padding-top: .5rem;">{{
-                    $t("collocation.mostSimilarUsage") }}</span>
-                <bibliography-criteria class="ms-2 pt-1" :biblio="biblio" :query-report="report"
+            <!-- Create a single flex container for all elements -->
+            <div class="d-flex align-items-center flex-wrap mt-2">
+                <div class="btn-group" style="width: fit-content;" role="group">
+                    <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
+                        aria-expanded="false">
+                        {{ this.similarFieldSelected || "Select a field" }}
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li v-for="field in fieldsToCompare" :key="field.value"
+                            @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label }}</a>
+                        </li>
+                    </ul>
+                </div>
+                <span class="ms-2">{{ $t("collocation.mostSimilarUsage") }}</span>
+
+                <!-- Include bibliography directly in the flex container -->
+                <bibliography-criteria class="ms-2 mt-2" :biblio="biblio" :query-report="report"
                     :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
             </div>
+
             <div class="mt-2" style="display: flex; align-items: center;" v-if="similarSearching">
                 <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert">
                     {{ similarSearchProgress }}...
@@ -316,12 +321,12 @@
                         </div>
                         <div class="btn-group w-100 rounded-0">
                             <button class="btn btn-sm rounded-0"
-                                :class="period.showDistinctive ? 'btn-secondary' : 'btn-outline-secondary'"
+                                :class="period.showDistinctive ? 'btn-secondary active' : 'btn-outline-secondary'"
                                 @click="period.showDistinctive = true">
                                 {{ $t('collocation.overRepresentedCollocates') }}
                             </button>
                             <button class="btn btn-sm rounded-0"
-                                :class="!period.showDistinctive ? 'btn-secondary' : 'btn-outline-secondary'"
+                                :class="!period.showDistinctive ? 'btn-secondary active' : 'btn-outline-secondary'"
                                 @click="period.showDistinctive = false">
                                 {{ $t('collocation.frequentCollocates') }}
                             </button>
@@ -976,12 +981,5 @@ input:focus::placeholder {
     font-size: 0.8rem;
     padding: 0.4rem 0.5rem;
     flex: 1;
-}
-</style>
-<!-- Not scoped to apply to child -->
-<style>
-#results-summary-container .card {
-    border-top-width: 0 !important;
-    border-top-left-radius: 0%;
 }
 </style>

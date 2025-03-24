@@ -22,27 +22,38 @@ export default {
     },
     computed: {
         colorCodes: function () {
-            let r = 0,
-                g = 0,
-                b = 0;
-            // 3 digits
-            if (this.cloudColor.length == 4) {
-                r = "0x" + this.cloudColor[1] + this.cloudColor[1];
-                g = "0x" + this.cloudColor[2] + this.cloudColor[2];
-                b = "0x" + this.cloudColor[3] + this.cloudColor[3];
+            let r, g, b;
 
-                // 6 digits
-            } else if (this.cloudColor.length == 7) {
-                r = "0x" + this.cloudColor[1] + this.cloudColor[2];
-                g = "0x" + this.cloudColor[3] + this.cloudColor[4];
-                b = "0x" + this.cloudColor[5] + this.cloudColor[6];
+            // Check if the color is in RGB format
+            const rgbMatch = this.cloudColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+
+            if (rgbMatch) {
+                // Parse RGB format
+                r = parseInt(rgbMatch[1]);
+                g = parseInt(rgbMatch[2]);
+                b = parseInt(rgbMatch[3]);
+            } else {
+                // Parse as hex
+                // 3 digits
+                if (this.cloudColor.length == 4) {
+                    r = parseInt("0x" + this.cloudColor[1] + this.cloudColor[1]);
+                    g = parseInt("0x" + this.cloudColor[2] + this.cloudColor[2]);
+                    b = parseInt("0x" + this.cloudColor[3] + this.cloudColor[3]);
+                    // 6 digits
+                } else if (this.cloudColor.length == 7) {
+                    r = parseInt("0x" + this.cloudColor[1] + this.cloudColor[2]);
+                    g = parseInt("0x" + this.cloudColor[3] + this.cloudColor[4]);
+                    b = parseInt("0x" + this.cloudColor[5] + this.cloudColor[6]);
+                }
             }
+
             let colorCodes = {};
             var step = 0.03;
             for (let i = 0; i < 21; i += 1) {
-                let rLocal = r - r * step * i;
-                let gLocal = g - g * step * i;
-                let bLocal = b - b * step * i;
+                // Use Math.max to prevent negative values
+                let rLocal = Math.max(0, Math.round(r - r * step * i));
+                let gLocal = Math.max(0, Math.round(g - g * step * i));
+                let bLocal = Math.max(0, Math.round(b - b * step * i));
                 let opacityStep = i * 0.03;
                 colorCodes[i] = `rgba(${rLocal}, ${gLocal}, ${bLocal}, ${0.4 + opacityStep})`;
             }
