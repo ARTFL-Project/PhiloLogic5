@@ -8,10 +8,12 @@ $popover-max-width: 50%;
 
 // Theme colors
 $header-color: rgb(95, 2, 2);
-$button-color: rgb(120, 15, 15);
+$button-color: rgb(142, 50, 50);
 $button-color-active: rgb(256, 256, 256);
-$link-color: rgb(130, 20, 10);
-$passage-color: rgb(90, 20, 20);
+$link-color: rgb(142, 50, 50);
+$passage-color: rgb(190, 91, 77);
+
+
 // Themed elements
 nav.navbar {
     background-color: $header-color !important;
@@ -33,7 +35,7 @@ $secondary: $button-color;
     color: $link-color !important;
     border-color: $link-color !important;
 }
-.btn-group .btn-secondary.active {
+.btn-group .btn-secondary.active, #toc-top-bar .btn-secondary {
     background-color: $link-color !important;
     color: #fff !important;
     border-color: $link-color !important;
@@ -50,6 +52,11 @@ $info: $button-color;
 
 .link-color {
     color: $link-color
+}
+
+.highlight, .passage-highlight {
+    color: $passage-color !important;
+    font-weight: 700 !important;
 }
 
 a {
@@ -127,6 +134,22 @@ input[type="text"]:focus {
     background-color: #fff !important;
 }
 
+
+// Fonts
+body,
+.btn,
+select,
+.custom-control-label,
+.custom-control,
+.input-group-text,
+.number,
+input {
+    font-family: "Open-Sans", sans-serif !important;
+}
+.text-view {
+    font-family: "Source Serif Pro", serif;
+}
+
 :export {
-    color: $link-color
+    color: $link-color,
 }

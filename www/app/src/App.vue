@@ -234,14 +234,8 @@ a {
     opacity: 0.7;
 }
 
-.highlight {
-    color: #ef4500;
-    font-weight: 400;
-}
-
 .passage-highlight {
     display: inline-block;
-    color: royalblue;
 }
 
 li {
@@ -256,11 +250,10 @@ select,
 .input-group-text,
 input {
     font-size: 14px !important;
-    font-family: "Open-Sans", sans-serif;
+    // font-family: "Open-Sans", sans-serif;
 }
 
 .text-view {
-    font-family: "Source Serif Pro", serif;
     font-size: 0.9rem;
 }
 

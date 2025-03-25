@@ -70,8 +70,8 @@
         <div class="row" id="all-content">
             <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text"
                 style="text-align: center">
-                <div class="card mt-2 mb-4 p-4 shadow d-inline-block">
-                    <div id="book-page" class="text-view">
+                <div class="card text-view mt-2 mb-4 p-4 shadow d-inline-block">
+                    <div id="book-page">
                         <div id="previous-pages" v-if="beforeObjImgs">
                             <span class="xml-pb-image">
                                 <a :href="img[0]" :large-img="img[1]" class="page-image-link"
@@ -99,42 +99,16 @@
                 </div>
             </div>
         </div>
-        <!-- <div
-            id="blueimp-gallery"
-            class="blueimp-gallery blueimp-gallery-controls"
-            data-full-screen="true"
-            data-continuous="false"
-            style="display: none"
-        >
-            <div class="slides"></div>
-            <h3 class="title"></h3>
-            <a class="prev img-buttons">&lt;</a>
-            <a class="next img-buttons">&gt;</a>
-            <a id="full-size-image" class="img-buttons" target="_blank">&nearr;</a>
-            <a class="close img-buttons">&#10005;</a>
-            <ol class="indicator"></ol>
-        </div> -->
         <div id="gallery-template">
-            <!-- <div id="glightbox-body" class="glightbox-container">
-                <div class="gloader visible"></div>
-                <div class="goverlay"></div>
-                <div class="gcontainer">
-                    <div id="glightbox-slider" class="gslider"></div>
-                    <button class="gnext gbtn" tabindex="0" aria-label="Next"
-                        data-customattribute="example">{nextSVG}</button>
-                    <button class="gprev gbtn" tabindex="1" aria-label="Previous">{prevSVG}</button>
-                    <button class="gclose gbtn" tabindex="2" aria-label="Close">{closeSVG}</button>
-                </div>
-            </div> -->
         </div>
     </div>
 </template>
 <script>
-import { mapFields } from "vuex-map-fields";
-import citations from "./Citations";
+import { Popover } from "bootstrap";
 import GLightbox from 'glightbox';
 import 'glightbox/dist/css/glightbox.css';
-import { Popover } from "bootstrap";
+import { mapFields } from "vuex-map-fields";
+import citations from "./Citations";
 
 export default {
     name: "textNavigation",
@@ -789,8 +763,10 @@ a.current-obj,
 }
 
 :deep(.highlight) {
-    background-color: red;
-    color: #fff;
+    background-color: $passage-color;
+    color: #fff !important;
+    padding: 0 0.3rem;
+    border-radius: 0.2rem;
 }
 
 :deep(.xml-div1::after),

@@ -6,33 +6,39 @@ $popover-max-width: 50%;
     max-height: 60%;
 }
 
-// Theme colors - using variations of red instead of just opacity
+// Theme colors
 $header-color: rgb(95, 2, 2);
-$button-color: rgb(120, 15, 15);     // Brighter, more vibrant
-$button-color-active: rgb(155, 25, 25);  // Even brighter, more noticeable
-$button-color-hover: rgb(140, 20, 10);   // More distinct from normal state
-$link-color: rgb(130, 20, 10);       // More saturated, slightly orange-leaning
-$passage-color: rgb(90, 20, 20);     // Deeper, richer
+$button-color: rgb(142, 50, 50);
+$button-color-active: rgb(256, 256, 256);
+$link-color: rgb(142, 50, 50);
+$passage-color: rgb(190, 91, 77);
+
 
 // Themed elements
 nav.navbar {
     background-color: $header-color !important;
 }
-
-.navbar-brand, .nav-link, .navbar .navbar-nav .nav-link {
+nav.navbar a {
     color: #fff !important;
 }
 
 $secondary: $button-color;
 .btn-secondary.active {
     background-color: $button-color-active !important;
-    border-color: darken($button-color-active, 10%) !important;
+    color: $link-color !important;
+    border-color: $button-color !important;
 }
 
-.btn-secondary:hover:not(.active) {
-    background-color: $button-color-hover !important;
-    box-shadow: 0 2px 3px rgba(0,0,0,0.2) !important;  // Keep subtle shadow on hover
-    transition: all 0.15s ease-in-out !important;
+// btn-group btn-secondary are special since they are the reverse of regular btn-secondary
+.btn-group .btn-secondary {
+    background-color: #fff !important;
+    color: $link-color !important;
+    border-color: $link-color !important;
+}
+.btn-group .btn-secondary.active, #toc-top-bar .btn-secondary {
+    background-color: $link-color !important;
+    color: #fff !important;
+    border-color: $link-color !important;
 }
 
 .btn-outline-secondary.active {
@@ -40,17 +46,17 @@ $secondary: $button-color;
 }
 
 $info: $button-color;
-.btn-light {
-    border: solid 1px rgb(206, 212, 218) !important;
-}
-
 .btn-light.active {
-    background-color: rgba(155, 25, 25, 0.15) !important;
-    border-color: rgba(155, 25, 25, 0.2) !important;
+    background-color: #eee !important;
 }
 
 .link-color {
     color: $link-color
+}
+
+.highlight, .passage-highlight {
+    color: $passage-color !important;
+    font-weight: 700 !important;
 }
 
 a {
@@ -61,19 +67,9 @@ a.btn-secondary {
     color: #fff !important;
 }
 
-.number,
-.card-header {
-    background-color: $button-color !important;
+.number, .card-header  {
+    background-color: $header-color !important;
     color: #fff !important;
-}
-
-.form-check-input:focus {
-    border-color: $button-color !important;
-}
-
-.form-check-input:checked {
-    background-color: $button-color-active !important;
-    border-color: $button-color-active !important;
 }
 
 .input-group-text,
@@ -95,13 +91,8 @@ a.btn-secondary {
 .remove-metadata:hover,
 .term-group-word:hover,
 .close-pill:hover {
-    background-color: $button-color-hover !important;
+    background-color: $button-color !important;
     color: #fff !important;
-}
-
-.metadata-label.active,
-.term-group-word.active {
-    background-color: $button-color-active !important;
 }
 
 .custom-control-label::after {
@@ -112,18 +103,8 @@ a.btn-secondary {
     color: $link-color !important;
 }
 
-.letter:hover,
-#dico-landing-volume .list-group-item:hover {
-    background-color: $button-color-hover !important;
-    color: #fff !important;
-}
-
-a:hover:not(.btn-secondary):not(.nav-link) {
-    color: $button-color-hover !important;
-    text-decoration: underline !important;
-}
-
-#dico-landing-volume a:hover {
+.letter:hover {
+    background-color: $button-color !important;
     color: #fff !important;
 }
 
@@ -140,55 +121,35 @@ input[type="text"]:focus {
     opacity: .5
 }
 
-.landing-page-btn:focus {
-    border-color: $link-color !important;
+.landing-page-btn {
+    border-bottom-width: 1px !important;
 }
 
-#report button:focus {
-    mix-blend-mode: hard-light;
+.note-ref {
+    vertical-align: 0.3em !important;
+    font-size: .7em !important;
+    font-weight: 700 !important;
+    color: #670a0a !important;
+    padding: 0 0.2rem !important;
+    background-color: #fff !important;
+}
+
+
+// Fonts
+body,
+.btn,
+select,
+.custom-control-label,
+.custom-control,
+.input-group-text,
+.number,
+input {
+    font-family: "Open-Sans", sans-serif !important;
+}
+.text-view {
+    font-family: "Source Serif Pro", serif;
 }
 
 :export {
-    color: $link-color
-}
-
-// Add a base transition for smoother effects
-.btn, a, .letter, .metadata-label, .remove-metadata, .term-group-word, .close-pill {
-    transition: all 0.2s ease-in-out !important;
-}
-
-// Fix focus state for secondary buttons
-.btn-secondary:focus,
-.btn-secondary.focus {
-    background-color: $button-color-active !important;
-    border-color: darken($button-color-active, 10%) !important;
-    box-shadow: 0 0 0 0.2rem rgba(95, 2, 2, 0.25) !important;  // Subtle focus ring
-}
-
-// Fix focus state for secondary outline buttons
-.btn-outline-secondary:focus,
-.btn-outline-secondary.focus {
-    color: #fff !important;
-    background-color: $button-color-active !important;
-    box-shadow: 0 0 0 0.2rem rgba(95, 2, 2, 0.25) !important;
-}
-
-// Fix focus state for light buttons
-.btn-light:focus,
-.btn-light.focus {
-    background-color: rgba(155, 25, 25, 0.15) !important;
-    border-color: rgba(155, 25, 25, 0.2) !important;
-    box-shadow: 0 0 0 0.2rem rgba(95, 2, 2, 0.15) !important;
-}
-
-// Fix focus state for all other buttons
-.btn:focus,
-.btn.focus {
-    outline: none !important;
-}
-
-#report button:focus {
-    background-color: $button-color-active !important;
-    border-color: darken($button-color-active, 10%) !important;
-    mix-blend-mode: normal;
+    color: $link-color,
 }
