@@ -121,7 +121,7 @@ class PlainTextParser:
                     last_word = word
                     # Check to see if the word is longer than we want. More than 235 characters appear to cause problems in the indexer.
                     if len(word_in_utf8) > 200:
-                        print(f"Long word in {input.name}: {word}", file=sys.stderr)
+                        print(f"Long word in {input_file.name}: {word}", file=sys.stderr)
                         print("Removing word from for index since over 200 bytes long...", file=sys.stderr)
                         start_byte += len(word_in_utf8)
                         continue

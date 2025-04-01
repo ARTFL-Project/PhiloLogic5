@@ -1049,8 +1049,7 @@ body {
 :deep(.note-ref) {
     vertical-align: 0.3em;
     font-size: 0.7em;
-    background-color: $button-color;
-    color: #fff !important;
+    margin-left: 0.1rem;
     padding: 0 0.2rem;
     border-radius: 50%;
 }

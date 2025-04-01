@@ -24,16 +24,11 @@ from black import FileMode, format_str
 from multiprocess import Pool
 from orjson import loads
 from philologic.Config import MakeDBConfig, MakeWebConfig
-from philologic.loadtime.PostFilters import make_sentences_database, make_sql_table
-from philologic.utils import (
-    convert_entities,
-    count_lines,
-    extract_full_date,
-    extract_integer,
-    load_module,
-    pretty_print,
-    sort_list,
-)
+from philologic.loadtime.PostFilters import (make_sentences_database,
+                                             make_sql_table)
+from philologic.utils import (convert_entities, count_lines, extract_full_date,
+                              extract_integer, load_module, pretty_print,
+                              sort_list)
 from tqdm import tqdm
 
 SORT_BY_WORD = "-k 2,2"
@@ -474,7 +469,7 @@ class Loader:
         cls.filequeue = [
             {
                 "name": d["filename"],
-                "size": os.path.getsize(textdir + d["filename"]),
+                "size": os.path.getsize(os.path.join(textdir, d["filename"])),
                 "id": n + 1,
                 "options": d["options"] if "options" in d else {},
                 "newpath": textdir + d["filename"],
