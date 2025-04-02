@@ -71,36 +71,53 @@ def get_neighboring_words(environ, start_response):
             readonly=True,
             lock=False,
         )
-        decoder = msgspec.msgpack.Decoder(list[tuple])
+
+        Word = msgspec.defstruct(
+            "Word", [("token", str), ("position", int)] + [(k, str) for k in db.locals.word_attributes], array_like=True
+        )
+        Sentence = msgspec.defstruct("Sentence", [("words", list[Word])], array_like=True)
+        decoder = msgspec.msgpack.Decoder(type=Sentence)
+
         with open(cache_path, "a") as cache_file, env.begin() as txn:
             cursor = txn.cursor()
             for hit in hits[index:]:
                 if metadata_search is False:
                     remaining = hit[28:]  # 28 bytes for the first 7 integers
-                    offsets = []
+                    positions = []  # Changed from offsets to positions
                     while remaining:
-                        remaining = remaining[4:]  # remove first 4 bytes corresponding to one 32-bit integer
+                        # First integer in the pair is the word position
+                        position = int.from_bytes(remaining[:4], "little", signed=False)
+                        positions.append(position)  # Store the position
+                        remaining = remaining[4:]
+
+                        # Skip the second integer (the offset)
                         if remaining:
-                            offset = int.from_bytes(remaining[:4], "little", signed=False)  # get first integer
-                            remaining = remaining[4:]  # remove first integer
-                            offsets.append(offset)
-                    offsets.sort()
+                            remaining = remaining[4:]
+
+                    positions.sort()
                     sentence = hit[:24]  # 24 bytes for the first 6 integers
                 else:
-                    offsets = hit.bytes
+                    positions = [word.philo_id[-1] for word in hit.words]
                     sentence = struct.pack("6I", *hit.hit[:6])
-                words = decoder.decode(cursor.get(sentence))
+
+                words = decoder.decode(cursor.get(sentence)).words
                 left_side_text = []
                 right_side_text = []
                 query_words = []
-                for word, start_byte, _, _ in words:
+
+                for word_obj in words:  # Changed to use the complete word object
+                    word = word_obj.token
+                    position = word_obj.position  # Use the position attribute directly
+
                     if NUMBER.search(word):
                         continue
                     if db.locals.ascii_conversion is True:
                         word = unidecode(word)
-                    if offsets[0] > start_byte:
+
+                    # Compare using position instead of byte offset
+                    if positions[0] > position:
                         left_side_text.append(word)
-                    elif start_byte > offsets[-1]:
+                    elif position > positions[-1]:
                         right_side_text.append(word)
                     else:
                         query_words.append(word)
