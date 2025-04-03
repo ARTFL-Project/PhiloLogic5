@@ -83,7 +83,7 @@ def get_neighboring_words(environ, start_response):
             for hit in hits[index:]:
                 if metadata_search is False:
                     remaining = hit[28:]  # 28 bytes for the first 7 integers
-                    positions = []  # Changed from offsets to positions
+                    positions = []
                     while remaining:
                         # First integer in the pair is the word position
                         position = int.from_bytes(remaining[:4], "little", signed=False)
@@ -105,16 +105,16 @@ def get_neighboring_words(environ, start_response):
                 right_side_text = []
                 query_words = []
 
-                for word_obj in words:  # Changed to use the complete word object
+                for word_obj in words:
                     word = word_obj.token
-                    position = word_obj.position  # Use the position attribute directly
+                    position = word_obj.position
 
                     if NUMBER.search(word):
                         continue
                     if db.locals.ascii_conversion is True:
                         word = unidecode(word)
 
-                    # Compare using position instead of byte offset
+                    # Compare using position
                     if positions[0] > position:
                         left_side_text.append(word)
                     elif position > positions[-1]:
