@@ -14,7 +14,7 @@
                 </li>
             </ul>
         </div>
-        <button type="button" class="nav-link position-absolute cite" data-bs-toggle="modal"
+        <button type="button" id="academic-citation-link" class="nav-link position-absolute" data-bs-toggle="modal"
             data-bs-target="#academic-citation" v-if="philoConfig.academic_citation.collection.length > 0">
             {{ $t("header.citeUs") }}
         </button>
@@ -151,14 +151,12 @@ export default {
     font-weight: 700;
 }
 
-.cite {
+#academic-citation-link {
     left: 0.5rem;
     bottom: 0.25rem;
     font-variant: small-caps;
     font-weight: 700;
-    background-color: inherit;
     border-width: 0;
-    color: $link-color;
 }
 
 .modal-dialog {
