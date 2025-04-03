@@ -152,6 +152,7 @@ export default {
 }
 
 #academic-citation-link {
+    background-color: inherit;
     left: 0.5rem;
     bottom: 0.25rem;
     font-variant: small-caps;
