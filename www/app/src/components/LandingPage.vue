@@ -18,9 +18,9 @@
                                 v-for="(range, rangeIndex) in browseType.queries" :key="rangeIndex"
                                 @click="getContent(browseType, range)">
                                 <button class="btn btn-light landing-page-btn" :class="{
-                first: rangeIndex === 0,
-                last: rangeIndex === browseType.queries.length - 1,
-            }" style="border-radius: 0; width: 100%">
+                                    first: rangeIndex === 0,
+                                    last: rangeIndex === browseType.queries.length - 1,
+                                }" style="border-radius: 0; width: 100%">
                                     {{ range }}
                                 </button>
                             </div>
@@ -54,7 +54,7 @@
                                         <i style="font-variant: small-caps">{{ volume.title }}</i>
                                         <span style="font-weight: 300; padding-left: 0.25rem"
                                             v-if="volume.start_head">({{
-                volume.start_head }} - {{ volume.end_head }})</span>
+                                                volume.start_head }} - {{ volume.end_head }})</span>
                                     </router-link>
                                 </div>
                             </div>

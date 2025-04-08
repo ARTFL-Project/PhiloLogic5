@@ -67,9 +67,18 @@ a.btn-secondary {
     color: #fff !important;
 }
 
-.number, .card-header  {
-    background-color: $header-color !important;
-    color: #fff !important;
+.number, .card-header {
+    color: $link-color !important;
+    background-color: #fff !important;
+    font-weight: 700 !important;
+    border: 1px solid $link-color !important;
+    border-radius: 6px 6px 0 0 !important;
+    margin: -1px -1px 0 -1px !important; /* Offset to cover card borders */
+}
+.close-box {
+    background-color: #fff !important;
+    color: $link-color !important;
+    border-width: 0 !important;
 }
 
 .input-group-text,
