@@ -61,7 +61,7 @@
                             <a href="http://artfl-project.uchicago.edu/node/14">Subscription Information</a> to see how
                             your institution can gain access to ARTFL resources.
                         </p>
-                        <p v-if="access.clientIp">
+                        <p v-if="clientIp">
                             Requesting Computer Address:
                             <code>{{ clientIp }}</code>
                         </p>
@@ -72,7 +72,7 @@
     </div>
 </template>
 <script>
-import { ref, inject } from "vue";
+import { inject, ref } from "vue";
 
 export default {
     props: ["clientIp", "domainName"],

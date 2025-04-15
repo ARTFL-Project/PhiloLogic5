@@ -7,7 +7,7 @@
         <Header />
         <SearchForm v-if="accessAuthorized" />
         <router-view v-if="accessAuthorized" />
-        <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized && accessDataReady" />
+        <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized" />
         <div class="container-fluid" v-if="accessAuthorized">
             <div class="text-center mb-4">
                 <hr class="mb-3" width="20%" style="margin: auto" />
@@ -44,7 +44,6 @@ export default {
             clientIp: "",
             domainName: "",
             accessAuthorized: true,
-            accessDataReady: false
         };
     },
     computed: {
@@ -148,7 +147,6 @@ export default {
                         } else {
                             this.clientIp = response.data.incoming_address;
                             this.domainName = response.data.domain_name;
-                            this.accessDataReady = true;
                         }
                     });
             } else {
