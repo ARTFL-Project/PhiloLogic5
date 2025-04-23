@@ -870,9 +870,6 @@ export default {
 @import "../assets/styles/theme.module.scss";
 
 th {
-    background-color: $link-color;
-    color: #fff;
-    font-weight: 400;
     font-variant: small-caps;
 }
 
