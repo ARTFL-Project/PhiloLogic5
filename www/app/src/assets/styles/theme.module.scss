@@ -8,11 +8,11 @@ $popover-max-width: 50%;
 
 // Theme colors
 $header-color: rgb(95, 2, 2);
-$button-color: rgb(142, 50, 50);
-$button-color-active: rgb(256, 256, 256);
+$button-color: rgb(173, 66, 66);
+$button-color-active: rgba(190, 75, 75, 0.9);
 $link-color: rgb(142, 50, 50);
 $passage-color: rgb(190, 91, 77);
-
+$card-header-color: rgb(173, 66, 66);
 
 // Themed elements
 nav.navbar {
@@ -24,9 +24,8 @@ nav.navbar a, #academic-citation-link {
 
 $secondary: $button-color;
 .btn-secondary.active {
+    color: #fff !important;
     background-color: $button-color-active !important;
-    color: $link-color !important;
-    border-color: $button-color !important;
 }
 
 // btn-group btn-secondary are special since they are the reverse of regular btn-secondary
@@ -36,9 +35,9 @@ $secondary: $button-color;
     border-color: $link-color !important;
 }
 .btn-group .btn-secondary.active, #toc-top-bar .btn-secondary {
-    background-color: $link-color !important;
+    border-color: $button-color !important;
+    background-color: $button-color-active !important;
     color: #fff !important;
-    border-color: $link-color !important;
 }
 
 .btn-outline-secondary.active {
@@ -68,16 +67,12 @@ a.btn-secondary {
 }
 
 .number, .card-header {
-    color: $link-color !important;
-    background-color: #fff !important;
+    color: #fff !important;
+    background-color: $card-header-color !important;
     font-weight: 700 !important;
-    border: 1px solid $link-color !important;
-    border-radius: 6px 6px 0 0 !important;
-    margin: -1px -1px 0 -1px !important; /* Offset to cover card borders */
 }
 .close-box {
-    background-color: #fff !important;
-    color: $link-color !important;
+    color: fff !important;
     border-width: 0 !important;
 }
 
