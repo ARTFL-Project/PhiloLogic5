@@ -132,6 +132,7 @@ def make_sentences_database(loader_obj, db_destination):
         pbar.close()  # Make sure to clear the tqdm bar
         print(f"{time.ctime()}: Optimizing the sentences index for space...")
         os.mkdir(db_destination)
+        env.sync(True) # Ensure all data is written to disk before compacting database
         env.copy(db_destination, compact=True)
         env.close()
         os.system(f"rm -r {temp_destination}")

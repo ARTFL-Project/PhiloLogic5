@@ -261,7 +261,13 @@ class Loader:
             delimiter = ","
         with open(bibliography_file, encoding="utf8") as input_file:
             reader = csv.DictReader(input_file, delimiter=delimiter)
-            load_metadata = [metadata for metadata in reader]
+            load_metadata = []
+            for metadata in reader:
+                if "year" not in metadata:
+                    metadata = self.create_year_field(metadata)
+                if "year" not in metadata:
+                    metadata["year"] = 0
+                load_metadata.append(metadata)
         print(
             "Sorting files by the following metadata fields: %s..." % ", ".join([i for i in sort_by_field]),
             end=" ",
@@ -914,9 +920,16 @@ class Loader:
 
         print(f"{time.ctime()}: Optimizing word index for space...", flush=True)
         os.mkdir(f"{cls.destination}/words.lmdb")
-        db_env.copy(f"{cls.destination}/words.lmdb", compact=True)
+        db_env.sync(True) # Ensure all data is written to disk
         db_env.close()
-        os.system(f"rm -rf {cls.destination}/temp_words.lmdb")
+        # Reopen env without writemap to compact the database
+        src_env = lmdb.open(
+            f"{cls.destination}/temp_words.lmdb",
+            readonly=True,
+        )
+        src_env.copy(f"{cls.destination}/words.lmdb", compact=True)
+        src_env.close()
+        # os.system(f"rm -rf {cls.destination}/temp_words.lmdb")
 
         # Create a lemma lookup table where keys are philo_ids as bytes and values are lemmas in the form lemma:word
         if cls.lemma_count > 0:
@@ -946,6 +959,7 @@ class Loader:
 
             print(f"{time.ctime()}: Optimizing lemma lookup index for space...", flush=True)
             os.mkdir(f"{cls.destination}/lemmas.lmdb")
+            lemma_db_env.sync(True)  # Ensure all data is written to disk before compacting database
             lemma_db_env.copy(f"{cls.destination}/lemmas.lmdb", compact=True)
             lemma_db_env.close()
             os.system(f"rm -rf {cls.destination}/temp_lemma_lookup.lmdb")

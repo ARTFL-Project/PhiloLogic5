@@ -152,6 +152,21 @@ def split_terms(grouped):
     return split
 
 
+def filter_philo_ids(philo_ids, corpus_philo_ids, object_level):
+    """Filter philo_ids based on corpus_philo_ids."""
+
+    def rows_as_void(rows):
+        arr_contiguous = np.ascontiguousarray(rows) # ensure array is C-contiguous for a valid view
+        # Create a dtype for a row; itemsize is element_size_in_bytes * num_columns
+        void_dtype = np.dtype((np.void, arr_contiguous.dtype.itemsize * arr_contiguous.shape[1]))
+        return arr_contiguous.view(void_dtype).ravel()
+
+    philo_ids_void = rows_as_void(philo_ids[:, :object_level])
+    corpus_philo_ids_void = rows_as_void(corpus_philo_ids)
+    matching_indices_void = np.isin(philo_ids_void, corpus_philo_ids_void)
+    return philo_ids[matching_indices_void]
+
+
 def search_word(db_path, hitlist_filename, corpus_file=None):
     """Search for a single word in the database."""
     with open(f"{hitlist_filename}.terms", "r") as terms_file:
@@ -167,15 +182,18 @@ def search_word(db_path, hitlist_filename, corpus_file=None):
                 output_file.write(txn.get(word.encode("utf8")))
             else:
                 corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
-                philo_ids = np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9)
-                matching_indices = np.isin(philo_ids[:, :object_level], corpus_philo_ids).any(axis=1)
-                output_file.write(philo_ids[matching_indices].tobytes())
+                filtered_philo_ids = filter_philo_ids(
+                    np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9),
+                    corpus_philo_ids,
+                    object_level,
+                )
+                output_file.write(filtered_philo_ids.tobytes())
     else:
         with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
             for philo_ids in merge_word_group(txn, words):
                 if corpus_philo_ids is not None:
-                    matching_indices = np.isin(philo_ids[:, :object_level], corpus_philo_ids).any(axis=1)
-                    output_file.write(philo_ids[matching_indices].tobytes())
+                    filtered_philo_ids = filter_philo_ids(philo_ids, corpus_philo_ids, object_level)
+                    output_file.write(filtered_philo_ids.tobytes())
                 else:
                     output_file.write(philo_ids.tobytes())
     env.close()
@@ -353,10 +371,7 @@ def get_cooccurrence_groups(
                     group_generators.append(merge_word_group(txn, words, chunk_size=36 * 1000))
 
         if corpus_philo_ids is not None:
-            # Filter out philo_ids that are not in the corpus
-            first_group_data = first_group_data[
-                np.isin(first_group_data[:, :object_level], corpus_philo_ids).any(axis=1)
-            ]
+            first_group_data = filter_philo_ids(first_group_data, corpus_philo_ids, object_level)
 
         group_data = [None for _ in range(len(word_groups) - 1)]  # Start with None for each group
         break_out = False
@@ -549,7 +564,7 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
             dtype="u4",
         )
 
-        # The lexsort is 3 times slower as the composite key sort
+        # The lexsort is 3 times slower than the composite key sort
         # sorted_indices = np.lexsort((combined_arrays[:, -1], combined_arrays[:, 0]))
         # yield combined_arrays[sorted_indices]
 
@@ -722,18 +737,27 @@ if __name__ == "__main__":
     split = split_terms(grouped)
     print("parsed %d terms:" % len(split), split, file=sys.stderr)
 
-    class Fake_DB:
-        pass
+    env = lmdb.open(f"{path}/data/words.lmdb", readonly=True, readahead=False)
+    with env.begin(buffers=True) as txn:
+        raw_bytes = txn.get(terms[0].encode("utf8"))
+        # print(len(raw_bytes))
+        # hits = np.frombuffer(txn.get(terms[0].encode("utf8")), dtype="u4").reshape(-1, 9)
 
-    fake_db = Fake_DB()
-    from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
 
-    fake_db.path = path + "/data/"
-    fake_db.locals = Config(fake_db.path + "/db.locals.py", DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
-    fake_db.encoding = "utf-8"
-    freq_file = path + "/data/frequencies/normalized_word_frequencies"
-    # expand_query_not(split, freq_file, sys.stdout)
-    hits = query(fake_db, " ".join(terms), query_debug=True, raw_results=True)
-    hits.finish()
-    for hit in hits:
-        print(hit)
+
+    # class Fake_DB:
+    #     pass
+
+    # fake_db = Fake_DB()
+    # from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
+
+    # fake_db.path = path + "/data/"
+    # fake_db.locals = Config(fake_db.path + "/db.locals.py", DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
+    # fake_db.encoding = "utf-8"
+    # freq_file = path + "/data/frequencies/normalized_word_frequencies"
+    # # expand_query_not(split, freq_file, sys.stdout)
+    # hits = query(fake_db, " ".join(terms), query_debug=True, raw_results=True)
+    # hits.finish()
+    # print(len(hits))
+    # for hit in hits:
+    #     print(hit)
