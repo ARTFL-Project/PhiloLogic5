@@ -161,7 +161,6 @@ def __filter_philo_ids_on_void(corpus_philo_ids, philo_ids):
         void_dtype = np.dtype((np.void, arr_contiguous.dtype.itemsize * arr_contiguous.shape[1]))
         return arr_contiguous.view(void_dtype).ravel()
 
-
     corpus_philo_ids_void = __rows_as_void(corpus_philo_ids)
     philo_ids_void = __rows_as_void(philo_ids)
     matching_indices_void = np.isin(philo_ids_void, corpus_philo_ids_void)
@@ -228,15 +227,10 @@ def search_word(db_path, hitlist_filename, corpus_file=None):
 def search_phrase(db_path, hitlist_filename, corpus_file=None):
     """Phrase searches where words need to be in a specific order"""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
-    object_level = None
-    corpus_philo_ids = None
-    if corpus_file is not None:
-        corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
     common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level, cooc_order=True
+        db_path, word_groups, corpus_file=corpus_file, cooc_order=True
     )
     mapping_order = next(common_object_ids)
-
     with open(hitlist_filename, "wb") as output_file:
         for philo_id_groups in common_object_ids:
             for group_combination in product(*philo_id_groups):
@@ -256,12 +250,8 @@ def search_phrase(db_path, hitlist_filename, corpus_file=None):
 def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_distance, corpus_file=None):
     """Search for co-occurrences of multiple words within n words of each other in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
-    object_level = None
-    corpus_philo_ids = None
-    if corpus_file is not None:
-        corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
     common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, corpus_philo_ids=corpus_philo_ids, object_level=object_level, cooc_order=cooc_order
+        db_path, word_groups, corpus_file=corpus_file, cooc_order=cooc_order
     )
 
     if cooc_order is True:
@@ -302,16 +292,11 @@ def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_dist
 def search_within_text_object(db_path, hitlist_filename, level, cooc_order, corpus_file=None):
     """Search for co-occurrences of multiple words in the same sentence in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
-    object_level = None
-    corpus_philo_ids = None
-    if corpus_file is not None:
-        corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
     common_object_ids = get_cooccurrence_groups(
         db_path,
         word_groups,
         level=level,
-        corpus_philo_ids=corpus_philo_ids,
-        object_level=object_level,
+        corpus_file=corpus_file,
         cooc_order=cooc_order,
     )
 
@@ -358,7 +343,7 @@ def get_word_groups(terms_file):
 
 
 def get_cooccurrence_groups(
-    db_path, word_groups, level="sent", corpus_philo_ids=None, object_level=None, cooc_order=False
+    db_path, word_groups, level="sent", corpus_file=None, cooc_order=False
 ):
     cooc_slice = 6
     if level == "para":
@@ -396,8 +381,8 @@ def get_cooccurrence_groups(
                 else:
                     group_generators.append(merge_word_group(txn, words, chunk_size=36 * 1000))
 
-        if corpus_philo_ids is not None:
-            first_group_data = filter_philo_ids(first_group_data, corpus_philo_ids, object_level)
+        if corpus_file is not None:
+            first_group_data = filter_philo_ids(corpus_file, first_group_data)
 
         group_data = [None for _ in range(len(word_groups) - 1)]  # Start with None for each group
         break_out = False
