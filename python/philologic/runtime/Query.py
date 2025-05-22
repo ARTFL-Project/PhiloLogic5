@@ -179,16 +179,14 @@ def filter_philo_ids(corpus_file, philo_ids) -> np.ndarray:
         matching_indices = __filter_philo_ids_on_void(corpus_philo_ids[:, :object_level], philo_ids[:, :object_level])
         return philo_ids[matching_indices]
     else:
-        max_philo_path_len = 5 # max length of philo_id path part for metadata
+        unique_lengths = np.unique(actual_corpus_lengths) # get unique lengths
         num_philo_rows = philo_ids.shape[0]
         overall_match_mask = np.zeros(num_philo_rows, dtype=bool)
 
-        for current_len in range(1, max_philo_path_len + 1):
+        for current_len in unique_lengths:
             # Create a mask for the corpus_philo_ids that match the current length
             corpus_rows_for_this_len_mask = (actual_corpus_lengths == current_len)
 
-            if not np.any(corpus_rows_for_this_len_mask):
-                continue # No corpus prefixes of this specific actual length
             # Extract these actual corpus prefixes (all are of length current_len)
             relevant_corpus_prefixes = corpus_philo_ids[corpus_rows_for_this_len_mask, :current_len]
             philo_ids_prefixes = philo_ids[:, :current_len]
