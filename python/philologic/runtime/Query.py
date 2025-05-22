@@ -152,28 +152,55 @@ def split_terms(grouped):
     return split
 
 
-def filter_philo_ids(philo_ids, corpus_philo_ids, object_level):
-    """Filter philo_ids based on corpus_philo_ids."""
+def __filter_philo_ids_on_void(corpus_philo_ids, philo_ids):
+    """Filter philo_ids based on corpus metadata."""
 
-    def rows_as_void(rows):
+    def __rows_as_void(rows):
         arr_contiguous = np.ascontiguousarray(rows) # ensure array is C-contiguous for a valid view
         # Create a dtype for a row; itemsize is element_size_in_bytes * num_columns
         void_dtype = np.dtype((np.void, arr_contiguous.dtype.itemsize * arr_contiguous.shape[1]))
         return arr_contiguous.view(void_dtype).ravel()
 
-    philo_ids_void = rows_as_void(philo_ids[:, :object_level])
-    corpus_philo_ids_void = rows_as_void(corpus_philo_ids)
+
+    corpus_philo_ids_void = __rows_as_void(corpus_philo_ids)
+    philo_ids_void = __rows_as_void(philo_ids)
     matching_indices_void = np.isin(philo_ids_void, corpus_philo_ids_void)
-    return philo_ids[matching_indices_void]
+    return matching_indices_void
+
+def filter_philo_ids(corpus_file, philo_ids) -> np.ndarray:
+    """Filter philo_ids based on corpus metadata."""
+    with open(corpus_file, "rb") as corpus:
+        buffer = corpus.read()
+        corpus_philo_ids = np.frombuffer(buffer, dtype="u4").reshape(-1, 7)
+    corpus_padded = np.pad(corpus_philo_ids, ((0, 0), (0, 1)), 'constant', constant_values=0)
+    actual_corpus_lengths = np.argmax(corpus_padded == 0, axis=1)
+    if np.all(actual_corpus_lengths == actual_corpus_lengths[0]): # check if all rows have the same length
+        object_level = actual_corpus_lengths[0]
+        matching_indices = __filter_philo_ids_on_void(corpus_philo_ids[:, :object_level], philo_ids[:, :object_level])
+        return philo_ids[matching_indices]
+    else:
+        max_philo_path_len = 5 # max length of philo_id path part for metadata
+        num_philo_rows = philo_ids.shape[0]
+        overall_match_mask = np.zeros(num_philo_rows, dtype=bool)
+
+        for current_len in range(1, max_philo_path_len + 1):
+            # Create a mask for the corpus_philo_ids that match the current length
+            corpus_rows_for_this_len_mask = (actual_corpus_lengths == current_len)
+
+            if not np.any(corpus_rows_for_this_len_mask):
+                continue # No corpus prefixes of this specific actual length
+            # Extract these actual corpus prefixes (all are of length current_len)
+            relevant_corpus_prefixes = corpus_philo_ids[corpus_rows_for_this_len_mask, :current_len]
+            philo_ids_prefixes = philo_ids[:, :current_len]
+            current_matching_indices = __filter_philo_ids_on_void(relevant_corpus_prefixes, philo_ids_prefixes)
+            overall_match_mask |= current_matching_indices
+        return philo_ids[overall_match_mask]
 
 
 def search_word(db_path, hitlist_filename, corpus_file=None):
     """Search for a single word in the database."""
     with open(f"{hitlist_filename}.terms", "r") as terms_file:
         words = terms_file.read().split()
-    corpus_philo_ids, object_level = None, None
-    if corpus_file is not None:
-        corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
     env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
     if len(words) == 1:
         with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
@@ -181,21 +208,22 @@ def search_word(db_path, hitlist_filename, corpus_file=None):
             if corpus_file is None:
                 output_file.write(txn.get(word.encode("utf8")))
             else:
-                corpus_philo_ids, object_level = get_corpus_philo_ids(corpus_file)
                 filtered_philo_ids = filter_philo_ids(
+                    corpus_file,
                     np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9),
-                    corpus_philo_ids,
-                    object_level,
                 )
                 output_file.write(filtered_philo_ids.tobytes())
     else:
         with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
             for philo_ids in merge_word_group(txn, words):
-                if corpus_philo_ids is not None:
-                    filtered_philo_ids = filter_philo_ids(philo_ids, corpus_philo_ids, object_level)
-                    output_file.write(filtered_philo_ids.tobytes())
-                else:
+                if corpus_file is None:
                     output_file.write(philo_ids.tobytes())
+                else:
+                    filtered_philo_ids = filter_philo_ids(
+                        corpus_file,
+                        philo_ids,
+                    )
+                    output_file.write(filtered_philo_ids.tobytes())
     env.close()
 
 
@@ -583,14 +611,6 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
                 word_data[word].first_doc = word_data[word].array[0, 0]
             else:
                 del word_data[word]
-
-
-def get_corpus_philo_ids(corpus_file) -> tuple[np.ndarray, int]:
-    object_level = 0
-    with open(corpus_file, "rb") as corpus:
-        buffer = corpus.read(28)
-        object_level = len(tuple(i for i in struct.unpack("7I", buffer) if i))
-        return np.frombuffer(buffer + corpus.read(), dtype="u4").reshape(-1, 7)[:, :object_level], object_level
 
 
 def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True):
