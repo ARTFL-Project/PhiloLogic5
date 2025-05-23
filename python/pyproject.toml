@@ -4,16 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "philologic"
-version = "5.0.0.1"
+version = "5.0.0.2"
 authors = [
     { name = "Clovis Gladstone", email = "clovisgladstone@artfl.uchicago.edu" },
 ]
-license = { file = "LICENSE" }
+license = "GPL-3.0-or-later"
 description = "A concordance search engine for TEI-XML"
 readme = "README"
 urls = { Homepage = "https://github.com/ARTFL-Project/PhiloLogic5" }
 
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "regex",
     "lxml",
@@ -27,12 +27,12 @@ dependencies = [
     "unidecode",
     "lz4",
     "lmdb",
-    "numpy~=1.26",
-    "numba~=0.59",
+    "numpy~=2.2",
+    "numba~=0.61",
     "scikit-learn~=1.4",
     "pandas~=2.2",
-    "spacy==3.7.5",
-    "spacy-transformers==1.3.8",
+    "spacy~=3.8",
+    "spacy-transformers~=1.3.8",
     "netaddr",
 ]
 

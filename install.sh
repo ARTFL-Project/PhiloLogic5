@@ -16,11 +16,12 @@ done
 
 echo "Using Python version: $PYTHON_VERSION"
 
-# Check if virtualenv is installed
-if ! command -v virtualenv &> /dev/null
+# Install uv if not present
+if ! command -v uv &> /dev/null
 then
-    echo "virtualenv could not be found. Installing..."
-    pip install virtualenv
+    echo "uv could not be found. Installing..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    export PATH="$HOME/.cargo/bin:$PATH"
 fi
 
 # Delete virtual environment if it already exists
@@ -29,23 +30,22 @@ if [ -d /var/lib/philologic5 ]; then
     sudo rm -rf /var/lib/philologic5
 fi
 
-# Create virtual environment
+# Create virtual environment with uv
 sudo mkdir -p /var/lib/philologic5
 sudo chown -R $USER:$USER /var/lib/philologic5
-virtualenv -p $PYTHON_VERSION /var/lib/philologic5/philologic_env
+uv venv /var/lib/philologic5/philologic_env --python $PYTHON_VERSION
 
 # Activate virtual environment
 source /var/lib/philologic5/philologic_env/bin/activate
 
-# Install required packages
-python -m ensurepip --upgrade
-python -m pip install build
+# Install build tool with uv (much faster)
+uv pip install build
 
 echo -e "\n## INSTALLING PYTHON LIBRARY ##"
 cd python
 rm -rf dist/
 python3 -m build --sdist
-python -m pip install dist/*gz
+uv pip install dist/*gz
 
 # Deactivate virtual environment
 deactivate
