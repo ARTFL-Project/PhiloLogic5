@@ -29,7 +29,7 @@ if ! command -v uv &> /dev/null
 then
     echo "uv could not be found. Installing..."
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.cargo/bin:$PATH"
+    export PATH="$HOME/.local/bin:$PATH"
 fi
 
 # Delete virtual environment if it already exists
