@@ -32,9 +32,11 @@ dependencies = [
     "scikit-learn~=1.4",
     "pandas~=2.2",
     "spacy~=3.8",
-    "spacy-transformers~=1.3.8",
     "netaddr",
 ]
+
+[project.optional-dependencies]
+transformers = ["spacy-transformers~=1.3.8"]
 
 [tool.setuptools]
 packages = [

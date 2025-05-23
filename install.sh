@@ -2,19 +2,27 @@
 
 # Default Python version
 PYTHON_VERSION="python3"
+INSTALL_TRANSFORMERS=false
 
 # Parse command line arguments
-while getopts "p:" opt; do
+while getopts "p:t" opt; do
   case $opt in
     p) PYTHON_VERSION="$OPTARG"
     ;;
-    *) echo "Usage: $0 [-p python_version]"
+    t) INSTALL_TRANSFORMERS=true
+    ;;
+    *) echo "Usage: $0 [-p python_version] [-t]"
+       echo "  -p: Python version (default: python3)"
+       echo "  -t: Install transformers support (includes CUDA)"
        exit 1
     ;;
   esac
 done
 
 echo "Using Python version: $PYTHON_VERSION"
+if [ "$INSTALL_TRANSFORMERS" = true ]; then
+    echo "Transformers support will be installed (with CUDA)"
+fi
 
 # Install uv if not present
 if ! command -v uv &> /dev/null
@@ -30,7 +38,7 @@ if [ -d /var/lib/philologic5 ]; then
     sudo rm -rf /var/lib/philologic5
 fi
 
-# Create virtual environment with uv
+# Create virtual environment
 sudo mkdir -p /var/lib/philologic5
 sudo chown -R $USER:$USER /var/lib/philologic5
 uv venv /var/lib/philologic5/philologic_env --python $PYTHON_VERSION
@@ -38,14 +46,26 @@ uv venv /var/lib/philologic5/philologic_env --python $PYTHON_VERSION
 # Activate virtual environment
 source /var/lib/philologic5/philologic_env/bin/activate
 
-# Install build tool with uv (much faster)
+# Install build tool with uv
 uv pip install build
 
 echo -e "\n## INSTALLING PYTHON LIBRARY ##"
 cd python
 rm -rf dist/
 python3 -m build --sdist
-uv pip install dist/*gz
+
+# Get the actual package filename
+PACKAGE_FILE=$(ls dist/*.tar.gz)
+
+if [ "$INSTALL_TRANSFORMERS" = true ]; then
+    # Install with transformers extra - this uses the optional dependency from pyproject.toml
+    echo "Installing with transformers support (CUDA enabled)..."
+    uv pip install "${PACKAGE_FILE}[transformers]" --quiet
+else
+    # Install without transformers
+    echo "Installing without transformers support..."
+    uv pip install "$PACKAGE_FILE" --quiet
+fi
 
 # Deactivate virtual environment
 deactivate
