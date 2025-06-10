@@ -1,18 +1,9 @@
-FROM ubuntu:22.04
-
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y software-properties-common
-
-# Add the deadsnakes PPA
-RUN add-apt-repository ppa:deadsnakes/ppa
-
 # Install Python 3.12
-RUN apt-get update && apt-get install -y python3.12 python3.12-venv python3.12-dev curl
-
-# Install pip
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
+RUN apt-get update && apt-get install -y python3 python3-venv python3-dev curl python3-pip
 
 # Install dependencies
 RUN apt-get update && apt-get upgrade -y && \
@@ -27,7 +18,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - &&\
 # Install PhiloLogic
 COPY . /PhiloLogic5
 WORKDIR /PhiloLogic5
-RUN ./install.sh -p python3.12 && a2enmod rewrite && a2enmod cgi && a2enmod brotli && a2enmod headers
+RUN ./install.sh -p python3 && a2enmod rewrite && a2enmod cgi && a2enmod brotli && a2enmod headers
 
 # Configure global variables
 RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic5.cfg && \
