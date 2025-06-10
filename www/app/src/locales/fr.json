@@ -18,7 +18,9 @@
         "reportError": "Formulaire d'erreurs",
         "absoluteFrequency": "Fréquence Absolue",
         "relativeFrequency": "Fréquence Relative",
-        "sameSentence": "dans la même phrase"
+        "sameSentence": "dans la même phrase",
+        "showFacetsLabel": "Afficher les facettes de recherche",
+        "facetsRegion": "Facettes de recherche"
     },
     "header": {
         "citationModalTitle": "Comment citer {dbname} :",
@@ -174,7 +176,13 @@
         "wordsRight": "Mots sur la droite"
     },
     "aggregation": {
-        "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats."
+        "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats.",
+        "resultsRegion": "Résultats d'agrégation",
+        "expandBreakdown": "Développer les détails de la répartition",
+        "collapseBreakdown": "Réduire les détails de la répartition",
+        "countLabel": "Nombre",
+        "distributedAcross": "Distribué à travers",
+        "breakdownResults": "Résultats de répartition pour"
     },
     "landingPage": {
         "logoAlt": "Logo de la base de données {dbname}",
@@ -201,5 +209,23 @@
     "timeSeries": {
         "occurrences": "occurrences",
         "per1000Words": "occurrences pour 10,000 mots"
+    },
+    "bibliography": {
+        "resultsRegion": "Résultats de bibliographie",
+        "dictionaryResultsRegion": "Résultats de bibliographie du dictionnaire",
+        "titleGroup": "Groupe de titres",
+        "contextRegion": "Contexte",
+        "selectForSearch": "Sélectionner cet élément pour la recherche"
+    },
+    "biblioCriteria": {
+        "searchCriteriaRegion": "Critères de recherche",
+        "activeFiltersLabel": "Filtres de recherche actifs",
+        "filterLabel": "Filtre",
+        "removeFilter": "Supprimer le filtre :",
+        "dateRangeGroup": "Filtres de plage de dates",
+        "startDate": "Date de début",
+        "endDate": "Date de fin",
+        "removeStartDate": "Supprimer le filtre de date de début",
+        "removeEndDate": "Supprimer le filtre de date de fin"
     }
 }

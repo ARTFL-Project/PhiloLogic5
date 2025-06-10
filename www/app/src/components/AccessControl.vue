@@ -5,19 +5,22 @@
                 <div class="card-body">
                     <h3 class="card-title text-center">Access Restricted to ARTFL subscribing institutions</h3>
                     <h6 class="card-subtitle mb-2 text-muted text-center">Please read the following below</h6>
-                    <form @submit.prevent @reset="onReset" @keyup.enter="submit()" id="password-access"
+                    <form @submit.prevent="submit" @reset="reset" @keyup.enter="submit" id="password-access"
                         class="mt-4 p-2">
                         <h5 v-if="!accessDenied" class="mt-2 mb-3">
                             If you have a username and password, please enter them here:
                         </h5>
-                        <h5 class="text-danger" v-if="incorrectLogin">
-                            Your username or password don't match. Please try again.
-                        </h5>
+                        <div class="text-danger pb-3" v-if="incorrectLogin" id="login-error" role="alert">
+                            Incorrect login, please try again.
+                        </div>
                         <div class="row mb-3">
                             <div class="cols-12 cols-sm-6 cols-md-5 cols-lg-4">
                                 <div class="input-group">
-                                    <button type="button" class="btn btn-outline-secondary">Username</button>
-                                    <input type="text" class="form-control" style="max-width: 300px"
+                                    <button class="btn btn-outline-secondary" type="button" id="username-label">
+                                        Username
+                                    </button>
+                                    <input type="text" class="form-control" id="username-input"
+                                        aria-labelledby="username-label" style="max-width: 300px"
                                         v-model="accessInput.username" />
                                 </div>
                             </div>
@@ -25,20 +28,25 @@
                         <div class="row mb-3">
                             <div class="cols-12 cols-sm-6 cols-md-5 cols-lg-4">
                                 <div class="input-group">
-                                    <button type="button" class="btn btn-outline-secondary">Password</button>
-                                    <input type="text" class="form-control" style="max-width: 300px"
+                                    <button class="btn btn-outline-secondary" type="button" id="password-label">
+                                        Password
+                                    </button>
+                                    <input type="password" class="form-control" id="password-input"
+                                        aria-labelledby="password-label" style="max-width: 300px"
                                         v-model="accessInput.password" />
                                 </div>
                             </div>
                         </div>
-                        <div class="text-danger pb-3" v-if="incorrectLogin">Incorrect login, please try again.</div>
                         <div class="row">
                             <div class="cols-12">
-                                <div class="btn-group" role="group">
-                                    <button type="button" class="btn btn-outline-secondary" @click="submit">
+                                <div class="btn-group" role="group" aria-label="Login form actions">
+                                    <button type="submit" class="btn btn-outline-secondary"
+                                        aria-describedby="login-error" :aria-invalid="incorrectLogin">
                                         Submit
                                     </button>
-                                    <button type="reset" class="btn btn-danger" @click="reset">Reset</button>
+                                    <button type="button" class="btn btn-danger" @click="reset">
+                                        Reset
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -72,14 +80,14 @@
     </div>
 </template>
 <script>
-import { inject, ref } from "vue";
+import { inject, reactive, ref } from "vue";
 
 export default {
     props: ["clientIp", "domainName"],
     setup() {
         let accessDenied = ref(false);
         let incorrectLogin = ref(false);
-        let accessInput = { username: "", password: "" };
+        let accessInput = reactive({ username: "", password: "" });
         let http = inject("$http");
         let dbUrl = inject("$dbUrl");
 
@@ -93,13 +101,17 @@ export default {
                 if (authorization.access) {
                     location.reload();
                 } else {
-                    incorrectLogin = true;
+                    incorrectLogin.value = true;
                 }
             });
         }
+
         function reset() {
-            accessInput = { username: "", password: "" };
+            accessInput.username = "";
+            accessInput.password = "";
+            incorrectLogin.value = false;
         }
+
         return { accessDenied, accessInput, incorrectLogin, submit, reset };
     },
 };

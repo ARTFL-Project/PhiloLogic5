@@ -2,39 +2,70 @@
     <div class="container-fluid mt-4">
         <results-summary :groupLength="aggregationResults.length"></results-summary>
         <div class="card shadow mt-4 ms-2 me-2" v-if="resultsLength" v-scroll="handleFullResultsScroll">
-            <div id="aggregation-results" class="list-group">
-                <div class="list-group-item pt-3 pb-3"
-                    v-for="(result, resultIndex) in aggregationResults.slice(0, lastResult)" :key="resultIndex">
+            <div id="aggregation-results" class="list-group" role="main" :aria-label="$t('aggregation.resultsRegion')">
+                <article class="list-group-item pt-3 pb-3" role="article"
+                    v-for="(result, resultIndex) in aggregationResults.slice(0, lastResult)" :key="resultIndex"
+                    :aria-labelledby="`result-heading-${resultIndex}`">
+
+                    <!-- Toggle button with proper accessibility -->
                     <button type="button" class="btn btn-outline-secondary btn-sm d-inline-block"
                         style="padding: 0 0.25rem; margin-right: 0.5rem" :id="`button-${resultIndex}`"
-                        @click="toggleBreakUp(resultIndex)" v-if="result.break_up_field.length > 0">
-                        &plus;
+                        @click="toggleBreakUp(resultIndex)" v-if="result.break_up_field.length > 0"
+                        :aria-expanded="breakUpFields[resultIndex].show" :aria-controls="`breakdown-${resultIndex}`"
+                        :aria-label="breakUpFields[resultIndex].show ?
+                            $t('aggregation.collapseBreakdown') :
+                            $t('aggregation.expandBreakdown')">
+                        <span aria-hidden="true">{{ breakUpFields[resultIndex].show ? '−' : '+' }}</span>
                     </button>
-                    <span class="badge rounded-pill bg-secondary" style="font-size: 100%">{{ result.count }}</span>
-                    <citations :citation="result.citation"></citations>
-                    <span class="d-inline-block ps-1" v-if="breakUpFields[resultIndex].results.length">{{
-                        $t("common.across") }} {{ breakUpFields[resultIndex].results.length }}
-                        {{ breakUpFieldName }}(s)</span>
-                    <h6 class="ms-4 mt-2"
+
+                    <!-- Count badge with screen reader context -->
+                    <span class="badge rounded-pill bg-secondary" style="font-size: 100%"
+                        :aria-label="`${$t('aggregation.countLabel')}: ${result.count}`">
+                        {{ result.count }}
+                    </span>
+
+                    <!-- Main citation with proper heading -->
+                    <div :id="`result-heading-${resultIndex}`" class="d-inline-block">
+                        <citations :citation="result.citation"></citations>
+                    </div>
+
+                    <!-- Breakdown summary -->
+                    <span class="d-inline-block ps-1" v-if="breakUpFields[resultIndex].results.length"
+                        :aria-label="`${$t('aggregation.distributedAcross')} ${breakUpFields[resultIndex].results.length} ${breakUpFieldName}(s)`">
+                        {{ $t("common.across") }} {{ breakUpFields[resultIndex].results.length }}
+                        {{ breakUpFieldName }}(s)
+                    </span>
+
+                    <!-- Performance warning -->
+                    <h6 class="ms-4 mt-2" role="alert"
                         v-if="breakUpFields[resultIndex].show && breakUpFields[resultIndex].results.length > 1000">
                         {{ $t("aggregation.performance") }}
                     </h6>
-                    <div class="list-group ms-4 mt-2" v-if="breakUpFields[resultIndex].show">
-                        <div class="list-group-item" v-for="(value, key) in breakUpFields[resultIndex].results.slice(
-                            0,
-                            breakUpFields[resultIndex].limit
-                        )" :key="key">
-                            <span class="badge rounded-pill bg-secondary">{{ value.count }}</span>
-                            <citations :citation="
-                                buildCitationObject(
+
+                    <!-- Expandable breakdown section -->
+                    <div class="list-group ms-4 mt-2" v-if="breakUpFields[resultIndex].show"
+                        :id="`breakdown-${resultIndex}`" role="group"
+                        :aria-label="`${$t('aggregation.breakdownResults')} ${breakUpFieldName}`">
+
+                        <article class="list-group-item"
+                            v-for="(value, key) in breakUpFields[resultIndex].results.slice(0, breakUpFields[resultIndex].limit)"
+                            :key="key" role="article" :aria-labelledby="`breakdown-item-${resultIndex}-${key}`">
+
+                            <span class="badge rounded-pill bg-secondary"
+                                :aria-label="`${$t('aggregation.countLabel')}: ${value.count}`">
+                                {{ value.count }}
+                            </span>
+
+                            <div :id="`breakdown-item-${resultIndex}-${key}`" class="d-inline-block">
+                                <citations :citation="buildCitationObject(
                                     statsConfig.break_up_field,
                                     statsConfig.break_up_field_citation,
                                     value.metadata_fields
-                                )
-                            "></citations>
-                        </div>
+                                )"></citations>
+                            </div>
+                        </article>
                     </div>
-                </div>
+                </article>
             </div>
         </div>
     </div>
@@ -201,13 +232,7 @@ export default {
             return citations;
         },
         toggleBreakUp(resultIndex) {
-            if (this.breakUpFields[resultIndex].show) {
-                this.breakUpFields[resultIndex].show = false;
-                document.getElementById(`button-${resultIndex}`).innerHTML = "&plus;";
-            } else {
-                this.breakUpFields[resultIndex].show = true;
-                document.getElementById(`button-${resultIndex}`).innerHTML = "&minus;";
-            }
+            this.breakUpFields[resultIndex].show = !this.breakUpFields[resultIndex].show;
         },
     },
 };

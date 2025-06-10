@@ -3,53 +3,71 @@
         <results-summary :description="results.description"></results-summary>
         <div style="position: relative" v-if="!showFacets && philoConfig.facets.length > 0">
             <button type="button" class="btn btn-sm btn-secondary"
-                style="position: absolute; bottom: 0; right: 0.5rem; padding: 0.125rem 0.25rem" @click="toggleFacets()">
+                style="position: absolute; bottom: 0; right: 0.5rem; padding: 0.125rem 0.25rem" @click="toggleFacets()"
+                :aria-label="$t('common.showFacetsLabel')">
                 {{ $t("common.showFacets") }}
             </button>
         </div>
         <div class="row mt-4" style="padding-right: 0.5rem">
             <div class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
                 v-if="!philoConfig.dictionary_bibliography || results.result_type == 'doc'">
-                <transition-group tag="div" :css="false" v-on:before-enter="beforeEnter" v-on:enter="enter">
-                    <div class="card philologic-occurrence mx-2 mb-4 shadow-sm"
-                        v-for="(result, index) in results.results" :key="result.philo_id.join('-')">
-                        <div class="row citation-container">
-                            <div class="col-12 col-sm-10 col-md-11">
-                                <span class="cite" :data-id="result.philo_id.join(' ')">
-                                    <span class="number">{{ results.description.start + index }}</span>
-                                    <input type="checkbox" class="ms-3 me-2"
-                                        :id="`biblio-index-${results.description.start + index}`"
-                                        @click="addToSearch(result.metadata_fields.title)"
-                                        v-if="resultType == 'doc' && philoConfig.metadata.indexOf('title') !== -1" />
-                                    <label class="d-inline" :for="`biblio-index-${results.description.start + index}`">
-                                        <citations :citation="result.citation"></citations>
-                                    </label>
-                                </span>
+                <div role="region" :aria-label="$t('bibliography.resultsRegion')" aria-live="polite">
+                    <transition-group tag="div" :css="false" v-on:before-enter="beforeEnter" v-on:enter="enter">
+                        <article class="card philologic-occurrence mx-2 mb-4 shadow-sm"
+                            v-for="(result, index) in results.results" :key="result.philo_id.join('-')" role="article"
+                            :aria-labelledby="`citation-${results.description.start + index}`">
+                            <div class="row citation-container">
+                                <div class="col-12 col-sm-10 col-md-11">
+                                    <div class="cite" :data-id="result.philo_id.join(' ')">
+                                        <span class="number" aria-hidden="true">{{ results.description.start + index
+                                        }}</span>
+                                        <div class="form-check d-inline-block ms-3 me-2" style="vertical-align: middle"
+                                            v-if="resultType == 'doc' && philoConfig.metadata.indexOf('title') !== -1">
+                                            <input type="checkbox" class="form-check-input"
+                                                :id="`biblio-checkbox-${results.description.start + index}`"
+                                                @click="addToSearch(result.metadata_fields.title)"
+                                                :aria-describedby="`citation-${results.description.start + index}`"
+                                                :aria-label="$t('bibliography.selectForSearch')" />
+                                        </div>
+                                        <div :id="`citation-${results.description.start + index}`"
+                                            class="d-inline-block">
+                                            <citations :citation="result.citation"></citations>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                </transition-group>
+                        </article>
+                    </transition-group>
+                </div>
             </div>
             <div class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
                 v-if="philoConfig.dictionary_bibliography && results.result_type != 'doc'">
-                <div class="list-group" flush v-for="(group, groupKey) in results.results" :key="groupKey">
-                    <div class="list-group-item p-0" v-for="(result, index) in group" :key="index"
-                        style="border-width: 0">
-                        <div class="card philologic-occurrence mx-2 mb-4 shadow-sm">
-                            <div class="citation-dico-container">
-                                <span class="cite" :data-id="result.philo_id.join(' ')">
-                                    <span class="number">{{ results.description.start + index }}</span>
-                                    <citations :citation="result.citation"></citations>
-                                </span>
+                <div role="region" :aria-label="$t('bibliography.dictionaryResultsRegion')" aria-live="polite">
+                    <div class="list-group" v-for="(group, groupKey) in results.results" :key="groupKey" role="group"
+                        :aria-label="`${$t('bibliography.titleGroup')} ${groupKey + 1}`">
+                        <article class="list-group-item p-0" v-for="(result, index) in group" :key="index"
+                            style="border-width: 0" role="article"
+                            :aria-labelledby="`dict-citation-${groupKey}-${index}`">
+                            <div class="card philologic-occurrence mx-2 mb-4 shadow-sm">
+                                <header class="citation-dico-container">
+                                    <div class="cite" :data-id="result.philo_id.join(' ')"
+                                        :id="`dict-citation-${groupKey}-${index}`">
+                                        <span class="number" aria-hidden="true">{{ results.description.start + index
+                                        }}</span>
+                                        <citations :citation="result.citation"></citations>
+                                    </div>
+                                </header>
+                                <div class="pt-3 px-3 text-content" select-word :position="result.position"
+                                    role="region" :aria-label="$t('bibliography.contextRegion')">
+                                    <div v-html="result.context"></div>
+                                </div>
                             </div>
-                            <div class="pt-3 px-3 text-content" select-word :position="result.position">
-                                <div v-html="result.context"></div>
-                            </div>
-                        </div>
+                        </article>
                     </div>
                 </div>
             </div>
-            <div class="col" md="5" xl="4" v-if="showFacets">
+            <div class="col" md="5" xl="4" v-if="showFacets" role="complementary"
+                :aria-label="$t('common.facetsRegion')">
                 <facets></facets>
             </div>
         </div>
