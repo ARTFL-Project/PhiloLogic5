@@ -160,6 +160,10 @@ DB_LOCALS_DEFAULTS = {
         "value": "",
         "comment": "# The secret value is a random string to be used to generate a secure cookie for access control. The string value can be anything.",
     },
+    "overflow_words": {
+        "value": set(),
+        "comment": "# The overflow_words variable is a set of words which are not indexed in the database, but stored as blobs in the data/overflow_words directory.",
+    }
 }
 DB_LOCALS_HEADER = """
    #########################################################\n

@@ -1,5 +1,7 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
+import hashlib
+import mmap
 import os
 import struct
 import subprocess
@@ -24,7 +26,7 @@ OBJECT_LEVEL = {"para": 5, "sent": 6}
 
 
 class WordData(msgspec.Struct):
-    buffer: bytes = None
+    full_array: np.ndarray = None
     array: np.ndarray = None
     start: int = 0
     first_doc: int = 0
@@ -72,31 +74,31 @@ def query(
             method_arg = int(method_arg) if method_arg else 0
             if method == "single_term":
                 # Search for one term
-                search_word(db.path, filename, corpus_file=corpus_file)
+                search_word(db.path, filename, db.locals.overflow_words, corpus_file=corpus_file)
             elif method == "phrase_ordered":
                 # Phrase searching where words need to be in a specific order with no words in between
-                search_phrase(db.path, filename, corpus_file=corpus_file)
+                search_phrase(db.path, filename, db.locals.overflow_words, corpus_file=corpus_file)
             elif method == "phrase_unordered":
                 # Phrase searching where words need to be in a specific order with possible words in between
-                search_within_word_span(db.path, filename, method_arg or 1, False, False, corpus_file=corpus_file)
+                search_within_word_span(db.path, db.locals.overflow_words, filename, method_arg or 1, False, False, corpus_file=corpus_file)
             elif method == "proxy_ordered":
                 # Proximity searching with possible words in between
-                search_within_word_span(db.path, filename, method_arg or 1, True, False, corpus_file=corpus_file)
+                search_within_word_span(db.path, db.locals.overflow_words, filename, method_arg or 1, True, False, corpus_file=corpus_file)
             elif method == "proxy_unordered":
                 # Proximity searching with possible words in between unordered
-                search_within_word_span(db.path, filename, method_arg or 1, False, False, corpus_file=corpus_file)
+                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)
             elif method == "exact_cooc_ordered":
                 # Co-occurrence searching where words need to be within n words of each other
-                search_within_word_span(db.path, filename, method_arg or 1, True, True, corpus_file=corpus_file)
+                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, True, True, corpus_file=corpus_file)
             elif method == "exact_cooc_unordered":
                 # Co-occurrence searching where words need to be within n words of each othera and can be unordered
-                search_within_word_span(db.path, filename, method_arg or 1, False, True, corpus_file=corpus_file)
+                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, False, True, corpus_file=corpus_file)
             elif method == "sentence_ordered":  # no support for para search for now
                 # Co-occurrence searching where words need to be within an object irrespective of word order
-                search_within_text_object(db.path, filename, object_level, True, corpus_file=corpus_file)
+                search_within_text_object(db.path, filename, db.locals.overflow_words, object_level, True, corpus_file=corpus_file)
             elif method == "sentence_unordered":
                 # Co-occurrence searching where words need to be within an object irrespective of word order
-                search_within_text_object(db.path, filename, object_level, False, corpus_file=corpus_file)
+                search_within_text_object(db.path, filename, db.locals.overflow_words, object_level, False, corpus_file=corpus_file)
 
             with open(filename + ".done", "w") as flag:  # do something to mark query as finished
                 flag.write(" ".join(sys.argv) + "\n")
@@ -152,6 +154,17 @@ def split_terms(grouped):
     return split
 
 
+def get_word_array(txn, word, overflow_words, db_path):
+    """Returns numpy array either from LMDB buffer or memmap"""
+    if word not in overflow_words:
+        buffer = txn.get(word.encode("utf8"))
+        if buffer is None:
+            return np.array([], dtype="u4").reshape(-1, 9)
+        return np.array(buffer, dtype="u4").reshape(-1, 9)
+    file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
+    return np.memmap(file_path, dtype="u4", mode='r').reshape(-1, 9)
+
+
 def __filter_philo_ids_on_void(corpus_philo_ids, philo_ids):
     """Filter philo_ids based on corpus metadata."""
 
@@ -165,6 +178,7 @@ def __filter_philo_ids_on_void(corpus_philo_ids, philo_ids):
     philo_ids_void = __rows_as_void(philo_ids)
     matching_indices_void = np.isin(philo_ids_void, corpus_philo_ids_void)
     return matching_indices_void
+
 
 def filter_philo_ids(corpus_file, philo_ids) -> np.ndarray:
     """Filter philo_ids based on corpus metadata."""
@@ -194,7 +208,7 @@ def filter_philo_ids(corpus_file, philo_ids) -> np.ndarray:
         return philo_ids[overall_match_mask]
 
 
-def search_word(db_path, hitlist_filename, corpus_file=None):
+def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
     """Search for a single word in the database."""
     with open(f"{hitlist_filename}.terms", "r") as terms_file:
         words = terms_file.read().split()
@@ -203,16 +217,23 @@ def search_word(db_path, hitlist_filename, corpus_file=None):
         with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
             word = words[0]
             if corpus_file is None:
-                output_file.write(txn.get(word.encode("utf8")))
+                if word not in overflow_words:
+                    buffer = txn.get(word.encode("utf8"))
+                    output_file.write(buffer)
+                else:
+                    file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
+                    with open(file_path, "rb") as overflow_file:
+                        output_file.write(overflow_file.read())
             else:
+                word_array = get_word_array(txn, word, overflow_words, db_path)
                 filtered_philo_ids = filter_philo_ids(
                     corpus_file,
-                    np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9),
+                    word_array,
                 )
                 output_file.write(filtered_philo_ids.tobytes())
     else:
         with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
-            for philo_ids in merge_word_group(txn, words):
+            for philo_ids in merge_word_group(db_path, txn, words, overflow_words):
                 if corpus_file is None:
                     output_file.write(philo_ids.tobytes())
                 else:
@@ -224,11 +245,11 @@ def search_word(db_path, hitlist_filename, corpus_file=None):
     env.close()
 
 
-def search_phrase(db_path, hitlist_filename, corpus_file=None):
+def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
     """Phrase searches where words need to be in a specific order"""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
     common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, corpus_file=corpus_file, cooc_order=True
+        db_path, word_groups, overflow_words, corpus_file=corpus_file, cooc_order=True
     )
     mapping_order = next(common_object_ids)
     with open(hitlist_filename, "wb") as output_file:
@@ -247,11 +268,11 @@ def search_phrase(db_path, hitlist_filename, corpus_file=None):
                     output_file.write(starting_id)
 
 
-def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_distance, corpus_file=None):
+def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus_file=None):
     """Search for co-occurrences of multiple words within n words of each other in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
     common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, corpus_file=corpus_file, cooc_order=cooc_order
+        db_path, word_groups, overflow_words, corpus_file=corpus_file, cooc_order=cooc_order
     )
 
     if cooc_order is True:
@@ -289,12 +310,13 @@ def search_within_word_span(db_path, hitlist_filename, n, cooc_order, exact_dist
                         output_file.write(starting_id)
 
 
-def search_within_text_object(db_path, hitlist_filename, level, cooc_order, corpus_file=None):
+def search_within_text_object(db_path, hitlist_filename, overflow_words, level, cooc_order, corpus_file=None):
     """Search for co-occurrences of multiple words in the same sentence in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
     common_object_ids = get_cooccurrence_groups(
         db_path,
         word_groups,
+        overflow_words,
         level=level,
         corpus_file=corpus_file,
         cooc_order=cooc_order,
@@ -343,7 +365,7 @@ def get_word_groups(terms_file):
 
 
 def get_cooccurrence_groups(
-    db_path, word_groups, level="sent", corpus_file=None, cooc_order=False
+    db_path, word_groups, overflow_words, level="sent", corpus_file=None, cooc_order=False
 ):
     cooc_slice = 6
     if level == "para":
@@ -355,7 +377,11 @@ def get_cooccurrence_groups(
         for index, group in enumerate(word_groups):
             byte_size = 0
             for word in group:
-                byte_size += len(txn.get(word.encode("utf8")))
+                if word not in overflow_words:
+                    byte_size += len(txn.get(word.encode("utf8")))
+                else:
+                    file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
+                    byte_size += os.stat(file_path).st_size
             byte_size_per_group.append(byte_size)
         # Perform an argsort on the list to get the indices of the groups sorted by byte size
         sorted_indices = np.argsort(byte_size_per_group)
@@ -363,7 +389,7 @@ def get_cooccurrence_groups(
             yield sorted_indices
 
         def one_word_generator(word):
-            yield np.frombuffer(txn.get(word.encode("utf8")), dtype="u4").reshape(-1, 9)
+            yield get_word_array(txn, word, overflow_words, db_path)
 
         # Process each word group
         first_group_data = np.array([])
@@ -372,14 +398,14 @@ def get_cooccurrence_groups(
             words = word_groups[index]
             if index == sorted_indices[0]:  # grab the entire first group
                 if len(words) == 1:
-                    first_group_data = np.frombuffer(txn.get(words[0].encode("utf8")), dtype="u4").reshape(-1, 9)
+                    first_group_data = get_word_array(txn, words[0], overflow_words, db_path)
                 else:
-                    first_group_data = np.concatenate([i for i in merge_word_group(txn, words)], dtype="u4")
+                    first_group_data = np.concatenate([i for i in merge_word_group(db_path, txn, words, overflow_words)], dtype="u4")
             else:
                 if len(words) == 1:
                     group_generators.append(one_word_generator(words[0]))
                 else:
-                    group_generators.append(merge_word_group(txn, words, chunk_size=36 * 1000))
+                    group_generators.append(merge_word_group(db_path, txn, words, overflow_words, chunk_size=36 * 1000))
 
         if corpus_file is not None:
             first_group_data = filter_philo_ids(corpus_file, first_group_data)
@@ -489,25 +515,25 @@ def find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice):
     return np.array(matching_indices)
 
 
-def merge_word_group(txn, words: list[str], chunk_size=None):
+def merge_word_group(db_path: str, txn, words: list[str], overflow_words: set[str], chunk_size=None):
     # Initialize data structures for each word
     word_data = {}
     if chunk_size is None:
-        chunk_size = (
-            36 * 10000
-        )  # 10000 hits: happy median between performance and memory usage, potentially reevaluate.
+        chunk_size = 10000  # 10000 hits: happy median between performance and memory usage, potentially reevaluate.
 
     # Load initial chunks
     for word in words:
-        buffer = txn.get(word.encode("utf8"))
-        try:
-            array = np.frombuffer(buffer[0:3600], dtype="u4").reshape(-1, 9)
-            # word_data[word].array = array
+        if word not in overflow_words:
+            buffer = txn.get(word.encode("utf8"))
+            array = np.frombuffer(buffer[:3600], dtype="u4").reshape(-1, 9)
             first_doc = array[0, 0]
-        except TypeError:  # Handle cases where word doesn't exist in the database
-            array = np.array([], dtype="u4").reshape(-1, 9)
-            first_doc = 0
-        word_data[word] = WordData(buffer=buffer, array=array, start=0, first_doc=first_doc)
+            word_data[word] = WordData(full_array=np.frombuffer(buffer, dtype="u4").reshape(-1, 9), array=array, start=0, first_doc=first_doc)
+        else:
+            file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
+            mmap_array = np.memmap(file_path, dtype="u4", mode='r').reshape(-1, 9)
+            array = mmap_array[:100] # 100 36 byte rows
+            first_doc = array[0, 0]
+            word_data[word] = WordData(full_array=mmap_array, array=array, start=0, first_doc=first_doc)
 
     def build_first_last_rows():
         first_finishing_doc = np.iinfo(np.uint32).max
@@ -574,22 +600,17 @@ def merge_word_group(txn, words: list[str], chunk_size=None):
             [word_data[word].array[:index] for word, index in words_to_keep],
             dtype="u4",
         )
-
-        # The lexsort is 3 times slower than the composite key sort
-        # sorted_indices = np.lexsort((combined_arrays[:, -1], combined_arrays[:, 0]))
-        # yield combined_arrays[sorted_indices]
-
-        # Sort by doc id and byte offset
+        # Sort by doc id and byte offset, 3x faster than np.lexsort((combined_arrays[:, -1], combined_arrays[:, 0]))
         composite_key = combined_arrays[:, 0].astype(np.uint64) << 32 | combined_arrays[:, -1]
         yield combined_arrays[np.argsort(composite_key, kind="stable")]
 
         # Load next chunks for all words based on the indices we saved
         for word, index in words_to_keep:
-            word_data[word].start += word_data[word].array[:index].nbytes
+            if index is None:
+                index = word_data[word].array.shape[0]  # no need to slice, we have the full array
+            word_data[word].start += index
             end = word_data[word].start + chunk_size
-            word_data[word].array = np.frombuffer(
-                word_data[word].buffer[word_data[word].start : end], dtype="u4"
-            ).reshape(-1, 9)
+            word_data[word].array = word_data[word].full_array[word_data[word].start:end]
             if word_data[word].array.size > 0:
                 word_data[word].first_doc = word_data[word].array[0, 0]
             else:

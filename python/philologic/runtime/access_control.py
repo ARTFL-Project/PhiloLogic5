@@ -284,7 +284,7 @@ def check_access(environ, config):
 def get_client_info(environ):
     incoming_address = environ["REMOTE_ADDR"]
     fq_domain_name = socket.getfqdn(incoming_address).split(",")[-1]
-    edit_domain = re.split("\.", fq_domain_name)
+    edit_domain = re.split(r"\.", fq_domain_name)
 
     if re.match("edu", edit_domain[-1]):
         match_domain = ".".join([edit_domain[-2], edit_domain[-1]])

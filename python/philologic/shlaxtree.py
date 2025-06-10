@@ -114,7 +114,7 @@ class ShlaxIngestor:
 
 
 class ShlaxTreeDriver:
-    def __init__(self, target=None, offsets=None, punct_re="\W", wtag="span", watt=None, log=None):
+    def __init__(self, target=None, offsets=None, punct_re=r"\W", wtag="span", watt=None, log=None):
         self.target = target or ShlaxTreeBuilder(log=log)
         if offsets:
             self.offsets = list(offsets)
