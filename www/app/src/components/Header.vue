@@ -1,61 +1,103 @@
 <template>
-    <nav class="navbar navbar-expand-lg navbar-light bg-light shadow" style="height: 53px">
-        <div class="collapse navbar-collapse top-links">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <li class="nav-item">
-                    <a class="nav-link" :href="philoConfig.link_to_home_page"
-                        v-if="philoConfig.link_to_home_page != ''">{{ $t("header.goHome") }}</a>
+    <header role="banner">
+        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow" style="height: 53px"
+            aria-label="Main navigation">
+            <div class="collapse navbar-collapse top-links">
+                <ul class="navbar-nav me-auto mb-2 mb-lg-0" role="menubar">
+                    <li class="nav-item" role="none">
+                        <a class="nav-link" role="menuitem" :href="philoConfig.link_to_home_page"
+                            :aria-label="`Go to ${philoConfig.dbname} home page`"
+                            v-if="philoConfig.link_to_home_page != ''">
+                            {{ $t("header.goHome") }}
+                        </a>
+                    </li>
+                    <li class="nav-item" role="none">
+                        <a class="nav-link" role="menuitem" href="https://artfl-project.uchicago.edu"
+                            aria-label="Visit ARTFL Project website">
+                            ARTFL Project
+                        </a>
+                    </li>
+                    <li class="nav-item" role="none">
+                        <a class="nav-link" role="menuitem" href="https://textual-optics-lab.uchicago.edu"
+                            aria-label="Visit Textual Optics Lab website">
+                            Textual Optics Lab
+                        </a>
+                    </li>
+                </ul>
+            </div>
+
+            <button type="button" id="academic-citation-link" class="nav-link position-absolute" data-bs-toggle="modal"
+                data-bs-target="#academic-citation" aria-label="Open citation information modal"
+                aria-describedby="citation-help" v-if="philoConfig.academic_citation.collection.length > 0">
+                {{ $t("header.citeUs") }}
+            </button>
+
+            <router-link class="navbar-brand" to="/" :aria-label="`Go to ${philoConfig.dbname} homepage`"
+                v-html="philoConfig.dbname">
+            </router-link>
+
+            <ul class="navbar-nav ml-auto top-links" role="menubar">
+                <li class="nav-item" role="none">
+                    <a class="nav-link" role="menuitem" href="https://www.uchicago.edu"
+                        aria-label="Visit University of Chicago website">
+                        University of Chicago
+                    </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="https://artfl-project.uchicago.edu">ARTFL Project</a>
+                <li class="nav-item" role="none">
+                    <a class="nav-link" role="menuitem" href="https://atilf.fr" aria-label="Visit ATILF-CNRS website">
+                        ATILF-CNRS
+                    </a>
                 </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="https://textual-optics-lab.uchicago.edu">Textual Optics Lab</a>
+                <li class="nav-item" role="none">
+                    <a class="nav-link" role="menuitem" href="https://artfl-project.uchicago.edu/content/contact-us"
+                        title="Contact information for the ARTFL Project" aria-label="Contact ARTFL Project">
+                        {{ $t("header.contactUs") }}
+                    </a>
+                </li>
+                <li class="nav-item" role="none">
+                    <locale-changer />
                 </li>
             </ul>
-        </div>
-        <button type="button" id="academic-citation-link" class="nav-link position-absolute" data-bs-toggle="modal"
-            data-bs-target="#academic-citation" v-if="philoConfig.academic_citation.collection.length > 0">
-            {{ $t("header.citeUs") }}
-        </button>
-        <router-link class="navbar-brand" to="/" v-html="philoConfig.dbname"></router-link>
-        <ul class="navbar-nav ml-auto top-links">
-            <li class="nav-item">
-                <a class="nav-link" href="https://www.uchicago.edu">University of Chicago</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="https://atilf.fr">ATILF-CNRS</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="https://artfl-project.uchicago.edu/content/contact-us"
-                    title="Contact information for the ARTFL Project">{{ $t("header.contactUs") }}</a>
-            </li>
-            <li class="nav-item">
-                <locale-changer />
-            </li>
-        </ul>
-        <a id="report-error-link" class="nav-link position-absolute" :href="philoConfig.report_error_link"
-            target="_blank" v-if="philoConfig.report_error_link.length > 0">{{ $t("common.reportError") }}</a>
-        <div class="modal fade" id="academic-citation" tabindex="-1" aria-labelledby="academic-citation"
-            aria-hidden="true">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h5 class="modal-title">How to cite {{ philoConfig.dbname }}:</h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <span v-if="docCitation.citation.length > 0">
-                            <citations :citation="docCitation.citation" separator=",&nbsp;" />,
-                        </span>
-                        <span v-html="philoConfig.academic_citation.collection"></span>:
-                        <a :href="docCitation.link">{{ docCitation.link }}.&nbsp;</a>
-                        <span>Accessed on {{ date }}</span>
+
+            <a id="report-error-link" class="nav-link position-absolute" :href="philoConfig.report_error_link"
+                target="_blank" rel="noopener noreferrer" aria-label="Report an error (opens in new tab)"
+                v-if="philoConfig.report_error_link.length > 0">
+                {{ $t("common.reportError") }}
+            </a>
+
+            <!-- Accessible Modal -->
+            <div class="modal fade" id="academic-citation" tabindex="-1" aria-labelledby="modal-title"
+                aria-describedby="modal-body" aria-hidden="true" role="dialog" aria-modal="true">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title" id="modal-title">
+                                {{ $t('header.citationModalTitle', { dbname: philoConfig.dbname }) }}
+                            </h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                :aria-label="$t('header.closeCitationDialog')">
+                            </button>
+                        </div>
+                        <div class="modal-body" id="modal-body">
+                            <span v-if="docCitation.citation.length > 0">
+                                <citations :citation="docCitation.citation" separator=",&nbsp;" />,
+                            </span>
+                            <span v-html="philoConfig.academic_citation.collection"></span>:
+                            <a :href="docCitation.link" :aria-label="`Visit citation link: ${docCitation.link}`">
+                                {{ docCitation.link }}.&nbsp;
+                            </a>
+                            <span>Accessed on {{ date }}</span>
+                        </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </nav>
+
+            <!-- Hidden help text for screen readers -->
+            <div id="citation-help" class="visually-hidden">
+                {{ $t('header.citationHelpText') }}
+            </div>
+        </nav>
+    </header>
 </template>
 
 <script>

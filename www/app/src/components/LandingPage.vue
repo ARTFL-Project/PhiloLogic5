@@ -2,105 +2,134 @@
     <div id="landing-page-container" class="mt-5">
         <div class="container-fluid">
             <div id="landing-page-logo" :class="{ dictionary: dictionary }" v-if="logo">
-                <img style="max-height: 300px; width: auto" :src="logo" alt="logo" />
+                <img style="max-height: 300px; width: auto" :src="logo"
+                    :alt="$t('landingPage.logoAlt', { dbname: $philoConfig.dbname })" />
             </div>
             <div class="d-flex justify-content-center position-relative">
                 <div class="spinner-border text-secondary" role="status" v-if="loading"
-                    style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px"></div>
+                    style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px">
+                    <span class="visually-hidden">{{ $t('common.loading') }}</span>
+                </div>
             </div>
             <div id="default-landing-page" class="row justify-content-center" v-if="landingPageBrowsing === 'default'">
-                <div class="col-12 col-sm-6 col-md-8 mb-4" v-for="browseType in defaultLandingPageBrowsing"
-                    :key="browseType.label">
+                <section class="col-12 col-sm-6 col-md-8 mb-4" v-for="browseType in defaultLandingPageBrowsing"
+                    :key="browseType.label"
+                    :aria-labelledby="`browse-${browseType.label.replace(/\s+/g, '-').toLowerCase()}`">
                     <div class="card shadow-sm">
-                        <div class="card-header">{{ browseType.label }}</div>
-                        <div class="row g-0">
+                        <div class="card-header">
+                            <h2 class="h5 mb-0" :id="`browse-${browseType.label.replace(/\s+/g, '-').toLowerCase()}`">
+                                {{ browseType.label }}
+                            </h2>
+                        </div>
+                        <div class="row g-0" role="group"
+                            :aria-labelledby="`browse-${browseType.label.replace(/\s+/g, '-').toLowerCase()}`">
                             <div class="col" :class="{ 'col-2': browseType.queries.length > 6 }"
-                                v-for="(range, rangeIndex) in browseType.queries" :key="rangeIndex"
-                                @click="getContent(browseType, range)">
+                                v-for="(range, rangeIndex) in browseType.queries" :key="rangeIndex">
                                 <button class="btn btn-light landing-page-btn" :class="{
                                     first: rangeIndex === 0,
                                     last: rangeIndex === browseType.queries.length - 1,
-                                }" style="border-radius: 0; width: 100%">
+                                }" style="border-radius: 0; width: 100%" @click="getContent(browseType, range)"
+                                    :aria-label="$t('landingPage.browseRange', { type: browseType.label, range: range })">
                                     {{ range }}
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
+                </section>
             </div>
-            <div id="simple-landing-page" v-if="landingPageBrowsing === 'simple'">
+            <section id="simple-landing-page" v-if="landingPageBrowsing === 'simple'"
+                aria-labelledby="simple-bibliography-heading">
                 <div class="row" id="landingGroup">
                     <div class="cols-12 col-sm-8 offset-sm-2 d-flex" style="justify-content: center">
                         <div class="card" style="width: fit-content">
-                            <ul class="list-group">
+                            <div class="card-header">
+                                <h2 class="h5 mb-0" id="simple-bibliography-heading">
+                                    {{ $t("landingPage.bibliography") }}
+                                </h2>
+                            </div>
+                            <ul class="list-group" role="list">
                                 <li class="list-group-item" v-for="(biblioObj, bibIndex) in bibliography.results"
-                                    :key="bibIndex">
+                                    :key="bibIndex" role="listitem">
                                     <citations :citation="biblioObj.citation"></citations>
                                 </li>
                             </ul>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div id="custom-landing-page" v-if="customLandingPage.length > 0" v-html="customLandingPage"></div>
-            <div id="dictionary-landing-page" v-if="landingPageBrowsing === 'dictionary'">
+            </section>
+            <section id="custom-landing-page" v-if="customLandingPage.length > 0" v-html="customLandingPage"
+                :aria-label="$t('landingPage.customContent')">
+            </section>
+            <section id="dictionary-landing-page" v-if="landingPageBrowsing === 'dictionary'"
+                :aria-label="$t('landingPage.dictionaryNavigation')">
                 <div class="row">
                     <div class="col-6" :class="{ 'offset-3': !showDicoLetterRows }" id="dico-landing-volume">
                         <div class="card shadow-sm">
-                            <div class="card-header">{{ $t("landingPage.browseByVolume") }}</div>
-                            <div class="list-group" flush v-if="volumeData.length">
-                                <div class="list-group-item" v-for="volume in volumeData" :key="volume.philo_id">
-                                    <router-link :to="`/navigate/${volume.philo_id}/table-of-contents`">
-                                        <i style="font-variant: small-caps">{{ volume.title }}</i>
-                                        <span style="font-weight: 300; padding-left: 0.25rem"
-                                            v-if="volume.start_head">({{
-                                                volume.start_head }} - {{ volume.end_head }})</span>
-                                    </router-link>
-                                </div>
+                            <div class="card-header">
+                                <h2 class="h5 mb-0">{{ $t("landingPage.browseByVolume") }}</h2>
                             </div>
+                            <nav class="list-group" flush v-if="volumeData.length"
+                                :aria-label="$t('landingPage.browseByVolumeLabel')">
+                                <router-link class="list-group-item list-group-item-action" v-for="volume in volumeData"
+                                    :key="volume.philo_id" :to="`/navigate/${volume.philo_id}/table-of-contents`"
+                                    :aria-label="$t('landingPage.volumeLink', { title: volume.title, start: volume.start_head, end: volume.end_head })">
+                                    <i style="font-variant: small-caps">{{ volume.title }}</i>
+                                    <span style="font-weight: 300; padding-left: 0.25rem" v-if="volume.start_head">({{
+                                        volume.start_head }} - {{ volume.end_head }})</span>
+                                </router-link>
+                            </nav>
                         </div>
                     </div>
                     <div class="col" id="dico-landing-alpha" cols="6" style="border-width: 0px; box-shadow: 0 0 0"
                         v-if="showDicoLetterRows">
                         <div class="card">
-                            <div class="card-header">{{ $t("landingPage.browseByLetter") }}</div>
-                            <table class="table table-borderless" style="margin-bottom: 0">
-                                <tr v-for="(row, rowIndex) in dicoLetterRows" :key="rowIndex">
-                                    <td class="letter" v-for="letter in row" :key="letter.letter"
-                                        @click="goToLetter(letter.letter)">
-                                        {{ letter.letter }}
-                                    </td>
-                                </tr>
-                            </table>
+                            <div class="card-header">
+                                <h2 class="h5 mb-0">{{ $t("landingPage.browseByLetter") }}</h2>
+                            </div>
+                            <nav :aria-label="$t('landingPage.browseByLetterLabel')">
+                                <table class="table table-borderless" style="margin-bottom: 0" role="presentation">
+                                    <tr v-for="(row, rowIndex) in dicoLetterRows" :key="rowIndex">
+                                        <td v-for="letter in row" :key="letter.letter">
+                                            <button class="btn btn-link letter" @click="goToLetter(letter.letter)"
+                                                :aria-label="$t('landingPage.browseByLetterAction', { letter: letter.letter })">
+                                                {{ letter.letter }}
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </nav>
                         </div>
                     </div>
                 </div>
-            </div>
-            <div id="landing-page-content" class="mt-4">
+            </section>
+            <section id="landing-page-content" class="mt-4" :aria-label="$t('landingPage.browseResults')">
                 <div class="row">
                     <div class="col-12 col-sm-9 offset-sm-1 col-md-8 offset-md-2 text-content-area">
-                        <div class="card mb-4 shadow-sm" v-for="(group, groupIndex) in resultGroups" :key="group.prefix"
-                            :id="`landing-${group.prefix}`">
+                        <article class="card mb-4 shadow-sm" v-for="(group, groupIndex) in resultGroups"
+                            :key="group.prefix" :id="`landing-${group.prefix}`"
+                            :aria-labelledby="`group-heading-${groupIndex}`">
                             <div class="card-header">
-                                {{ group.prefix.toString() }}
+                                <h3 class="h6 mb-0" :id="`group-heading-${groupIndex}`">{{ group.prefix.toString() }}
+                                </h3>
                             </div>
-                            <ul class="list-group list-group-flush">
+                            <ul class="list-group list-group-flush" role="list">
                                 <li class="list-group-item contentClass p-2"
                                     v-for="(result, resultIndex) in group.results.slice(0, groupDisplay[groupIndex])"
-                                    :key="resultIndex">
+                                    :key="resultIndex" role="listitem">
                                     <citations :citation="buildCitationObject(result.metadata, citations)"></citations>
                                     <span v-if="displayCount == 'true'">&nbsp;({{ result.count }})</span>
                                 </li>
                             </ul>
-                            <p class="pt-2 ps-3" v-if="group.results.length > 100">
-                                <button type="button" class="btn btn-outline-secondary" @click="seeAll(groupIndex)">
+                            <div class="card-footer" v-if="group.results.length > 100">
+                                <button type="button" class="btn btn-outline-secondary" @click="seeAll(groupIndex)"
+                                    :aria-label="$t('landingPage.seeAllResults', { n: group.results.length, prefix: group.prefix })">
                                     {{ $t("landingPage.seeResults", { n: group.results.length }) }}
                                 </button>
-                            </p>
-                        </div>
+                            </div>
+                        </article>
                     </div>
                 </div>
-            </div>
+            </section>
         </div>
     </div>
 </template>
@@ -276,7 +305,9 @@ export default {
     },
 };
 </script>
-<style scoped>
+<style lang="scss" scoped>
+@import "../assets/styles/theme.module.scss";
+
 .btn-light {
     background-color: #fff;
     border-width: 0px 1px 0px 0px;
@@ -304,11 +335,19 @@ export default {
 .letter {
     text-align: center;
     cursor: pointer;
-    color: #007bff;
+    color: $link-color;
+    text-decoration: none;
+    border: none;
+    background: transparent;
+    padding: 0.5rem;
+    width: 100%;
 }
 
-.letter:hover {
+.letter:hover,
+.letter:focus {
     background-color: #e8e8e8;
+    color: $link-color;
+    text-decoration: none;
 }
 
 tr:nth-child(odd) {

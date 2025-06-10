@@ -5,6 +5,7 @@ Calls all parsing functions and stores data in index"""
 import collections
 import csv
 import datetime
+import hashlib
 import os
 import shutil
 import sqlite3
@@ -122,6 +123,7 @@ class Loader:
     nlp = None
     suppress_word_attributes = set()
     word_attributes = []
+    overflow_words = set()  # words which would overflow the limit for LMDB values
 
     @classmethod
     def set_class_attributes(cls, loader_options):
@@ -746,18 +748,27 @@ class Loader:
         cls.lemma_count = count_lines(f"{cls.workdir}/all_lemmas_sorted.lz4", lz4=True)
 
     @classmethod
+    def _write_overflow_file(cls, key, philo_ids):
+        """Write overflow data to binary file and add key to overflow set"""
+        cls.overflow_words.add(key)
+        filename = f'{hashlib.sha256(key.encode("utf-8")).hexdigest()}.bin'
+        with open(os.path.join(cls.destination, "overflow_words", filename), "wb") as overflow_file:
+            overflow_file.write(philo_ids)
+
+    @classmethod
     def build_inverted_index(cls, commit_interval=5000):
         """Create inverted index"""
         print("\n### Create inverted index ###", flush=True)
         db_env = lmdb.open(
             f"{cls.destination}/temp_words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True, sync=False
         )  # 2TB limit
+        overflow_limit = 360000000  # 36 bytes per philo_id, 10,000,000 philo_ids
+        os.mkdir(f"{cls.destination}/overflow_words")
 
         print(f"{time.ctime()}: Creating word index...", flush=True)
         with lz4.frame.open(f"{cls.workdir}/all_words_sorted.lz4") as input_file:
             current_word = None
             count = 0
-            current_word = None
             philo_ids = bytearray()
             txn = db_env.begin(write=True)
             for line in tqdm(input_file, total=cls.word_count, desc="Storing words", leave=False):
@@ -770,10 +781,10 @@ class Loader:
                 word_id = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
                 if word != current_word:
                     if current_word is not None:
-                        txn.put(
-                            current_word.encode("utf-8"),
-                            philo_ids,
-                        )
+                        if len(philo_ids) > overflow_limit:
+                            cls._write_overflow_file(current_word, philo_ids)
+                        else:
+                            txn.put(current_word.encode("utf-8"), philo_ids)
                         count += 1
                         if count % commit_interval == 0:
                             txn.commit()
@@ -784,10 +795,10 @@ class Loader:
 
             # Commit any remaining words
             if philo_ids:
-                txn.put(
-                    current_word.encode("utf-8"),  # type: ignore
-                    philo_ids,
-                )
+                if len(philo_ids) > overflow_limit:
+                    cls._write_overflow_file(current_word, philo_ids)
+                else:
+                    txn.put(current_word.encode("utf-8"), philo_ids)
                 count += 1
             txn.commit()
         print(f"{time.ctime()}: Stored {cls.word_count} words in {count} entries.", flush=True)
@@ -807,10 +818,10 @@ class Loader:
                     lemma_id = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
                     if lemma != current_lemma:
                         if current_lemma is not None:
-                            txn.put(
-                                f"lemma:{current_lemma}".encode("utf-8"),
-                                philo_ids,
-                            )
+                            if len(philo_ids) > overflow_limit:
+                                cls._write_overflow_file(f"lemma:{current_lemma}", philo_ids)
+                            else:
+                                txn.put(f"lemma:{current_lemma}".encode("utf-8"), philo_ids)
                             count += 1
                             if count % commit_interval == 0:
                                 txn.commit()
@@ -820,16 +831,15 @@ class Loader:
                     philo_ids += lemma_id
                 # Commit any remaining lemmas
                 if philo_ids:
-                    txn.put(
-                        f"lemma:{current_lemma}".encode("utf-8"),
-                        philo_ids,
-                    )
+                    if len(philo_ids) > overflow_limit:
+                        cls._write_overflow_file(f"lemma:{current_lemma}", philo_ids)
+                    else:
+                        txn.put(f"lemma:{current_lemma}".encode("utf-8"), philo_ids)
                     count += 1
                 txn.commit()
             print(f"{time.ctime()}: Stored {cls.lemma_count} lemmas in {count} entries.", flush=True)
 
         # Add word attributes to LMDB database
-        # Keys follow the format word:word_attribute:attribute_value
         if cls.has_attributes is True:
             print(f"{time.ctime()}: Found word attributes, creating word attributes index...", flush=True)
             with lz4.frame.open(f"{cls.workdir}/all_words_sorted.lz4") as input_file:
@@ -849,10 +859,11 @@ class Loader:
                         if current_word is not None:
                             for attribute, attribute_dict in word_attributes.items():
                                 for attribute_value, philo_ids in attribute_dict.items():
-                                    txn.put(
-                                        f"{current_word}:{attribute}:{attribute_value}".encode("utf-8"),
-                                        philo_ids,
-                                    )
+                                    key = f"{current_word}:{attribute}:{attribute_value}"
+                                    if len(philo_ids) > overflow_limit:
+                                        cls._write_overflow_file(key, philo_ids)
+                                    else:
+                                        txn.put(key.encode("utf-8"), philo_ids)
                                     count += 1
                                     if count % commit_interval == 0:
                                         txn.commit()
@@ -867,13 +878,16 @@ class Loader:
                 # Handle the last set of words
                 for attribute, attribute_dict in word_attributes.items():
                     for attribute_value, philo_ids in attribute_dict.items():
-                        txn.put(f"{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+                        key = f"{current_word}:{attribute}:{attribute_value}"
+                        if len(philo_ids) > overflow_limit:
+                            cls._write_overflow_file(key, philo_ids)
+                        else:
+                            txn.put(key.encode("utf-8"), philo_ids)
                         count += 1
                 txn.commit()
             print(f"{time.ctime()}: Stored {count} word attributes.", flush=True)
 
-        # Add word attributes to LMDB database with lemma info.
-        # Keys follow the format lemma:word:word_attribute:attribute_value
+        # Add word attributes to LMDB database with lemma info
         if cls.lemma_count > 0 and cls.has_attributes is True:
             print(f"{time.ctime()}: Creating lemma word attributes index...", flush=True)
             with lz4.frame.open(f"{cls.workdir}/all_lemmas_sorted.lz4") as input_file:
@@ -895,10 +909,11 @@ class Loader:
                         if current_word is not None:
                             for attribute, attribute_dict in word_attributes.items():
                                 for attribute_value, philo_ids in attribute_dict.items():
-                                    txn.put(
-                                        f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"),
-                                        philo_ids,
-                                    )
+                                    key = f"lemma:{current_word}:{attribute}:{attribute_value}"
+                                    if len(philo_ids) > overflow_limit:
+                                        cls._write_overflow_file(key, philo_ids)
+                                    else:
+                                        txn.put(key.encode("utf-8"), philo_ids)
                                     count += 1
                                     if count % commit_interval == 0:
                                         txn.commit()
@@ -913,14 +928,18 @@ class Loader:
                 # Handle the last set of words
                 for attribute, attribute_dict in word_attributes.items():
                     for attribute_value, philo_ids in attribute_dict.items():
-                        txn.put(f"lemma:{current_word}:{attribute}:{attribute_value}".encode("utf-8"), philo_ids)
+                        key = f"lemma:{current_word}:{attribute}:{attribute_value}"
+                        if len(philo_ids) > overflow_limit:
+                            cls._write_overflow_file(key, philo_ids)
+                        else:
+                            txn.put(key.encode("utf-8"), philo_ids)
                         count += 1
                 txn.commit()
             print(f"{time.ctime()}: Stored {count} lemma word attributes.", flush=True)
 
         print(f"{time.ctime()}: Optimizing word index for space...", flush=True)
         os.mkdir(f"{cls.destination}/words.lmdb")
-        db_env.sync(True) # Ensure all data is written to disk
+        db_env.sync(True)  # Ensure all data is written to disk
         db_env.close()
         # Reopen env without writemap to compact the database
         src_env = lmdb.open(
@@ -929,7 +948,7 @@ class Loader:
         )
         src_env.copy(f"{cls.destination}/words.lmdb", compact=True)
         src_env.close()
-        # os.system(f"rm -rf {cls.destination}/temp_words.lmdb")
+        os.system(f"rm -rf {cls.destination}/temp_words.lmdb")
 
         # Create a lemma lookup table where keys are philo_ids as bytes and values are lemmas in the form lemma:word
         if cls.lemma_count > 0:
@@ -1138,6 +1157,7 @@ class Loader:
         db_values["token_regex"] = self.token_regex
         db_values["default_object_level"] = self.default_object_level
         db_values["word_attributes"] = self.word_attributes
+        db_values["overflow_words"] = self.overflow_words
 
         db_config = MakeDBConfig(filename, **db_values)
         with open(filename, "w") as db_file:

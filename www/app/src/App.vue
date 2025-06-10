@@ -1,24 +1,36 @@
 <template>
-    <div v-if="!$philoConfig.valid_config" class="error">
-        <h2>Invalid web config file: {{ $philoConfig.web_config_path }}</h2>
-        <p>Check for syntax errors in the configuration file.</p>
+    <div v-if="!$philoConfig.valid_config" class="error" role="alert">
+        <h1>{{ $t('common.invalidConfigTitle') }}</h1>
+        <p>{{ $t('common.invalidConfigMessage') }}</p>
     </div>
     <div id="app" v-else>
+        <!-- Skip navigation for keyboard users -->
+        <a href="#main-content" class="visually-hidden-focusable">
+            {{ $t('common.skipToMain') }}
+        </a>
+
         <Header />
         <SearchForm v-if="accessAuthorized" />
-        <router-view v-if="accessAuthorized" />
-        <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized" />
-        <div class="container-fluid" v-if="accessAuthorized">
+
+        <!-- Main content landmark -->
+        <main id="main-content" role="main" tabindex="-1">
+            <router-view v-if="accessAuthorized" />
+        </main>
+
+        <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized" role="main"
+            :aria-label="$t('common.accessControlLabel')" />
+
+        <!-- Footer with proper semantic structure -->
+        <footer class="container-fluid" v-if="accessAuthorized" role="contentinfo">
             <div class="text-center mb-4">
-                <hr class="mb-3" width="20%" style="margin: auto" />
-                Powered by
-                <br />
-                <a href="https://artfl-project.uchicago.edu/"
-                    title="Philologic 4: Open Source ARTFL Search and Retrieval Engine">
-                    <img src="./assets/philo.png" alt="PhiloLogic" height="40" width="110" />
+                <hr class="mb-3" style="width: 20%; margin: auto" />
+                <p>{{ $t('common.poweredBy') }}</p>
+                <a href="https://artfl-project.uchicago.edu/" :title="$t('common.philoTitle')"
+                    :aria-label="$t('common.philoLinkLabel')">
+                    <img src="./assets/philo.png" :alt="$t('common.philoAlt')" height="40" width="110" />
                 </a>
             </div>
-        </div>
+        </footer>
     </div>
 </template>
 
@@ -56,7 +68,7 @@ export default {
                 cooc_order: "yes",
                 method_arg: "",
                 arg_phrase: "",
-                results_per_page: "25",
+                results_per_page: 25,
                 start: "",
                 end: "",
                 colloc_filter_choice: "",
@@ -129,10 +141,14 @@ export default {
         if (this.$philoConfig.valid_config) {
             document.title = DOMPurify.sanitize(this.$philoConfig.dbname);
             const html = document.documentElement;
-            html.setAttribute("lang", "sv");
-            this.$i18n.locale = localStorage.getItem("lang") || "en";
+
+            // Fix: Use dynamic locale instead of hardcoded 'sv'
+            const currentLocale = this.$i18n.locale || localStorage.getItem("lang") || "en";
+            html.setAttribute("lang", currentLocale);
+            this.$i18n.locale = currentLocale;
+
             this.accessAuthorized = this.$philoConfig.access_control ? false : true;
-            let baseUrl = this.getBaseUrl(); // Make sure proxied access uses proxy server for access request
+            let baseUrl = this.getBaseUrl();
             if (this.$philoConfig.access_control) {
                 this.$http
                     .get(`${baseUrl}/scripts/access_request.py`, {
@@ -218,6 +234,7 @@ export default {
     },
 };
 </script>
+
 <style lang="scss">
 @import "./assets/styles/theme.module.scss";
 @import "../node_modules/bootstrap/scss/bootstrap.scss";
@@ -226,8 +243,9 @@ a {
     text-decoration: none;
 }
 
-.btn:focus {
-    box-shadow: none !important;
+.btn:focus-visible {
+    outline: 2px solid var(--bs-primary) !important;
+    outline-offset: 2px !important;
 }
 
 .modal-backdrop {
@@ -261,10 +279,18 @@ input {
     min-height: auto;
 }
 
+// TOC styles with better accessibility
 .toc-div1>a,
 .toc-div2>a,
 .toc-div3>a {
     padding: 5px 5px 5px 0px;
+}
+
+.toc-div1:focus,
+.toc-div2:focus,
+.toc-div3:focus {
+    outline: 2px solid var(--bs-primary) !important;
+    outline-offset: 2px !important;
 }
 
 .bullet-point-div1,
@@ -293,7 +319,6 @@ input {
 .toc-div2,
 .toc-div3 {
     text-indent: -0.9em;
-    /*Account for the bullet point*/
     margin-bottom: 5px;
 }
 
@@ -320,8 +345,16 @@ br {
     display: block;
 }
 
-/*Text formatting*/
+.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    padding: 1rem;
+    border: 1px solid #f5c6cb;
+    border-radius: 0.25rem;
+    margin: 1rem;
+}
 
+/*Text formatting*/
 span.note {
     display: inline;
 }
@@ -341,12 +374,12 @@ span.note {
 
 .xml-l[id]::before {
     content: attr(id);
-    color: #bababa;
+    color: #666666;
 }
 
 .xml-l[n]::before {
     content: attr(n);
-    color: #bababa;
+    color: #666666;
 }
 
 .xml-l[type="split"]::before {
@@ -355,7 +388,7 @@ span.note {
 
 .xml-milestone::before {
     content: attr(n) "\00a0";
-    color: #909090;
+    color: #555555;
     font-family: "Droid Sans Mono", sans-serif;
     font-size: 0.6em;
     vertical-align: 0.3em;

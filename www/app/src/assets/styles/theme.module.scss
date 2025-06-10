@@ -23,7 +23,7 @@ nav.navbar a, #academic-citation-link {
 }
 
 $secondary: $button-color;
-.btn-secondary.active {
+.btn-secondary.active, .btn-check:checked + .btn {
     color: #fff !important;
     background-color: $button-color-active !important;
 }
@@ -120,9 +120,8 @@ a.btn-secondary {
 .custom-control-input:checked~.custom-control-label::before,
 .custom-control-input:focus~.custom-control-label::before,
 input[type="text"]:focus {
-    box-shadow: 0 0 0 0.05rem $button-color !important;
+    box-shadow: 0 0 0 0.075rem $button-color !important;
     border-color: $button-color !important;
-    opacity: .5
 }
 
 .landing-page-btn {
@@ -133,7 +132,6 @@ input[type="text"]:focus {
     color: #fff !important;
     background-color: #670a0a !important;
 }
-
 
 // Fonts
 body,

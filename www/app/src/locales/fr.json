@@ -1,6 +1,14 @@
 {
     "language": "Français",
     "common": {
+        "skipToMain": "Aller au contenu principal",
+        "accessControlLabel": "Vérification du contrôle d'accès",
+        "poweredBy": "Propulsé par",
+        "philoTitle": "PhiloLogic 5 : Moteur de recherche et de récupération ARTFL open source",
+        "philoLinkLabel": "Visiter le site web PhiloLogic",
+        "philoAlt": "PhiloLogic - Moteur de recherche et de récupération ARTFL open source",
+        "invalidConfigTitle": "Fichier de configuration web invalide : {path}",
+        "invalidConfigMessage": "Vérifiez les erreurs de syntaxe dans le fichier de configuration.",
         "loading": "Chargement en cours",
         "and": "et",
         "showFacets": "Montrer les facettes",
@@ -13,6 +21,10 @@
         "sameSentence": "dans la même phrase"
     },
     "header": {
+        "citationModalTitle": "Comment citer {dbname} :",
+        "closeCitationDialog": "Fermer la boîte de dialogue de citation",
+        "citationHelpText": "Ouvre une boîte de dialogue avec des informations sur la façon de citer cette base de données",
+        "accessedOn": "Consulté le {date}",
         "goHome": "Page d'accueil",
         "citeUs": "Nous citer",
         "contactUs": "Contactez nous"
@@ -36,6 +48,7 @@
         "hideSearchOptions": "Masquer",
         "searchTermsParameters": "Paramètres de recherche par mots",
         "approximateMatch": "Inclure les mots proches",
+        "approximateMatchLabel": "Sélectionner le pourcentage de correspondance approximative",
         "similarity": "Degré de proximité: {n}%",
         "searchCoOccurrences": "Recherche de co-occurrences",
         "coOccurrenceWordOrder": "Respecter l'ordre des mots co-occurrents",
@@ -64,7 +77,15 @@
         "filterCollocate": "Filtrer les collocations par",
         "collocatesWithin": "Collocations dans une fenêtre de",
         "words": "mots",
-        "collocatesWithinSentence": "Collocations dans la même phrase"
+        "collocatesWithinSentence": "Collocations dans la même phrase",
+        "searchTipsButton": "Ouvrir les conseils de recherche",
+        "autocompleteResults": "Suggestions d'autocomplétion",
+        "groupResultsByLabel": "Sélectionner le champ pour regrouper les résultats",
+        "sortResultsByLabel": "Sélectionner le champ pour trier les résultats",
+        "resultsPerPageLabel": "Sélectionner le nombre de résultats par page",
+        "coOccurrenceMethodLabel": "Sélectionner la méthode de recherche de co-occurrence",
+        "collocNWordsLabel": "Nombre de mots pour la recherche de collocation",
+        "advancedSearchOptions": "Options de recherche avancée"
     },
     "resultsBiblio": {
         "heading": "Bibliographie des résultats sur cette page",
@@ -156,9 +177,19 @@
         "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats."
     },
     "landingPage": {
-        "browseByVolume": "Naviguer par volume",
-        "browseByLetter": "Naviguer par lettre",
-        "seeResults": "Afficher les {n} résultats"
+        "logoAlt": "Logo de la base de données {dbname}",
+        "browseRange": "Parcourir {type} pour {range}",
+        "browseByLetterLabel": "Parcourir les entrées commençant par la lettre {letter}",
+        "bibliography": "Bibliographie",
+        "volumeLink": "Parcourir {title} ({start} - {end})",
+        "seeAllResults": "Voir tous les {n} résultats pour {prefix}",
+        "browseByVolume": "Parcourir par Volume",
+        "browseByLetter": "Parcourir par Lettre",
+        "customContent": "Contenu personnalisé",
+        "dictionaryNavigation": "Navigation du dictionnaire",
+        "browseByVolumeLabel": "Parcourir par volume",
+        "browseByLetterAction": "Parcourir les entrées commençant par la lettre {letter}",
+        "browseResults": "Parcourir les résultats"
     },
     "searchTips": {},
     "textNav": {

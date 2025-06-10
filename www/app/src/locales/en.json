@@ -1,7 +1,15 @@
 {
     "language": "English",
     "common": {
-        "loading": "Loading",
+        "skipToMain": "Skip to main content",
+        "accessControlLabel": "Access control verification",
+        "poweredBy": "Powered by",
+        "philoTitle": "PhiloLogic 5: Open Source ARTFL Search and Retrieval Engine",
+        "philoLinkLabel": "Visit PhiloLogic website",
+        "philoAlt": "PhiloLogic - Open Source ARTFL Search and Retrieval Engine",
+        "invalidConfigTitle": "Invalid web config file: {path}",
+        "invalidConfigMessage": "Check for syntax errors in the configuration file.",
+        "loading": "Loading content, please wait",
         "and": "and",
         "showFacets": "Show Facets",
         "none": "None",
@@ -13,10 +21,13 @@
         "sameSentence": "in the same sentence"
     },
     "header": {
+        "citationModalTitle": "How to cite {dbname}:",
+        "closeCitationDialog": "Close citation dialog",
+        "citationHelpText": "Opens a dialog with information on how to cite this database",
+        "accessedOn": "Accessed on {date}",
         "goHome": "Go to home page",
         "citeUs": "Cite us",
-        "contactUs": "Contact Us",
-        "reportError": "Report Error"
+        "contactUs": "Contact Us"
     },
     "searchForm": {
         "concordance": "Concordance",
@@ -65,7 +76,16 @@
         "filterCollocate": "Filter collocates by",
         "collocatesWithin": "Collocates within",
         "words": "words",
-        "collocatesWithinSentence": "Collocates within the same sentence"
+        "collocatesWithinSentence": "Collocates within the same sentence",
+        "searchTipsButton": "Open search tips",
+        "autocompleteResults": "Autocomplete suggestions",
+        "groupResultsByLabel": "Select field to group results by",
+        "sortResultsByLabel": "Select field to sort results by",
+        "resultsPerPageLabel": "Select number of results per page",
+        "approximateMatchLabel": "Select approximate match percentage",
+        "coOccurrenceMethodLabel": "Select co-occurrence search method",
+        "collocNWordsLabel": "Number of words for collocation search",
+        "advancedSearchOptions": "Advanced search options"
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",
@@ -157,9 +177,19 @@
         "performance": "For performance reasons, only the first 1000 results are displayed. Click on the link above for full results."
     },
     "landingPage": {
-        "browseByVolume": "Browse by volume",
-        "browseByLetter": "Browse by letter",
-        "seeResults": "See all {n} results"
+        "logoAlt": "{dbname} database logo",
+        "browseRange": "Browse {type} for {range}",
+        "browseByLetterLabel": "Browse entries starting with letter {letter}",
+        "bibliography": "Bibliography",
+        "volumeLink": "Browse {title} ({start} - {end})",
+        "seeAllResults": "See all {n} results for {prefix}",
+        "browseByVolume": "Browse by Volume",
+        "browseByLetter": "Browse by Letter",
+        "customContent": "Custom content",
+        "dictionaryNavigation": "Dictionary navigation",
+        "browseByVolumeLabel": "Browse by volume",
+        "browseByLetterAction": "Browse entries starting with letter {letter}",
+        "browseResults": "Browse results"
     },
     "searchTips": {},
     "textNav": {
