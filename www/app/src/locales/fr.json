@@ -20,7 +20,9 @@
         "relativeFrequency": "Fréquence Relative",
         "sameSentence": "dans la même phrase",
         "showFacetsLabel": "Afficher les facettes de recherche",
-        "facetsRegion": "Facettes de recherche"
+        "facetsRegion": "Facettes de recherche",
+        "tab": "onglet",
+        "closeModal": "Fermer la boîte de dialogue d'export"
     },
     "header": {
         "citationModalTitle": "Comment citer {dbname} :",
@@ -145,11 +147,32 @@
         "collocateBetweenPeriods": "Collocations distinctives à travers le temps: {start} vs. {end}",
         "similarUsage": "Usage similaire",
         "mostSimilarUsage": "avec l'emploi le plus similaire/différent à",
-        "gatheringTimeSeriesPeriod": "Récupération de la période"
+        "gatheringTimeSeriesPeriod": "Récupération de la période",
+        "collocatesTable": "Tableau de fréquence des collocants",
+        "collocatesTableCaption": "Tableau montrant les collocants et leurs nombres de fréquence. Cliquez sur n'importe quelle ligne pour voir les concordances.",
+        "viewConcordance": "Voir les concordances pour",
+        "methodSelectionTabs": "Sélection de la méthode d'analyse de collocation",
+        "comparisonResultsTabs": "Onglets des résultats de comparaison",
+        "frequentCollocatesPanel": "Panneau des résultats de collocants fréquents",
+        "overRepresentedCollocatesPanel": "Panneau des résultats de collocants sur-représentés",
+        "primaryCorpusResults": "Résultats du corpus principal",
+        "comparisonCorpusResults": "Résultats du corpus de comparaison",
+        "overRepresentedResults": "Collocants sur-représentés",
+        "underRepresentedResults": "Collocants sous-représentés",
+        "similarUsageResults": "Résultats d'analyse d'usage similaire",
+        "timeSeriesResults": "Résultats d'analyse de séries temporelles",
+        "viewToggle": "Basculer la vue pour la période",
+        "showOverRepresented": "Afficher les collocants sur-représentés pour",
+        "showFrequent": "Afficher les collocants fréquents pour"
     },
     "concordance": {
         "more": "Plus",
-        "less": "Moins"
+        "less": "Moins",
+        "resultsRegion": "Résultats de recherche de concordance",
+        "resultNumber": "Numéro de résultat",
+        "showMoreContext": "Afficher plus de contexte pour le",
+        "forResult": "résultat",
+        "contextRegion": "Contexte du texte pour le résultat"
     },
     "facets": {
         "browseByFacet": "Naviguer par facettes",
@@ -163,9 +186,13 @@
         "collocate": "Collocation"
     },
     "exportResults": {
-        "currentPage": "SEUL les résults de cette page seront générés",
-        "html": "Texte en HTML",
-        "plain": " Texte simple"
+        "currentPage": "Seuls les résultats de la page actuelle seront exportés",
+        "html": "Avec formatage HTML",
+        "plain": "Format texte brut",
+        "exportAs": "Exporter en",
+        "htmlDescription": "Préserve le formatage, les liens et le style du texte",
+        "plainDescription": "Texte propre sans balises HTML ni formatage",
+        "downloadNote": "Les fichiers seront téléchargés dans votre dossier de téléchargement par défaut"
     },
     "kwic": {
         "sortResultsBy": "Trier résultats par",
@@ -227,5 +254,10 @@
         "endDate": "Date de fin",
         "removeStartDate": "Supprimer le filtre de date de début",
         "removeEndDate": "Supprimer le filtre de date de fin"
+    },
+    "citations": {
+        "citationGroup": "Citation",
+        "citationItem": "Citation {position} sur {total} : {label}",
+        "viewText": "Voir le texte"
     }
 }

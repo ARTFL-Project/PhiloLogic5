@@ -1,44 +1,64 @@
 <template>
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
+
+        <!-- Facets toggle button with proper labeling -->
         <div style="position: relative" v-if="!showFacets && philoConfig.facets.length > 0">
             <button type="button" class="btn btn-secondary" style="position: absolute; bottom: 1rem; right: 0.5rem"
-                @click="toggleFacets()">
+                @click="toggleFacets()" :aria-label="$t('common.showFacetsLabel')">
                 {{ $t("common.showFacets") }}
             </button>
         </div>
+
         <div class="row" style="padding-right: 0.5rem">
-            <div class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }">
+            <main class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }" role="main"
+                :aria-label="$t('concordance.resultsRegion')">
+
                 <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
-                    <div class="card philologic-occurrence text-view ms-2 me-2 mb-3 shadow-sm"
-                        v-for="(result, index) in results.results" :key="result.philo_id.join('-')" :data-index="index">
-                        <div class="row citation-container g-0">
-                            <div class="col-12 cpl-sm-10 col-md-11">
-                                <span class="cite">
-                                    <span class="number">{{ results.description.start + index }}</span>
+                    <article class="card philologic-occurrence text-view ms-2 me-2 mb-3 shadow-sm"
+                        v-for="(result, index) in results.results" :key="result.philo_id.join('-')" :data-index="index"
+                        :aria-labelledby="`result-${index}-heading`">
+
+                        <!-- Citation header -->
+                        <header class="row citation-container g-0">
+                            <div class="col-12 col-sm-10 col-md-11">
+                                <span class="cite" :id="`result-${index}-heading`">
+                                    <span class="number"
+                                        :aria-label="`${$t('concordance.resultNumber')} ${results.description.start + index}`">
+                                        {{ results.description.start + index }}
+                                    </span>
                                     <citations :citation="result.citation"></citations>
                                 </span>
                             </div>
                             <div class="col-sm-2 col-md-1 d-none d-sm-inline-block">
                                 <button type="button" class="btn btn-secondary more-context"
-                                    @click="moreContext(index, $event)">
+                                    @click="moreContext(index, $event)"
+                                    :aria-label="`${$t('concordance.showMoreContext')} ${$t('concordance.forResult')} ${results.description.start + index}`">
                                     <span class="more d-none d-lg-inline-block">{{ $t("concordance.more") }}</span>
+                                    <span class="visually-hidden">{{ $t("concordance.more") }}</span>
                                 </button>
                             </div>
-                        </div>
+                        </header>
+
+                        <!-- Concordance content -->
                         <div class="row">
                             <div class="col m-2 concordance-text" :position="results.description.start + index"
-                                @keyup="dicoLookup($event, result.metadata_fields.year)">
+                                @keyup="dicoLookup($event, result.metadata_fields.year)"
+                                :aria-label="`${$t('concordance.contextRegion')} ${results.description.start + index}`">
                                 <div class="default-length" v-html="result.context"></div>
                                 <div class="more-length"></div>
                             </div>
                         </div>
-                    </div>
+                    </article>
                 </transition-group>
-            </div>
-            <div class="col col-md-3 col-xl-3 ps-0" v-if="showFacets">
+            </main>
+
+            <!-- Facets sidebar -->
+            <aside class="col col-md-3 col-xl-3 ps-0" v-if="showFacets" role="complementary"
+                :aria-label="$t('common.facetsRegion')">
                 <facets></facets>
-            </div>
+            </aside>
+
             <pages></pages>
         </div>
     </div>

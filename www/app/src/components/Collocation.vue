@@ -1,30 +1,41 @@
 <template>
     <div id="collocation-container" class="container-fluid mt-4">
         <div class="d-none d-sm-block mt-3" style="padding: 0 0.5rem">
-            <ul class="nav nav-tabs" id="colloc-method-switch" role="tablist">
+            <ul class="nav nav-tabs" id="colloc-method-switch" role="tablist"
+                :aria-label="$t('collocation.methodSelectionTabs')">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="frequency-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'frequency' }" data-bs-target="#frequency-tab-pane"
-                        type="button" role="tab" aria-controls="frequency-tab-pane" aria-selected="true"
-                        @click="getFrequency()">{{ $t("collocation.collocation") }}</button>
+                        type="button" role="tab" aria-controls="frequency-tab-pane"
+                        :aria-selected="collocMethod === 'frequency'" @click="getFrequency()"
+                        :aria-label="`${$t('collocation.collocation')} ${$t('common.tab')}`">
+                        {{ $t("collocation.collocation") }}
+                    </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="compare-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'compare' }" data-bs-target="#compare-tab-pane" type="button"
-                        role="tab" aria-controls="compare-tab-pane" aria-selected="false" @click="toggleCompare()">{{
-                            $t("collocation.compareTo") }}</button>
+                        role="tab" aria-controls="compare-tab-pane" :aria-selected="collocMethod === 'compare'"
+                        @click="toggleCompare()" :aria-label="`${$t('collocation.compareTo')} ${$t('common.tab')}`">
+                        {{ $t("collocation.compareTo") }}
+                    </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="similar-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'similar' }" data-bs-target="#similar-tab-pane" type="button"
-                        role="tab" aria-controls="similar-tab-pane" aria-selected="false" @click="toggleSimilar()">{{
-                            $t("collocation.similarUsage") }}</button>
+                        role="tab" aria-controls="similar-tab-pane" :aria-selected="collocMethod === 'similar'"
+                        @click="toggleSimilar()" :aria-label="`${$t('collocation.similarUsage')} ${$t('common.tab')}`">
+                        {{ $t("collocation.similarUsage") }}
+                    </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="time-series-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'timeSeries' }" data-bs-target="#time-series-tab-pane"
-                        type="button" role="tab" aria-controls="time-series-tab-pane" aria-selected="false"
-                        @click="toggleTimeSeries()">{{ $t("collocation.timeSeries") }}</button>
+                        type="button" role="tab" aria-controls="time-series-tab-pane"
+                        :aria-selected="collocMethod === 'timeSeries'" @click="toggleTimeSeries()"
+                        :aria-label="`${$t('collocation.timeSeries')} ${$t('common.tab')}`">
+                        {{ $t("collocation.timeSeries") }}
+                    </button>
                 </li>
             </ul>
         </div>
@@ -46,97 +57,99 @@
                     <div class="input-group pb-2" v-for="localField in metadataDisplay" :key="localField.value">
                         <div class="input-group pb-2" :id="localField.value + '-group'"
                             v-if="metadataInputStyle[localField.value] == 'text'">
-                            <button type="button" class="btn btn-outline-secondary">
-                                <label :for="localField.value + 'input-filter'">{{
-                                    localField.label
-                                    }}</label></button><input type="text" class="form-control"
-                                :id="localField.value + 'input-filter'" :name="localField.value"
-                                :placeholder="localField.example" v-model="comparedMetadataValues[localField.value]"
-                                v-if="metadataInputStyle[localField.value] == 'text' &&
-                                    metadataInputStyle[localField.value] != 'date'
-                                " />
+                            <label class="btn btn-outline-secondary" :for="localField.value + '-input-filter'">
+                                {{ localField.label }}
+                            </label>
+                            <input type="text" class="form-control" :id="localField.value + '-input-filter'"
+                                :name="localField.value" :placeholder="localField.example"
+                                v-model="comparedMetadataValues[localField.value]"
+                                :aria-label="`${$t('collocation.filterBy')} ${localField.label}`" v-if="metadataInputStyle[localField.value] == 'text' &&
+                                    metadataInputStyle[localField.value] != 'date'" />
                         </div>
+
                         <div class="input-group pb-2" :id="localField.value + '-group'"
                             v-if="metadataInputStyle[localField.value] == 'checkbox'">
-                            <button style="border-top-right-radius: 0; border-bottom-right-radius: 0"
-                                class="btn btn-outline-secondary me-2">
+                            <span class="btn btn-outline-secondary me-2"
+                                style="border-top-right-radius: 0; border-bottom-right-radius: 0">
                                 {{ localField.label }}
-                            </button>
+                            </span>
                             <div class="d-inline-block">
                                 <div class="form-check d-inline-block ms-3" style="padding-top: 0.35rem"
                                     :id="localField.value" :options="metadataChoiceValues[localField.value]"
                                     v-for="metadataChoice in metadataChoiceValues[localField.value]"
                                     :key="metadataChoice.value" v-once>
                                     <input class="form-check-input" type="checkbox" :id="metadataChoice.value"
-                                        v-model="metadataChoiceChecked[metadataChoice.value]" />
-                                    <label class="form-check-label" :for="metadataChoice.value">{{
-                                        metadataChoice.text
-                                        }}</label>
+                                        v-model="metadataChoiceChecked[metadataChoice.value]"
+                                        :aria-label="`${$t('collocation.filterBy')} ${localField.label}: ${metadataChoice.text}`" />
+                                    <label class="form-check-label" :for="metadataChoice.value">
+                                        {{ metadataChoice.text }}
+                                    </label>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Dropdown fields -->
                         <div class="input-group pb-2" :id="localField.value + '-group'"
                             v-if="metadataInputStyle[localField.value] == 'dropdown'">
-                            <button type="button" class="btn btn-outline-secondary">
-                                <label :for="localField.value + '-input-filter'">{{
-                                    localField.label
-                                    }}</label>
-                            </button>
+                            <label class="btn btn-outline-secondary" :for="localField.value + '-select'">
+                                {{ localField.label }}
+                            </label>
                             <select class="form-select" :id="localField.value + '-select'"
-                                v-model="metadataChoiceSelected[localField.value]">
+                                v-model="metadataChoiceSelected[localField.value]"
+                                :aria-label="`${$t('collocation.filterBy')} ${localField.label}`">
                                 <option v-for="innerValue in metadataChoiceValues[localField.value]"
-                                    :key="innerValue.value" :value="innerValue.value"
-                                    :id="innerValue.value + '-select-option'">
+                                    :key="innerValue.value" :value="innerValue.value">
                                     {{ innerValue.text }}
                                 </option>
                             </select>
                         </div>
+
                         <div class="input-group pb-2" :id="localField.value + '-group'"
                             v-if="['date', 'int'].includes(metadataInputStyle[localField.value])">
-                            <button type="button" class="btn btn-outline-secondary"
+                            <span class="btn btn-outline-secondary"
                                 style="border-top-right-radius: 0; border-bottom-right-radius: 0">
-                                <label :for="localField.value + '-date'">{{ localField.label
-                                    }}</label>
-                            </button>
+                                {{ localField.label }}
+                            </span>
                             <div class="btn-group" role="group">
                                 <button class="btn btn-secondary dropdown-toggle"
                                     style="border-top-left-radius: 0; border-bottom-left-radius: 0" type="button"
-                                    :id="localField.value + '-selector'" data-bs-toggle="dropdown"
-                                    aria-expanded="false">
+                                    :id="localField.value + '-selector'" data-bs-toggle="dropdown" aria-expanded="false"
+                                    :aria-label="`${$t('collocation.selectDateType')} ${localField.label}`">
                                     {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
                                 </button>
                                 <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
                                     <li @click="dateTypeToggle(localField.value, 'exact')">
-                                        <a class="dropdown-item">{{
-                                            $t("searchForm.exactDate") }}</a>
+                                        <a class="dropdown-item">{{ $t("searchForm.exactDate") }}</a>
                                     </li>
                                     <li @click="dateTypeToggle(localField.value, 'range')">
-                                        <a class="dropdown-item">{{
-                                            $t("searchForm.rangeDate") }}</a>
+                                        <a class="dropdown-item">{{ $t("searchForm.rangeDate") }}</a>
                                     </li>
                                 </ul>
                             </div>
-                            <input type="text" class="form-control" :id="localField.value + 'input-filter'"
+                            <input type="text" class="form-control" :id="localField.value + '-input-filter'"
                                 :name="localField.value" :placeholder="localField.example"
                                 v-model="comparedMetadataValues[localField.value]"
+                                :aria-label="`${$t('collocation.filterBy')} ${localField.label}`"
                                 v-if="dateType[localField.value] == 'exact'" />
                             <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
                                 <div class="input-group ms-3">
-                                    <button class="btn btn-outline-secondary" type="button">
-                                        <label for="query-term-input">{{
-                                            $t("searchForm.dateFrom")
-                                            }}</label>
-                                    </button>
+                                    <label class="btn btn-outline-secondary"
+                                        :for="localField.value + '-start-input-filter'">
+                                        {{ $t("searchForm.dateFrom") }}
+                                    </label>
                                     <input type="text" class="form-control date-range"
                                         :id="localField.value + '-start-input-filter'"
                                         :name="localField.value + '-start'" :placeholder="localField.example"
-                                        v-model="dateRange[localField.value].start" />
-                                    <button class="btn btn-outline-secondary ms-3" type="button">
-                                        <label for="query-term-input">{{
-                                            $t("searchForm.dateTo")
-                                            }}</label></button><input type="text" class="form-control date-range"
-                                        :id="localField.value + 'end-input-filter'" :name="localField.value + '-end'"
-                                        :placeholder="localField.example" v-model="dateRange[localField.value].end" />
+                                        v-model="dateRange[localField.value].start"
+                                        :aria-label="`${$t('searchForm.dateFrom')} ${localField.label}`" />
+                                    <label class="btn btn-outline-secondary ms-3"
+                                        :for="localField.value + '-end-input-filter'">
+                                        {{ $t("searchForm.dateTo") }}
+                                    </label>
+                                    <input type="text" class="form-control date-range"
+                                        :id="localField.value + '-end-input-filter'" :name="localField.value + '-end'"
+                                        :placeholder="localField.example" v-model="dateRange[localField.value].end"
+                                        :aria-label="`${$t('searchForm.dateTo')} ${localField.label}`" />
                                 </div>
                             </span>
                         </div>
@@ -149,7 +162,6 @@
             </div>
         </div>
         <div class="card mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'similar'">
-            <!-- Create a single flex container for all elements -->
             <div class="d-flex align-items-center flex-wrap mt-2">
                 <div class="btn-group" style="width: fit-content;" role="group">
                     <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
@@ -164,7 +176,6 @@
                 </div>
                 <span class="ms-2">{{ $t("collocation.mostSimilarUsage") }}</span>
 
-                <!-- Include bibliography directly in the flex container -->
                 <bibliography-criteria class="ms-2 mt-2" :biblio="biblio" :query-report="report"
                     :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
             </div>
@@ -196,18 +207,25 @@
         <div class="row my-3 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && collocMethod == 'frequency'">
             <div class="col-12 col-sm-4">
                 <div class="card shadow-sm">
-                    <table class="table table-hover table-striped table-light table-borderless caption-top">
+                    <table class="table table-hover table-striped table-light table-borderless caption-top" role="table"
+                        aria-label="$t('collocation.collocatesTable')">
+                        <caption class="visually-hidden">
+                            {{ $t('collocation.collocatesTableCaption') }}
+                        </caption>
                         <thead class="table-header">
                             <tr>
-                                <th scope="col">{{ $t("collocation.collocate") }}</th>
-                                <th scope="col">{{ $t("collocation.count") }}</th>
+                                <th scope="col" id="collocate-header">{{ $t("collocation.collocate") }}</th>
+                                <th scope="col" id="count-header">{{ $t("collocation.count") }}</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr style="line-height: 1.75rem" v-for="word in sortedList" :key="word.collocate"
-                                @click="collocateClick(word)">
-                                <td class="text-view">{{ word.collocate }}</td>
-                                <td>{{ word.count }}</td>
+                            <tr style="line-height: 1.75rem" v-for="(word, index) in sortedList" :key="word.collocate"
+                                role="button" :tabindex="0" @click="collocateClick(word)"
+                                @keydown.enter="collocateClick(word)" @keydown.space.prevent="collocateClick(word)"
+                                :aria-label="`${$t('collocation.viewConcordance')}: ${word.collocate}, ${$t('collocation.count')}: ${word.count}`"
+                                :aria-describedby="`collocate-${index} count-${index}`">
+                                <td class="text-view" :id="`collocate-${index}`">{{ word.collocate }}</td>
+                                <td :id="`count-${index}`">{{ word.count }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -232,30 +250,37 @@
                             :results-length="resultsLength"></bibliography-criteria>
                     </div>
                 </div>
-                <ul class="nav nav-tabs mt-2" style="margin-left: -.5rem" id="colloc-tab" role="tablist">
+                <ul class="nav nav-tabs mt-2" style="margin-left: -.5rem" id="colloc-tab" role="tablist"
+                    :aria-label="$t('collocation.comparisonResultsTabs')">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" style="border-left-width: 0" id="frequent-tab"
                             data-bs-toggle="tab" data-bs-target="#freq-tab-pane" type="button" role="tab"
-                            aria-controls="freq-tab-pane" aria-selected="true">{{
-                                $t('collocation.frequentCollocates')
-                            }}</button>
+                            aria-controls="freq-tab-pane" aria-selected="true"
+                            :aria-label="`${$t('collocation.frequentCollocates')} ${$t('common.tab')}`">
+                            {{ $t('collocation.frequentCollocates') }}
+                        </button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="rep-tab" data-bs-toggle="tab" data-bs-target="#rep-tab-pane"
-                            type="button" role="tab" aria-controls="rep-tab-pane" aria-selected="false">{{
-                                $t('collocation.overRepresentedCollocates') }}</button>
+                            type="button" role="tab" aria-controls="rep-tab-pane" aria-selected="false"
+                            :aria-label="`${$t('collocation.overRepresentedCollocates')} ${$t('common.tab')}`">
+                            {{ $t('collocation.overRepresentedCollocates') }}
+                        </button>
                     </li>
                 </ul>
                 <div class="tab-content" id="colloc-tab-content">
-                    <div class="tab-pane fade show active" id="freq-tab-pane" role="tabpanel" aria-labelledby="freq-tab"
-                        tabindex="0">
+                    <div class="tab-pane fade show active" id="freq-tab-pane" role="tabpanel"
+                        aria-labelledby="frequent-tab" tabindex="0"
+                        :aria-label="$t('collocation.frequentCollocatesPanel')">
                         <div class="row gx-5">
-                            <div class="col-6">
+                            <div class="col-6" role="region" :aria-label="$t('collocation.primaryCorpusResults')">
                                 <word-cloud :word-weights="sortedList" label=""
                                     :click-handler="collocateClick"></word-cloud>
                             </div>
-                            <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                                <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
+                            <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
+                                :aria-label="$t('collocation.comparisonCorpusResults')">
+                                <div class="d-flex justify-content-center position-relative" v-if="compareSearching"
+                                    role="status" :aria-label="$t('common.loading')">
                                     <progress-spinner :progress="progressPercent" :lg="true" />
                                 </div>
                                 <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates" label=""
@@ -263,14 +288,17 @@
                             </div>
                         </div>
                     </div>
-                    <div class="tab-pane fade" id="rep-tab-pane" role="tabpanel" aria-labelledby="rep-tab" tabindex="0">
+                    <div class="tab-pane fade" id="rep-tab-pane" role="tabpanel" aria-labelledby="rep-tab" tabindex="0"
+                        :aria-label="$t('collocation.overRepresentedCollocatesPanel')">
                         <div class="row gx-5">
-                            <div class="col-6">
+                            <div class="col-6" role="region" :aria-label="$t('collocation.overRepresentedResults')">
                                 <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
                                     :click-handler="collocateClick"></word-cloud>
                             </div>
-                            <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                                <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
+                            <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
+                                :aria-label="$t('collocation.underRepresentedResults')">
+                                <div class="d-flex justify-content-center position-relative" v-if="compareSearching"
+                                    role="status" :aria-label="$t('common.loading')">
                                     <progress-spinner :progress="progressPercent" :lg="true" />
                                 </div>
                                 <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
@@ -282,62 +310,100 @@
             </div>
         </div>
         <div v-if="collocMethod == 'similar'" class="mx-2" style="margin-bottom: 6rem;">
-            <div class="card" v-if="mostSimilarDistributions.length > 0">
+            <div class="card" v-if="mostSimilarDistributions.length > 0" role="region"
+                :aria-label="$t('collocation.similarUsageResults')">
                 <div class="row">
                     <div class="col-6 pe-0">
-                        <h6 class="sim-dist">{{ $t("collocation.topSimilarUses") }}</h6>
-                        <ul class="list-group list-group-flush mt-3">
-                            <button type="button" class="list-group-item position-relative" style="text-align: justify"
-                                v-for="metadataValue in mostSimilarDistributions" :key="metadataValue"
-                                @click="similarToComparative(metadataValue[0])">{{
-                                    metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
-                                    style="right: 1rem">{{
-                                        metadataValue[1]
-                                    }}</span></button>
+                        <h6 class="sim-dist" role="heading" aria-level="3">
+                            {{ $t("collocation.topSimilarUses") }}
+                        </h6>
+                        <ul class="list-group list-group-flush mt-3" role="list"
+                            :aria-label="$t('collocation.topSimilarUses')">
+                            <li role="listitem" v-for="(metadataValue, index) in mostSimilarDistributions"
+                                :key="metadataValue">
+                                <button type="button"
+                                    class="list-group-item position-relative w-100 text-start border-0"
+                                    style="text-align: justify" @click="similarToComparative(metadataValue[0])"
+                                    @keydown.enter="similarToComparative(metadataValue[0])"
+                                    @keydown.space.prevent="similarToComparative(metadataValue[0])"
+                                    :aria-label="`${$t('collocation.compareTo')} ${metadataValue[0]}, ${$t('collocation.count')}: ${metadataValue[1]}`">
+                                    {{ metadataValue[0] }}
+                                    <span class="badge text-bg-secondary position-absolute" style="right: 1rem"
+                                        aria-hidden="true">
+                                        {{ metadataValue[1] }}
+                                    </span>
+                                </button>
+                                <hr v-if="index < mostSimilarDistributions.length - 1" class="my-0"
+                                    style="opacity: 1; border-color: rgba(0, 0, 0, 0.125);" aria-hidden="true">
+                            </li>
                         </ul>
                     </div>
                     <div class="col-6 ps-0" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                        <h6 class="sim-dist">{{ $t("collocation.topDissimilarUses") }}</h6>
-                        <ul class="list-group list-group-flush mt-3">
-                            <button type="button" class="list-group-item" style="text-align: justify"
-                                v-for="metadataValue in mostDissimilarDistributions" :key="metadataValue"
-                                @click="similarToComparative(metadataValue[0])">{{
-                                    metadataValue[0] }} <span class="badge text-bg-secondary position-absolute"
-                                    style="right: 1rem">{{ metadataValue[1] }}</span></button>
+                        <h6 class="sim-dist" role="heading" aria-level="3">
+                            {{ $t("collocation.topDissimilarUses") }}
+                        </h6>
+                        <ul class="list-group list-group-flush mt-3" role="list"
+                            :aria-label="$t('collocation.topDissimilarUses')">
+                            <li role="listitem" v-for="(metadataValue, index) in mostDissimilarDistributions"
+                                :key="metadataValue">
+                                <button type="button"
+                                    class="list-group-item position-relative w-100 text-start border-0"
+                                    style="text-align: justify" @click="similarToComparative(metadataValue[0])"
+                                    @keydown.enter="similarToComparative(metadataValue[0])"
+                                    @keydown.space.prevent="similarToComparative(metadataValue[0])"
+                                    :aria-label="`${$t('collocation.compareTo')} ${metadataValue[0]}, ${$t('collocation.count')}: ${metadataValue[1]}`">
+                                    {{ metadataValue[0] }}
+                                    <span class="badge text-bg-secondary position-absolute" style="right: 1rem"
+                                        aria-hidden="true">
+                                        {{ metadataValue[1] }}
+                                    </span>
+                                </button>
+                                <hr v-if="index < mostSimilarDistributions.length - 1" class="my-0"
+                                    style="opacity: 1; border-color: rgba(0, 0, 0, 0.125);" aria-hidden="true">
+                            </li>
                         </ul>
                     </div>
                 </div>
             </div>
         </div>
         <div v-if="collocMethod == 'timeSeries'" class="mx-2 my-3">
-            <div v-if="searching">
+            <div v-if="searching" role="status" :aria-label="$t('common.loading')">
                 {{ $t('collocation.similarCollocGatheringMessage') }}...
             </div>
-            <div v-if="collocationTimePeriods.length > 0" class="row">
+            <div v-if="collocationTimePeriods.length > 0" class="row" role="region"
+                :aria-label="$t('collocation.timeSeriesResults')">
                 <div class="col-12 col-md-6" v-for="(period, index) in collocationTimePeriods" :key="period.year">
-                    <div class="card mb-3" v-if="period.done">
-                        <div class="card-header p-2 d-flex align-items-center">
-                            <h6 class="mb-0">{{ period.periodYear }}</h6>
-                        </div>
-                        <div class="btn-group w-100 rounded-0">
+                    <article class="card mb-3" v-if="period.done" role="article"
+                        :aria-labelledby="`period-${index}-title`">
+                        <header class="card-header p-2 d-flex align-items-center">
+                            <h6 class="mb-0" :id="`period-${index}-title`" role="heading" aria-level="4">
+                                {{ period.periodYear }}
+                            </h6>
+                        </header>
+                        <div class="btn-group w-100 rounded-0" role="group"
+                            :aria-label="`${$t('collocation.viewToggle')} ${period.periodYear}`">
                             <button class="btn btn-sm rounded-0"
                                 :class="period.showDistinctive ? 'btn-secondary active' : 'btn-outline-secondary'"
-                                @click="period.showDistinctive = true">
+                                @click="period.showDistinctive = true" :aria-pressed="period.showDistinctive"
+                                :aria-label="`${$t('collocation.showOverRepresented')} ${period.periodYear}`">
                                 {{ $t('collocation.overRepresentedCollocates') }}
                             </button>
                             <button class="btn btn-sm rounded-0"
                                 :class="!period.showDistinctive ? 'btn-secondary active' : 'btn-outline-secondary'"
-                                @click="period.showDistinctive = false">
+                                @click="period.showDistinctive = false" :aria-pressed="!period.showDistinctive"
+                                :aria-label="`${$t('collocation.showFrequent')} ${period.periodYear}`">
                                 {{ $t('collocation.frequentCollocates') }}
                             </button>
                         </div>
-                        <div class="card-body pt-2">
+                        <div class="card-body pt-2" role="region"
+                            :aria-label="`${period.showDistinctive ? $t('collocation.overRepresentedCollocates') : $t('collocation.frequentCollocates')} ${period.periodYear}`">
                             <word-cloud :word-weights="period.showDistinctive ? period.distinctive : period.frequent"
                                 label="" :click-handler="collocateTimeSeriesClick(period.periodYear)">
                             </word-cloud>
                         </div>
-                    </div>
-                    <div style="margin-top: 5em; width: 100%; text-align: center" v-else>
+                    </article>
+                    <div style="margin-top: 5em; width: 100%; text-align: center" v-else role="status"
+                        :aria-label="`${$t('common.loading')} ${$t('collocation.gatheringTimeSeriesPeriod')}`">
                         <p class="mb-1">{{ $t('collocation.gatheringTimeSeriesPeriod') }}...</p>
                         <progress-spinner />
                     </div>

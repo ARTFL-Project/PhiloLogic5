@@ -20,7 +20,9 @@
         "relativeFrequency": "Relative Frequency",
         "sameSentence": "in the same sentence",
         "showFacetsLabel": "Show search facets",
-        "facetsRegion": "Search facets"
+        "facetsRegion": "Search facets",
+        "tab": "tab",
+        "closeModal": "Close export dialog"
     },
     "header": {
         "citationModalTitle": "How to cite {dbname}:",
@@ -145,11 +147,32 @@
         "collocateBetweenPeriods": "Distinctive Collocations Over Time: {start} vs. {end}",
         "similarUsage": "Similar Usage",
         "mostSimilarUsage": "with most similar/dissimilar usage to",
-        "gatheringTimeSeriesPeriod": "Fetching period"
+        "gatheringTimeSeriesPeriod": "Fetching period",
+        "collocatesTable": "Collocates frequency table",
+        "collocatesTableCaption": "Table showing collocates and their frequency counts. Click on any row to view concordances.",
+        "viewConcordance": "View concordances for",
+        "methodSelectionTabs": "Collocation analysis method selection",
+        "comparisonResultsTabs": "Comparison results tabs",
+        "frequentCollocatesPanel": "Frequent collocates results panel",
+        "overRepresentedCollocatesPanel": "Over-represented collocates results panel",
+        "primaryCorpusResults": "Primary corpus results",
+        "comparisonCorpusResults": "Comparison corpus results",
+        "overRepresentedResults": "Over-represented collocates",
+        "underRepresentedResults": "Under-represented collocates",
+        "similarUsageResults": "Similar usage analysis results",
+        "timeSeriesResults": "Time series analysis results",
+        "viewToggle": "View toggle for period",
+        "showOverRepresented": "Show over-represented collocates for",
+        "showFrequent": "Show frequent collocates for"
     },
     "concordance": {
         "more": "More",
-        "less": "Less"
+        "less": "Less",
+        "resultsRegion": "Concordance search results",
+        "resultNumber": "Result number",
+        "showMoreContext": "Show more context for",
+        "forResult": "result",
+        "contextRegion": "Text context for result"
     },
     "facets": {
         "browseByFacet": "Browse by facet",
@@ -163,9 +186,13 @@
         "collocate": "Collocate"
     },
     "exportResults": {
-        "currentPage": "ONLY results from the current page will be generated",
-        "html": "With text in HTML",
-        "plain": "With plain text"
+        "currentPage": "Only results from the current page will be exported",
+        "html": "With HTML Formatting",
+        "plain": "Plain Text Format",
+        "exportAs": "Export as",
+        "htmlDescription": "Preserves text formatting, links, and styling",
+        "plainDescription": "Clean text without HTML tags or formatting",
+        "downloadNote": "Files will be downloaded to your default download folder"
     },
     "kwic": {
         "sortResultsBy": "Sort results by",
@@ -227,5 +254,10 @@
         "endDate": "End date",
         "removeStartDate": "Remove start date filter",
         "removeEndDate": "Remove end date filter"
+    },
+    "citations": {
+        "citationGroup": "Citation",
+        "citationItem": "Citation {position} of {total}: {label}",
+        "viewText": "View text"
     }
 }
