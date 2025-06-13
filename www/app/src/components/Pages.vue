@@ -1,23 +1,20 @@
 <template>
-    <div id="page-links" class="mt-4 pb-4 text-center" v-if="pages.length > 0">
+    <nav id="page-links" class="mt-4 pb-4 text-center" v-if="pages.length > 0"
+        :aria-label="$t('pages.searchResultsPages')">
         <div class="row">
             <div class="col-12 col-sm-10 offset-sm-1 col-md-8 offset-md-2">
                 <div class="btn-group shadow" role="group">
-                    <button
-                        type="button"
-                        class="btn btn-outline-secondary"
-                        v-for="page in pages"
-                        :key="page.display"
-                        :class="page.active"
-                        @click="goToPage(page.start, page.end)"
-                    >
+                    <button type="button" class="btn btn-outline-secondary" v-for="page in pages" :key="page.display"
+                        :class="page.active" @click="goToPage(page.start, page.end)"
+                        :aria-label="$t('pages.pageAriaLabel', { page: page.display, range: page.range })"
+                        :aria-current="page.active === 'active' ? 'page' : null">
                         <span class="page-number">{{ page.display }}</span>
                         <span class="page-range">{{ page.range }}</span>
                     </button>
                 </div>
             </div>
         </div>
-    </div>
+    </nav>
 </template>
 <script>
 import { mapFields } from "vuex-map-fields";
@@ -140,13 +137,21 @@ export default {
 .page {
     transition: width 0.4s ease !important;
 }
+
 .btn {
     line-height: initial !important;
 }
+
+.btn-group .btn {
+    white-space: nowrap;
+    min-width: auto;
+}
+
 .page-number {
     display: block;
     font-size: 110%;
 }
+
 .page-range {
     font-size: 80%;
     opacity: 0.7;

@@ -22,7 +22,10 @@
         "showFacetsLabel": "Afficher les facettes de recherche",
         "facetsRegion": "Facettes de recherche",
         "tab": "onglet",
-        "closeModal": "Fermer la boîte de dialogue d'export"
+        "closeModal": "Fermer",
+        "changeLanguage": "Changer de langue",
+        "languageIcon": "Langue",
+        "close": "Fermer"
     },
     "header": {
         "citationModalTitle": "Comment citer {dbname} :",
@@ -93,7 +96,8 @@
     },
     "resultsBiblio": {
         "heading": "Bibliographie des résultats sur cette page",
-        "occurrences": "occurrence(s)"
+        "occurrences": "occurrence(s)",
+        "viewOccurrences": "Voir {count} occurrences dans {title}"
     },
     "searchArgs": {
         "searchingDbFor": "Recherche dans la base de données des",
@@ -110,7 +114,10 @@
         "withinExactlyProximity": "dans une fenêtre exacte de {n} mots",
         "sameSentence": "dans la même phrase",
         "collocateFilter": "Filtrage de collocations",
-        "exactPhrase": "l'expression exacte"
+        "exactPhrase": "l'expression exacte",
+        "expandTermGroup": "Développer le groupe de termes : {group}",
+        "removeTerm": "Supprimer le terme : {term}",
+        "excludeTerm": "Exclure le terme : {term}"
     },
     "resultsSummary": {
         "exportResults": "Exporter les résultats",
@@ -126,7 +133,17 @@
         "concordanceBig": "Afficher les occurrences en contexte",
         "concordanceSmall": "Concordance",
         "kwicBig": "Afficher les occurrences par ligne",
-        "kwicSmall": "Occurrences par ligne"
+        "kwicSmall": "Occurrences par ligne",
+        "summaryRegion": "Résumé des résultats de recherche",
+        "showBibliography": "Afficher la bibliographie",
+        "viewAggregation": "View aggregation of {count} {label}",
+        "progressLabel": "Processing results, {percent}% complete",
+        "progressDescription": "Processing {current} of {total} results, {percent} percent complete",
+        "showFilteredWords": "Show filtered words list",
+        "filteredWordsList": "List of filtered words",
+        "reportViewOptions": "Report view options",
+        "switchToConcordance": "Switch to concordance view",
+        "switchToKwic": "Switch to KWIC view"
     },
     "collocation": {
         "collocate": "Collocation",
@@ -183,7 +200,26 @@
         "top500Results": "Top 500 résultats par {label}",
         "relativeFrequencyDescription": "{total} occurrence(s) pour {wordCount} mots",
         "wordProperty": "Propriété du mot",
-        "collocate": "Collocation"
+        "collocate": "Collocation",
+        "closeFacets": "Fermer le panneau des facettes",
+        "hideFacetResults": "Masquer les résultats des facettes",
+        "selectFacetType": "Sélectionner le type de facette",
+        "selectFacet": "Sélectionner la facette pour",
+        "selectWordProperty": "Sélectionner la propriété de mot pour",
+        "selectCollocation": "Sélectionner la collocation pour",
+        "showFacetOptions": "Afficher les options de sélection des facettes",
+        "facetResultsRegion": "Résultats d'analyse des facettes",
+        "frequencyTypeToggle": "Basculer entre les types de fréquence",
+        "showAbsoluteFrequency": "Afficher la fréquence absolue",
+        "showRelativeFrequency": "Afficher la fréquence relative",
+        "loadingProgress": "Progression du chargement des résultats des facettes",
+        "progressDescription": "Chargement de {current} sur {total} résultats ({percent}% terminé)",
+        "facetResultsList": "Liste des résultats des facettes",
+        "filterBy": "Filtrer les résultats par",
+        "searchFor": "Rechercher",
+        "searchCollocation": "Rechercher la collocation",
+        "occurrences": "occurrences",
+        "relativeFrequencyLabel": "{total} occurrences sur {wordCount} mots au total"
     },
     "exportResults": {
         "currentPage": "Seuls les résultats de la page actuelle seront exportés",
@@ -200,7 +236,18 @@
         "resultsDisplayed": "Résultats affichés",
         "searchedTerms": "Termes recherché(s)",
         "wordsLeft": "Mots sur la gauche",
-        "wordsRight": "Mots sur la droite"
+        "wordsRight": "Mots sur la droite",
+        "selectSortCriteria": "Sélectionner les critères de tri : {criteria}",
+        "showResults": "Afficher {count} résultats par page",
+        "loadingProgress": "Chargement des résultats KWIC",
+        "progressDescription": "Chargement de {current} sur {total} résultats ({percent}% terminé)",
+        "resultsRegion": "Résultats de recherche KWIC",
+        "sortingControls": "Contrôles de tri",
+        "applySorting": "Appliquer le tri",
+        "resultsPerPageControl": "Contrôle des résultats par page",
+        "concordanceRegion": "Résultats de concordance KWIC",
+        "resultNumber": "Numéro de résultat",
+        "viewFullText": "Voir le texte complet pour"
     },
     "aggregation": {
         "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats.",
@@ -226,7 +273,55 @@
         "browseByLetterAction": "Parcourir les entrées commençant par la lettre {letter}",
         "browseResults": "Parcourir les résultats"
     },
-    "searchTips": {},
+    "searchTips": {
+        "title": "Aide sur la syntaxe de recherche",
+        "description": "La syntaxe de requête de PhiloLogic5 a 5 opérateurs de base",
+        "basicOperators": "Opérateurs de base",
+        "plainToken": "Token simple - tout mot séparé par un espace, exemple :",
+        "quotedToken": "Token entre guillemets - chaîne entre guillemets doubles avec espaces, exemple :",
+        "range": "Plage - deux tokens séparés par un tiret, exemple :",
+        "booleanOr": "OU booléen, représenté par",
+        "booleanNot": "NON booléen, représenté par",
+        "syntaxNote": "Notez que la syntaxe est largement basée sur les expressions régulières egrep.",
+        "wordSearches": "Recherches de mots",
+        "wordSearchDescription": "Les recherches de mots fonctionnent avec les conventions suivantes :",
+        "plainTerms": "Les termes simples sont interprétés comme des tokens",
+        "quotedTerms": "Les termes entre guillemets sont interprétés comme des phrases",
+        "rangeNote": "Les recherches de plage fonctionnent avec la première lettre de chaque mot",
+        "orDescription": "les recherches fonctionnent en regroupant les termes entre parenthèses",
+        "notDescription": "les recherches fonctionnent en excluant les termes. Important : NON ne peut pas être le premier terme.",
+        "isLegal": "est légal",
+        "isIllegal": "est illégal",
+        "morphologyTitle": "Recherches de morphologie/attributs de mots",
+        "lemmaSearch": "Les recherches de lemme utilisent le",
+        "lemmaExample": "préfixe. Par exemple :",
+        "regexPermitted": "Les expressions régulières sont autorisées :",
+        "wordAttribute": "Les recherches d'attributs de mots utilisent la",
+        "wordAttributeExample": "syntaxe. Par exemple :",
+        "combineLemma": "Vous pouvez combiner les recherches de lemme et d'attribut :",
+        "multipleAttributes": "Vous pouvez utiliser plusieurs attributs :",
+        "metadataSearches": "Recherches de métadonnées",
+        "metadataDescription": "Les recherches de métadonnées fonctionnent avec les mêmes conventions que les recherches de mots :",
+        "metadataPlainTokens": "Les tokens simples sont interprétés comme des tokens",
+        "metadataQuotedTokens": "Les tokens entre guillemets sont interprétés comme des phrases",
+        "metadataRange": "Les recherches de plage fonctionnent avec la première lettre de chaque mot",
+        "metadataOr": "les recherches fonctionnent en regroupant les termes entre parenthèses",
+        "metadataNot": "les recherches fonctionnent en excluant les termes. Important : NON ne peut pas être le premier terme.",
+        "regexpSyntax": "Syntaxe des expressions régulières",
+        "regexpDescription": "PhiloLogic5 prend en charge la plupart de la",
+        "egrepLink": "syntaxe des expressions régulières egrep",
+        "egrepLinkLabel": "En savoir plus sur la syntaxe des expressions régulières egrep, s'ouvre dans une nouvelle fenêtre",
+        "dotCharacter": "Le",
+        "dotDescription": "caractère correspond à n'importe quel caractère unique",
+        "bracketExpressions": "Les expressions entre crochets correspondent à n'importe quel caractère dans les crochets :",
+        "bracketNote": "etc.",
+        "asteriskDescription": "correspond à zéro ou plusieurs du caractère précédent",
+        "plusDescription": "correspond à un ou plusieurs du caractère précédent",
+        "questionDescription": "correspond à zéro ou un du caractère précédent",
+        "wildcardNote": "Notez que le caractère générique traditionnel",
+        "wildcardDescription": "est équivalent à l'expression régulière",
+        "traditionalWildcard": "seul ne fonctionnera pas"
+    },
     "textNav": {
         "backToTop": "Retour en haut de la page",
         "top": "En haut",
@@ -259,5 +354,9 @@
         "citationGroup": "Citation",
         "citationItem": "Citation {position} sur {total} : {label}",
         "viewText": "Voir le texte"
+    },
+    "pages": {
+        "searchResultsPages": "Pages de résultats de recherche",
+        "pageAriaLabel": "Page {page}, résultats {range}"
     }
 }

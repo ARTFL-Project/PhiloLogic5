@@ -45,8 +45,13 @@ $secondary: $button-color;
 }
 
 $info: $button-color;
+.btn-light {
+    color: $link-color !important;
+    background-color: #fff !important;
+    border-color: $link-color !important;
+}
 .btn-light.active {
-    background-color: #eee !important;
+    font-weight: 700 !important;
 }
 
 .link-color {
@@ -89,6 +94,7 @@ a.btn-secondary {
 .term-groups,
 .close-pill {
     border-color: $link-color !important;
+    background-color: #fff !important;
 }
 
 .metadata-label,

@@ -15,17 +15,27 @@
                     <span v-else>{{ $t("searchArgs.terms") }}&nbsp;</span>
                     <span v-if="approximate.length == 0 || approximate == 'no'"></span>
 
-                    <span class="rounded-pill term-groups" v-for="(group, index) in wordGroups" :key="index">
-                        <a class="term-group-word" href @click.prevent="getQueryTerms(group, index)">{{ group }}</a>
-                        <span class="close-pill" @click="removeTerm(index)">X</span>
-                    </span>
+                    <div class="term-groups-container" v-for="(group, index) in wordGroups" :key="index">
+                        <button type="button" class="term-group-word" @click="getQueryTerms(group, index)"
+                            :aria-label="$t('searchArgs.expandTermGroup', { group: group })">
+                            {{ group }}
+                        </button>
+                        <button type="button" class="close-pill" @click="removeTerm(index)"
+                            :aria-label="$t('searchArgs.removeTerm', { term: group })">
+                            X
+                        </button>
+                    </div>
                     {{ queryArgs.proximity }}
                 </span>
-                <div class="card outline-secondary shadow" id="query-terms" style="display: none">
-                    <button type="button" class="btn btn-secondary btn-sm close" @click="closeTermsList()">
+                <div class="card outline-secondary shadow" id="query-terms" v-show="showQueryTerms" role="dialog"
+                    aria-modal="true" :aria-labelledby="'query-terms-title'">
+                    <button type="button" class="btn btn-secondary btn-sm close" @click="closeTermsList()"
+                        :aria-label="$t('common.close')">
                         <span aria-hidden="true">&times;</span>
                     </button>
-                    <h6 class="pe-4">{{ $t("searchArgs.termsExpanded", { length: words.length }) }}:</h6>
+                    <h6 class="pe-4" id="query-terms-title">
+                        {{ $t("searchArgs.termsExpanded", { length: words.length }) }}:
+                    </h6>
                     <h6 v-if="words.length > 100">{{ $t("searchArgs.mostFrequentTerms") }}</h6>
                     <button type="button" class="btn btn-secondary btn-sm" style="margin: 10px 0px"
                         v-if="wordListChanged" @click="rerunQuery()">
@@ -33,11 +43,14 @@
                     </button>
                     <div class="row" id="query-terms-list">
                         <div class="col-3" v-for="word in words" :key="word">
-                            <button class="rounded-pill term-groups">
-                                <span class="px-2">{{ word.replace(/"/g, "") }}</span>
-                                <span class="close-pill pe-1"
-                                    @click="removeFromTermsList(word, groupIndexSelected)">X</span>
-                            </button>
+                            <div class="term-groups-container">
+                                <span class="term-word">{{ word.replace(/"/g, "") }}</span>
+                                <button type="button" class="close-pill"
+                                    @click="removeFromTermsList(word, groupIndexSelected)"
+                                    :aria-label="$t('searchArgs.excludeTerm', { term: word })">
+                                    X
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -135,6 +148,8 @@ export default {
             restart: false,
             queryReport: this.$route.name,
             termGroupsCopy: [],
+            showQueryTerms: false,
+            groupIndexSelected: null,
         };
     },
     created() {
@@ -237,7 +252,7 @@ export default {
                 })
                 .then((response) => {
                     this.words = response.data;
-                    document.querySelector("#query-terms").style.display = "block";
+                    this.showQueryTerms = true;
                 })
                 .catch((error) => {
                     this.error = error.toString();
@@ -245,7 +260,7 @@ export default {
                 });
         },
         closeTermsList() {
-            document.querySelector("#query-terms").style.display = "none";
+            this.showQueryTerms = false;
         },
         removeFromTermsList(word, groupIndex) {
             var index = this.words.indexOf(word);
@@ -290,7 +305,9 @@ export default {
     },
 };
 </script>
-<style scoped>
+<style scoped lang="scss">
+@import "../assets/styles/theme.module.scss";
+
 #search-arguments {
     line-height: 180%;
 }
@@ -315,54 +332,41 @@ export default {
     overflow-y: scroll;
 }
 
-.query-terms-element {
-    padding: 0px 20px 0px 5px;
-    text-align: center;
-    width: fit-content;
-}
-
-.close {
-    position: absolute;
-    right: 0;
-}
-
-.term-groups {
-    display: inline-block;
-    position: relative;
-    border: 1px solid #ddd;
-    line-height: 2;
-    padding: 0 25px 0 0;
+.term-groups-container {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid $link-color;
+    border-radius: 50rem;
     margin: 5px 5px 5px 0px;
-    white-space: inherit;
     background-color: #fff;
+    overflow: hidden;
 }
 
 .term-group-word {
-    display: inline-block;
-    border-radius: 50rem 0 0 50rem !important;
-    height: 100%;
-    width: 100%;
-    padding-left: 0.5rem;
+    display: block;
+    padding: 0.1rem 0.5rem;
+    text-decoration: none;
+    background: none;
+    color: $link-color;
+    border: none;
+    border-right: solid 1px $link-color;
+    flex-grow: 1;
 }
 
-.term-group-word:hover {
-    background-color: #e9ecef;
-    color: initial;
+.term-word {
+    display: block;
+    padding: 0.1rem 0.5rem;
+    border-right: solid 1px $link-color;
+    flex-grow: 1;
 }
 
 .close-pill {
-    position: absolute;
-    right: 0;
-    top: 0;
-    padding-left: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 1.6rem;
-    border-radius: 0 50rem 50rem 0 !important;
-    display: inline-block;
-    border-left: solid 1px #888;
-}
-
-.rounded-pill a {
-    margin-right: 0.5rem;
-    text-decoration: none;
+    color: $link-color;
+    border: none;
+    cursor: pointer;
 }
 </style>

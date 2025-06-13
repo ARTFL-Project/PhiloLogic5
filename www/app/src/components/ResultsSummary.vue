@@ -1,17 +1,21 @@
 <template>
     <div id="results-summary-container" class="mt-4 ms-2 me-2">
         <div class="card shadow-sm px-3 py-2" :class="{ 'colloc-no-top-border': report == 'collocation' }">
-            <div id="initial_report">
+            <section id="initial_report" role="region" :aria-label="$t('resultsSummary.summaryRegion')">
                 <div id="description">
                     <button type="button" class="btn btn-secondary btn-sm"
                         style="margin-top: -0.5rem; margin-right: -1rem" id="export-results" data-bs-toggle="modal"
-                        data-bs-target="#export-modal">
+                        data-bs-target="#export-modal" :aria-label="$t('resultsSummary.exportResults')">
                         {{ $t("resultsSummary.exportResults") }}
                     </button>
-                    <div class="modal fade" tabindex="-1" id="export-modal" title="Export Results">
+
+                    <div class="modal fade" tabindex="-1" id="export-modal" role="dialog"
+                        :aria-labelledby="$t('resultsSummary.exportResults')">
                         <export-results></export-results>
                     </div>
+
                     <search-arguments :result-start="descriptionStart" :result-end="descriptionEnd"></search-arguments>
+
                     <div v-if="['concordance', 'kwic', 'bibliography'].includes(report)">
                         <div id="result-stats" class="pb-2">
                             {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
@@ -21,36 +25,42 @@
                                 <span v-else>
                                     <span v-for="(stat, statIndex) in statsDescription" :key="stat.field">
                                         <router-link :to="`/aggregation?${stat.link}&group_by=${stat.field}`"
-                                            class="stat-link" v-if="stat.link.length > 0">{{ stat.count }} {{
-                                                stat.label
-                                            }}(s)</router-link>
+                                            class="stat-link" v-if="stat.link.length > 0"
+                                            :aria-label="$t('resultsSummary.viewAggregation', { count: stat.count, label: stat.label })">
+                                            {{ stat.count }} {{ stat.label }}(s)
+                                        </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
-                                        <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{
-                                            $t("common.and")
+                                        <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
                                             }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
                         </div>
+
                         <div id="search-hits">
-                            <b v-if="resultsLength > 0">{{
+                            <strong v-if="resultsLength > 0">{{
                                 $t("resultsSummary.displayingHits", {
                                     start: descriptionStart,
                                     end: descriptionEnd,
                                     total: resultsLength,
                                 })
-                            }}</b>
-                            <b v-else>{{ $t("resultsSummary.noResults") }}</b>
+                            }}</strong>
+                            <strong v-else>{{ $t("resultsSummary.noResults") }}</strong>
+
                             <button type="button" class="btn rounded-pill btn-outline-secondary btn-sm ms-1"
                                 style="margin-top: -0.05rem" data-bs-toggle="modal"
-                                data-bs-target="#results-bibliography">
+                                data-bs-target="#results-bibliography"
+                                :aria-label="$t('resultsSummary.showBibliography')">
                                 {{ $t("resultsSummary.fromTheseTitles") }}
                             </button>
                         </div>
-                        <div class="modal fade" tabindex="-1" id="results-bibliography">
+
+                        <div class="modal fade" tabindex="-1" id="results-bibliography" role="dialog"
+                            :aria-labelledby="$t('resultsBiblio.heading')">
                             <results-bibliography></results-bibliography>
                         </div>
                     </div>
+
                     <div v-if="report == 'aggregation' && groupByLabel">
                         <div id="result-stats" class="pb-2" v-if="resultsLength > 0">
                             {{
@@ -62,60 +72,88 @@
                             }}
                         </div>
                         <div id="result-stats" class="pb-2" v-else>
-                            <b>{{ $t("resultsSummary.noResults") }}</b>
+                            <strong>{{ $t("resultsSummary.noResults") }}</strong>
                         </div>
                     </div>
+
+                    <!-- Progress bar section -->
                     <div v-if="['collocation', 'time_series'].includes(report)">
-                        <div class="progress ms-3 me-3 mb-3" :max="resultsLength" show-progress variant="secondary"
-                            v-if="runningTotal != resultsLength">
-                            <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+                        <div class="progress ms-3 me-3 mb-3" v-if="runningTotal != resultsLength" role="progressbar"
+                            :aria-valuenow="Math.floor((runningTotal / resultsLength) * 100)" :aria-valuemax="100"
+                            aria-valuemin="0" :aria-label="$t('resultsSummary.progressLabel', {
+                                percent: Math.floor((runningTotal / resultsLength) * 100)
+                            })">
+                            <div class="progress-bar"
                                 :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`">
                                 {{ Math.floor((runningTotal / resultsLength) * 100) }}%
                             </div>
+                            <span class="visually-hidden">
+                                {{ $t('resultsSummary.progressDescription', {
+                                    current: runningTotal,
+                                    total: resultsLength,
+                                    percent: Math.floor((runningTotal / resultsLength) * 100)
+                                }) }}
+                            </span>
                         </div>
+
+                        <!-- Collocation filter section -->
                         <div v-if="report == 'collocation'">
                             <span>
-                                <span tooltip tooltip-title="Click to display filtered words">
-                                    <a href @click="toggleFilterList($event)"
-                                        v-if="colloc_filter_choice === 'frequency'">{{
-                                            $t("resultsSummary.commonWords", { n: filter_frequency }) }}</a>
-                                    <a href @click="toggleFilterList($event)"
-                                        v-if="colloc_filter_choice === 'stopwords'">{{
-                                            $t("resultsSummary.commonStopwords") }}</a>
+                                <span>
+                                    <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
+                                        v-if="colloc_filter_choice === 'frequency'"
+                                        :aria-label="$t('resultsSummary.showFilteredWords')"
+                                        :aria-expanded="showFilteredWords">
+                                        {{ $t("resultsSummary.commonWords", { n: filter_frequency }) }}
+                                    </button>
+                                    <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
+                                        v-if="colloc_filter_choice === 'stopwords'"
+                                        :aria-label="$t('resultsSummary.showFilteredWords')"
+                                        :aria-expanded="showFilteredWords">
+                                        {{ $t("resultsSummary.commonStopwords") }}
+                                    </button>
                                     {{ $t("resultsSummary.filtered") }}.
                                 </span>
                             </span>
-                            <div class="card ps-3 pe-3 pb-3 shadow-lg" id="filter-list" v-if="showFilteredWords">
+
+                            <div class="card ps-3 pe-3 pb-3 shadow-lg" id="filter-list" v-if="showFilteredWords"
+                                role="region" :aria-label="$t('resultsSummary.filteredWordsList')">
                                 <button type="button" class="btn btn-secondary" id="close-filter-list"
-                                    @click="toggleFilterList($event)">
+                                    @click="toggleFilterList($event)" :aria-label="$t('common.close')">
                                     &times;
                                 </button>
                                 <div class="row mt-4">
                                     <div class="col" v-for="wordGroup in splitFilterList" :key="wordGroup[0]">
-                                        <div class="list-group list-group-flush">
-                                            <div class="list-group-item" v-for="word in wordGroup" :key="word">
+                                        <ul class="list-group list-group-flush" role="list">
+                                            <li class="list-group-item" v-for="word in wordGroup" :key="word"
+                                                role="listitem">
                                                 {{ word }}
-                                            </div>
-                                        </div>
+                                            </li>
+                                        </ul>
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </section>
         </div>
+
+        <!-- Report switch buttons -->
         <div class="row d-none d-sm-block mt-4 mb-3" id="act-on-report"
             v-if="report == 'concordance' || report == 'kwic'">
             <div class="col col-sm-7 col-lg-8" v-if="['concordance', 'kwic'].includes(report)">
-                <div class="btn-group" role="group" id="report_switch">
+                <div class="btn-group" role="group" id="report_switch"
+                    :aria-label="$t('resultsSummary.reportViewOptions')">
                     <button type="button" class="btn btn-secondary" :class="{ active: report === 'concordance' }"
-                        @click="switchReport('concordance')">
+                        @click="switchReport('concordance')" :aria-label="$t('resultsSummary.switchToConcordance')"
+                        :aria-pressed="report === 'concordance'">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("resultsSummary.concordanceBig") }}</span>
                         <span class="d-inline d-sm-inline d-md-none">{{ $t("resultsSummary.concordanceSmall") }}</span>
                     </button>
                     <button type="button" class="btn btn-secondary" :class="{ active: report === 'kwic' }"
-                        @click="switchReport('kwic')">
+                        @click="switchReport('kwic')" :aria-label="$t('resultsSummary.switchToKwic')"
+                        :aria-pressed="report === 'kwic'">
                         <span class="d-none d-sm-none d-md-inline">{{ $t("resultsSummary.kwicBig") }}</span>
                         <span class="d-inline d-sm-inline d-md-none">{{ $t("resultsSummary.kwicSmall") }}</span>
                     </button>

@@ -4,103 +4,192 @@
             <div class="card-header text-center">
                 <h6 class="mb-0">{{ $t("facets.browseByFacet") }}</h6>
             </div>
-            <button type="button" class="btn btn-secondary btn-sm close-box" @click="toggleFacets()">x</button>
+            <button type="button" class="btn btn-secondary btn-sm close-box" @click="toggleFacets()"
+                :aria-label="$t('facets.closeFacets')">
+                ×
+            </button>
+
             <transition name="slide-fade">
-                <div class="list-group" flush id="select-facets" v-if="showFacetSelection">
+                <div class="list-group" flush id="select-facets" v-if="showFacetSelection" role="group"
+                    :aria-label="$t('facets.selectFacetType')">
                     <span class="dropdown-header text-center">{{ $t("facets.frequencyBy") }}</span>
-                    <div class="list-group-item facet-selection" v-for="facet in facets" :key="facet.alias"
-                        @click="getFacet(facet)">
+                    <button type="button" class="list-group-item list-group-item-action facet-selection"
+                        v-for="facet in facets" :key="facet.alias" @click="getFacet(facet)"
+                        :aria-label="`${$t('facets.selectFacet')} ${facet.alias}`">
                         {{ facet.alias }}
-                    </div>
+                    </button>
                 </div>
             </transition>
+
             <transition name="slide-fade">
-                <div class="list-group" flush id="select-word-properties"
-                    v-if="showFacetSelection && report != 'bibliography' && philoConfig.words_facets.length > 0">
+                <div class="list-group mt-3" style="border-top: 0" flush id="select-word-properties"
+                    v-if="showFacetSelection && report != 'bibliography' && philoConfig.words_facets.length > 0"
+                    role="group" :aria-label="$t('facets.selectWordProperty')">
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
-                    <div class="list-group-item facet-selection" v-for="facet in wordFacets" :key="facet.facet"
-                        @click="getFacet(facet)">
+                    <button type="button" class="list-group-item list-group-item-action facet-selection"
+                        v-for="facet in wordFacets" :key="facet.facet" @click="getFacet(facet)"
+                        :aria-label="`${$t('facets.selectWordProperty')} ${facet.alias}`">
                         {{ facet.alias }}
-                    </div>
+                    </button>
                 </div>
             </transition>
+
             <transition name="slide-fade">
-                <div class="list-group mt-2" style="border-top: 0"
-                    v-if="showFacetSelection && report != 'bibliography'">
+                <div class="list-group mt-3" style="border-top: 0" v-if="showFacetSelection && report != 'bibliography'"
+                    role="group" :aria-label="$t('facets.selectCollocation')">
                     <span class="dropdown-header text-center">{{ $t("facets.collocates") }}</span>
-                    <div class="list-group-item facet-selection" @click="getFacet(collocationFacet)"
-                        v-if="report !== 'bibliography'">
+                    <button type="button" class="list-group-item list-group-item-action facet-selection"
+                        @click="getFacet(collocationFacet)" v-if="report !== 'bibliography'"
+                        :aria-label="`${$t('facets.selectCollocation')} ${$t('common.sameSentence')}`">
                         {{ $t("common.sameSentence") }}
-                    </div>
+                    </button>
                 </div>
             </transition>
+
             <transition name="options-slide">
-                <div class="m-2 text-center" style="width: 100%; font-size: 90%; opacity: 0.8; cursor: pointer"
-                    v-if="!showFacetSelection" @click="showFacetOptions()">
+                <button type="button" class="btn btn-link m-2 text-center"
+                    style="width: 100%; font-size: 90%; opacity: 0.8" v-if="!showFacetSelection"
+                    @click="showFacetOptions()" :aria-label="$t('facets.showFacetOptions')">
                     {{ $t("facets.showOptions") }}
-                </div>
+                </button>
             </transition>
         </div>
-        <div class="d-flex justify-content-center position-relative" v-if="loading">
-            <div class="spinner-border text-secondary" role="status"
-                style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px">
-                <span class="visually-hidden">{{ $t("common.loading") }}...</span>
+
+        <!-- Loading indicator -->
+        <div class="d-flex justify-content-center position-relative" v-if="loading" role="status"
+            :aria-label="$t('common.loadingFacets')">
+            <div class="spinner-border text-secondary"
+                style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px" aria-hidden="true">
             </div>
+            <span class="visually-hidden">{{ $t("common.loadingFacets") }}...</span>
         </div>
-        <div class="card mt-3 shadow-sm" id="facet-results" v-if="showFacetResults">
+
+        <!-- Facet results -->
+        <div class="card mt-3 shadow-sm" id="facet-results" v-if="showFacetResults" role="region"
+            :aria-label="$t('facets.facetResultsRegion')">
             <div class="card-header text-center">
                 <h6 class="mb-0">{{ $t("facets.frequencyByLabel", { label: selectedFacet.alias }) }}</h6>
-                <button type="button" class="btn btn-secondary btn-sm close-box" @click="hideFacets()">x</button>
+                <button type="button" class="btn btn-secondary btn-sm close-box" @click="hideFacets()"
+                    :aria-label="$t('facets.hideFacetResults')">
+                    ×
+                </button>
             </div>
-            <div class="btn-group btn-group-sm shadow-sm" role="group"
+
+            <!-- Frequency toggle buttons -->
+            <div class="btn-group btn-group-sm shadow-sm" role="group" :aria-label="$t('facets.frequencyTypeToggle')"
                 v-if="percent == 100 && report !== 'bibliography' && facet.type === 'facet'">
                 <button type="button" class="btn btn-light" :class="{ active: showingRelativeFrequencies === false }"
-                    @click="displayAbsoluteFrequencies()">
+                    @click="displayAbsoluteFrequencies()" :aria-pressed="showingRelativeFrequencies === false"
+                    :aria-label="$t('facets.showAbsoluteFrequency')">
                     {{ $t("common.absoluteFrequency") }}
                 </button>
                 <button type="button" class="btn btn-light" :class="{ active: showingRelativeFrequencies }"
-                    @click="displayRelativeFrequencies()">
+                    @click="displayRelativeFrequencies()" :aria-pressed="showingRelativeFrequencies"
+                    :aria-label="$t('facets.showRelativeFrequency')">
                     {{ $t("common.relativeFrequency") }}
                 </button>
             </div>
+
             <div class="m-2 text-center" style="opacity: 0.7">
                 {{ $t("facets.top500Results", { label: selectedFacet.alias }) }}
             </div>
-            <div class="progress my-3 mb-3" :max="resultsLength" show-progress variant="secondary"
-                v-if="percent != 100">
-                <div class="progress-bar" :value="runningTotal"
-                    :label="`${((runningTotal / resultsLength) * 100).toFixed(2)}%`"></div>
+
+            <!-- Progress bar -->
+            <div class="progress my-3 mb-3" v-if="percent != 100" role="progressbar" :aria-valuenow="runningTotal"
+                :aria-valuemin="0" :aria-valuemax="resultsLength" :aria-label="$t('facets.loadingProgress')">
+                <div class="progress-bar" :style="`width: ${((runningTotal / resultsLength) * 100)}%`"
+                    :aria-hidden="true">
+                </div>
+                <span class="visually-hidden">
+                    {{ $t('facets.progressDescription', {
+                        current: runningTotal,
+                        total: resultsLength,
+                        percent: ((runningTotal / resultsLength) * 100).toFixed(0)
+                    }) }}
+                </span>
             </div>
-            <div class="list-group" flush>
-                <div class="list-group-item" v-for="result in facetResults" :key="result.label">
-                    <div>
-                        <a href class="sidebar-text text-content-area text-view" v-if="facet.type == 'facet'"
-                            @click.prevent="facetClick(result.metadata)">{{ result.label }}</a>
-                        <a href class="sidebar-text text-content-area" text-view
-                            v-else-if="facet.type == 'property' && facet.facet != 'lemma'"
-                            @click.prevent="propertyToConcordance(result.q)">{{ result.label }}</a>
-                        <span class="text-content-area" text-view
-                            v-else-if="facet.type == 'property' && facet.facet == 'lemma'">{{ result.label }}</span>
-                        <a href class="sidebar-text text-content-area" v-else-if="facet.type == 'collocationFacet'"
-                            @click.prevent="collocationToConcordance(result.collocate)">{{ result.collocate }}</a>
-                        <div class="badge bg-secondary rounded-pill float-end">{{ result.count }}</div>
+
+            <!-- Facet results list -->
+            <div class="list-group" flush role="list" :aria-label="$t('facets.facetResultsList')">
+                <!-- Facet link -->
+                <button type="button" class="list-group-item list-group-item-action facet-result-item"
+                    v-if="facet.type == 'facet'" v-for="result in facetResults" :key="result.label" role="listitem"
+                    @click="facetClick(result.metadata)"
+                    :aria-label="`${$t('facets.filterBy')} ${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <span class="sidebar-text text-content-area text-view">
+                            {{ result.label }}
+                        </span>
+                        <span class="badge bg-secondary rounded-pill" aria-hidden="true">
+                            {{ result.count }}
+                        </span>
                     </div>
-                    <div style="line-height: 70%; padding-bottom: 15px; font-size: 85%"
-                        v-if="showingRelativeFrequencies">
-                        <div style="display: inline-block; opacity: 0.8">
+
+                    <!-- Relative frequency description -->
+                    <div class="relative-frequency-info" v-if="showingRelativeFrequencies">
+                        <small class="text-muted" :aria-label="$t('facets.relativeFrequencyLabel', {
+                            total: fullResults.unsorted[result.label].count,
+                            wordCount: fullRelativeFrequencies[result.label].total_count,
+                        })">
                             {{
                                 $t("facets.relativeFrequencyDescription", {
                                     total: fullResults.unsorted[result.label].count,
                                     wordCount: fullRelativeFrequencies[result.label].total_count,
                                 })
                             }}
-                        </div>
+                        </small>
+                    </div>
+                </button>
+
+                <!-- Property link -->
+                <button type="button" class="list-group-item list-group-item-action facet-result-item"
+                    v-else-if="facet.type == 'property' && facet.facet != 'lemma'" v-for="result in facetResults"
+                    :key="result.label" role="listitem" @click="propertyToConcordance(result.q)"
+                    :aria-label="`${$t('facets.searchFor')} ${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <span class="sidebar-text text-content-area">
+                            {{ result.label }}
+                        </span>
+                        <span class="badge bg-secondary rounded-pill" aria-hidden="true">
+                            {{ result.count }}
+                        </span>
+                    </div>
+                </button>
+
+                <!-- Lemma (non-clickable) -->
+                <div class="list-group-item facet-result-item non-clickable"
+                    v-else-if="facet.type == 'property' && facet.facet == 'lemma'" v-for="result in facetResults"
+                    :key="result.label" role="listitem"
+                    :aria-label="`${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <span class="text-content-area">
+                            {{ result.label }}
+                        </span>
+                        <span class="badge bg-secondary rounded-pill" aria-hidden="true">
+                            {{ result.count }}
+                        </span>
                     </div>
                 </div>
+
+                <!-- Collocation link -->
+                <button type="button" class="list-group-item list-group-item-action facet-result-item"
+                    v-else-if="facet.type == 'collocationFacet'" v-for="result in facetResults" :key="result.label"
+                    role="listitem" @click="collocationToConcordance(result.collocate)"
+                    :aria-label="`${$t('facets.searchCollocation')} ${result.collocate}, ${result.count} ${$t('facets.occurrences')}`">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <span class="sidebar-text text-content-area">
+                            {{ result.collocate }}
+                        </span>
+                        <span class="badge bg-secondary rounded-pill" aria-hidden="true">
+                            {{ result.count }}
+                        </span>
+                    </div>
+                </button>
             </div>
         </div>
     </div>
 </template>
+
 <script>
 import { mapFields } from "vuex-map-fields";
 
@@ -437,7 +526,10 @@ export default {
     },
 };
 </script>
-<style scoped>
+
+<style scoped lang="scss">
+@import "../assets/styles/theme.module.scss";
+
 .card-header {
     font-variant: small-caps;
 }
@@ -458,11 +550,6 @@ export default {
     right: 0;
 }
 
-.list-group-item {
-    position: relative;
-    padding: 0.5rem 1.25rem;
-}
-
 .sidebar-text {
     cursor: pointer;
 }
@@ -481,6 +568,130 @@ export default {
     font-weight: 700;
 }
 
+/* Remove underlines from button links and add smooth transitions */
+.btn-link {
+    text-decoration: none !important;
+    color: $link-color;
+    transition: all 0.2s ease-in-out;
+    border-radius: 0.25rem;
+    position: relative;
+}
+
+.btn-link:hover {
+    text-decoration: none !important;
+    color: darken($link-color, 15%);
+    background-color: rgba($link-color, 0.1);
+    transform: translateX(2px);
+}
+
+.btn-link:active {
+    transform: translateX(1px);
+}
+
+/* Facet result items - make entire item clickable with zoom effect */
+.facet-result-item {
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: scale(1);
+    border: 1px solid transparent;
+    background-color: transparent !important;
+    text-align: left;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.facet-result-item:not(.non-clickable):hover {
+    transform: scale(1.02);
+    background-color: rgba($link-color, 0.08) !important;
+    border-color: rgba($link-color, 0.2);
+    box-shadow: 0 2px 8px rgba($link-color, 0.15);
+    z-index: 1;
+}
+
+.facet-result-item:not(.non-clickable):active {
+    transform: scale(0.98);
+    background-color: rgba($link-color, 0.12) !important;
+}
+
+/* Non-clickable lemma items */
+.facet-result-item.non-clickable {
+    cursor: default;
+    opacity: 0.7;
+}
+
+.facet-result-item.non-clickable:hover {
+    transform: none;
+    background-color: transparent !important;
+    border-color: transparent;
+    box-shadow: none;
+}
+
+/* Badge animation on hover */
+.facet-result-item:not(.non-clickable):hover .badge {
+    background-color: $link-color !important;
+    transform: scale(1.1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Text styling within facet items */
+.facet-result-item .sidebar-text {
+    color: $link-color;
+    font-weight: 500;
+    transition: color 0.25s ease;
+}
+
+.facet-result-item:hover .sidebar-text {
+    color: darken($link-color, 15%);
+}
+
+/* Relative frequency info styling */
+.relative-frequency-info {
+    margin-top: 0.25rem;
+    line-height: 1.2;
+}
+
+.relative-frequency-info small {
+    opacity: 0.8;
+    transition: opacity 0.25s ease;
+}
+
+.facet-result-item:hover .relative-frequency-info small {
+    opacity: 1;
+}
+
+/* Focus styles for accessibility */
+.facet-selection:focus {
+    outline: 2px solid $link-color;
+    outline-offset: -2px;
+    box-shadow: 0 0 0 0.2rem rgba($link-color, 0.25);
+}
+
+.facet-result-item:focus {
+    outline: 2px solid $link-color;
+    outline-offset: -2px;
+    box-shadow: 0 0 0 0.2rem rgba($link-color, 0.25);
+    z-index: 2;
+}
+
+.facet-result-item:focus:not(:focus-visible) {
+    outline: none;
+    box-shadow: 0 2px 8px rgba($link-color, 0.15);
+}
+
+.facet-result-item:focus-visible {
+    outline: 2px solid $link-color;
+    outline-offset: -2px;
+    box-shadow: 0 0 0 0.2rem rgba($link-color, 0.25);
+}
+
+/* Smooth transitions for all interactive elements */
+.badge {
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Keep existing transitions */
 .slide-fade-enter-active {
     transition: all 0.3s ease-out;
 }

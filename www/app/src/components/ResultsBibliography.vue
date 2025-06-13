@@ -1,18 +1,22 @@
 <template>
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="dialog" aria-labelledby="biblio-modal-title">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="biblio-modal-title">{{ $t("resultsBiblio.heading") }}</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')">
+                </button>
             </div>
             <div class="modal-body">
-                <ul id="results-bibliography">
-                    <li class="result" v-for="(result, resultIndex) in uniquedResults" :key="resultIndex">
+                <ul id="results-bibliography" role="list">
+                    <li class="result" v-for="(result, resultIndex) in uniquedResults" :key="resultIndex"
+                        role="listitem">
                         <citations :citation="result.citation"></citations>
-                        <router-link :to="`/${report}?${buildLink(result.metadata_fields.title)}`">
-                            <button type="button" class="btn rounded-pill btn-outline-secondary btn-sm ms-3">
-                                {{ result.count }} {{ $t("resultsBiblio.occurrences") }}
-                            </button>
+                        <router-link :to="`/${report}?${buildLink(result.metadata_fields.title)}`"
+                            class="btn rounded-pill btn-outline-secondary btn-sm ms-3" :aria-label="$t('resultsBiblio.viewOccurrences', {
+                                count: result.count,
+                                title: result.metadata_fields.title || 'Unknown title'
+                            })">
+                            {{ result.count }} {{ $t("resultsBiblio.occurrences") }}
                         </router-link>
                     </li>
                 </ul>
@@ -21,8 +25,8 @@
     </div>
 </template>
 <script>
-import citations from "./Citations";
 import { mapFields } from "vuex-map-fields";
+import citations from "./Citations";
 
 export default {
     name: "ResultsBibliography",
@@ -80,6 +84,7 @@ export default {
 #results-bibliography {
     padding-inline-start: 2rem;
 }
+
 .result {
     list-style-type: circle;
     line-height: 2.5;

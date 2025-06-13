@@ -22,7 +22,14 @@
         "showFacetsLabel": "Show search facets",
         "facetsRegion": "Search facets",
         "tab": "tab",
-        "closeModal": "Close export dialog"
+        "closeModal": "Close",
+        "loadingFacets": "Loading facets",
+        "changeLanguage": "Change language",
+        "languageIcon": "Language",
+        "close": "Close",
+        "example": "example",
+        "or": "or",
+        "opensInNewWindow": "(opens in new window)"
     },
     "header": {
         "citationModalTitle": "How to cite {dbname}:",
@@ -93,7 +100,8 @@
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",
-        "occurrences": "occurrence(s)"
+        "occurrences": "occurrence(s)",
+        "viewOccurrences": "View {count} occurrences in {title}"
     },
     "searchArgs": {
         "searchingDbFor": "Searching database for",
@@ -110,7 +118,10 @@
         "withinExactlyProximity": "within exactly {n} words",
         "sameSentence": "in the same sentence",
         "collocateFilter": "Collocate Filter",
-        "exactPhrase": "the exact phrase"
+        "exactPhrase": "the exact phrase",
+        "expandTermGroup": "Expand term group: {group}",
+        "removeTerm": "Remove term: {term}",
+        "excludeTerm": "Exclude term: {term}"
     },
     "resultsSummary": {
         "exportResults": "Export results",
@@ -126,7 +137,17 @@
         "concordanceBig": "View occurrences with context",
         "concordanceSmall": "Concordance",
         "kwicBig": "View occurrences line by line (KWIC)",
-        "kwicSmall": "Keyword in context"
+        "kwicSmall": "Keyword in context",
+        "summaryRegion": "Search results summary",
+        "showBibliography": "Show bibliography of sources",
+        "viewAggregation": "View aggregation of {count} {label}",
+        "progressLabel": "Processing results, {percent}% complete",
+        "progressDescription": "Processing {current} of {total} results, {percent} percent complete",
+        "showFilteredWords": "Show filtered words list",
+        "filteredWordsList": "List of filtered words",
+        "reportViewOptions": "Report view options",
+        "switchToConcordance": "Switch to concordance view",
+        "switchToKwic": "Switch to KWIC view"
     },
     "collocation": {
         "collocate": "Collocate",
@@ -183,7 +204,26 @@
         "top500Results": "Top 500 results for {label}",
         "relativeFrequencyDescription": "{total} actual occurrence(s) in {wordCount} words",
         "wordProperty": "Word property",
-        "collocate": "Collocate"
+        "collocate": "Collocate",
+        "closeFacets": "Close facets panel",
+        "hideFacetResults": "Hide facet results",
+        "selectFacetType": "Select facet type",
+        "selectFacet": "Select facet for",
+        "selectWordProperty": "Select word property for",
+        "selectCollocation": "Select collocation for",
+        "showFacetOptions": "Show facet selection options",
+        "facetResultsRegion": "Facet analysis results",
+        "frequencyTypeToggle": "Toggle between frequency types",
+        "showAbsoluteFrequency": "Show absolute frequency",
+        "showRelativeFrequency": "Show relative frequency",
+        "loadingProgress": "Loading facet results progress",
+        "progressDescription": "Loading {current} of {total} results ({percent}% complete)",
+        "facetResultsList": "List of facet results",
+        "filterBy": "Filter results by",
+        "searchFor": "Search for",
+        "searchCollocation": "Search for collocation",
+        "occurrences": "occurrences",
+        "relativeFrequencyLabel": "{total} occurrences out of {wordCount} total words"
     },
     "exportResults": {
         "currentPage": "Only results from the current page will be exported",
@@ -200,7 +240,18 @@
         "resultsDisplayed": "Results Displayed",
         "searchedTerms": "Searched term(s)",
         "wordsLeft": "Words to the left",
-        "wordsRight": "Words to the right"
+        "wordsRight": "Words to the right",
+        "selectSortCriteria": "Select sorting criteria: {criteria}",
+        "showResults": "Show {count} results per page",
+        "loadingProgress": "Loading KWIC results",
+        "progressDescription": "Loading {current} of {total} results ({percent}% complete)",
+        "resultsRegion": "KWIC search results",
+        "sortingControls": "Sorting controls",
+        "applySorting": "Apply sorting",
+        "resultsPerPageControl": "Results per page control",
+        "concordanceRegion": "KWIC concordance results",
+        "resultNumber": "Result number",
+        "viewFullText": "View full text for"
     },
     "aggregation": {
         "performance": "For performance reasons, only the first 1000 results are displayed. Click on the link above for full results.",
@@ -226,7 +277,55 @@
         "browseByLetterAction": "Browse entries starting with letter {letter}",
         "browseResults": "Browse results"
     },
-    "searchTips": {},
+    "searchTips": {
+        "title": "Search Syntax Help",
+        "description": "PhiloLogic5's query syntax has 5 basic operators",
+        "basicOperators": "Basic Operators",
+        "plainToken": "Plain token - any word split on space, example:",
+        "quotedToken": "Quoted token - string in double quotes with spaces, example:",
+        "range": "Range - two tokens separated by dash, example:",
+        "booleanOr": "Boolean OR, represented as",
+        "booleanNot": "Boolean NOT, represented as",
+        "syntaxNote": "Note that the syntax is largely based on egrep regular expressions.",
+        "wordSearches": "Word Searches",
+        "wordSearchDescription": "Word searches work with the following conventions:",
+        "plainTerms": "Plain terms are interpreted as tokens",
+        "quotedTerms": "Quoted terms are interpreted as phrases",
+        "rangeNote": "Range searches work with the first letter of each word",
+        "orDescription": "searches work by grouping terms in parentheses",
+        "notDescription": "searches work by excluding terms. Important: NOT cannot be the first term.",
+        "isLegal": "is legal",
+        "isIllegal": "is illegal",
+        "morphologyTitle": "Morphology/Word attribute searches",
+        "lemmaSearch": "Lemma searches use the",
+        "lemmaExample": "prefix. For example:",
+        "regexPermitted": "Regular expressions are permitted:",
+        "wordAttribute": "Word attribute searches use the",
+        "wordAttributeExample": "syntax. For example:",
+        "combineLemma": "You can combine lemma and attribute searches:",
+        "multipleAttributes": "You can use multiple attributes:",
+        "metadataSearches": "Metadata Searches",
+        "metadataDescription": "Metadata searches work with the same conventions as word searches:",
+        "metadataPlainTokens": "Plain tokens are interpreted as tokens",
+        "metadataQuotedTokens": "Quoted tokens are interpreted as phrases",
+        "metadataRange": "Range searches work with the first letter of each word",
+        "metadataOr": "searches work by grouping terms in parentheses",
+        "metadataNot": "searches work by excluding terms. Important: NOT cannot be the first term.",
+        "regexpSyntax": "Regular Expression Syntax",
+        "regexpDescription": "PhiloLogic5 supports most of the",
+        "egrepLink": "egrep regular expression syntax",
+        "egrepLinkLabel": "Learn more about egrep regular expression syntax, opens in new window",
+        "dotCharacter": "The",
+        "dotDescription": "character matches any single character",
+        "bracketExpressions": "Bracket expressions match any character in the brackets:",
+        "bracketNote": "etc.",
+        "asteriskDescription": "matches zero or more of the preceding character",
+        "plusDescription": "matches one or more of the preceding character",
+        "questionDescription": "matches zero or one of the preceding character",
+        "wildcardNote": "Note that the traditional wildcard",
+        "wildcardDescription": "is equivalent to the regular expression",
+        "traditionalWildcard": "alone will not work"
+    },
     "textNav": {
         "backToTop": "Back to top",
         "top": "Top",
@@ -259,5 +358,9 @@
         "citationGroup": "Citation",
         "citationItem": "Citation {position} of {total}: {label}",
         "viewText": "View text"
+    },
+    "pages": {
+        "searchResultsPages": "Search results pages",
+        "pageAriaLabel": "Page {page}, résultats {range}"
     }
 }

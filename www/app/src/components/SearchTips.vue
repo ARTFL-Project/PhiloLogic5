@@ -1,134 +1,162 @@
 <template>
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable" role="dialog" aria-labelledby="search-tips-title"
+        aria-describedby="search-tips-description">
         <div class="modal-content p-2">
             <div class="modal-header">
-                <h5 class="modal-title" id="exampleModalLabel">Search Syntax</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                <h5 class="modal-title" id="search-tips-title">{{ $t('searchTips.title') }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')">
+                </button>
             </div>
             <div class="modal-body">
-                PhiloLogic5's query syntax has 5 basic operators:
-                <ul class="mt-2">
-                    <li>
-                        the plain token, essentially, any word at all, split on space, e.g.
-                        <span class="code-block">token</span>
-                    </li>
-                    <li>
-                        the quoted token--a string in double quotes, which may contain a space, e.g.
-                        <span class="code-block">"token"</span>
-                    </li>
-                    <li>
-                        the range--two tokens separated by a dash, e.g.
-                        <span class="code-block">a-f</span>
-                    </li>
-                    <li>
-                        boolean OR, represented grep-style as
-                        <span class="code-block">|</span>, e.g.
-                        <span class="code-block">token | word</span>
-                    </li>
-                    <li>
-                        boolean NOT, represented SQL-style as
-                        <span class="code-block">NOT</span>, e.g.
-                        <span class="code-block">token.* NOT tokens</span>
-                    </li>
-                </ul>
-                This syntax is the same, but interpreted slightly differently, for the two different types of text query
-                fields: word search and metadata search.
-                <h5 style="margin-top: 20px">Word Searches</h5>
-                Full-text word search is unique in having the concept of a "term", which is either a single plain/quoted
-                term, or a group of plain/quoted terms joined by <span class="code-block">|</span>, optionally followed
-                by <span class="code-block">NOT</span> and another term-like filter expression:
-                <ol class="mt-2">
-                    <li>
-                        plain terms are evaluated without regard to accent or to case. Regexes
-                        are permitted.
-                    </li>
-                    <li>quoted terms are case and accent sensitive. Regexes are permitted.</li>
-                    <li>
-                        the range is not operational. In the future, stub this out to make hyphenated search terms less
-                        of a pain to escape.
-                    </li>
-                    <li>
-                        <span class="code-block">OR</span> can conjoin plain and quoted tokens, and precedes evaluation
-                        of phrase distance.
-                    </li>
-                    <li>
-                        <span class="code-block">NOT</span> is a filter on a preceding term, but cannot stand alone:
-                        <span class="code-block">a.* NOT abalone</span> is legal,
-                        <span class="code-block">NOT a.*</span> is illegal
-                    </li>
-                </ol>
-                If the collection contains lemma or other morphological information, you can use the following syntax:
-                <ol>
-                    <li>For simple lemma searching, just preprend the lemma with <span class="code-block">lemma:</span> such
-                        as in <span class="code-block">lemma:have</span>. Regexes are permitted on the token portion of the
-                        search, e.g. <span class="code-block">lemma:constitut.*</span>.</li>
-                    <li>For word attribute searching, use the <span class="code-block">word:attribute:attribute</span>
-                        syntax such as in <span class="code-block">love:pos:NOUN</span>. Regexes are permitted on the token
-                        portion of the search e.g. <span class="code-block">lov.*:pos:NOUN</span>.</li>
-                    <li>You can combine lemma searching with word attribute filtering. Just preprend your token with <span
-                            class="code-block">lemma:</span> such as in <span class="code-block">lemma:love:pos:NOUN</span>.
-                        Regexes are permitted on the token portion of the search, e.g. <span
-                            class="code-block">lemma:lov.*:pos:NOUN</span>.</li>
-                    <li>Note that you cannot combine multiple word attributes filters on one token, such as in <span
-                            class="code-block">charles:pos:PROPN:ner:PERS</span>.</li>
-                </ol>
+                <p id="search-tips-description">
+                    {{ $t('searchTips.description') }}:
+                </p>
 
-                <h5 style="margin-top: 20px">Metadata Searches</h5>
-                Metadata search does not support phrases, but supports more sophisticated Boolean searching:
-                <ol class="mt-2">
-                    <li>
-                        plain tokens separated by spaces have an implied AND between them, but are treated as
-                        position-independent tokens.
-                    </li>
-                    Regexes are permitted, but will not span over the bounds of a token.
-                    <li>
-                        quoted tokens must now match against the ENTIRE metadata string value in the database, including
-                        spaces and punctuations.
-                    </li>
-                    It will not match a single term within a larger string, no matter how precise. Regexes are permitted
-                    <li>range allows for numeric and string ranges on all metadata fields.</li>
-                    <li>
-                        <span class="code-block">OR</span> can still be used to conjoin plain tokens, preceding the
-                        implied Boolean AND, as well as quoted tokens.
-                    </li>
-                    <li>
-                        <span class="code-block">NOT</span> is still available as both a filter, or a stand-alone
-                        negation: <span class="code-block">contrat NOT social</span> is legal, so is
-                        <span class="code-block">NOT rousseau</span>
-                    </li>
-                </ol>
+                <section aria-labelledby="basic-operators-heading">
+                    <h6 id="basic-operators-heading">{{ $t('searchTips.basicOperators') }}</h6>
+                    <ul role="list">
+                        <li role="listitem">
+                            {{ $t('searchTips.plainToken') }}
+                            <code class="code-block" aria-label="code example">token</code>
+                        </li>
+                        <li role="listitem">
+                            {{ $t('searchTips.quotedToken') }}
+                            <code class="code-block" aria-label="code example">"token"</code>
+                        </li>
+                        <li role="listitem">
+                            {{ $t('searchTips.range') }}
+                            <code class="code-block" aria-label="code example">a-f</code>
+                        </li>
+                        <li role="listitem">
+                            {{ $t('searchTips.booleanOr') }}
+                            <code class="code-block" aria-label="code example">|</code>, {{ $t('common.example') }}
+                            <code class="code-block" aria-label="code example">token | word</code>
+                        </li>
+                        <li role="listitem">
+                            {{ $t('searchTips.booleanNot') }}
+                            <code class="code-block" aria-label="code example">NOT</code>, {{ $t('common.example') }}
+                            <code class="code-block" aria-label="code example">token.* NOT tokens</code>
+                        </li>
+                    </ul>
+                </section>
 
-                <h5 style="margin-top: 20px">Regexp syntax</h5>
-                Basic regexp syntax, adapted from the
-                <a
-                    href="http://www.gnu.org/software/findutils/manual/html_node/find_html/egrep-regular-expression-syntax.html#egrep-regular-expression-syntax">egrep
-                    regular expression syntax</a>:
-                <ol class="mt-2">
-                    <li>
-                        The character
-                        <span class="code-block">.</span> matches any single character except newline.
-                    </li>
-                    <li>
-                        Bracket expressions can match sets or ranges of characters:
-                        <span class="code-block">[aeiou]</span> or <span class="code-block">[a-z]</span>, but will only
-                        match a single character unless followed by one of the quantifiers below.
-                    </li>
-                    <li>
-                        <span class="code-block">*</span> indicates that the regular expression should match zero or
-                        more occurrences of the previous character or bracketed group.
-                    </li>
-                    <li>
-                        <span class="code-block">+</span> indicates that the regular expression should match one or more
-                        occurrences of the previous character or bracketed group.
-                    </li>
-                    <li>
-                        <span class="code-block">?</span> indicates that the regular expression should match zero or one
-                        occurrence of the previous character or bracketed group.
-                    </li>
-                </ol>
-                Thus, <span class="code-block">.*</span> is an approximate "match anything" wildcard operator, rather
-                than the more traditional (but less precise) <span class="code-block">*</span> in many other search
-                engines.
+                <p>{{ $t('searchTips.syntaxNote') }}</p>
+
+                <section aria-labelledby="word-searches-heading">
+                    <h5 id="word-searches-heading" style="margin-top: 20px">{{ $t('searchTips.wordSearches') }}</h5>
+                    <p class="mb-0">{{ $t('searchTips.wordSearchDescription') }}</p>
+                    <ol role="list">
+                        <li role="listitem">{{ $t('searchTips.plainTerms') }}</li>
+                        <li role="listitem">{{ $t('searchTips.quotedTerms') }}</li>
+                        <li role="listitem">{{ $t('searchTips.rangeNote') }}</li>
+                        <li role="listitem">
+                            <code class="code-block" aria-label="code example">OR</code> {{
+                                $t('searchTips.orDescription') }}
+                        </li>
+                        <li role="listitem">
+                            <code class="code-block" aria-label="code example">NOT</code> {{
+                                $t('searchTips.notDescription') }}
+                            <code class="code-block" aria-label="code example">a.* NOT abalone</code> {{
+                                $t('searchTips.isLegal') }},
+                            <code class="code-block" aria-label="code example">NOT a.*</code> {{
+                                $t('searchTips.isIllegal') }}
+                        </li>
+                    </ol>
+                </section>
+
+                <section aria-labelledby="morphology-heading">
+                    <h6 id="morphology-heading">{{ $t('searchTips.morphologyTitle') }}</h6>
+                    <ol role="list">
+                        <li role="listitem">
+                            {{ $t('searchTips.lemmaSearch') }}
+                            <code class="code-block" aria-label="code example">lemma:</code>
+                            {{ $t('searchTips.lemmaExample') }}
+                            <code class="code-block" aria-label="code example">lemma:have</code>.
+                            {{ $t('searchTips.regexPermitted') }}
+                            <code class="code-block" aria-label="code example">lemma:constitut.*</code>.
+                        </li>
+                        <li role="listitem">
+                            {{ $t('searchTips.wordAttribute') }}
+                            <code class="code-block" aria-label="code example">word:attribute:attribute</code>
+                            {{ $t('searchTips.wordAttributeExample') }}
+                            <code class="code-block" aria-label="code example">love:pos:NOUN</code>.
+                        </li>
+                        <li role="listitem">
+                            {{ $t('searchTips.combineLemma') }}
+                            <code class="code-block" aria-label="code example">lemma:love:pos:NOUN</code>.
+                        </li>
+                        <li role="listitem">
+                            {{ $t('searchTips.multipleAttributes') }}
+                            <code class="code-block" aria-label="code example">charles:pos:PROPN:ner:PERS</code>.
+                        </li>
+                    </ol>
+                </section>
+
+                <section aria-labelledby="metadata-searches-heading">
+                    <h5 id="metadata-searches-heading" style="margin-top: 20px">{{ $t('searchTips.metadataSearches') }}
+                    </h5>
+                    <p class="mb-0">{{ $t('searchTips.metadataDescription') }}</p>
+                    <ol role="list">
+                        <li role="listitem">{{ $t('searchTips.metadataPlainTokens') }}</li>
+                        <li role="listitem">{{ $t('searchTips.metadataQuotedTokens') }}</li>
+                        <li role="listitem">{{ $t('searchTips.metadataRange') }}</li>
+                        <li role="listitem">
+                            <code class="code-block" aria-label="code example">OR</code> {{ $t('searchTips.metadataOr')
+                            }}
+                        </li>
+                        <li role="listitem">
+                            <code class="code-block" aria-label="code example">NOT</code> {{
+                                $t('searchTips.metadataNot') }}
+                            <code class="code-block" aria-label="code example">contrat NOT social</code> {{
+                                $t('searchTips.isLegal') }},
+                            <code class="code-block" aria-label="code example">NOT rousseau</code>
+                        </li>
+                    </ol>
+                </section>
+
+                <section aria-labelledby="regexp-heading">
+                    <h5 id="regexp-heading" style="margin-top: 20px">{{ $t('searchTips.regexpSyntax') }}</h5>
+                    <p class="mb-0">
+                        {{ $t('searchTips.regexpDescription') }}
+                        <a href="http://www.gnu.org/software/findutils/manual/html_node/find_html/egrep-regular-expression-syntax.html#egrep-regular-expression-syntax"
+                            target="_blank" rel="noopener noreferrer" :aria-label="$t('searchTips.egrepLinkLabel')">
+                            {{ $t('searchTips.egrepLink') }}
+                            <span class="visually-hidden">{{ $t('common.opensInNewWindow') }}</span>
+                        </a>:
+                    </p>
+                    <ol role="list">
+                        <li role="listitem">
+                            {{ $t('searchTips.dotCharacter') }}
+                            <code class="code-block" aria-label="code example">.</code> {{
+                                $t('searchTips.dotDescription') }}
+                        </li>
+                        <li role="listitem">
+                            {{ $t('searchTips.bracketExpressions') }}
+                            <code class="code-block" aria-label="code example">[aeiou]</code> {{ $t('common.or') }}
+                            <code class="code-block" aria-label="code example">[a-z]</code>, {{
+                                $t('searchTips.bracketNote') }}
+                        </li>
+                        <li role="listitem">
+                            <code class="code-block" aria-label="code example">*</code> {{
+                                $t('searchTips.asteriskDescription') }}
+                        </li>
+                        <li role="listitem">
+                            <code class="code-block" aria-label="code example">+</code> {{
+                                $t('searchTips.plusDescription') }}
+                        </li>
+                        <li role="listitem">
+                            <code class="code-block" aria-label="code example">?</code> {{
+                                $t('searchTips.questionDescription') }}
+                        </li>
+                    </ol>
+                    <p class="mb-0">
+                        {{ $t('searchTips.wildcardNote') }}
+                        <code class="code-block" aria-label="code example">.*</code> {{
+                            $t('searchTips.wildcardDescription') }}
+                        <code class="code-block" aria-label="code example">*</code> {{
+                            $t('searchTips.traditionalWildcard') }}
+                    </p>
+                </section>
             </div>
         </div>
     </div>
@@ -141,5 +169,31 @@ export default {
 <style scoped>
 li {
     list-style-type: disc;
+}
+
+.code-block {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 0.25rem;
+    padding: 0.125rem 0.25rem;
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 0.875em;
+}
+
+/* Focus styles for links */
+a:focus {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+}
+
+/* Better section spacing */
+section {
+    margin-bottom: 1.5rem;
+}
+
+h5,
+h6 {
+    margin-bottom: 0.5rem;
+    color: #495057;
 }
 </style>
