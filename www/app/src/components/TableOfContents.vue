@@ -10,29 +10,48 @@
         <div class="text-center">
             <div class="row">
                 <div class="col-12">
-                    <div class="card mt-4 mb-4 p-4 d-inline-block shadow" style="width: 100%; text-align: justify">
-                        <button
-                            id="show-header"
-                            class="btn btn-outline-secondary mb-2"
-                            v-if="philoConfig.header_in_toc"
-                            @click="toggleHeader()"
-                        >
+                    <div class="card mt-4 mb-4 py-4 px-2 d-inline-block shadow"
+                        style="width: 100%; text-align: justify">
+                        <button id="show-header" class="btn btn-outline-secondary mb-2" v-if="philoConfig.header_in_toc"
+                            @click="toggleHeader()" :aria-expanded="showHeader" :aria-label="$t('toc.toggleHeader')"
+                            :aria-controls="showHeader ? 'tei-header' : null">
                             {{ headerButton }}
                         </button>
-                        <div class="card shadow-sm" no-body id="tei-header" v-if="showHeader" v-html="teiHeader"></div>
-                        <div id="toc-report" class="text-content-area">
-                            <div id="toc-content" v-scroll="handleScroll">
-                                <div v-for="(element, elIndex) in tocElements.slice(0, displayLimit)" :key="elIndex">
-                                    <div :class="'toc-' + element.philo_type">
-                                        <span :class="'bullet-point-' + element.philo_type"></span>
-                                        <router-link :to="element.href" class="toc-section">{{
-                                            element.label
-                                        }}</router-link>
+                        <div class="card shadow-sm" id="tei-header" v-if="showHeader" role="region"
+                            :aria-label="$t('toc.headerRegion')" v-html="teiHeader">
+                        </div>
+
+                        <nav id="toc-report" class="text-content-area" role="navigation"
+                            :aria-label="$t('toc.navigationLabel')">
+                            <div id="toc-content" v-scroll="handleScroll" ref="tocContent" tabindex="0" role="tree"
+                                :aria-label="$t('toc.tocTree')">
+                                <ol class="toc-list" role="list">
+                                    <li v-for="(element, elIndex) in tocElements.slice(0, displayLimit)" :key="elIndex"
+                                        :class="'toc-' + element.philo_type" role="listitem">
+                                        <span :class="'bullet-point-' + element.philo_type" aria-hidden="true"></span>
+                                        <router-link :to="element.href" class="toc-section" :aria-label="$t('toc.sectionLink', {
+                                            type: element.philo_type,
+                                            label: element.label
+                                        })">
+                                            {{ element.label }}
+                                        </router-link>
                                         <citations :citation="element.citation"></citations>
-                                    </div>
+                                    </li>
+                                </ol>
+
+                                <!-- Loading indicator for infinite scroll -->
+                                <div v-if="isLoading" class="text-center mt-3" role="status"
+                                    :aria-label="$t('common.loading')">
+                                    <progress-spinner :sm="true" />
+                                </div>
+
+                                <!-- End of content indicator -->
+                                <div v-if="displayLimit >= tocElements.length && tocElements.length > 0"
+                                    class="text-center mt-3 text-muted" role="status" :aria-live="polite">
+                                    {{ $t('toc.endOfContent') }}
                                 </div>
                             </div>
-                        </div>
+                        </nav>
                     </div>
                 </div>
             </div>
@@ -42,11 +61,13 @@
 <script>
 import { mapFields } from "vuex-map-fields";
 import citations from "./Citations";
+import ProgressSpinner from "./ProgressSpinner";
 
 export default {
     name: "tableOfContents",
     components: {
         citations,
+        ProgressSpinner,
     },
     inject: ["$http"],
     computed: {
@@ -64,7 +85,8 @@ export default {
             tocObject: {},
             tocElements: [],
             showHeader: false,
-            headerButton: "Show Header",
+            headerButton: this.$t('toc.showHeader'),
+            isLoading: false,
         };
     },
     created() {
@@ -99,50 +121,96 @@ export default {
                         })
                         .then((response) => {
                             this.teiHeader = response.data;
-                            this.headerButton = "Hide Header";
+                            this.headerButton = this.$t('toc.hideHeader');
                             this.showHeader = true;
                         })
                         .catch((error) => {
                             this.debug(this, error);
                         });
                 } else {
-                    this.headerButton = "Hide Header";
+                    this.headerButton = this.$t('toc.hideHeader');
                     this.showHeader = true;
                 }
             } else {
-                this.headerButton = "Show Header";
+                this.headerButton = this.$t('toc.showHeader');
                 this.showHeader = false;
             }
         },
         handleScroll() {
-            let scrollPosition = document.getElementById("toc-content").getBoundingClientRect().bottom - 200;
-            if (scrollPosition < window.innerHeight) {
-                console.log("adding more");
-                this.displayLimit += 200;
+            const tocContent = this.$refs.tocContent;
+            if (!tocContent) return;
+
+            const scrollPosition = tocContent.getBoundingClientRect().bottom - 200;
+            if (scrollPosition < window.innerHeight && !this.isLoading && this.displayLimit < this.tocElements.length) {
+                this.isLoading = true;
+                setTimeout(() => {
+                    this.displayLimit += 200;
+                    this.isLoading = false;
+                }, 100);
             }
         },
     },
 };
 </script>
-<style scoped>
+<style scoped lang="scss">
+@import "../assets/styles/theme.module.scss";
+
 .separator {
     padding: 5px;
     font-size: 60%;
     display: inline-block;
     vertical-align: middle;
 }
+
 .toc-section {
     font-size: 1.05rem;
+    text-decoration: none;
+    transition: all 0.15s ease-in-out;
 }
+
+.toc-section:hover,
+.toc-section:focus {
+    outline: 1px solid $link-color;
+    background-color: rgba($link-color, 0.05);
+    border-radius: 4px;
+}
+
+.toc-list {
+    list-style: none;
+    padding-left: 0;
+}
+
+.toc-list li {
+    margin-bottom: 0.5rem;
+    border-radius: 4px;
+    padding-top: 0.05rem;
+    padding-bottom: 0.05rem;
+}
+
+.toc-list li:hover {
+    background-color: #f8f9fa;
+}
+
 #tei-header {
     white-space: pre;
     font-family: monospace;
     font-size: 120%;
-    overflow-x: scroll;
+    overflow-x: auto;
     padding: 10px;
     background-color: rgb(253, 253, 253);
     margin: 10px;
+    border: 1px solid #dee2e6;
 }
+
+#toc-content {
+    padding: 1rem;
+}
+
+#toc-content:focus {
+    outline: 2px solid $link-color;
+    outline-offset: -2px;
+}
+
 :deep(h5 .text-view) {
     font-size: inherit !important;
 }

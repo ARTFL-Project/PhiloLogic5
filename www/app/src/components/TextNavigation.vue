@@ -16,18 +16,21 @@
                         <span class="d-none d-sm-inline-block">{{ $t("textNav.backToTop") }}</span>
                         <span class="d-inline-block d-sm-none">{{ $t("textNav.top") }}</span>
                     </button>
-                    <div class="btn-group btn-group-sm" style="pointer-events: all">
-                        <button type="button" class="btn btn-secondary" disabled id="prev-obj"
-                            @click="goToTextObject(textObject.prev)">
-                            &lt;
+                    <div class="btn-group btn-group-sm" role="group" aria-label="$t('textNav.navigationControls')">
+                        <button type="button" class="btn btn-secondary" :disabled="!textObject.prev" id="prev-obj"
+                            @click="goToTextObject(textObject.prev)" :aria-label="$t('textNav.previousSection')">
+                            <span aria-hidden="true">&lt;</span>
+                            <span class="visually-hidden">{{ $t('textNav.previous') }}</span>
                         </button>
-                        <button type="button" class="btn btn-secondary" id="show-toc" disabled
-                            @click="toggleTableOfContents()">
+                        <button type="button" class="btn btn-secondary" id="show-toc" @click="toggleTableOfContents()"
+                            :aria-expanded="tocOpen" :aria-controls="tocOpen ? 'toc-content' : null"
+                            :aria-label="$t('textNav.toggleToc')">
                             {{ $t("textNav.toc") }}
                         </button>
-                        <button type="button" class="btn btn-secondary" disabled id="next-obj"
-                            @click="goToTextObject(textObject.next)">
-                            &gt;
+                        <button type="button" class="btn btn-secondary" :disabled="!textObject.next" id="next-obj"
+                            @click="goToTextObject(textObject.next)" :aria-label="$t('textNav.nextSection')">
+                            <span aria-hidden="true">&gt;</span>
+                            <span class="visually-hidden">{{ $t('textNav.next') }}</span>
                         </button>
                     </div>
                     <a id="report-error" class="btn btn-secondary btn-sm position-absolute" target="_blank "
@@ -35,33 +38,43 @@
                             $t("common.reportError")
                         }}</a>
                 </div>
-                <div id="toc">
-                    <div id="toc-titlebar" class="d-none">
-                        <button type="button" class="btn btn-secondary" id="hide-toc" @click="toggleTableOfContents()">
-                            X
-                        </button>
-                    </div>
+                <nav id="toc" role="navigation" :aria-label="$t('textNav.tableOfContents')">
+                    <button type="button" class="btn btn-secondary visually-hidden" id="hide-toc"
+                        @click="toggleTableOfContents()" :aria-label="$t('textNav.closeToc')">
+                        <span aria-hidden="true">X</span>
+                    </button>
                     <transition name="slide-fade">
-                        <div class="card p-3 shadow" id="toc-content" :style="tocHeight" :scroll-to="tocPosition"
-                            v-if="tocOpen">
-                            <div class="toc-more before" v-if="start !== 0">
-                                <button type="button" class="btn btn-default btn-sm" @click="loadBefore()"></button>
-                            </div>
-                            <div v-for="(element, tocIndex) in tocElementsToDisplay" :key="tocIndex">
-                                <div :id="element.philo_id" :class="'toc-' + element.philo_type"
-                                    @click="textObjectSelection(element.philo_id, tocIndex, $event)">
-                                    <span :class="'bullet-point-' + element.philo_type"></span>
-                                    <a :class="{ 'current-obj': element.philo_id === currentPhiloId }" href>
+                        <div class="card p-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"
+                            :aria-label="$t('textNav.tocContent')">
+                            <ol class="toc-list" role="list">
+                                <li v-if="start !== 0" role="listitem">
+                                    <button type="button" class="btn btn-secondary btn-sm" @click="loadBefore()"
+                                        :aria-label="$t('textNav.loadPrevious')">
+                                        {{ $t('textNav.loadMore') }}
+                                    </button>
+                                </li>
+                                <li v-for="(element, tocIndex) in tocElementsToDisplay" :key="tocIndex"
+                                    :class="'toc-' + element.philo_type" role="listitem">
+                                    <span :class="'bullet-point-' + element.philo_type" aria-hidden="true"></span>
+                                    <button type="button"
+                                        :class="{ 'current-obj': element.philo_id === currentPhiloId }"
+                                        class="btn btn-link toc-link"
+                                        @click="textObjectSelection(element.philo_id, tocIndex, $event)"
+                                        :aria-label="$t('textNav.goToSection', { title: element.label })"
+                                        :aria-current="element.philo_id === currentPhiloId ? 'page' : null">
                                         {{ element.label }}
-                                    </a>
-                                </div>
-                            </div>
-                            <div class="toc-more after" v-if="end < tocElements.length">
-                                <button type="button" class="btn btn-default btn-sm" @click="loadAfter()"></button>
-                            </div>
+                                    </button>
+                                </li>
+                                <li v-if="end < tocElements.length" role="listitem">
+                                    <button type="button" class="btn btn-secondary btn-sm" @click="loadAfter()"
+                                        :aria-label="$t('textNav.loadNext')">
+                                        {{ $t('textNav.loadMore') }}
+                                    </button>
+                                </li>
+                            </ol>
                         </div>
                     </transition>
-                </div>
+                </nav>
             </div>
         </div>
         <div style="font-size: 85%; text-align: center" v-if="philoConfig.dictionary_lookup.url_root != ''">
@@ -531,14 +544,14 @@ export default {
             this.end += 200;
         },
         toggleTableOfContents() {
+            this.tocOpen = !this.tocOpen;
             if (this.tocOpen) {
-                this.tocOpen = false;
-            } else {
-                this.tocOpen = true;
                 this.$nextTick(() => {
-                    this.$scrollTo(document.querySelector(".current-obj"), 500, {
-                        container: document.querySelector("#toc-content"),
-                    });
+                    const currentElement = this.$el.querySelector(".current-obj");
+                    if (currentElement) {
+                        currentElement.scrollIntoView({ behavior: "smooth", block: "center" });
+                        currentElement.focus();
+                    }
                 });
             }
         },
@@ -566,20 +579,21 @@ export default {
             this.goToTextObject(philoId);
         },
         setUpNavBar() {
-            let prevButton = document.querySelector("#prev-obj");
-            let nextButton = document.querySelector("#next-obj");
-            if (this.textObject.next === "" || typeof this.textObject.next === "undefined") {
-                nextButton.classList.add("disabled");
-            } else {
-                nextButton.removeAttribute("disabled");
-                nextButton.classList.remove("disabled");
-            }
-            if (this.textObject.prev === "" || typeof this.textObject.prev === "undefined") {
-                prevButton.classList.add("disabled");
-            } else {
-                prevButton.removeAttribute("disabled");
-                prevButton.classList.remove("disabled");
-            }
+            // let prevButton = document.querySelector("#prev-obj");
+            // let nextButton = document.querySelector("#next-obj");
+            // if (this.textObject.next === "" || typeof this.textObject.next === "undefined") {
+            //     nextButton.classList.add("disabled");
+            // } else {
+            //     nextButton.removeAttribute("disabled");
+            //     nextButton.classList.remove("disabled");
+            // }
+            // if (this.textObject.prev === "" || typeof this.textObject.prev === "undefined") {
+            //     prevButton.classList.add("disabled");
+            // } else {
+            //     prevButton.removeAttribute("disabled");
+            //     prevButton.classList.remove("disabled");
+            // }
+            this.textObject = { ...this.textObject };
         },
         handleScroll() {
             if (!this.navBarVisible) {
@@ -684,7 +698,6 @@ export default {
 #toc-top-bar {
     height: 31px;
     width: 100%;
-    pointer-events: none;
 }
 
 #toc {

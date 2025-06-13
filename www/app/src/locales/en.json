@@ -29,7 +29,8 @@
         "close": "Close",
         "example": "example",
         "or": "or",
-        "opensInNewWindow": "(opens in new window)"
+        "opensInNewWindow": "(opens in new window)",
+        "noDataAvailable": "No data available"
     },
     "header": {
         "citationModalTitle": "How to cite {dbname}:",
@@ -184,7 +185,9 @@
         "timeSeriesResults": "Time series analysis results",
         "viewToggle": "View toggle for period",
         "showOverRepresented": "Show over-represented collocates for",
-        "showFrequent": "Show frequent collocates for"
+        "showFrequent": "Show frequent collocates for",
+        "filterBy": "Filter by",
+        "selectDateType": "Select date type for"
     },
     "concordance": {
         "more": "More",
@@ -330,11 +333,34 @@
         "backToTop": "Back to top",
         "top": "Top",
         "toc": "Table of contents",
-        "dicoLookUp": "To look up a word in a dictionary, select the word with your mouse and press 'd' on your keyboard"
+        "dicoLookUp": "To look up a word in a dictionary, select the word with your mouse and press 'd' on your keyboard",
+        "navigationControls": "Text navigation controls",
+        "previousSection": "Go to previous section",
+        "nextSection": "Go to next section",
+        "previous": "Previous",
+        "next": "Next",
+        "toggleToc": "Toggle table of contents",
+        "tableOfContents": "Table of contents",
+        "closeToc": "Close table of contents",
+        "tocContent": "Table of contents sections",
+        "loadPrevious": "Load previous sections",
+        "loadNext": "Load next sections",
+        "loadMore": "Load more",
+        "goToSection": "Go to section: {title}",
+        "textContent": "Main text content"
     },
     "timeSeries": {
+        "frequencyDescription": "Toggle between absolute frequency (raw counts) and relative frequency (per 1000 words) display modes for the time series chart.",
+        "chartTitle": "Time Series Chart",
+        "dataTableCaption": "Time series data showing frequency of search terms over time periods",
+        "year": "Year",
         "occurrences": "occurrences",
-        "per1000Words": "occurrences per 10,000 words"
+        "per1000Words": "per 1000 words",
+        "navigationInstructions": "Use arrow keys to navigate between time periods, Enter or Space to view detailed results for selected period, Home/End to jump to first/last period.",
+        "chartAriaLabel": "{type} time series chart showing {count} data points from {range}",
+        "selectionAnnouncement": "Selected {year}: {value} {unit}",
+        "frequencyChanged": "Chart updated to show {type}",
+        "loadingProgress": "Loading time series data: {current} of {total} results processed"
     },
     "bibliography": {
         "resultsRegion": "Bibliography results",
@@ -362,5 +388,31 @@
     "pages": {
         "searchResultsPages": "Search results pages",
         "pageAriaLabel": "Page {page}, résultats {range}"
+    },
+    "toc": {
+        "showHeader": "Show Header",
+        "hideHeader": "Hide Header",
+        "toggleHeader": "Toggle document header visibility",
+        "headerRegion": "Document header information",
+        "navigationLabel": "Table of contents navigation",
+        "tocTree": "Hierarchical table of contents",
+        "sectionLink": "Go to {type}: {label}",
+        "endOfContent": "End of table of contents"
+    },
+    "wordCloud": {
+        "ariaLabel": "Word cloud containing {count} words, sized by frequency",
+        "instructions": "Use arrow keys to navigate between words, Enter or Space to select a word",
+        "tableCaption": "Word cloud data showing word frequencies and significance levels",
+        "word": "Word",
+        "frequency": "Frequency",
+        "significance": "Significance",
+        "wordAriaLabel": "{word}, appears {frequency} times, {significance} significance",
+        "wordTooltip": "{word} (appears {frequency} times)",
+        "noWords": "No words available",
+        "wordsLoaded": "{count} words loaded in word cloud",
+        "veryHigh": "very high",
+        "high": "high",
+        "medium": "medium",
+        "low": "low"
     }
 }

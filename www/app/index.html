@@ -1,25 +1,98 @@
 <!DOCTYPE html>
 <html lang="en">
+    <head>
+        <base href="/" />
+        <meta charset="utf-8" />
+        <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+        <meta name="viewport" content="width=device-width,initial-scale=1.0" />
 
-<head>
-    <base href="/">
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width,initial-scale=1.0">
-    <link rel="icon" href="/favicon.ico">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital@0;1&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400;1,600&display=swap" rel="stylesheet">
-    <script type="module" src="/src/main.js"></script>
-    <title>PhiloLogic5</title>
-</head>
+        <!-- SEO and Accessibility Meta Tags -->
+        <meta
+            name="description"
+            content="PhiloLogic5 - Advanced text analysis and search platform for digital humanities research"
+        />
+        <meta
+            name="keywords"
+            content="digital humanities, text analysis, concordance, collocation, time series, corpus linguistics"
+        />
+        <meta name="author" content="PhiloLogic Project" />
 
-<body>
-    <noscript>
-    <strong>We're sorry but PhiloLogic5 doesn't work without JavaScript enabled. Please enable it to continue.</strong>
-  </noscript>
-    <div id="app"></div>
-    <!-- built files will be auto injected -->
-</body>
+        <!-- Open Graph Meta Tags -->
+        <meta property="og:title" content="PhiloLogic5" />
+        <meta
+            property="og:description"
+            content="Advanced text analysis and search platform for digital humanities research"
+        />
+        <meta property="og:type" content="website" />
 
+        <!-- Favicon and Performance -->
+        <link rel="icon" href="/favicon.ico" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Open+Sans:ital@0;1&family=Source+Serif+Pro:ital,wght@0,400;0,600;1,400;1,600&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="modulepreload" href="/src/main.js" />
+
+        <title>PhiloLogic5 - Digital Humanities Text Analysis Platform</title>
+    </head>
+
+    <body>
+        <noscript>
+            <div
+                style="
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: #fff;
+                    z-index: 10001;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    flex-direction: column;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                        Roboto, sans-serif;
+                    text-align: center;
+                    padding: 20px;
+                    box-sizing: border-box;
+                "
+            >
+                <h1 style="color: #dc3545; margin-bottom: 20px">
+                    JavaScript Required
+                </h1>
+                <p
+                    style="
+                        font-size: 18px;
+                        line-height: 1.5;
+                        margin-bottom: 20px;
+                        max-width: 600px;
+                    "
+                >
+                    <strong
+                        >PhiloLogic5 requires JavaScript to function
+                        properly.</strong
+                    >
+                </p>
+                <p style="margin-bottom: 20px; max-width: 600px">
+                    This application provides advanced text analysis and search
+                    capabilities for digital humanities research. To access
+                    these features, please enable JavaScript in your browser
+                    settings.
+                </p>
+            </div>
+        </noscript>
+
+        <!-- Main Application Container -->
+        <div
+            id="app"
+            role="application"
+            aria-label="PhiloLogic5 Text Analysis Platform"
+        ></div>
+
+        <!-- Module Script -->
+        <script type="module" src="/src/main.js"></script>
+    </body>
 </html>

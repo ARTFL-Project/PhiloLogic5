@@ -25,7 +25,12 @@
         "closeModal": "Fermer",
         "changeLanguage": "Changer de langue",
         "languageIcon": "Langue",
-        "close": "Fermer"
+        "close": "Fermer",
+        "noDataAvailable": "Aucune donnée disponible",
+        "loadingFacets": "Chargement des facettes",
+        "example": "exemple",
+        "or": "ou",
+        "opensInNewWindow": "(s'ouvre dans une nouvelle fenêtre)"
     },
     "header": {
         "citationModalTitle": "Comment citer {dbname} :",
@@ -180,7 +185,9 @@
         "timeSeriesResults": "Résultats d'analyse de séries temporelles",
         "viewToggle": "Basculer la vue pour la période",
         "showOverRepresented": "Afficher les collocants sur-représentés pour",
-        "showFrequent": "Afficher les collocants fréquents pour"
+        "showFrequent": "Afficher les collocants fréquents pour",
+        "filterBy": "Filtrer par",
+        "selectDateType": "Sélectionner le type de date pour"
     },
     "concordance": {
         "more": "Plus",
@@ -326,11 +333,34 @@
         "backToTop": "Retour en haut de la page",
         "top": "En haut",
         "toc": "Table des matières",
-        "dicoLookUp": "Pour rechercher la définition d’un mot, sélectionner le mot avec l’aide de la souris et appuyer sur la touche \"d\" du clavier"
+        "dicoLookUp": "Pour rechercher la définition d’un mot, sélectionner le mot avec l’aide de la souris et appuyer sur la touche \"d\" du clavier",
+        "navigationControls": "Contrôles de navigation du texte",
+        "previousSection": "Aller à la section précédente",
+        "nextSection": "Aller à la section suivante",
+        "previous": "Précédent",
+        "next": "Suivant",
+        "toggleToc": "Basculer la table des matières",
+        "tableOfContents": "Table des matières",
+        "closeToc": "Fermer la table des matières",
+        "tocContent": "Sections de la table des matières",
+        "loadPrevious": "Charger les sections précédentes",
+        "loadNext": "Charger les sections suivantes",
+        "loadMore": "Charger plus",
+        "goToSection": "Aller à la section : {title}",
+        "textContent": "Contenu du texte principal"
     },
     "timeSeries": {
+        "frequencyDescription": "Basculer entre l'affichage de la fréquence absolue (comptes bruts) et de la fréquence relative (pour 1000 mots) pour le graphique de série temporelle.",
+        "chartTitle": "Graphique de Série Temporelle",
+        "dataTableCaption": "Données de série temporelle montrant la fréquence des termes de recherche au fil des périodes",
+        "year": "Année",
         "occurrences": "occurrences",
-        "per1000Words": "occurrences pour 10,000 mots"
+        "per1000Words": "pour 1000 mots",
+        "navigationInstructions": "Utilisez les touches fléchées pour naviguer entre les périodes, Entrée ou Espace pour voir les résultats détaillés de la période sélectionnée, Début/Fin pour aller à la première/dernière période.",
+        "chartAriaLabel": "Graphique de série temporelle {type} montrant {count} points de données de {range}",
+        "selectionAnnouncement": "{year} sélectionné : {value} {unit}",
+        "frequencyChanged": "Graphique mis à jour pour afficher {type}",
+        "loadingProgress": "Chargement des données de série temporelle : {current} sur {total} résultats traités"
     },
     "bibliography": {
         "resultsRegion": "Résultats de bibliographie",
@@ -358,5 +388,15 @@
     "pages": {
         "searchResultsPages": "Pages de résultats de recherche",
         "pageAriaLabel": "Page {page}, résultats {range}"
+    },
+    "toc": {
+        "showHeader": "Afficher l'en-tête",
+        "hideHeader": "Masquer l'en-tête",
+        "toggleHeader": "Basculer la visibilité de l'en-tête du document",
+        "headerRegion": "Informations d'en-tête du document",
+        "navigationLabel": "Navigation de la table des matières",
+        "tocTree": "Table des matières hiérarchique",
+        "sectionLink": "Aller à {type} : {label}",
+        "endOfContent": "Fin de la table des matières"
     }
 }
