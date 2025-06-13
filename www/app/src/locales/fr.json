@@ -148,7 +148,8 @@
         "filteredWordsList": "List of filtered words",
         "reportViewOptions": "Report view options",
         "switchToConcordance": "Switch to concordance view",
-        "switchToKwic": "Switch to KWIC view"
+        "switchToKwic": "Switch to KWIC view",
+        "progressChanged": "Résultats mis à jour, {percent}% terminé"
     },
     "collocation": {
         "collocate": "Collocation",

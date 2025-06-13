@@ -10,8 +10,21 @@
                     </button>
 
                     <div class="modal fade" tabindex="-1" id="export-modal" role="dialog"
-                        :aria-labelledby="$t('resultsSummary.exportResults')">
-                        <export-results></export-results>
+                        aria-labelledby="export-modal-title" aria-describedby="export-modal-desc">
+                        <div class="modal-dialog" role="document">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="export-modal-title">{{
+                                        $t('resultsSummary.exportResults')
+                                        }}</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
+                                        :aria-label="$t('common.close')"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <export-results></export-results>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <search-arguments :result-start="descriptionStart" :result-end="descriptionEnd"></search-arguments>
@@ -31,7 +44,7 @@
                                         </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
-                                            }}&nbsp;</span>
+                                        }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
@@ -82,7 +95,7 @@
                             :aria-valuenow="Math.floor((runningTotal / resultsLength) * 100)" :aria-valuemax="100"
                             aria-valuemin="0" :aria-label="$t('resultsSummary.progressLabel', {
                                 percent: Math.floor((runningTotal / resultsLength) * 100)
-                            })">
+                            })" aria-live="polite">
                             <div class="progress-bar"
                                 :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`">
                                 {{ Math.floor((runningTotal / resultsLength) * 100) }}%
@@ -103,7 +116,7 @@
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                         v-if="colloc_filter_choice === 'frequency'"
                                         :aria-label="$t('resultsSummary.showFilteredWords')"
-                                        :aria-expanded="showFilteredWords">
+                                        :aria-expanded="showFilteredWords" aria-controls="filter-list">
                                         {{ $t("resultsSummary.commonWords", { n: filter_frequency }) }}
                                     </button>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
@@ -428,7 +441,8 @@ export default {
     padding: 0.1rem;
 }
 
-.stat-link {
+.stat-link,
+.btn-link {
     text-decoration: none;
 }
 

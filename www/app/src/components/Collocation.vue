@@ -207,7 +207,7 @@
         <div class="row my-3 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && collocMethod == 'frequency'">
             <div class="col-12 col-sm-4">
                 <div class="card shadow-sm">
-                    <table class="table table-hover table-striped table-light table-borderless caption-top" role="table"
+                    <table class="table table-borderless caption-top" role="table"
                         aria-label="$t('collocation.collocatesTable')">
                         <caption class="visually-hidden">
                             {{ $t('collocation.collocatesTableCaption') }}
@@ -937,11 +937,56 @@ export default {
 
 th {
     font-variant: small-caps;
+    background-color: $card-header-color !important;
+    color: white !important;
+    border-color: $card-header-color !important;
 }
 
-tbody tr {
+.table tbody tr {
     cursor: pointer;
+    transition: all 0.2s ease;
 }
+
+.table tbody tr:hover {
+    background-color: rgba($link-color, 0.1) !important;
+    color: $link-color !important;
+}
+
+.table tbody tr:focus {
+    background-color: rgba($button-color, 0.15) !important;
+    color: $button-color !important;
+    outline: 2px solid $button-color;
+    outline-offset: -2px;
+}
+
+/* Striped rows with even lighter theme color */
+.table tbody tr:nth-of-type(odd) {
+    background-color: rgba($link-color, 0.03) !important;
+    /* Much lighter than hover (0.1) */
+}
+
+.table tbody tr:nth-of-type(odd):hover {
+    background-color: rgba($link-color, 0.1) !important;
+    /* Same as regular hover */
+    color: $link-color !important;
+}
+
+/* Ensure cells inherit the row colors */
+.table tbody tr:hover td {
+    color: inherit;
+}
+
+.table tbody tr:focus td {
+    color: inherit;
+}
+
+/* Remove the Bootstrap overrides that aren't working */
+/* .table-light {
+    --bs-table-bg: #fff;
+    --bs-table-striped-bg: rgba($card-header-color, 0.05);
+    --bs-table-hover-bg: rgba($link-color, 0.1);
+    --bs-table-border-color: rgba($card-header-color, 0.2);
+} */
 
 #description {
     position: relative;

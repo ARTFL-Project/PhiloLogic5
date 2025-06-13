@@ -288,13 +288,13 @@ export default {
     line-height: initial;
     border: none;
     background: transparent;
-    border-radius: 3px;
+    border-radius: 5px;
     transition: all 0.2s ease;
 }
 
 .cloud-word:hover {
-    background-color: rgba($link-color, 0.05);
-    transform: scale(1.05);
+    background-color: rgba($link-color, 0.08);
+    transform: scale(1.10);
 }
 
 .cloud-word:focus {
