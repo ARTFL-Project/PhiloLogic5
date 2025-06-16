@@ -160,7 +160,7 @@ def get_word_array(txn, word, overflow_words, db_path):
         buffer = txn.get(word.encode("utf8"))
         if buffer is None:
             return np.array([], dtype="u4").reshape(-1, 9)
-        return np.array(buffer, dtype="u4").reshape(-1, 9)
+        return np.frombuffer(buffer, dtype="u4").reshape(-1, 9)
     file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
     return np.memmap(file_path, dtype="u4", mode='r').reshape(-1, 9)
 
