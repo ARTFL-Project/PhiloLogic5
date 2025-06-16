@@ -10,7 +10,7 @@
                                 class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }">
                                 <span v-if="searchReport != 'kwic'">{{ $t(`searchForm.${searchReport}`) }}</span>
                                 <span v-else><span class="d-md-inline d-sm-none">{{ $t(`searchForm.${searchReport}`)
-                                        }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
+                                }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
                             </button>
                         </div>
                         <div id="search_terms_container" class="p-3">
@@ -276,7 +276,7 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                                     <label class="form-check-label" :for="metadataChoice.value">{{
                                                         metadataChoice.text
-                                                        }}</label>
+                                                    }}</label>
                                                 </div>
                                             </div>
                                         </div>
@@ -368,16 +368,16 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                         {{ $t("searchForm.yearInterval") }}
                                     </button>
                                     <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.every")
-                                        }}</span>
+                                    }}</span>
                                     <input type="text" class="form-control" name="year_interval" id="year_interval"
                                         aria-labelledby="year-interval-label"
                                         style="max-width: 50px; text-align: center" v-model="year_interval" />
                                     <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years")
-                                        }}</span>
+                                    }}</span>
                                 </div>
                                 <div class="input-group mt-4" v-if="currentReport === 'aggregation'">
                                     <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy")
-                                        }}</button>
+                                    }}</button>
                                     <select class="form-select" :aria-label="$t('searchForm.groupResultsByLabel')"
                                         style="max-width: fit-content" v-model="group_by">
                                         <option v-for="aggregationOption in aggregationOptions"
@@ -394,7 +394,7 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                     <div class="input-group pb-2"
                                         v-if="['concordance', 'bibliography'].includes(currentReport)">
                                         <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy")
-                                            }}</button>
+                                        }}</button>
                                         <select class="form-select" style="max-width: fit-content"
                                             :aria-label="$t('searchForm.sortResultsByLabel')" v-model="sort_by">
                                             <option v-for="sortValue in sortValues" :key="sortValue.value"
@@ -409,14 +409,14 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                             currentReport != 'aggregation'
                                         ">
                                         <span class="btn btn-outline-secondary">{{ $t("searchForm.resultsPerPage")
-                                            }}</span>
+                                        }}</span>
                                         <span v-for="resultsPerPage in resultsPerPageOptions" :key="resultsPerPage">
                                             <input type="radio" class="btn-check" :id="`page-${resultsPerPage}`"
                                                 :value="resultsPerPage" v-model="results_per_page"
                                                 name="results-per-page" />
                                             <label class="btn btn-secondary" :for="`page-${resultsPerPage}`">{{
                                                 resultsPerPage
-                                                }}</label>
+                                            }}</label>
                                         </span>
                                     </div>
                                 </div>
@@ -684,9 +684,9 @@ export default {
         }
         if (this.collocFilteringSelected.value == "") {
             if (this.$philoConfig.stopwords.length > 0) {
-                this.collocFilteringSelected = this.collocationOptions[2];
+                this.collocFilteringSelected = this.collocationOptions.find(option => option.value === "nofilter"); // Find stopwords
             } else {
-                this.collocFilteringSelected = this.collocationOptions[0];
+                this.collocFilteringSelected = this.collocationOptions.find(option => option.value === "frequency"); // Find frequency
             }
         }
         this.searchableMetadata = { display: this.metadataDisplay, choiceValues: this.metadataChoiceValues, inputStyle: this.metadataInputStyle };
