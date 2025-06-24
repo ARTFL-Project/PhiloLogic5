@@ -47,7 +47,7 @@
 
                                 <!-- End of content indicator -->
                                 <div v-if="displayLimit >= tocElements.length && tocElements.length > 0"
-                                    class="text-center mt-3 text-muted" role="status" :aria-live="polite">
+                                    class="text-center mt-3 text-muted" role="status" aria-live="polite">
                                     {{ $t('toc.endOfContent') }}
                                 </div>
                             </div>

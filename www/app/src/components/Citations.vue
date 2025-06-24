@@ -1,5 +1,5 @@
 <template>
-    <cite class="philologic-cite ps-2">
+    <cite class="philologic-cite ps-2" role="group" :aria-label="$t('citations.citationGroup')" tabindex="0">
         <span class="citation text-view" v-for="(cite, citeIndex) in citation" :key="citeIndex">
             <span v-html="cite.prefix" v-if="cite.prefix"></span>
 
