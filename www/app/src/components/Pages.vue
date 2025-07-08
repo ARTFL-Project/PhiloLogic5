@@ -133,7 +133,9 @@ export default {
     },
 };
 </script>
-<style scoped>
+<style scoped lang="scss">
+@import "../assets/styles/theme.module.scss";
+
 .page {
     transition: width 0.4s ease !important;
 }
@@ -150,10 +152,59 @@ export default {
 .page-number {
     display: block;
     font-size: 110%;
+    font-weight: 500;
 }
 
 .page-range {
     font-size: 80%;
-    opacity: 0.7;
+    opacity: 0.85;
+    color: $link-color;
+}
+
+.btn-outline-secondary {
+    color: $link-color !important;
+    border-color: $link-color !important;
+    background-color: #fff !important;
+}
+
+.btn-outline-secondary:hover,
+.btn-outline-secondary:focus {
+    color: #fff !important;
+    background-color: $button-color !important;
+    border-color: $button-color !important;
+}
+
+.btn-outline-secondary:hover .page-range,
+.btn-outline-secondary:focus .page-range {
+    color: rgba(255, 255, 255, 0.9) !important;
+    opacity: 1;
+}
+
+.btn-outline-secondary.active {
+    color: #fff !important;
+    background-color: $button-color-active !important;
+    border-color: $button-color !important;
+}
+
+.btn-outline-secondary.active .page-range {
+    color: rgba(255, 255, 255, 0.9) !important;
+    opacity: 1;
+}
+
+.btn-outline-secondary:focus {
+    box-shadow: 0 0 0 0.2rem rgba($button-color, 0.25) !important;
+    outline: 2px solid $button-color;
+    outline-offset: 2px;
+}
+
+@media (prefers-contrast: high) {
+    .page-range {
+        opacity: 1;
+        font-weight: 500;
+    }
+
+    .btn-outline-secondary {
+        border-width: 2px;
+    }
 }
 </style>

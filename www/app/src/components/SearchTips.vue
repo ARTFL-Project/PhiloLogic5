@@ -3,7 +3,7 @@
         aria-describedby="search-tips-description">
         <div class="modal-content p-2">
             <div class="modal-header">
-                <h5 class="modal-title" id="search-tips-title">{{ $t('searchTips.title') }}</h5>
+                <h2 class="modal-title" id="search-tips-title">{{ $t('searchTips.title') }}</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')">
                 </button>
             </div>
@@ -13,7 +13,7 @@
                 </p>
 
                 <section aria-labelledby="basic-operators-heading">
-                    <h6 id="basic-operators-heading">{{ $t('searchTips.basicOperators') }}</h6>
+                    <h3 id="basic-operators-heading">{{ $t('searchTips.basicOperators') }}</h3>
                     <ul role="list">
                         <li role="listitem">
                             {{ $t('searchTips.plainToken') }}
@@ -43,7 +43,7 @@
                 <p>{{ $t('searchTips.syntaxNote') }}</p>
 
                 <section aria-labelledby="word-searches-heading">
-                    <h5 id="word-searches-heading" style="margin-top: 20px">{{ $t('searchTips.wordSearches') }}</h5>
+                    <h3 id="word-searches-heading" style="margin-top: 20px">{{ $t('searchTips.wordSearches') }}</h3>
                     <p class="mb-0">{{ $t('searchTips.wordSearchDescription') }}</p>
                     <ol role="list">
                         <li role="listitem">{{ $t('searchTips.plainTerms') }}</li>
@@ -65,7 +65,7 @@
                 </section>
 
                 <section aria-labelledby="morphology-heading">
-                    <h6 id="morphology-heading">{{ $t('searchTips.morphologyTitle') }}</h6>
+                    <h4 id="morphology-heading">{{ $t('searchTips.morphologyTitle') }}</h4>
                     <ol role="list">
                         <li role="listitem">
                             {{ $t('searchTips.lemmaSearch') }}
@@ -93,8 +93,8 @@
                 </section>
 
                 <section aria-labelledby="metadata-searches-heading">
-                    <h5 id="metadata-searches-heading" style="margin-top: 20px">{{ $t('searchTips.metadataSearches') }}
-                    </h5>
+                    <h3 id="metadata-searches-heading" style="margin-top: 20px">{{ $t('searchTips.metadataSearches') }}
+                    </h3>
                     <p class="mb-0">{{ $t('searchTips.metadataDescription') }}</p>
                     <ol role="list">
                         <li role="listitem">{{ $t('searchTips.metadataPlainTokens') }}</li>
@@ -115,7 +115,7 @@
                 </section>
 
                 <section aria-labelledby="regexp-heading">
-                    <h5 id="regexp-heading" style="margin-top: 20px">{{ $t('searchTips.regexpSyntax') }}</h5>
+                    <h3 id="regexp-heading" style="margin-top: 20px">{{ $t('searchTips.regexpSyntax') }}</h3>
                     <p class="mb-0">
                         {{ $t('searchTips.regexpDescription') }}
                         <a href="http://www.gnu.org/software/findutils/manual/html_node/find_html/egrep-regular-expression-syntax.html#egrep-regular-expression-syntax"

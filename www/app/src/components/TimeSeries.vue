@@ -3,7 +3,6 @@
         <div id="time-series-container" class="mt-4">
             <results-summary :description="results.description" :running-total="runningTotal"></results-summary>
             <div class="card mt-4 mx-2" id="time-series">
-                <!-- Frequency toggle buttons - ADD PROPER ARIA -->
                 <div class="btn-group d-inline-block" role="group" aria-label="Frequency type selection">
                     <button type="button" class="btn btn-secondary"
                         :class="{ active: frequencyType == 'absolute_time' }" @click="toggleFrequency('absolute_time')"
@@ -19,7 +18,6 @@
 
                 <!-- Chart container -->
                 <div class="chart-wrapper p-3 mt-4">
-                    <!-- ADD ARIA-LIVE TO LOADING -->
                     <div v-if="searching" class="text-center p-5">
                         <div class="spinner-border" role="status" aria-live="polite">
                             <span class="visually-hidden">{{ $t("common.loading") }}</span>
@@ -33,12 +31,10 @@
                             {{ $t("timeSeries.chartTitle") }} - {{ currentFrequencyLabel }}
                         </h3>
 
-                        <!-- ADD PROPER ARIA TO CHART -->
                         <Bar id="time-series-chart" :data="chartData" :options="chartOptions" role="img"
                             :aria-label="chartAriaLabel" aria-describedby="chart-instructions" tabindex="0"
                             @keydown="handleChartKeydown" />
 
-                        <!-- ADD NAVIGATION INSTRUCTIONS -->
                         <div class="visually-hidden" id="chart-instructions">
                             Use arrow keys to navigate between time periods, Enter or Space to view detailed results for
                             selected period.
@@ -63,7 +59,6 @@
                             </table>
                         </div>
                     </div>
-                    <!-- ADD ROLE TO NO DATA MESSAGE -->
                     <div v-else-if="!searching" class="text-center p-5 text-muted" role="status" aria-live="polite">
                         {{ $t("common.noDataAvailable") }}
                     </div>

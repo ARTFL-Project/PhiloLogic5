@@ -1,9 +1,12 @@
 <template>
-    <div id="landing-page-container" class="mt-5">
+    <div id="landing-page-container" class="mt-4">
         <div class="container-fluid">
             <div id="landing-page-logo" :class="{ dictionary: dictionary }" v-if="logo">
                 <img style="max-height: 300px; width: auto" :src="logo"
                     :alt="$t('landingPage.logoAlt', { dbname: $philoConfig.dbname })" />
+            </div>
+            <div class="text-center mb-4">
+                <h1 class="landing-page-title">{{ $t('landingPage.title') }}</h1>
             </div>
             <div class="d-flex justify-content-center position-relative">
                 <div class="spinner-border text-secondary" role="status" v-if="loading"
@@ -17,7 +20,7 @@
                     :aria-labelledby="`browse-${browseType.label.replace(/\s+/g, '-').toLowerCase()}`">
                     <div class="card shadow-sm">
                         <div class="card-header">
-                            <h2 class="h5 mb-0" :id="`browse-${browseType.label.replace(/\s+/g, '-').toLowerCase()}`">
+                            <h2 class="h6 mb-0" :id="`browse-${browseType.label.replace(/\s+/g, '-').toLowerCase()}`">
                                 {{ browseType.label }}
                             </h2>
                         </div>
@@ -43,7 +46,7 @@
                     <div class="cols-12 col-sm-8 offset-sm-2 d-flex" style="justify-content: center">
                         <div class="card" style="width: fit-content">
                             <div class="card-header">
-                                <h2 class="h5 mb-0" id="simple-bibliography-heading">
+                                <h2 class="h6 mb-0" id="simple-bibliography-heading">
                                     {{ $t("landingPage.bibliography") }}
                                 </h2>
                             </div>
@@ -66,7 +69,7 @@
                     <div class="col-6" :class="{ 'offset-3': !showDicoLetterRows }" id="dico-landing-volume">
                         <div class="card shadow-sm">
                             <div class="card-header">
-                                <h2 class="h5 mb-0">{{ $t("landingPage.browseByVolume") }}</h2>
+                                <h2 class="h6 mb-0">{{ $t("landingPage.browseByVolume") }}</h2>
                             </div>
                             <nav class="list-group" flush v-if="volumeData.length"
                                 :aria-label="$t('landingPage.browseByVolumeLabel')">
@@ -84,7 +87,7 @@
                         v-if="showDicoLetterRows">
                         <div class="card">
                             <div class="card-header">
-                                <h2 class="h5 mb-0">{{ $t("landingPage.browseByLetter") }}</h2>
+                                <h2 class="h6 mb-0">{{ $t("landingPage.browseByLetter") }}</h2>
                             </div>
                             <nav :aria-label="$t('landingPage.browseByLetterLabel')">
                                 <table class="table table-borderless" style="margin-bottom: 0" role="presentation">
@@ -385,5 +388,15 @@ tr:nth-child(even) td.letter:nth-child(2n + 1) {
 
 #landing-page-logo {
     text-align: center;
+}
+
+.landing-page-title {
+    margin-top: 2rem;
+    font-size: 1.5rem;
+    font-weight: 600;
+    font-variant: small-caps;
+    letter-spacing: 0.05em;
+    margin-bottom: 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 </style>

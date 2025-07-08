@@ -2,7 +2,7 @@
     <div class="modal-dialog modal-xl modal-dialog-scrollable" role="dialog" aria-labelledby="biblio-modal-title">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="biblio-modal-title">{{ $t("resultsBiblio.heading") }}</h5>
+                <h2 class="modal-title" id="biblio-modal-title">{{ $t("resultsBiblio.heading") }}</h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')">
                 </button>
             </div>
@@ -24,7 +24,7 @@
                                 </div>
                                 <div class="occurrence-badge">
                                     <span class="occurrence-count">{{ result.count }} {{ $t("resultsBiblio.occurrences")
-                                    }}</span>
+                                        }}</span>
                                 </div>
                             </div>
                         </article>

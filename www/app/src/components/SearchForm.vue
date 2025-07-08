@@ -1,5 +1,6 @@
 <template>
     <div>
+        <h1 class="visually-hidden">{{ $t("searchForm.searchInterface") }}</h1>
         <div class="card shadow" style="border: transparent">
             <form @submit.prevent @reset="onReset" @keyup.enter="onSubmit()">
                 <div id="form-body">
@@ -10,7 +11,7 @@
                                 class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }">
                                 <span v-if="searchReport != 'kwic'">{{ $t(`searchForm.${searchReport}`) }}</span>
                                 <span v-else><span class="d-md-inline d-sm-none">{{ $t(`searchForm.${searchReport}`)
-                                }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
+                                        }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
                             </button>
                         </div>
                         <div id="search_terms_container" class="p-3">
@@ -94,7 +95,8 @@
                         <div id="search-elements" v-if="formOpen" class="ps-3 pe-3 pb-3 shadow" role="region"
                             :aria-label="$t('searchForm.advancedSearchOptions')">
                             <div class="mt-1" role="group" aria-labelledby="search-terms-params-heading">
-                                <h5 id="search-terms-params-heading">{{ $t("searchForm.searchTermsParameters") }}:</h5>
+                                <h2 id="search-terms-params-heading">{{
+                                    $t("searchForm.searchTermsParameters") }}:</h2>
                                 <div class="form-check form-switch form-check-inline" id="approximate"
                                     style="height: 31px">
                                     <input class="form-check-input" type="checkbox" id="approximate-input"
@@ -142,7 +144,7 @@
                                 </div>
                                 <div class="mt-1" id="collocation-params" v-if="currentReport == 'collocation'"
                                     role="group" aria-labelledby="collocation-params-heading">
-                                    <h5 id="collocation-params-heading">{{ $t("searchForm.collocationParams") }}:</h5>
+                                    <h2 id="collocation-params-heading">{{ $t("searchForm.collocationParams") }}:</h2>
                                     <div class="form-check">
                                         <input class="form-check-input" type="radio" name="colloc_within"
                                             id="collocSentence" value="sent" checked v-model="colloc_within">
@@ -228,8 +230,8 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                     </div>
                                 </div>
                                 <div role="group" aria-labelledby="filter-by-field-heading">
-                                    <h5 class="mt-2" id="filter-by-field-heading">{{ $t("searchForm.filterByField") }}:
-                                    </h5>
+                                    <h2 class="mt-2" id="filter-by-field-heading">{{ $t("searchForm.filterByField") }}:
+                                    </h2>
                                     <div class="input-group pb-2" v-for="localField in metadataDisplayFiltered"
                                         :key="localField.value">
                                         <div class="input-group pb-2" :id="localField.value + '-group'"
@@ -276,7 +278,7 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                                     <label class="form-check-label" :for="metadataChoice.value">{{
                                                         metadataChoice.text
-                                                    }}</label>
+                                                        }}</label>
                                                 </div>
                                             </div>
                                         </div>
@@ -368,16 +370,16 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                         {{ $t("searchForm.yearInterval") }}
                                     </button>
                                     <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.every")
-                                    }}</span>
+                                        }}</span>
                                     <input type="text" class="form-control" name="year_interval" id="year_interval"
                                         aria-labelledby="year-interval-label"
                                         style="max-width: 50px; text-align: center" v-model="year_interval" />
                                     <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years")
-                                    }}</span>
+                                        }}</span>
                                 </div>
                                 <div class="input-group mt-4" v-if="currentReport === 'aggregation'">
                                     <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy")
-                                    }}</button>
+                                        }}</button>
                                     <select class="form-select" :aria-label="$t('searchForm.groupResultsByLabel')"
                                         style="max-width: fit-content" v-model="group_by">
                                         <option v-for="aggregationOption in aggregationOptions"
@@ -388,13 +390,13 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                 </div>
                                 <div role="group" aria-labelledby="display-options-heading"
                                     v-if="['concordance', 'kwic', 'bibliography'].includes(currentReport)">
-                                    <h5 class="mt-3" id="display-options-heading">
+                                    <h2 class="mt-3" id="display-options-heading">
                                         {{ $t("searchForm.displayOptions") }}:
-                                    </h5>
+                                    </h2>
                                     <div class="input-group pb-2"
                                         v-if="['concordance', 'bibliography'].includes(currentReport)">
                                         <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy")
-                                        }}</button>
+                                            }}</button>
                                         <select class="form-select" style="max-width: fit-content"
                                             :aria-label="$t('searchForm.sortResultsByLabel')" v-model="sort_by">
                                             <option v-for="sortValue in sortValues" :key="sortValue.value"
@@ -409,14 +411,14 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                             currentReport != 'aggregation'
                                         ">
                                         <span class="btn btn-outline-secondary">{{ $t("searchForm.resultsPerPage")
-                                        }}</span>
+                                            }}</span>
                                         <span v-for="resultsPerPage in resultsPerPageOptions" :key="resultsPerPage">
                                             <input type="radio" class="btn-check" :id="`page-${resultsPerPage}`"
                                                 :value="resultsPerPage" v-model="results_per_page"
                                                 name="results-per-page" />
                                             <label class="btn btn-secondary" :for="`page-${resultsPerPage}`">{{
                                                 resultsPerPage
-                                            }}</label>
+                                                }}</label>
                                         </span>
                                     </div>
                                 </div>
@@ -432,7 +434,8 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                 <span class="visually-hidden">{{ $t("common.loading") }}</span>
             </div>
         </div>
-        <div class="modal fade" id="search-tips" tabindex="-1">
+        <div class="modal fade" id="search-tips" tabindex="-1" aria-labelledby="search-tips-title" aria-hidden="true"
+            role="dialog">
             <SearchTips></SearchTips>
         </div>
     </div>
@@ -962,7 +965,7 @@ input[type="text"] {
 }
 
 .input-group,
-#search-elements h5 {
+#search-elements h2 {
     width: fit-content;
 }
 
@@ -987,7 +990,7 @@ input[type="text"] {
     margin-top: 168px;
 }
 
-#search-elements>h5 {
+#search-elements>h2 {
     margin-top: 15px;
     margin-bottom: 15px;
 }
@@ -1214,6 +1217,15 @@ input:focus::placeholder {
 }
 
 h5 {
+    font-variant: small-caps;
+    font-weight: 700;
+    font-size: 1.15rem;
+}
+
+#search-terms-params-heading,
+#filter-by-field-heading,
+#collocation-params-heading,
+#display-options-heading {
     font-variant: small-caps;
     font-weight: 700;
     font-size: 1.15rem;

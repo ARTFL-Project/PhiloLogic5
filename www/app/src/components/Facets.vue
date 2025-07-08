@@ -2,7 +2,7 @@
     <div id="facet-search" class="d-none d-sm-block mr-2">
         <div class="card shadow-sm" title="Title" header-tag="header" id="facet-panel-wrapper">
             <div class="card-header text-center">
-                <h6 class="mb-0">{{ $t("facets.browseByFacet") }}</h6>
+                <h3 class="h6 mb-0">{{ $t("facets.browseByFacet") }}</h3>
             </div>
             <button type="button" class="btn btn-secondary btn-sm close-box" @click="toggleFacets()"
                 :aria-label="$t('facets.closeFacets')">
@@ -68,7 +68,7 @@
         <div class="card mt-3 shadow-sm" id="facet-results" v-if="showFacetResults" role="region"
             :aria-label="$t('facets.facetResultsRegion')">
             <div class="card-header text-center">
-                <h6 class="mb-0">{{ $t("facets.frequencyByLabel", { label: selectedFacet.alias }) }}</h6>
+                <h4 class="mb-0">{{ $t("facets.frequencyByLabel", { label: selectedFacet.alias }) }}</h4>
                 <button type="button" class="btn btn-secondary btn-sm close-box" @click="hideFacets()"
                     :aria-label="$t('facets.hideFacetResults')">
                     ×

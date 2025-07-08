@@ -125,6 +125,7 @@
         "excludeTerm": "Exclure le terme : {term}"
     },
     "resultsSummary": {
+        "heading": "Récapitulatif des résultats",
         "exportResults": "Exporter les résultats",
         "totalOccurrences": "{n} occurrences",
         "spreadAcross": "dispersés à travers",
@@ -267,12 +268,14 @@
         "breakdownResults": "Résultats de répartition pour"
     },
     "landingPage": {
+        "title": "Parcourir la Collection",
         "logoAlt": "Logo de la base de données {dbname}",
         "browseRange": "Parcourir {type} pour {range}",
         "browseByLetterLabel": "Parcourir les entrées commençant par la lettre {letter}",
         "bibliography": "Bibliographie",
         "volumeLink": "Parcourir {title} ({start} - {end})",
         "seeAllResults": "Voir tous les {n} résultats pour {prefix}",
+        "seeResults": "Voir tous les {n} résultats",
         "browseByVolume": "Parcourir par Volume",
         "browseByLetter": "Parcourir par Lettre",
         "customContent": "Contenu personnalisé",

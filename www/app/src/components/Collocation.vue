@@ -207,8 +207,7 @@
         <div class="row my-3 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && collocMethod == 'frequency'">
             <div class="col-12 col-sm-4">
                 <div class="card shadow-sm">
-                    <table class="table table-borderless caption-top" role="table"
-                        aria-label="$t('collocation.collocatesTable')">
+                    <table class="table table-borderless caption-top" aria-label="$t('collocation.collocatesTable')">
                         <caption class="visually-hidden">
                             {{ $t('collocation.collocatesTableCaption') }}
                         </caption>
@@ -220,8 +219,8 @@
                         </thead>
                         <tbody>
                             <tr style="line-height: 1.75rem" v-for="(word, index) in sortedList" :key="word.collocate"
-                                role="button" :tabindex="0" @click="collocateClick(word)"
-                                @keydown.enter="collocateClick(word)" @keydown.space.prevent="collocateClick(word)"
+                                :tabindex="0" @click="collocateClick(word)" @keydown.enter="collocateClick(word)"
+                                @keydown.space.prevent="collocateClick(word)"
                                 :aria-label="`${$t('collocation.viewConcordance')}: ${word.collocate}, ${$t('collocation.count')}: ${word.count}`"
                                 :aria-describedby="`collocate-${index} count-${index}`">
                                 <td class="text-view" :id="`collocate-${index}`">{{ word.collocate }}</td>

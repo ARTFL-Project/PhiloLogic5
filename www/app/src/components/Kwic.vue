@@ -7,7 +7,7 @@
                 {{ $t("common.showFacets") }}
             </button>
         </div>
-        <div class="row">
+        <div class="row px-2">
             <main class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }" role="main"
                 :aria-label="$t('kwic.resultsRegion')">
                 <div class="card p-2 ml-2 shadow-sm">
@@ -54,7 +54,7 @@
                                             border-bottom-left-radius: 0;
                                             border-top-left-radius: 0;
                                         " type="button" id="kwic-results-per-page" data-bs-toggle="dropdown"
-                                        aria-expanded="false;">
+                                        aria-expanded="false">
                                         {{ results_per_page }}
                                     </button>
                                     <ul class="dropdown-menu" aria-labelledby="kwic-results-per-page">
@@ -92,7 +92,7 @@
                         aria-live="polite">
                         <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
                             <div class="kwic-line" v-for="(result, kwicIndex) in filteredKwic(results.results)"
-                                :key="result.philo_id.join('-')" :data-index="kwicIndex" role="listitem"
+                                :key="result.philo_id.join('-')" :data-index="kwicIndex"
                                 :aria-label="`${$t('kwic.resultNumber')} ${results.description.start + kwicIndex}`">
                                 <span v-html="initializePos(kwicIndex)"></span>
                                 <div class="kwic-biblio-container" style="display: inline-block; position: relative;"
@@ -506,6 +506,10 @@ export default {
 
 .full-biblio[aria-hidden="false"] {
     display: block !important;
+}
+
+:deep(.highlight) {
+    border: none !important;
 }
 
 #sort-button {

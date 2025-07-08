@@ -4,10 +4,10 @@
             aria-describedby="export-modal-description">
 
             <div class="modal-header">
-                <h5 class="modal-title" id="export-modal-title">
+                <h2 class="modal-title" id="export-modal-title">
                     <i class="bi bi-download me-2"></i>
                     {{ $t("resultsSummary.exportResults") }}
-                </h5>
+                </h2>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')">
                 </button>
             </div>
@@ -21,10 +21,10 @@
 
                 <!-- HTML Export Section -->
                 <div v-if="report == 'concordance' || report == 'kwic'" class="export-section mb-4">
-                    <h6 class="section-header">
+                    <h3 class="section-header">
                         <i class="bi bi-code-slash me-2"></i>
                         {{ $t("exportResults.html") }}
-                    </h6>
+                    </h3>
                     <p class="text-muted small mb-2">{{ $t("exportResults.htmlDescription") }}</p>
                     <div class="btn-group w-100" role="group">
                         <button type="button" class="btn btn-outline-secondary export-btn"
@@ -44,10 +44,10 @@
 
                 <!-- Plain Text Export Section -->
                 <div class="export-section">
-                    <h6 class="section-header" v-if="report == 'concordance' || report == 'kwic'">
+                    <h3 class="section-header" v-if="report == 'concordance' || report == 'kwic'">
                         <i class="bi bi-file-text me-2"></i>
                         {{ $t("exportResults.plain") }}
-                    </h6>
+                    </h3>
                     <p class="text-muted small mb-2" v-if="report == 'concordance' || report == 'kwic'">
                         {{ $t("exportResults.plainDescription") }}
                     </p>

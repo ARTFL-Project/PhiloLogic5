@@ -136,6 +136,47 @@ export default {
             reportValues.aggregation = new Set([...commonFields, "method", "cooc_order", "method_arg", "group_by"]);
             return reportValues;
         },
+        pageTitle() {
+            // Generate appropriate h1 text based on current route/report
+            const routeName = this.$route.name;
+            const searchQuery = this.q;
+            const dbName = this.$philoConfig.dbname;
+
+            switch (routeName) {
+                case 'home':
+                    return `${dbName} - ${this.$t('common.searchInterface')}`;
+                case 'concordance':
+                    return searchQuery ?
+                        `${this.$t('concordance.pageTitle')}: "${searchQuery}" - ${dbName}` :
+                        `${this.$t('concordance.pageTitle')} - ${dbName}`;
+                case 'kwic':
+                    return searchQuery ?
+                        `${this.$t('kwic.pageTitle')}: "${searchQuery}" - ${dbName}` :
+                        `${this.$t('kwic.pageTitle')} - ${dbName}`;
+                case 'bibliography':
+                    return searchQuery ?
+                        `${this.$t('bibliography.pageTitle')}: "${searchQuery}" - ${dbName}` :
+                        `${this.$t('bibliography.pageTitle')} - ${dbName}`;
+                case 'collocation':
+                    return searchQuery ?
+                        `${this.$t('collocation.pageTitle')}: "${searchQuery}" - ${dbName}` :
+                        `${this.$t('collocation.pageTitle')} - ${dbName}`;
+                case 'time_series':
+                    return searchQuery ?
+                        `${this.$t('timeSeries.pageTitle')}: "${searchQuery}" - ${dbName}` :
+                        `${this.$t('timeSeries.pageTitle')} - ${dbName}`;
+                case 'aggregation':
+                    return searchQuery ?
+                        `${this.$t('aggregation.pageTitle')}: "${searchQuery}" - ${dbName}` :
+                        `${this.$t('aggregation.pageTitle')} - ${dbName}`;
+                case 'navigate':
+                    return `${this.$t('navigation.pageTitle')} - ${dbName}`;
+                case 'table-of-contents':
+                    return `${this.$t('tableOfContents.pageTitle')} - ${dbName}`;
+                default:
+                    return `${dbName} - ${this.$t('common.searchInterface')}`;
+            }
+        },
     },
     created() {
         if (this.$philoConfig.valid_config) {

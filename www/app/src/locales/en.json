@@ -30,7 +30,8 @@
         "example": "example",
         "or": "or",
         "opensInNewWindow": "(opens in new window)",
-        "noDataAvailable": "No data available"
+        "noDataAvailable": "No data available",
+        "searchInterface": "Search Interface"
     },
     "header": {
         "citationModalTitle": "How to cite {dbname}:",
@@ -42,6 +43,7 @@
         "contactUs": "Contact Us"
     },
     "searchForm": {
+        "searchInterface": "Search Interface",
         "concordance": "Concordance",
         "kwic": "Keyword In Context",
         "shortKwic": "KWIC",
@@ -125,6 +127,7 @@
         "excludeTerm": "Exclude term: {term}"
     },
     "resultsSummary": {
+        "heading": "Results Summary",
         "exportResults": "Export results",
         "totalOccurrences": "{n} total occurrences",
         "spreadAcross": "spread across",
@@ -267,12 +270,14 @@
         "breakdownResults": "Breakdown results for"
     },
     "landingPage": {
+        "title": "Browse Collection",
         "logoAlt": "{dbname} database logo",
         "browseRange": "Browse {type} for {range}",
         "browseByLetterLabel": "Browse entries starting with letter {letter}",
         "bibliography": "Bibliography",
         "volumeLink": "Browse {title} ({start} - {end})",
         "seeAllResults": "See all {n} results for {prefix}",
+        "seeResults": "See all {n} results",
         "browseByVolume": "Browse by Volume",
         "browseByLetter": "Browse by Letter",
         "customContent": "Custom content",

@@ -33,10 +33,10 @@
                         :aria-label="$t('common.close')">
                         <span aria-hidden="true">&times;</span>
                     </button>
-                    <h6 class="pe-4" id="query-terms-title">
+                    <h4 class="pe-4 h6" id="query-terms-title">
                         {{ $t("searchArgs.termsExpanded", { length: words.length }) }}:
-                    </h6>
-                    <h6 v-if="words.length > 100">{{ $t("searchArgs.mostFrequentTerms") }}</h6>
+                    </h4>
+                    <h4 class="h6" v-if="words.length > 100">{{ $t("searchArgs.mostFrequentTerms") }}</h4>
                     <button type="button" class="btn btn-secondary btn-sm" style="margin: 10px 0px"
                         v-if="wordListChanged" @click="rerunQuery()">
                         {{ $t("searchArgs.rerunQuery") }}

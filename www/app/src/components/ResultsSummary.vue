@@ -3,6 +3,10 @@
         <div class="card shadow-sm px-3 py-2" :class="{ 'colloc-no-top-border': report == 'collocation' }">
             <section id="initial_report" role="region" :aria-label="$t('resultsSummary.summaryRegion')">
                 <div id="description">
+                    <h1 class="page-heading">
+                        {{ $t('resultsSummary.heading') }}
+                    </h1>
+
                     <button type="button" class="btn btn-secondary btn-sm"
                         style="margin-top: -0.5rem; margin-right: -1rem" id="export-results" data-bs-toggle="modal"
                         data-bs-target="#export-modal" :aria-label="$t('resultsSummary.exportResults')">
@@ -10,13 +14,13 @@
                     </button>
 
                     <div class="modal fade" tabindex="-1" id="export-modal" role="dialog"
-                        aria-labelledby="export-modal-title" aria-describedby="export-modal-desc">
+                        aria-labelledby="export-modal-header">
                         <div class="modal-dialog" role="document">
                             <div class="modal-content">
                                 <div class="modal-header">
-                                    <h5 class="modal-title" id="export-modal-title">{{
+                                    <h2 class="modal-title" id="export-modal-header">{{
                                         $t('resultsSummary.exportResults')
-                                        }}</h5>
+                                    }}</h2>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"
                                         :aria-label="$t('common.close')"></button>
                                 </div>
@@ -27,7 +31,8 @@
                         </div>
                     </div>
 
-                    <search-arguments :result-start="descriptionStart" :result-end="descriptionEnd"></search-arguments>
+                    <search-arguments class="pt-4" :result-start="descriptionStart"
+                        :result-end="descriptionEnd"></search-arguments>
 
                     <div v-if="['concordance', 'kwic', 'bibliography'].includes(report)">
                         <div id="result-stats" class="pb-2">
@@ -44,7 +49,7 @@
                                         </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
-                                        }}&nbsp;</span>
+                                            }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
@@ -69,7 +74,7 @@
                         </div>
 
                         <div class="modal fade" tabindex="-1" id="results-bibliography" role="dialog"
-                            :aria-labelledby="$t('resultsBiblio.heading')">
+                            aria-labelledby="biblio-modal-title">
                             <results-bibliography></results-bibliography>
                         </div>
                     </div>
@@ -153,7 +158,7 @@
         </div>
 
         <!-- Report switch buttons -->
-        <div class="row d-none d-sm-block mt-4 mb-3" id="act-on-report"
+        <h2 class="row d-none d-sm-block mt-4 mb-3" id="act-on-report"
             v-if="report == 'concordance' || report == 'kwic'">
             <div class="col col-sm-7 col-lg-8" v-if="['concordance', 'kwic'].includes(report)">
                 <div class="btn-group" role="group" id="report_switch"
@@ -172,7 +177,7 @@
                     </button>
                 </div>
             </div>
-        </div>
+        </h2>
     </div>
 </template>
 
@@ -404,9 +409,28 @@ export default {
 };
 </script>
 
-<style this d>
+<style lang="scss" scoped>
+@import "../assets/styles/theme.module.scss";
+
 #description {
     position: relative;
+}
+
+.page-heading {
+    position: absolute;
+    left: -1rem;
+    top: -0.5rem;
+    font-size: 1rem;
+    font-weight: 500;
+    margin: 0;
+    padding: 0.125rem 0.25rem;
+    background: transparent;
+    border-bottom: 1px solid $link-color;
+    border-right: 1px solid $link-color;
+    border-radius: 0.25rem;
+    font-variant: small-caps;
+    font-weight: 600;
+    letter-spacing: 0.02em;
 }
 
 #export-results {
