@@ -340,8 +340,6 @@ export default {
                 })
             );
         },
-
-        // Existing methods...
         fetchResults() {
             this.runningTotal = 0;
             if (this.interval == "") {

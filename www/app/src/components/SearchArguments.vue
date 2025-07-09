@@ -33,9 +33,9 @@
                         :aria-label="$t('common.close')">
                         <span aria-hidden="true">&times;</span>
                     </button>
-                    <h4 class="pe-4 h6" id="query-terms-title">
+                    <span class="pe-4 h6" id="query-terms-title">
                         {{ $t("searchArgs.termsExpanded", { length: words.length }) }}:
-                    </h4>
+                    </span>
                     <h4 class="h6" v-if="words.length > 100">{{ $t("searchArgs.mostFrequentTerms") }}</h4>
                     <button type="button" class="btn btn-secondary btn-sm" style="margin: 10px 0px"
                         v-if="wordListChanged" @click="rerunQuery()">
@@ -70,9 +70,8 @@
                 </div>
             </div>
         </div>
-        <bibliography-criteria v-if="queryArgs.biblio.length > 0" :biblio="queryArgs.biblio" :queryReport="queryReport"
-            :resultsLength="resultsLength" :start_date="start_date" :end_date="end_date"
-            :removeMetadata="removeMetadata"></bibliography-criteria>
+        <bibliography-criteria :biblio="queryArgs.biblio" :queryReport="queryReport" :resultsLength="resultsLength"
+            :start_date="start_date" :end_date="end_date" :removeMetadata="removeMetadata"></bibliography-criteria>
         <div style="margin-top: 10px" v-if="queryReport === 'collocation'">
             {{ $t("searchArgs.collocOccurrences", { n: resultsLength }) }}
         </div>

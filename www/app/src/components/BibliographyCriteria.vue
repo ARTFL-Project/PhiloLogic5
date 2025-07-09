@@ -1,9 +1,8 @@
 <template>
     <div role="region" :aria-label="$t('biblioCriteria.searchCriteriaRegion')">
         <div>
-            <span v-if="!hideCriteriaString">{{ $t("searchArgs.biblioCriteria") }}:&nbsp;</span>
+            <span>{{ $t("searchArgs.biblioCriteria") }}:&nbsp;</span>
 
-            <!-- Criteria list with proper semantics -->
             <div role="list" aria-live="polite" :aria-label="$t('biblioCriteria.activeFiltersLabel')">
                 <div class="metadata-args rounded-pill" v-for="metadata in biblio" :key="metadata.key" role="listitem"
                     :aria-label="`${$t('biblioCriteria.filterLabel')}: ${metadata.alias} ${metadata.value.replace('<=>', '—')}`">
@@ -32,7 +31,7 @@
             <div class="biblio-criteria d-inline-block">
                 <div class="metadata-args rounded-pill" role="listitem"
                     :aria-label="`${$t('biblioCriteria.startDate')}: ${start_date}`">
-                    <span class="metadata-value" :id="`start - date - value`">{{ start_date }}</span>
+                    <span class="metadata-value" id="start-date-value">{{ start_date }}</span>
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata('start_date')"
                         :aria-label="`${$t('biblioCriteria.removeStartDate')}`" aria-describedby="start-date-value">
                         <span aria-hidden="true">×</span>
@@ -46,7 +45,7 @@
             <div class="biblio-criteria d-inline-block">
                 <div class="metadata-args rounded-pill" role="listitem"
                     :aria-label="`${$t('biblioCriteria.endDate')}: ${end_date}`">
-                    <span class="metadata-value" :id="`end - date - value`">{{ end_date }}</span>
+                    <span class="metadata-value" id="end-date-value">{{ end_date }}</span>
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata('end_date')"
                         :aria-label="`${$t('biblioCriteria.removeEndDate')}`" aria-describedby="end-date-value">
                         <span aria-hidden="true">×</span>
@@ -63,10 +62,9 @@ export default {
         biblio: Object,
         queryReport: String,
         resultsLength: Number,
-        start_date: String || null,
-        end_date: String | null,
+        start_date: [String, Number, null],
+        end_date: [String, Number, null],
         removeMetadata: Function || null,
-        hideCriteriaString: Boolean || null,
     },
     computed: {
         removable() {
