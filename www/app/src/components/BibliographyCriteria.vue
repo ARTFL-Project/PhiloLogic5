@@ -7,14 +7,16 @@
                 <div class="metadata-args rounded-pill" v-for="metadata in biblio" :key="metadata.key" role="listitem"
                     :aria-label="`${$t('biblioCriteria.filterLabel')}: ${metadata.alias} ${metadata.value.replace('<=>', '—')}`">
 
-                    <span class="metadata-label" :id="`label-${metadata.key}`">{{ metadata.alias }}</span>
-                    <span class="metadata-value" :id="`value-${metadata.key}`">{{metadata.value.replace("<=>",
-                        "&#8212;")}}</span>
+                    <span class="metadata-label" :id="`label-${metadata.key.replace(/\s+/g, '-')}`">{{ metadata.alias
+                        }}</span>
+                    <span class="metadata-value"
+                        :id="`value-${metadata.key.replace(/\s+/g, '-')}`">{{metadata.value.replace("<=>",
+                            "&#8212;")}}</span>
 
                     <!-- Accessible remove button -->
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata(metadata.key)"
                         :aria-label="`${$t('biblioCriteria.removeFilter')} ${metadata.alias}`"
-                        :aria-describedby="`label-${metadata.key} value-${metadata.key}`">
+                        :aria-describedby="`label-${metadata.key.replace(/\s+/g, '-')} value-${metadata.key.replace(/\s+/g, '-')}`">
                         <span aria-hidden="true">×</span>
                     </button>
                 </div>

@@ -109,7 +109,7 @@ export default {
                 let gLocal = Math.max(0, Math.round(g - g * step * i));
                 let bLocal = Math.max(0, Math.round(b - b * step * i));
                 let opacityStep = i * 0.03;
-                colorCodes[i] = `rgba(${rLocal}, ${gLocal}, ${bLocal}, ${0.4 + opacityStep})`;
+                colorCodes[i] = `rgba(${rLocal}, ${gLocal}, ${bLocal}, ${0.8 + opacityStep})`;
             }
             return colorCodes;
         }

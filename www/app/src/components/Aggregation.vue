@@ -7,7 +7,6 @@
                     v-for="(result, resultIndex) in aggregationResults.slice(0, lastResult)" :key="resultIndex"
                     :aria-labelledby="`result-heading-${resultIndex}`">
 
-                    <!-- Toggle button with proper accessibility -->
                     <button type="button" class="btn btn-outline-secondary btn-sm d-inline-block"
                         style="padding: 0 0.25rem; margin-right: 0.5rem" :id="`button-${resultIndex}`"
                         @click="toggleBreakUp(resultIndex)" v-if="result.break_up_field.length > 0"
@@ -18,13 +17,11 @@
                         <span aria-hidden="true">{{ breakUpFields[resultIndex].show ? '−' : '+' }}</span>
                     </button>
 
-                    <!-- Count badge with screen reader context -->
-                    <span class="badge rounded-pill bg-secondary" style="font-size: 100%"
+                    <span class="badge rounded-pill bg-secondary"
                         :aria-label="`${$t('aggregation.countLabel')}: ${result.count}`">
                         {{ result.count }}
                     </span>
 
-                    <!-- Main citation with proper heading -->
                     <div :id="`result-heading-${resultIndex}`" class="d-inline-block">
                         <citations :citation="result.citation"></citations>
                     </div>
@@ -43,25 +40,27 @@
                     </h6>
 
                     <!-- Expandable breakdown section -->
-                    <div class="list-group ms-4 mt-2" v-if="breakUpFields[resultIndex].show"
+                    <div class="breakdown-container ms-4 mt-2" v-if="breakUpFields[resultIndex].show"
                         :id="`breakdown-${resultIndex}`" role="group"
                         :aria-label="`${$t('aggregation.breakdownResults')} ${breakUpFieldName}`">
 
-                        <article class="list-group-item"
+                        <article class="breakdown-item"
                             v-for="(value, key) in breakUpFields[resultIndex].results.slice(0, breakUpFields[resultIndex].limit)"
                             :key="key" role="article" :aria-labelledby="`breakdown-item-${resultIndex}-${key}`">
 
-                            <span class="badge rounded-pill bg-secondary"
-                                :aria-label="`${$t('aggregation.countLabel')}: ${value.count}`">
-                                {{ value.count }}
-                            </span>
+                            <div class="breakdown-content">
+                                <span class="badge rounded-pill bg-info breakdown-badge"
+                                    :aria-label="`${$t('aggregation.countLabel')}: ${value.count}`">
+                                    {{ value.count }}
+                                </span>
 
-                            <div :id="`breakdown-item-${resultIndex}-${key}`" class="d-inline-block">
-                                <citations :citation="buildCitationObject(
-                                    statsConfig.break_up_field,
-                                    statsConfig.break_up_field_citation,
-                                    value.metadata_fields
-                                )"></citations>
+                                <div :id="`breakdown-item-${resultIndex}-${key}`" class="breakdown-citation">
+                                    <citations :citation="buildCitationObject(
+                                        statsConfig.break_up_field,
+                                        statsConfig.break_up_field_citation,
+                                        value.metadata_fields
+                                    )"></citations>
+                                </div>
                             </div>
                         </article>
                     </div>
@@ -237,7 +236,9 @@ export default {
     },
 };
 </script>
-<style scoped>
+<style scoped lang="scss">
+@import "../assets/styles/theme.module.scss";
+
 #description {
     position: relative;
 }
@@ -247,5 +248,115 @@ export default {
     right: 0;
     padding: 0.125rem 0.25rem;
     font-size: 0.8rem !important;
+}
+
+.badge {
+    font-size: 100% !important;
+}
+
+.breakdown-container {
+    padding: 0.75rem;
+    margin-top: 0.5rem;
+    position: relative;
+}
+
+/* Continuous vertical line for tree structure */
+.breakdown-container::after {
+    content: '';
+    position: absolute;
+    left: 0.5rem;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background-color: $link-color;
+}
+
+.breakdown-item {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e9ecef;
+    position: relative;
+    padding-left: 1rem;
+}
+
+.breakdown-item:last-child {
+    border-bottom: none;
+}
+
+/* Horizontal connector line */
+.breakdown-item::before {
+    content: '';
+    position: absolute;
+    left: -0.15rem;
+    top: 50%;
+    width: 0.5rem;
+    height: 1px;
+    background-color: $link-color;
+}
+
+/* Hide the vertical line after the last item */
+.breakdown-item:last-child::after {
+    content: '';
+    position: absolute;
+    left: 0.5rem;
+    top: 50%;
+    bottom: 0;
+    width: 1px;
+    background-color: white;
+}
+
+.breakdown-content {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.breakdown-badge {
+    font-size: 0.85em;
+    min-width: 2.5rem;
+    text-align: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    background-color: white !important;
+    color: $button-color !important;
+    border: 1px solid $button-color !important;
+}
+
+.breakdown-citation {
+    flex: 1;
+    font-size: 0.95em;
+    color: #495057;
+}
+
+.list-group-item {
+    border-left: 4px solid transparent;
+    transition: border-left-color 0.2s ease;
+}
+
+.list-group-item:hover {
+    border-left-color: $link-color;
+}
+
+/* Expand/collapse button */
+.btn-outline-secondary {
+    border-color: $link-color;
+    color: $link-color;
+    transition: all 0.2s ease;
+}
+
+.btn-outline-secondary:hover {
+    background-color: $link-color;
+    border-color: $link-color;
+    color: white;
+}
+
+.btn-outline-secondary[aria-expanded="true"] {
+    background-color: $button-color;
+    border-color: $button-color;
+    color: white;
+}
+
+.bg-secondary {
+    background-color: $button-color !important;
+    color: white !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 </style>

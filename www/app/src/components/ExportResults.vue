@@ -1,7 +1,7 @@
 <template>
     <div class="modal-dialog" role="document">
         <div class="modal-content" role="dialog" aria-labelledby="export-modal-title"
-            aria-describedby="export-modal-description">
+            :aria-describedby="(['concordance', 'kwic', 'bibliography'].includes(report)) ? 'export-modal-description' : null">
 
             <div class="modal-header">
                 <h2 class="modal-title" id="export-modal-title">

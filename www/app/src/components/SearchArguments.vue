@@ -36,7 +36,8 @@
                     <span class="pe-4 h6" id="query-terms-title">
                         {{ $t("searchArgs.termsExpanded", { length: words.length }) }}:
                     </span>
-                    <h4 class="h6" v-if="words.length > 100">{{ $t("searchArgs.mostFrequentTerms") }}</h4>
+                    <h4 class="h6" v-if="words.length > 100" id="query-terms-frequent">{{
+                        $t("searchArgs.mostFrequentTerms") }}</h4>
                     <button type="button" class="btn btn-secondary btn-sm" style="margin: 10px 0px"
                         v-if="wordListChanged" @click="rerunQuery()">
                         {{ $t("searchArgs.rerunQuery") }}

@@ -73,8 +73,7 @@
                             </button>
                         </div>
 
-                        <div class="modal fade" tabindex="-1" id="results-bibliography" role="dialog"
-                            aria-labelledby="biblio-modal-title">
+                        <div class="modal fade" tabindex="-1" id="results-bibliography" role="dialog">
                             <results-bibliography></results-bibliography>
                         </div>
                     </div>
@@ -127,7 +126,7 @@
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                         v-if="colloc_filter_choice === 'stopwords'"
                                         :aria-label="$t('resultsSummary.showFilteredWords')"
-                                        :aria-expanded="showFilteredWords">
+                                        :aria-expanded="showFilteredWords" aria-controls="filter-list">
                                         {{ $t("resultsSummary.commonStopwords") }}
                                     </button>
                                     {{ $t("resultsSummary.filtered") }}.
@@ -211,12 +210,17 @@ export default {
             "formData.group_by",
             "formData.colloc_filter_choice",
             "formData.filter_frequency",
+            "formData.start_date",
+            "formData.end_date",
             "currentReport",
             "resultsLength",
             "aggregationCache",
             "totalResultsDone",
         ]),
         splitFilterList: function () {
+            if (!this.filterList || this.filterList.length === 0) {
+                return [];
+            }
             let arrayLength = this.filterList.length;
             let chunkSize = arrayLength / 5;
             let splittedList = [];
