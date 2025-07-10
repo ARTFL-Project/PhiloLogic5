@@ -282,6 +282,50 @@ export default {
 
 a {
     text-decoration: none;
+    transition: all 0.2s ease;
+    border-radius: 2px;
+}
+
+/* Global link hover/focus effect */
+a:hover,
+a:focus {
+    background-color: rgba($link-color, 0.08);
+    box-shadow: 0 0 0 3px rgba($link-color, 0.1);
+}
+
+/* Special handling for button-style links */
+.btn-link:hover,
+.btn-link:focus {
+    background-color: rgba($link-color, 0.08);
+    box-shadow: 0 0 0 3px rgba($link-color, 0.1);
+    border: 1px solid rgba($link-color, 0.2);
+}
+
+nav.navbar a:hover,
+nav.navbar a:focus {
+    background-color: rgba(255, 255, 255, 0.1);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dropdown-item:hover,
+.dropdown-item:focus {
+    transform: scale(1.02) !important;
+    background-color: rgba($link-color, 0.15) !important;
+    border: 1px solid rgba($link-color, 0.3) !important;
+    box-shadow: 0 2px 8px rgba($link-color, 0.15) !important;
+    z-index: 1 !important;
+}
+
+.dropdown-item:active {
+    transform: scale(0.98) !important;
+    background-color: rgba($link-color, 0.2) !important;
+}
+
+/* Ensure focus is always visible */
+a:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
 }
 
 .btn:focus-visible {

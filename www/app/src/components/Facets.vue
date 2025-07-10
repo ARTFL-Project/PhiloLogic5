@@ -584,9 +584,7 @@ export default {
 }
 
 .btn-link:hover {
-    text-decoration: none !important;
-    color: darken($link-color, 15%);
-    background-color: rgba($link-color, 0.1);
+    /* Subtle movement effect - global styles handle accessibility */
     transform: translateX(2px);
 }
 
