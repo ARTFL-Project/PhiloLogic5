@@ -353,7 +353,15 @@
         "loadNext": "Load next sections",
         "loadMore": "Load more",
         "goToSection": "Go to section: {title}",
-        "textContent": "Main text content"
+        "textContent": "Main text content",
+        "dictionaryLookup": "Dictionary lookup information",
+        "previousPageImages": "Previous page images",
+        "viewPageImage": "View page image {number}",
+        "previousGraphics": "Previous graphics",
+        "viewGraphic": "View graphic {number}",
+        "mainTextContent": "Main text content",
+        "nextPageImages": "Next page images",
+        "nextGraphics": "Next graphics"
     },
     "timeSeries": {
         "frequencyDescription": "Toggle between absolute frequency (raw counts) and relative frequency (per 1000 words) display modes for the time series chart.",

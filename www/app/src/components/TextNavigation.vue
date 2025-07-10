@@ -1,6 +1,6 @@
 <template>
     <div class="container-fluid mt-4">
-        <div class="row">
+        <header class="row">
             <div class="col-8 offset-2">
                 <div id="object-title" class="text-center pt-4">
                     <h1 class="h5">
@@ -8,15 +8,17 @@
                     </h1>
                 </div>
             </div>
-        </div>
-        <div class="row text-center mt-4" id="toc-wrapper" v-if="navBar === true || loading === false">
+        </header>
+        <section class="row text-center mt-4" id="toc-wrapper" v-if="navBar === true || loading === false"
+            :aria-label="$t('textNav.navigationControls')">
             <div id="toc-top-bar">
                 <div id="nav-buttons" v-scroll="handleScroll">
-                    <button type="button" class="btn btn-secondary btn-sm" id="back-to-top" @click="backToTop()">
+                    <button type="button" class="btn btn-secondary btn-sm" id="back-to-top" @click="backToTop()"
+                        :aria-label="$t('textNav.backToTop')">
                         <span class="d-none d-sm-inline-block">{{ $t("textNav.backToTop") }}</span>
                         <span class="d-inline-block d-sm-none">{{ $t("textNav.top") }}</span>
                     </button>
-                    <div class="btn-group btn-group-sm" role="group" aria-label="$t('textNav.navigationControls')">
+                    <div class="btn-group btn-group-sm" role="group" :aria-label="$t('textNav.navigationControls')">
                         <button type="button" class="btn btn-secondary" :disabled="!textObject.prev" id="prev-obj"
                             @click="goToTextObject(textObject.prev)" :aria-label="$t('textNav.previousSection')">
                             <span aria-hidden="true">&lt;</span>
@@ -33,8 +35,9 @@
                             <span class="visually-hidden">{{ $t('textNav.next') }}</span>
                         </button>
                     </div>
-                    <a id="report-error" class="btn btn-secondary btn-sm position-absolute" target="_blank "
-                        :href="philoConfig.report_error_link" v-if="philoConfig.report_error_link != ''">{{
+                    <a id="report-error" class="btn btn-secondary btn-sm position-absolute" target="_blank"
+                        rel="noopener noreferrer" :href="philoConfig.report_error_link"
+                        v-if="philoConfig.report_error_link != ''" :aria-label="$t('common.reportError')">{{
                             $t("common.reportError")
                         }}</a>
                 </div>
@@ -76,43 +79,50 @@
                     </transition>
                 </nav>
             </div>
-        </div>
-        <div style="font-size: 85%; text-align: center" v-if="philoConfig.dictionary_lookup.url_root != ''">
-            {{ $t("textNav.dicoLookUp") }}.
-        </div>
-        <div class="row" id="all-content">
+        </section>
+        <aside class="text-center" style="font-size: 85%" v-if="philoConfig.dictionary_lookup.url_root != ''"
+            role="complementary" :aria-label="$t('textNav.dictionaryLookup')">
+            <p>{{ $t("textNav.dicoLookUp") }}.</p>
+        </aside>
+        <main class="row" id="all-content" role="main" :aria-label="$t('textNav.textContent')">
             <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text"
                 style="text-align: center">
-                <div class="card text-view mt-2 mb-4 p-4 shadow d-inline-block">
+                <article class="card text-view mt-2 mb-4 p-4 shadow d-inline-block">
                     <div id="book-page">
-                        <div id="previous-pages" v-if="beforeObjImgs">
+                        <section id="previous-pages" v-if="beforeObjImgs"
+                            :aria-label="$t('textNav.previousPageImages')">
                             <span class="xml-pb-image">
                                 <a :href="img[0]" :large-img="img[1]" class="page-image-link"
-                                    v-for="(img, imageIndex) in beforeObjImgs" :key="imageIndex" data-gallery></a>
+                                    v-for="(img, imageIndex) in beforeObjImgs" :key="imageIndex" data-gallery
+                                    :aria-label="$t('textNav.viewPageImage', { number: imageIndex + 1 })"></a>
                             </span>
-                        </div>
-                        <div id="previous-graphics" v-if="beforeGraphicsImgs">
+                        </section>
+                        <section id="previous-graphics" v-if="beforeGraphicsImgs"
+                            :aria-label="$t('textNav.previousGraphics')">
                             <a :href="img[0]" :large-img="img[1]" class="d-none inline-img"
-                                v-for="(img, beforeIndex) in beforeGraphicsImgs" :key="beforeIndex" data-gallery></a>
-                        </div>
-                        <div id="text-obj-content" class="text-content-area" v-html="textObject.text"
-                            :philo-id="philoID" @keydown="dicoLookup($event)" tabindex="0"></div>
-                        <div id="next-pages" v-if="afterObjImgs">
+                                v-for="(img, beforeIndex) in beforeGraphicsImgs" :key="beforeIndex" data-gallery
+                                :aria-label="$t('textNav.viewGraphic', { number: beforeIndex + 1 })"></a>
+                        </section>
+                        <section id="text-obj-content" class="text-content-area" v-html="textObject.text"
+                            :philo-id="philoID" @keydown="dicoLookup($event)" tabindex="0" role="document"
+                            :aria-label="$t('textNav.mainTextContent')"></section>
+                        <section id="next-pages" v-if="afterObjImgs" :aria-label="$t('textNav.nextPageImages')">
                             <span class="xml-pb-image">
                                 <a :href="img[0]" :large-img="img[1]" class="page-image-link"
-                                    v-for="(img, afterIndex) in afterObjImgs" :key="afterIndex" data-gallery></a>
+                                    v-for="(img, afterIndex) in afterObjImgs" :key="afterIndex" data-gallery
+                                    :aria-label="$t('textNav.viewPageImage', { number: afterIndex + 1 })"></a>
                             </span>
-                        </div>
-                        <div id="next-graphics" v-if="afterGraphicsImgs">
+                        </section>
+                        <section id="next-graphics" v-if="afterGraphicsImgs" :aria-label="$t('textNav.nextGraphics')">
                             <a :href="img[0]" :large-img="img[1]" class="inline-img"
-                                v-for="(img, afterGraphIndex) in afterGraphicsImgs" :key="afterGraphIndex"
-                                data-gallery></a>
-                        </div>
+                                v-for="(img, afterGraphIndex) in afterGraphicsImgs" :key="afterGraphIndex" data-gallery
+                                :aria-label="$t('textNav.viewGraphic', { number: afterGraphIndex + 1 })"></a>
+                        </section>
                     </div>
-                </div>
+                </article>
             </div>
-        </div>
-        <div id="gallery-template">
+        </main>
+        <div id="gallery-template" aria-hidden="true">
         </div>
     </div>
 </template>

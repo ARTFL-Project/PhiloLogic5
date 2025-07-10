@@ -68,7 +68,7 @@
         <div class="card mt-3 shadow-sm" id="facet-results" v-if="showFacetResults" role="region"
             :aria-label="$t('facets.facetResultsRegion')">
             <div class="card-header text-center">
-                <h4 class="mb-0">{{ $t("facets.frequencyByLabel", { label: selectedFacet.alias }) }}</h4>
+                <h4 class="mb-0 h6">{{ $t("facets.frequencyByLabel", { label: selectedFacet.alias }) }}</h4>
                 <button type="button" class="btn btn-secondary btn-sm close-box" @click="hideFacets()"
                     :aria-label="$t('facets.hideFacetResults')">
                     ×
@@ -562,13 +562,19 @@ export default {
 .facet-selection {
     width: 100%;
     cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    background-color: transparent !important;
 }
 
 .facet-selection:hover {
     font-weight: 700;
+    background-color: rgba($link-color, 0.15) !important;
+    border-color: transparent !important;
+    /* Hide borders on hover */
+    box-shadow: 0 2px 8px rgba($link-color, 0.15);
+    z-index: 1;
 }
 
-/* Remove underlines from button links and add smooth transitions */
 .btn-link {
     text-decoration: none !important;
     color: $link-color;
@@ -604,15 +610,15 @@ export default {
 
 .facet-result-item:not(.non-clickable):hover {
     transform: scale(1.02);
-    background-color: rgba($link-color, 0.08) !important;
-    border-color: rgba($link-color, 0.2);
+    background-color: rgba($link-color, 0.15) !important;
+    border-color: rgba($link-color, 0.3);
     box-shadow: 0 2px 8px rgba($link-color, 0.15);
     z-index: 1;
 }
 
 .facet-result-item:not(.non-clickable):active {
     transform: scale(0.98);
-    background-color: rgba($link-color, 0.12) !important;
+    background-color: rgba($link-color, 0.2) !important;
 }
 
 /* Non-clickable lemma items */
@@ -686,8 +692,40 @@ export default {
     box-shadow: 0 0 0 0.2rem rgba($link-color, 0.25);
 }
 
+/* Frequency switcher enhanced styles */
+.btn-group .btn-light {
+    transition: all 0.2s ease-in-out;
+    border-color: rgba($link-color, 0.25);
+    background-color: rgba($link-color, 0.02);
+    color: rgba($link-color, 0.8);
+    font-weight: 500;
+    min-width: 0;
+    /* Prevent width growth */
+    flex: 1;
+    /* Equal width distribution */
+}
+
+.btn-group .btn-light:hover {
+    border-color: rgba($link-color, 0.4);
+    background-color: rgba($link-color, 0.08);
+    color: $link-color;
+}
+
+.btn-group .btn-light.active {
+    background-color: rgba($link-color, 0.15) !important;
+    color: darken($link-color, 10%) !important;
+    border-color: rgba($link-color, 0.5) !important;
+    /* Keep same font-weight to prevent text size changes */
+}
+
+.btn-group .btn-light.active:hover {
+    background-color: rgba($link-color, 0.2) !important;
+    color: darken($link-color, 15%) !important;
+}
+
 /* Smooth transitions for all interactive elements */
 .badge {
+    font-size: 0.75rem;
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 

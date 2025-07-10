@@ -351,7 +351,15 @@
         "loadNext": "Charger les sections suivantes",
         "loadMore": "Charger plus",
         "goToSection": "Aller à la section : {title}",
-        "textContent": "Contenu du texte principal"
+        "textContent": "Contenu du texte principal",
+        "dictionaryLookup": "Informations de recherche dans le dictionnaire",
+        "previousPageImages": "Images de pages précédentes",
+        "viewPageImage": "Voir l'image de la page {number}",
+        "previousGraphics": "Graphiques précédents",
+        "viewGraphic": "Voir le graphique {number}",
+        "mainTextContent": "Contenu du texte principal",
+        "nextPageImages": "Images de pages suivantes",
+        "nextGraphics": "Graphiques suivants"
     },
     "timeSeries": {
         "frequencyDescription": "Basculer entre l'affichage de la fréquence absolue (comptes bruts) et de la fréquence relative (pour 1000 mots) pour le graphique de série temporelle.",
