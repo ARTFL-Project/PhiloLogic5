@@ -3,9 +3,9 @@
         <div class="row">
             <div class="col-8 offset-2">
                 <div id="object-title" class="text-center pt-4">
-                    <h5>
+                    <h1 class="h5">
                         <citations :citation="textNavigationCitation"></citations>
-                    </h5>
+                    </h1>
                 </div>
             </div>
         </div>

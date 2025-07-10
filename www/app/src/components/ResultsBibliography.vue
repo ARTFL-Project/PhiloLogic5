@@ -1,9 +1,10 @@
 <template>
-    <div class="modal-dialog modal-xl modal-dialog-scrollable" role="dialog" aria-labelledby="biblio-modal-title">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 class="modal-title" id="biblio-modal-title">{{ $t("resultsBiblio.heading") }}</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')">
+                <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')"
+                    @click="$event.target.blur()">
                 </button>
             </div>
             <div class="modal-body">
@@ -24,7 +25,7 @@
                                 </div>
                                 <div class="occurrence-badge">
                                     <span class="occurrence-count">{{ result.count }} {{ $t("resultsBiblio.occurrences")
-                                        }}</span>
+                                    }}</span>
                                 </div>
                             </div>
                         </article>
@@ -44,6 +45,13 @@ export default {
     name: "ResultsBibliography",
     components: { citations },
     inject: ["results"],
+    mounted() {
+        // Fix accessibility issue: remove aria-hidden when modal is shown
+        const modal = document.getElementById("results-bibliography");
+        if (modal && modal.closest('.modal')) {
+            modal.closest('.modal').removeAttribute('aria-hidden');
+        }
+    },
     computed: {
         ...mapFields(["formData.report"]),
         themeColors() {

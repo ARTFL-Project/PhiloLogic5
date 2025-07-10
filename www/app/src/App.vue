@@ -309,12 +309,8 @@ select,
 .input-group-text,
 input {
     font-size: 14px !important;
-    // font-family: "Open-Sans", sans-serif;
 }
 
-.text-view {
-    font-size: 0.9rem;
-}
 
 .custom-control {
     min-height: auto;

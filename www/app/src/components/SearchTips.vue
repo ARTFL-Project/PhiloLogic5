@@ -4,7 +4,8 @@
         <div class="modal-content p-2">
             <div class="modal-header">
                 <h2 class="modal-title h5" id="search-tips-title">{{ $t('searchTips.title') }}</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')">
+                <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')"
+                    @click="$event.target.blur()">
                 </button>
             </div>
             <div class="modal-body">
@@ -44,7 +45,7 @@
 
                 <section aria-labelledby="word-searches-heading">
                     <h3 id="word-searches-heading" class="h5" style="margin-top: 20px">{{ $t('searchTips.wordSearches')
-                        }}</h3>
+                    }}</h3>
                     <p class="mb-0">{{ $t('searchTips.wordSearchDescription') }}</p>
                     <ol role="list">
                         <li role="listitem">{{ $t('searchTips.plainTerms') }}</li>
@@ -168,7 +169,9 @@ export default {
     name: "SearchTips",
 };
 </script>
-<style scoped>
+<style lang="scss" scoped>
+@import "../assets/styles/theme.module.scss";
+
 li {
     list-style-type: disc;
 }
@@ -184,11 +187,10 @@ li {
 
 /* Focus styles for links */
 a:focus {
-    outline: 2px solid #007bff;
+    outline: 2px solid $link-color;
     outline-offset: 2px;
 }
 
-/* Better section spacing */
 section {
     margin-bottom: 1.5rem;
 }

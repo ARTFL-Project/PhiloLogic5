@@ -27,8 +27,8 @@
             </div>
 
             <button type="button" id="academic-citation-link" class="nav-link position-absolute" data-bs-toggle="modal"
-                data-bs-target="#academic-citation" aria-label="Open citation information modal"
-                aria-describedby="citation-help" v-if="philoConfig.academic_citation.collection.length > 0">
+                data-bs-target="#academic-citation" :aria-label="$t('header.citationHelpText')"
+                v-if="philoConfig.academic_citation.collection.length > 0">
                 {{ $t("header.citeUs") }}
             </button>
 
@@ -65,7 +65,7 @@
                 {{ $t("common.reportError") }}
             </a>
 
-            <!-- Accessible Modal -->
+            <!-- Modal -->
             <div class="modal fade" id="academic-citation" tabindex="-1" aria-labelledby="modal-title"
                 aria-describedby="modal-body" aria-hidden="true" role="dialog" aria-modal="true">
                 <div class="modal-dialog">
@@ -75,7 +75,7 @@
                                 {{ $t('header.citationModalTitle', { dbname: philoConfig.dbname }) }}
                             </div>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                :aria-label="$t('header.closeCitationDialog')">
+                                :aria-label="$t('header.closeCitationDialog')" @click="$event.target.blur()">
                             </button>
                         </div>
                         <div class="modal-body" id="modal-body">
@@ -90,11 +90,6 @@
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Hidden help text for screen readers -->
-            <div id="citation-help" class="visually-hidden">
-                {{ $t('header.citationHelpText') }}
             </div>
         </nav>
     </header>
@@ -204,5 +199,11 @@ export default {
 
 .modal-dialog {
     max-width: fit-content;
+}
+
+.modal-title {
+    font-weight: 700;
+    font-size: 1.2rem;
+    font-variant: small-caps;
 }
 </style>
