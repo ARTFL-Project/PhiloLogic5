@@ -3,35 +3,34 @@
         <h1>{{ $t('common.invalidConfigTitle') }}</h1>
         <p>{{ $t('common.invalidConfigMessage') }}</p>
     </div>
-    <div id="app" v-else>
+    <Header v-if="$philoConfig.valid_config" />
+    <main role="main" id="app" v-if="$philoConfig.valid_config">
         <!-- Skip navigation for keyboard users -->
         <a href="#main-content" class="visually-hidden-focusable">
             {{ $t('common.skipToMain') }}
         </a>
 
-        <Header />
         <SearchForm v-if="accessAuthorized" />
 
         <!-- Main content landmark -->
-        <main id="main-content" role="main" tabindex="-1">
+        <nav id="main-content" role="navigation" tabindex="-1">
             <router-view v-if="accessAuthorized" />
-        </main>
+        </nav>
 
         <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized" role="main"
             :aria-label="$t('common.accessControlLabel')" />
-
-        <!-- Footer with proper semantic structure -->
-        <footer class="container-fluid" v-if="accessAuthorized" role="contentinfo">
-            <div class="text-center mb-4">
-                <hr class="mb-3" style="width: 20%; margin: auto" />
-                <p>{{ $t('common.poweredBy') }}</p>
-                <a href="https://artfl-project.uchicago.edu/" :title="$t('common.philoTitle')"
-                    :aria-label="$t('common.philoLinkLabel')">
-                    <img src="./assets/philo.png" :alt="$t('common.philoAlt')" height="40" width="110" />
-                </a>
-            </div>
-        </footer>
-    </div>
+    </main>
+    <!-- Footer -->
+    <footer class="container-fluid" v-if="accessAuthorized" role="contentinfo">
+        <div class="text-center mb-4">
+            <hr class="mb-3" style="width: 20%; margin: auto" />
+            <p>{{ $t('common.poweredBy') }}</p>
+            <a href="https://artfl-project.uchicago.edu/" :title="$t('common.philoTitle')"
+                :aria-label="$t('common.philoLinkLabel')">
+                <img src="./assets/philo.png" :alt="$t('common.philoAlt')" height="40" width="110" />
+            </a>
+        </div>
+    </footer>
 </template>
 
 <script>
@@ -299,13 +298,6 @@ a:focus {
     background-color: rgba($link-color, 0.08);
     box-shadow: 0 0 0 3px rgba($link-color, 0.1);
     border: 1px solid rgba($link-color, 0.2);
-}
-
-nav.navbar a:hover,
-nav.navbar a:focus {
-    background-color: rgba(255, 255, 255, 0.1);
-    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15);
-    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .dropdown-item:hover,

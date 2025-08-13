@@ -110,7 +110,8 @@
             </div>
 
             <!-- Facet results list -->
-            <div class="list-group" flush role="list" :aria-label="$t('facets.facetResultsList')">
+            <div class="list-group facet-results-container" flush role="list"
+                :aria-label="$t('facets.facetResultsList')">
                 <!-- Facet link -->
                 <button type="button" class="list-group-item list-group-item-action facet-result-item"
                     v-if="facet.type == 'facet'" v-for="result in facetResults" :key="result.label" role="listitem"
@@ -592,6 +593,12 @@ export default {
     transform: translateX(1px);
 }
 
+/* Facet results container - prevent overflow */
+.facet-results-container {
+    overflow: hidden;
+    border-radius: 0.375rem;
+}
+
 /* Facet result items - make entire item clickable with zoom effect */
 .facet-result-item {
     cursor: pointer;
@@ -603,14 +610,14 @@ export default {
     width: 100%;
     padding: 0.75rem 1rem;
     position: relative;
-    overflow: hidden;
+    margin: 0 !important;
 }
 
 .facet-result-item:not(.non-clickable):hover {
-    transform: scale(1.02);
+    transform: scale(1.01);
     background-color: rgba($link-color, 0.15) !important;
     border-color: rgba($link-color, 0.3);
-    box-shadow: 0 2px 8px rgba($link-color, 0.15);
+    box-shadow: inset 0 0 8px rgba($link-color, 0.1);
     z-index: 1;
 }
 
@@ -675,19 +682,19 @@ export default {
 .facet-result-item:focus {
     outline: 2px solid $link-color;
     outline-offset: -2px;
-    box-shadow: 0 0 0 0.2rem rgba($link-color, 0.25);
+    box-shadow: inset 0 0 0 0.2rem rgba($link-color, 0.25);
     z-index: 2;
 }
 
 .facet-result-item:focus:not(:focus-visible) {
     outline: none;
-    box-shadow: 0 2px 8px rgba($link-color, 0.15);
+    box-shadow: inset 0 0 8px rgba($link-color, 0.15);
 }
 
 .facet-result-item:focus-visible {
     outline: 2px solid $link-color;
     outline-offset: -2px;
-    box-shadow: 0 0 0 0.2rem rgba($link-color, 0.25);
+    box-shadow: inset 0 0 0 0.2rem rgba($link-color, 0.25);
 }
 
 /* Frequency switcher enhanced styles */

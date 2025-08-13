@@ -1,6 +1,6 @@
 <template>
     <header role="banner">
-        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow" style="height: 53px"
+        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1" style="height: 53px"
             aria-label="Main navigation">
             <div class="collapse navbar-collapse top-links">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
@@ -171,6 +171,23 @@ export default {
     font-variant: small-caps;
 }
 
+nav.navbar a:hover,
+nav.navbar a:focus,
+#academic-citation-link:focus,
+#academic-citation-link:hover {
+    transform: scale(1.1);
+    border-radius: 0.25rem;
+    transition: all 0.2s ease-in-out;
+    text-decoration: underline dotted !important;
+}
+
+nav.navbar a,
+#academic-citation-link {
+    transition: all 0.2s ease-in-out;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+}
+
 .navbar-brand {
     font-weight: 700;
     font-size: 1.6rem !important;
@@ -190,7 +207,7 @@ export default {
 
 #academic-citation-link {
     background-color: inherit;
-    left: 0.5rem;
+    left: 0rem;
     bottom: 0.25rem;
     font-variant: small-caps;
     font-weight: 700;
