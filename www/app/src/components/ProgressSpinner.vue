@@ -36,7 +36,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .spinner-container {
     position: relative;
@@ -48,7 +48,7 @@ export default {
     left: 50%;
     transform: translate(-50%, -50%);
     font-size: .75rem;
-    color: $link-color;
+    color: theme.$link-color;
 }
 
 .spinner-text-large {

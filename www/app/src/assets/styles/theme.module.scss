@@ -1,3 +1,4 @@
+
 // Custom Bootstrap changes: don't edit
 $popover-max-width: 50%;
 .custom-popover {
@@ -22,7 +23,11 @@ nav.navbar a, #academic-citation-link {
     color: #fff !important;
 }
 
-$secondary: $button-color;
+.btn-secondary {
+    color: #fff !important;
+    background-color: $button-color !important;
+    border-color: $button-color !important;
+}
 .btn-secondary.active, .btn-check:checked + .btn {
     color: #fff !important;
     background-color: $button-color-active !important;
@@ -40,18 +45,29 @@ $secondary: $button-color;
     color: #fff !important;
 }
 
+.btn-outline-secondary {
+    color: $link-color !important;
+    background-color: #fff !important;
+    border-color: $link-color !important;
+}
+
 .btn-outline-secondary.active {
     color: #fff !important;
 }
 
-$info: $button-color;
-.btn-light {
+.btn-light, .btn-outline-info {
     color: $link-color !important;
     background-color: #fff !important;
     border-color: $link-color !important;
 }
 .btn-light.active {
     font-weight: 700 !important;
+}
+
+.btn-outline-info:hover {
+    color: #fff !important;
+    background-color: $button-color !important;
+    border-color: $button-color !important;
 }
 
 .link-color {
@@ -160,8 +176,4 @@ input {
 }
 .text-view {
     font-family: "Source Serif Pro", serif;
-}
-
-:export {
-    color: $link-color,
 }

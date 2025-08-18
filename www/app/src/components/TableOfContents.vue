@@ -153,7 +153,7 @@ export default {
 };
 </script>
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .separator {
     padding: 5px;
@@ -170,8 +170,8 @@ export default {
 
 .toc-section:hover,
 .toc-section:focus {
-    outline: 1px solid $link-color;
-    background-color: rgba($link-color, 0.05);
+    outline: 1px solid theme.$link-color;
+    background-color: rgba(theme.$link-color, 0.05);
     border-radius: 4px;
 }
 
@@ -207,7 +207,7 @@ export default {
 }
 
 #toc-content:focus {
-    outline: 2px solid $link-color;
+    outline: 2px solid theme.$link-color;
     outline-offset: -2px;
 }
 

@@ -529,7 +529,8 @@ export default {
 </script>
 
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "sass:color";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .card-header {
     font-variant: small-caps;
@@ -569,16 +570,16 @@ export default {
 
 .facet-selection:hover {
     font-weight: 700;
-    background-color: rgba($link-color, 0.15) !important;
+    background-color: rgba(theme.$link-color, 0.15) !important;
     border-color: transparent !important;
     /* Hide borders on hover */
-    box-shadow: 0 2px 8px rgba($link-color, 0.15);
+    box-shadow: 0 2px 8px rgba(theme.$link-color, 0.15);
     z-index: 1;
 }
 
 .btn-link {
     text-decoration: none !important;
-    color: $link-color;
+    color: theme.$link-color;
     transition: all 0.2s ease-in-out;
     border-radius: 0.25rem;
     position: relative;
@@ -615,15 +616,15 @@ export default {
 
 .facet-result-item:not(.non-clickable):hover {
     transform: scale(1.01);
-    background-color: rgba($link-color, 0.15) !important;
-    border-color: rgba($link-color, 0.3);
-    box-shadow: inset 0 0 8px rgba($link-color, 0.1);
+    background-color: rgba(theme.$link-color, 0.15) !important;
+    border-color: rgba(theme.$link-color, 0.3);
+    box-shadow: inset 0 0 8px rgba(theme.$link-color, 0.1);
     z-index: 1;
 }
 
 .facet-result-item:not(.non-clickable):active {
     transform: scale(0.98);
-    background-color: rgba($link-color, 0.2) !important;
+    background-color: rgba(theme.$link-color, 0.2) !important;
 }
 
 /* Non-clickable lemma items */
@@ -641,20 +642,20 @@ export default {
 
 /* Badge animation on hover */
 .facet-result-item:not(.non-clickable):hover .badge {
-    background-color: $link-color !important;
+    background-color: theme.$link-color !important;
     transform: scale(1.1);
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Text styling within facet items */
 .facet-result-item .sidebar-text {
-    color: $link-color;
+    color: theme.$link-color;
     font-weight: 500;
     transition: color 0.25s ease;
 }
 
 .facet-result-item:hover .sidebar-text {
-    color: darken($link-color, 15%);
+    color: color.adjust(theme.$link-color, $lightness: -15%);
 }
 
 /* Relative frequency info styling */
@@ -674,35 +675,35 @@ export default {
 
 /* Focus styles for accessibility */
 .facet-selection:focus {
-    outline: 2px solid $link-color;
+    outline: 2px solid theme.$link-color;
     outline-offset: -2px;
-    box-shadow: 0 0 0 0.2rem rgba($link-color, 0.25);
+    box-shadow: 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
 }
 
 .facet-result-item:focus {
-    outline: 2px solid $link-color;
+    outline: 2px solid theme.$link-color;
     outline-offset: -2px;
-    box-shadow: inset 0 0 0 0.2rem rgba($link-color, 0.25);
+    box-shadow: inset 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
     z-index: 2;
 }
 
 .facet-result-item:focus:not(:focus-visible) {
     outline: none;
-    box-shadow: inset 0 0 8px rgba($link-color, 0.15);
+    box-shadow: inset 0 0 8px rgba(theme.$link-color, 0.15);
 }
 
 .facet-result-item:focus-visible {
-    outline: 2px solid $link-color;
+    outline: 2px solid theme.$link-color;
     outline-offset: -2px;
-    box-shadow: inset 0 0 0 0.2rem rgba($link-color, 0.25);
+    box-shadow: inset 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
 }
 
 /* Frequency switcher enhanced styles */
 .btn-group .btn-light {
     transition: all 0.2s ease-in-out;
-    border-color: rgba($link-color, 0.25);
-    background-color: rgba($link-color, 0.02);
-    color: rgba($link-color, 0.8);
+    border-color: rgba(theme.$link-color, 0.25);
+    background-color: rgba(theme.$link-color, 0.02);
+    color: rgba(theme.$link-color, 0.8);
     font-weight: 500;
     min-width: 0;
     /* Prevent width growth */
@@ -711,21 +712,21 @@ export default {
 }
 
 .btn-group .btn-light:hover {
-    border-color: rgba($link-color, 0.4);
-    background-color: rgba($link-color, 0.08);
-    color: $link-color;
+    border-color: rgba(theme.$link-color, 0.4);
+    background-color: rgba(theme.$link-color, 0.08);
+    color: theme.$link-color;
 }
 
 .btn-group .btn-light.active {
-    background-color: rgba($link-color, 0.15) !important;
-    color: darken($link-color, 10%) !important;
-    border-color: rgba($link-color, 0.5) !important;
+    background-color: rgba(theme.$link-color, 0.15) !important;
+    color: color.adjust(theme.$link-color, $lightness: -10%) !important;
+    border-color: rgba(theme.$link-color, 0.5) !important;
     /* Keep same font-weight to prevent text size changes */
 }
 
 .btn-group .btn-light.active:hover {
-    background-color: rgba($link-color, 0.2) !important;
-    color: darken($link-color, 15%) !important;
+    background-color: rgba(theme.$link-color, 0.2) !important;
+    color: color.adjust(theme.$link-color, $lightness: -15%) !important;
 }
 
 /* Smooth transitions for all interactive elements */

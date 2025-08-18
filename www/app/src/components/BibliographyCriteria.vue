@@ -79,7 +79,7 @@ export default {
 }
 </script>
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .metadata-args {
     border: 1px solid #ddd;
@@ -130,7 +130,7 @@ export default {
 .remove-metadata:focus {
     background-color: #e9ecef;
     cursor: pointer;
-    outline: 2px solid $link-color;
+    outline: 2px solid theme.$link-color;
     outline-offset: -2px;
 }
 

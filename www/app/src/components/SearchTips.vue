@@ -170,7 +170,7 @@ export default {
 };
 </script>
 <style lang="scss" scoped>
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 li {
     list-style-type: disc;
@@ -187,7 +187,7 @@ li {
 
 /* Focus styles for links */
 a:focus {
-    outline: 2px solid $link-color;
+    outline: 2px solid theme.$link-color;
     outline-offset: 2px;
 }
 

@@ -678,7 +678,7 @@ export default {
 };
 </script>
 <style lang="scss" scoped>
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .separator {
     padding: 5px;
@@ -786,7 +786,7 @@ a.current-obj,
 }
 
 :deep(.highlight) {
-    background-color: $passage-color;
+    background-color: theme.$passage-color;
     color: #fff !important;
     padding: 0 0.3rem;
     border-radius: 0.2rem;
@@ -1233,7 +1233,7 @@ body {
 }
 
 :deep([class*="passage-"]) {
-    color: $passage-color;
+    color: theme.$passage-color;
     font-weight: 700;
 }
 </style>

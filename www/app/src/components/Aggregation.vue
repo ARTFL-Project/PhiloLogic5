@@ -237,7 +237,7 @@ export default {
 };
 </script>
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 #description {
     position: relative;
@@ -268,7 +268,7 @@ export default {
     top: 0;
     bottom: 0;
     width: 1px;
-    background-color: $link-color;
+    background-color: theme.$link-color;
 }
 
 .breakdown-item {
@@ -290,7 +290,7 @@ export default {
     top: 50%;
     width: 0.5rem;
     height: 1px;
-    background-color: $link-color;
+    background-color: theme.$link-color;
 }
 
 /* Hide the vertical line after the last item */
@@ -316,8 +316,8 @@ export default {
     text-align: center;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
     background-color: white !important;
-    color: $button-color !important;
-    border: 1px solid $button-color !important;
+    color: theme.$button-color !important;
+    border: 1px solid theme.$button-color !important;
 }
 
 .breakdown-citation {
@@ -332,30 +332,30 @@ export default {
 }
 
 .list-group-item:hover {
-    border-left-color: $link-color;
+    border-left-color: theme.$link-color;
 }
 
 /* Expand/collapse button */
 .btn-outline-secondary {
-    border-color: $link-color;
-    color: $link-color;
+    border-color: theme.$link-color;
+    color: theme.$link-color;
     transition: all 0.2s ease;
 }
 
 .btn-outline-secondary:hover {
-    background-color: $link-color;
-    border-color: $link-color;
+    background-color: theme.$link-color;
+    border-color: theme.$link-color;
     color: white;
 }
 
 .btn-outline-secondary[aria-expanded="true"] {
-    background-color: $button-color;
-    border-color: $button-color;
+    background-color: theme.$button-color;
+    border-color: theme.$button-color;
     color: white;
 }
 
 .bg-secondary {
-    background-color: $button-color !important;
+    background-color: theme.$button-color !important;
     color: white !important;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }

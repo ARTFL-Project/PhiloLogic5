@@ -274,7 +274,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .word-cloud-container {
     position: relative;
@@ -293,14 +293,14 @@ export default {
 }
 
 .cloud-word:hover {
-    background-color: rgba($link-color, 0.08);
+    background-color: rgba(theme.$link-color, 0.08);
     transform: scale(1.10);
 }
 
 .cloud-word:focus {
-    outline: 2px solid $link-color;
+    outline: 2px solid theme.$link-color;
     outline-offset: 2px;
-    background-color: rgba($link-color, 0.05);
+    background-color: rgba(theme.$link-color, 0.05);
 }
 
 .cloud-word:active {

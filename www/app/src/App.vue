@@ -276,8 +276,8 @@ export default {
 </script>
 
 <style lang="scss">
-@import "./assets/styles/theme.module.scss";
-@import "../node_modules/bootstrap/scss/bootstrap.scss";
+@use "../node_modules/bootstrap/scss/bootstrap.scss";
+@use "./assets/styles/theme.module.scss" as theme;
 
 a {
     text-decoration: none;
@@ -288,30 +288,30 @@ a {
 /* Global link hover/focus effect */
 a:hover,
 a:focus {
-    background-color: rgba($link-color, 0.08);
-    box-shadow: 0 0 0 3px rgba($link-color, 0.1);
+    background-color: rgba(theme.$link-color, 0.08);
+    box-shadow: 0 0 0 3px rgba(theme.$link-color, 0.1);
 }
 
 /* Special handling for button-style links */
 .btn-link:hover,
 .btn-link:focus {
-    background-color: rgba($link-color, 0.08);
-    box-shadow: 0 0 0 3px rgba($link-color, 0.1);
-    border: 1px solid rgba($link-color, 0.2);
+    background-color: rgba(theme.$link-color, 0.08);
+    box-shadow: 0 0 0 3px rgba(theme.$link-color, 0.1);
+    border: 1px solid rgba(theme.$link-color, 0.2);
 }
 
 .dropdown-item:hover,
 .dropdown-item:focus {
     transform: scale(1.02) !important;
-    background-color: rgba($link-color, 0.15) !important;
-    border: 1px solid rgba($link-color, 0.3) !important;
-    box-shadow: 0 2px 8px rgba($link-color, 0.15) !important;
+    background-color: rgba(theme.$link-color, 0.15) !important;
+    border: 1px solid rgba(theme.$link-color, 0.3) !important;
+    box-shadow: 0 2px 8px rgba(theme.$link-color, 0.15) !important;
     z-index: 1 !important;
 }
 
 .dropdown-item:active {
     transform: scale(0.98) !important;
-    background-color: rgba($link-color, 0.2) !important;
+    background-color: rgba(theme.$link-color, 0.2) !important;
 }
 
 /* Ensure focus is always visible */

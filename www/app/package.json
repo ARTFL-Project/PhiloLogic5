@@ -13,18 +13,19 @@
         "host": "npm i && vite --host"
     },
     "dependencies": {
-        "@intlify/unplugin-vue-i18n": "^3.0.0",
+        "@intlify/unplugin-vue-i18n": "^6.0.8",
         "@popperjs/core": "^2.9.2",
         "axios": "^1.7.0",
-        "bootstrap": "^5.2.1",
+        "bootstrap": "^5.3.0",
         "chart.js": "^4.4.9",
         "core-js": "^3.13.1",
         "dompurify": "^3.1.7",
         "glightbox": "^3.2.0",
         "gsap": "^3.12.0",
+        "unplugin": "^2.3.6",
         "vue": "^3.5.0",
         "vue-chartjs": "^5.3.2",
-        "vue-i18n": "^9.2.2",
+        "vue-i18n": "^11.0.0",
         "vue-router": "^4.4.0",
         "vue-scrollto": "^2.17.1",
         "vuex": "^4.0.0",
@@ -32,12 +33,12 @@
     },
     "devDependencies": {
         "@originjs/vite-plugin-commonjs": "^1.0.3",
-        "@vitejs/plugin-vue": "^5.0.0",
+        "@vitejs/plugin-vue": "^6.0.0",
         "@vue/compiler-sfc": "^3.1.0",
         "eslint": "^7.5.0",
         "eslint-plugin-vue": "^8.5.0",
-        "sass": "^1.49.9",
-        "vite": "^5.0.0",
+        "sass": "^1.80.0",
+        "vite": "^7.1.2",
         "vite-plugin-compression2": "^1.3.0"
     },
     "eslintConfig": {

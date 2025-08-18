@@ -309,7 +309,7 @@ export default {
 };
 </script>
 <style lang="scss" scoped>
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .btn-light {
     background-color: #fff;
@@ -338,7 +338,7 @@ export default {
 .letter {
     text-align: center;
     cursor: pointer;
-    color: $link-color;
+    color: theme.$link-color;
     text-decoration: none;
     border: none;
     background: transparent;
@@ -349,7 +349,7 @@ export default {
 .letter:hover,
 .letter:focus {
     background-color: #e8e8e8;
-    color: $link-color;
+    color: theme.$link-color;
     text-decoration: none;
 }
 

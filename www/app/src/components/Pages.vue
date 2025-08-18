@@ -134,7 +134,7 @@ export default {
 };
 </script>
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .page {
     transition: width 0.4s ease !important;
@@ -158,20 +158,20 @@ export default {
 .page-range {
     font-size: 80%;
     opacity: 0.85;
-    color: $link-color;
+    color: theme.$link-color;
 }
 
 .btn-outline-secondary {
-    color: $link-color !important;
-    border-color: $link-color !important;
+    color: theme.$link-color !important;
+    border-color: theme.$link-color !important;
     background-color: #fff !important;
 }
 
 .btn-outline-secondary:hover,
 .btn-outline-secondary:focus {
     color: #fff !important;
-    background-color: $button-color !important;
-    border-color: $button-color !important;
+    background-color: theme.$button-color !important;
+    border-color: theme.$button-color !important;
 }
 
 .btn-outline-secondary:hover .page-range,
@@ -182,8 +182,8 @@ export default {
 
 .btn-outline-secondary.active {
     color: #fff !important;
-    background-color: $button-color-active !important;
-    border-color: $button-color !important;
+    background-color: theme.$button-color-active !important;
+    border-color: theme.$button-color !important;
 }
 
 .btn-outline-secondary.active .page-range {
@@ -192,8 +192,8 @@ export default {
 }
 
 .btn-outline-secondary:focus {
-    box-shadow: 0 0 0 0.2rem rgba($button-color, 0.25) !important;
-    outline: 2px solid $button-color;
+    box-shadow: 0 0 0 0.2rem rgba(theme.$button-color, 0.25) !important;
+    outline: 2px solid theme.$button-color;
     outline-offset: 2px;
 }
 

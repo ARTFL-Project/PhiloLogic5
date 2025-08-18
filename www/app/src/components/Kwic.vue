@@ -397,7 +397,7 @@ export default {
 </script>
 
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 .sort-toggle {
     border-bottom-left-radius: 0;
@@ -423,7 +423,7 @@ export default {
 }
 
 .kwic-biblio:focus {
-    outline: 2px solid $button-color;
+    outline: 2px solid theme.$button-color;
     outline-offset: 2px;
 }
 
@@ -454,7 +454,7 @@ export default {
 
 .full-biblio.show {
     position: absolute;
-    background-color: $button-color;
+    background-color: theme.$button-color;
     color: #fff;
     display: inline !important;
     padding: 0px 5px;
@@ -474,7 +474,7 @@ export default {
 
 #sort-button {
     color: #fff !important;
-    background-color: $button-color !important;
+    background-color: theme.$button-color !important;
     outline: 2px solid rgba(255, 255, 255, 0.5);
     outline-offset: 2px;
     box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25);
@@ -486,13 +486,13 @@ export default {
 }
 
 .progress-bar {
-    background-color: $button-color !important;
+    background-color: theme.$button-color !important;
 }
 
 .dropdown-item:focus {
-    outline: 2px solid $button-color;
+    outline: 2px solid theme.$button-color;
     outline-offset: -2px;
-    background-color: rgba($button-color, 0.1);
+    background-color: rgba(theme.$button-color, 0.1);
 }
 
 :deep(.kwic-before) {

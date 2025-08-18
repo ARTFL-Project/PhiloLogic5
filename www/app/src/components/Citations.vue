@@ -26,7 +26,7 @@ export default {
 };
 </script>
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 cite {
     font-style: normal;
@@ -42,7 +42,7 @@ cite {
 }
 
 .philologic-cite a:focus {
-    outline: 2px solid $link-color;
+    outline: 2px solid theme.$link-color;
     outline-offset: 2px;
     border-radius: 2px;
 }

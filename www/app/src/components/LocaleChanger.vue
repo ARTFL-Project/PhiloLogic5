@@ -35,7 +35,7 @@ export default {
 };
 </script>
 <style lang="scss" scoped>
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 button {
     font-size: inherit !important;
@@ -63,7 +63,7 @@ button {
 
 .dropdown-item:hover {
     color: #fff !important;
-    background: $link-color !important;
+    background: theme.$link-color !important;
     cursor: pointer;
 }
 

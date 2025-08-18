@@ -111,7 +111,7 @@ export default {
 </script>
 
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 #results-bibliography {
     padding: 0;
@@ -130,7 +130,7 @@ export default {
     }
 
     &:focus {
-        outline: 2px solid $button-color;
+        outline: 2px solid theme.$button-color;
         outline-offset: 2px;
         border-radius: 8px;
     }
@@ -147,8 +147,8 @@ export default {
 }
 
 .result-card-link:hover .result-card {
-    background-color: rgba($link-color, 0.08) !important;
-    border-color: $link-color;
+    background-color: rgba(theme.$link-color, 0.08) !important;
+    border-color: theme.$link-color;
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
@@ -160,7 +160,7 @@ export default {
 }
 
 .result-number {
-    background: $card-header-color;
+    background: theme.$card-header-color;
     color: white;
     border-radius: 50%;
     width: 28px;
@@ -188,7 +188,7 @@ export default {
 }
 
 .occurrence-count {
-    background: $link-color;
+    background: theme.$link-color;
     color: white;
     border-radius: 12px;
     padding: 0.25rem 0.5rem;
@@ -199,7 +199,7 @@ export default {
 }
 
 .result-card-link:hover .occurrence-count {
-    background: $button-color;
+    background: theme.$button-color;
     transform: scale(1.05);
 }
 

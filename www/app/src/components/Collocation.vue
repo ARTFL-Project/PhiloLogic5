@@ -932,13 +932,13 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 th {
     font-variant: small-caps;
-    background-color: $card-header-color !important;
+    background-color: theme.$card-header-color !important;
     color: white !important;
-    border-color: $card-header-color !important;
+    border-color: theme.$card-header-color !important;
 }
 
 .table tbody tr {
@@ -947,27 +947,27 @@ th {
 }
 
 .table tbody tr:hover {
-    background-color: rgba($link-color, 0.1) !important;
-    color: $link-color !important;
+    background-color: rgba(theme.$link-color, 0.1) !important;
+    color: theme.$link-color !important;
 }
 
 .table tbody tr:focus {
-    background-color: rgba($button-color, 0.15) !important;
-    color: $button-color !important;
-    outline: 2px solid $button-color;
+    background-color: rgba(theme.$button-color, 0.15) !important;
+    color: theme.$button-color !important;
+    outline: 2px solid theme.$button-color;
     outline-offset: -2px;
 }
 
 /* Striped rows with even lighter theme color */
 .table tbody tr:nth-of-type(odd) {
-    background-color: rgba($link-color, 0.03) !important;
+    background-color: rgba(theme.$link-color, 0.03) !important;
     /* Much lighter than hover (0.1) */
 }
 
 .table tbody tr:nth-of-type(odd):hover {
-    background-color: rgba($link-color, 0.1) !important;
+    background-color: rgba(theme.$link-color, 0.1) !important;
     /* Same as regular hover */
-    color: $link-color !important;
+    color: theme.$link-color !important;
 }
 
 /* Ensure cells inherit the row colors */
@@ -982,9 +982,9 @@ th {
 /* Remove the Bootstrap overrides that aren't working */
 /* .table-light {
     --bs-table-bg: #fff;
-    --bs-table-striped-bg: rgba($card-header-color, 0.05);
-    --bs-table-hover-bg: rgba($link-color, 0.1);
-    --bs-table-border-color: rgba($card-header-color, 0.2);
+    --bs-table-striped-bg: rgba(theme.$card-header-color, 0.05);
+    --bs-table-hover-bg: rgba(theme.$link-color, 0.1);
+    --bs-table-border-color: rgba(theme.$card-header-color, 0.2);
 } */
 
 #description {
@@ -1059,13 +1059,13 @@ input:focus::placeholder {
     text-align: center;
     font-variant: small-caps;
     color: #fff;
-    background-color: $link-color;
+    background-color: theme.$link-color;
     padding: 0.5rem;
 }
 
 .colloc-cloud-title {
     text-align: center;
-    background: $link-color;
+    background: theme.$link-color;
     color: #fff;
 }
 

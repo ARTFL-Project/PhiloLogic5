@@ -20,7 +20,7 @@
                                 <div class="modal-header">
                                     <h2 class="modal-title" id="export-modal-header">{{
                                         $t('resultsSummary.exportResults')
-                                    }}</h2>
+                                        }}</h2>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"
                                         :aria-label="$t('common.close')"></button>
                                 </div>
@@ -49,7 +49,7 @@
                                         </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
-                                            }}&nbsp;</span>
+                                        }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
@@ -173,7 +173,7 @@
                                     :aria-label="$t('resultsSummary.switchToConcordance')"
                                     :aria-pressed="report === 'concordance'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.concordanceBig")
-                                        }}</span>
+                                    }}</span>
                                     <span class="d-inline d-lg-none">{{
                                         $t("resultsSummary.concordanceSmall") }}</span>
                                 </button>
@@ -182,7 +182,7 @@
                                     :aria-pressed="report === 'kwic'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.kwicBig") }}</span>
                                     <span class="d-inline d-lg-none">{{ $t("resultsSummary.kwicSmall")
-                                        }}</span>
+                                    }}</span>
                                 </button>
                             </div>
                         </div>
@@ -455,7 +455,6 @@ export default {
                 this.paramsToRoute({ ...this.$store.state.formData, results_per_page: number, start: "1", end: number })
             );
         },
-        showFacets() { },
         showResultsBiblio() {
             if (!this.showBiblio) {
                 this.showBiblio = true;
@@ -479,7 +478,7 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 #description {
     position: relative;
@@ -494,8 +493,8 @@ export default {
     margin: 0;
     padding: 0.125rem 0.25rem;
     background: transparent;
-    border-bottom: 1px solid $link-color;
-    border-right: 1px solid $link-color;
+    border-bottom: 1px solid theme.$link-color;
+    border-right: 1px solid theme.$link-color;
     border-radius: 0.25rem;
     font-variant: small-caps;
     font-weight: 600;

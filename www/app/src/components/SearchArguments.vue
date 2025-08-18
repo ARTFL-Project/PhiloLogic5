@@ -306,7 +306,7 @@ export default {
 };
 </script>
 <style scoped lang="scss">
-@import "../assets/styles/theme.module.scss";
+@use "../assets/styles/theme.module.scss" as theme;
 
 #search-arguments {
     line-height: 180%;
@@ -335,7 +335,7 @@ export default {
 .term-groups-container {
     display: inline-flex;
     align-items: stretch;
-    border: 1px solid $link-color;
+    border: 1px solid theme.$link-color;
     border-radius: 50rem;
     margin: 5px 5px 5px 0px;
     background-color: #fff;
@@ -347,16 +347,16 @@ export default {
     padding: 0.1rem 0.5rem;
     text-decoration: none;
     background: none;
-    color: $link-color;
+    color: theme.$link-color;
     border: none;
-    border-right: solid 1px $link-color;
+    border-right: solid 1px theme.$link-color;
     flex-grow: 1;
 }
 
 .term-word {
     display: block;
     padding: 0.1rem 0.5rem;
-    border-right: solid 1px $link-color;
+    border-right: solid 1px theme.$link-color;
     flex-grow: 1;
 }
 
@@ -365,7 +365,7 @@ export default {
     align-items: center;
     justify-content: center;
     width: 1.6rem;
-    color: $link-color;
+    color: theme.$link-color;
     border: none;
     cursor: pointer;
 }
