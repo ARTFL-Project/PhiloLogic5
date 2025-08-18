@@ -1,12 +1,6 @@
 <template>
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
-        <div style="position: relative" v-if="!showFacets && philoConfig.facets.length > 0">
-            <button type="button" class="btn btn-secondary" style="position: absolute; bottom: 1rem; right: 0.5rem"
-                @click="toggleFacets()" :aria-label="$t('common.showFacetsLabel')">
-                {{ $t("common.showFacets") }}
-            </button>
-        </div>
         <div class="row px-2">
             <main class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }" role="main"
                 :aria-label="$t('kwic.resultsRegion')">
@@ -40,51 +34,22 @@
                                 {{ $t("kwic.sort") }}
                             </button>
                         </div>
+                    </div>
 
-                        <!-- Results per page control -->
-                        <div class="float-lg-end mt-lg-0 mt-md-2">
-                            <div class="btn-group" role="group" :aria-label="$t('kwic.resultsPerPageControl')">
-                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                    style="border-right: solid">
-                                    {{ $t("kwic.resultsDisplayed") }}
-                                </button>
-                                <div class="dropdown d-inline-block">
-                                    <button class="btn btn-sm btn-light dropdown-toggle" style="
-                                            border-left: 0 !important;
-                                            border-bottom-left-radius: 0;
-                                            border-top-left-radius: 0;
-                                        " type="button" id="kwic-results-per-page" data-bs-toggle="dropdown"
-                                        aria-expanded="false">
-                                        {{ results_per_page }}
-                                    </button>
-                                    <ul class="dropdown-menu" aria-labelledby="kwic-results-per-page">
-                                        <li v-for="number in ['25', '100', '500', '1000']" :key="number">
-                                            <button type="button" class="dropdown-item"
-                                                @click="switchResultsPerPage(number)"
-                                                :aria-label="`${$t('kwic.showResults', { count: number })}`">
-                                                {{ number }}
-                                            </button>
-                                        </li>
-                                    </ul>
-                                </div>
-                            </div>
+                    <div class="progress mt-3" v-if="runningTotal != resultsLength" role="progressbar"
+                        :aria-valuenow="runningTotal" :aria-valuemin="0" :aria-valuemax="resultsLength"
+                        :aria-label="$t('kwic.loadingProgress')">
+                        <div class="progress-bar"
+                            :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`" :aria-hidden="true">
+                            {{ Math.floor((runningTotal / resultsLength) * 100) }}%
                         </div>
-                        <div class="progress mt-3" v-if="runningTotal != resultsLength" role="progressbar"
-                            :aria-valuenow="runningTotal" :aria-valuemin="0" :aria-valuemax="resultsLength"
-                            :aria-label="$t('kwic.loadingProgress')">
-                            <div class="progress-bar"
-                                :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`"
-                                :aria-hidden="true">
-                                {{ Math.floor((runningTotal / resultsLength) * 100) }}%
-                            </div>
-                            <span class="visually-hidden">
-                                {{ $t('kwic.progressDescription', {
-                                    current: runningTotal,
-                                    total: resultsLength,
-                                    percent: Math.floor((runningTotal / resultsLength) * 100)
-                                }) }}
-                            </span>
-                        </div>
+                        <span class="visually-hidden">
+                            {{ $t('kwic.progressDescription', {
+                                current: runningTotal,
+                                total: resultsLength,
+                                percent: Math.floor((runningTotal / resultsLength) * 100)
+                            }) }}
+                        </span>
                     </div>
 
                     <!-- KWIC results -->
@@ -426,11 +391,6 @@ export default {
             } else {
                 this.showFacets = true;
             }
-        },
-        switchResultsPerPage(number) {
-            this.$router.push(
-                this.paramsToRoute({ ...this.$store.state.formData, results_per_page: number, start: "1", end: number })
-            );
         },
     },
 };

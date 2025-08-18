@@ -20,7 +20,7 @@
                                 <div class="modal-header">
                                     <h2 class="modal-title" id="export-modal-header">{{
                                         $t('resultsSummary.exportResults')
-                                        }}</h2>
+                                    }}</h2>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"
                                         :aria-label="$t('common.close')"></button>
                                 </div>
@@ -49,7 +49,7 @@
                                         </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
-                                        }}&nbsp;</span>
+                                            }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
@@ -157,27 +157,80 @@
             </section>
         </div>
 
-        <!-- Report switch buttons -->
-        <h2 class="row d-none d-sm-block mt-4 mb-3" id="act-on-report"
-            v-if="report == 'concordance' || report == 'kwic'">
-            <div class="col col-sm-7 col-lg-8" v-if="['concordance', 'kwic'].includes(report)">
-                <div class="btn-group" role="group" id="report_switch"
-                    :aria-label="$t('resultsSummary.reportViewOptions')">
-                    <button type="button" class="btn btn-secondary" :class="{ active: report === 'concordance' }"
-                        @click="switchReport('concordance')" :aria-label="$t('resultsSummary.switchToConcordance')"
-                        :aria-pressed="report === 'concordance'">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("resultsSummary.concordanceBig") }}</span>
-                        <span class="d-inline d-sm-inline d-md-none">{{ $t("resultsSummary.concordanceSmall") }}</span>
-                    </button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: report === 'kwic' }"
-                        @click="switchReport('kwic')" :aria-label="$t('resultsSummary.switchToKwic')"
-                        :aria-pressed="report === 'kwic'">
-                        <span class="d-none d-sm-none d-md-inline">{{ $t("resultsSummary.kwicBig") }}</span>
-                        <span class="d-inline d-sm-inline d-md-none">{{ $t("resultsSummary.kwicSmall") }}</span>
-                    </button>
+        <!-- Report switch buttons and Results per page control -->
+        <div class="mt-4 mb-3" v-if="report == 'concordance' || report == 'kwic'">
+            <div class="row d-none d-sm-flex align-items-center"
+                :style="report === 'concordance' ? 'padding-right: 0.5rem' : ''"
+                :class="report === 'kwic' ? 'px-2' : ''">
+                <div class="col-12" :class="showFacets && $philoConfig.facets.length > 0 ?
+                    (report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
+                    <div class="d-flex justify-content-start align-items-center">
+                        <div class="flex-shrink-0" v-if="['concordance', 'kwic'].includes(report)">
+                            <div class="btn-group" role="group" id="report_switch"
+                                :aria-label="$t('resultsSummary.reportViewOptions')">
+                                <button type="button" class="btn btn-secondary"
+                                    :class="{ active: report === 'concordance' }" @click="switchReport('concordance')"
+                                    :aria-label="$t('resultsSummary.switchToConcordance')"
+                                    :aria-pressed="report === 'concordance'">
+                                    <span class="d-none d-lg-inline">{{ $t("resultsSummary.concordanceBig")
+                                        }}</span>
+                                    <span class="d-inline d-lg-none">{{
+                                        $t("resultsSummary.concordanceSmall") }}</span>
+                                </button>
+                                <button type="button" class="btn btn-secondary" :class="{ active: report === 'kwic' }"
+                                    @click="switchReport('kwic')" :aria-label="$t('resultsSummary.switchToKwic')"
+                                    :aria-pressed="report === 'kwic'">
+                                    <span class="d-none d-lg-inline">{{ $t("resultsSummary.kwicBig") }}</span>
+                                    <span class="d-inline d-lg-none">{{ $t("resultsSummary.kwicSmall")
+                                        }}</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="flex-shrink-1 ms-auto">
+                            <div class="btn-group" role="group" :aria-label="$t('kwic.resultsPerPageControl')">
+                                <button type="button" class="btn btn-outline-secondary results-label-btn"
+                                    style="border-right: solid">
+                                    {{ $t("kwic.resultsDisplayed") }}
+                                </button>
+                                <div class="dropdown d-inline-block">
+                                    <button class="btn btn-light dropdown-toggle" style="
+                                            border-left: 0 !important;
+                                            border-bottom-left-radius: 0;
+                                            border-top-left-radius: 0;
+                                        " type="button" id="results-per-page-content-toggle" data-bs-toggle="dropdown"
+                                        aria-expanded="false">
+                                        {{ results_per_page }}
+                                    </button>
+                                    <ul class="dropdown-menu" aria-labelledby="results-per-page-content-toggle">
+                                        <li v-for="number in resultsPerPageOptions" :key="number">
+                                            <button type="button" class="dropdown-item"
+                                                @click="switchResultsPerPage(number)"
+                                                :aria-label="`${$t('kwic.showResults', { count: number })}`">
+                                                {{ number }}
+                                            </button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </h2>
+            <!-- Show facets button row -->
+            <div class="row d-none d-sm-flex mt-2" v-if="!showFacets && facets.length > 0"
+                :style="report === 'concordance' ? 'padding-right: 0.5rem' : ''"
+                :class="report === 'kwic' ? 'px-2' : ''">
+                <div class="col-12" :class="showFacets && $philoConfig.facets.length > 0 ?
+                    (report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
+                    <div class="d-flex justify-content-end">
+                        <button type="button" class="btn btn-secondary btn-sm" @click="toggleFacets()"
+                            :aria-label="$t('common.showFacetsLabel')">
+                            {{ $t("common.showFacets") }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -217,6 +270,7 @@ export default {
             "resultsLength",
             "aggregationCache",
             "totalResultsDone",
+            "showFacets",
         ]),
         splitFilterList: function () {
             if (!this.filterList || this.filterList.length === 0) {
@@ -250,6 +304,7 @@ export default {
                     : this.$route.query.group_by,
             showFilteredWords: false,
             currentQuery: {},
+            resultsPerPageOptions: [25, 100, 500, 1000],
         };
     },
     created() {
@@ -394,6 +449,12 @@ export default {
             this.results_per_page = 25;
             this.$router.push(this.paramsToRoute({ ...this.$store.state.formData }));
         },
+        switchResultsPerPage(number) {
+            this.results_per_page = parseInt(number);
+            this.$router.push(
+                this.paramsToRoute({ ...this.$store.state.formData, results_per_page: number, start: "1", end: number })
+            );
+        },
         showFacets() { },
         showResultsBiblio() {
             if (!this.showBiblio) {
@@ -409,6 +470,9 @@ export default {
             } else {
                 this.showFilteredWords = true;
             }
+        },
+        toggleFacets() {
+            this.showFacets = !this.showFacets;
         },
     },
 };
@@ -473,6 +537,18 @@ export default {
 .stat-link,
 .btn-link {
     text-decoration: none;
+}
+
+.results-label-btn {
+    cursor: default !important;
+    pointer-events: none;
+}
+
+.results-label-btn:hover,
+.results-label-btn:focus {
+    background-color: var(--bs-btn-bg) !important;
+    border-color: var(--bs-btn-border-color) !important;
+    color: var(--bs-btn-color) !important;
 }
 
 .colloc-no-top-border {

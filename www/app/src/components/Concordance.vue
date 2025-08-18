@@ -2,14 +2,6 @@
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
 
-        <!-- Facets toggle button with proper labeling -->
-        <div style="position: relative" v-if="!showFacets && philoConfig.facets.length > 0">
-            <button type="button" class="btn btn-secondary" style="position: absolute; bottom: 1rem; right: 0.5rem"
-                @click="toggleFacets()" :aria-label="$t('common.showFacetsLabel')">
-                {{ $t("common.showFacets") }}
-            </button>
-        </div>
-
         <div class="row" style="padding-right: 0.5rem">
             <main class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }" role="main"
                 :aria-label="$t('concordance.resultsRegion')">
@@ -30,7 +22,7 @@
                                     <citations :citation="result.citation"></citations>
                                 </span>
                             </div>
-                            <div class="col-sm-2 col-md-1 d-none d-sm-inline-block">
+                            <div class="col-sm-2 col-md-1 d-none d-lg-inline-block">
                                 <button type="button" class="btn btn-secondary more-context"
                                     @click="moreContext(index, $event)"
                                     :aria-label="`${$t('concordance.showMoreContext')} ${$t('concordance.forResult')} ${results.description.start + index}`">
