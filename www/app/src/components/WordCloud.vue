@@ -82,8 +82,11 @@ export default {
         colorCodes() {
             let r, g, b;
 
+            // Use theme color with fallback
+            const color = this.cloudColor || variables.color || '#8e3232';
+
             // Check if the color is in RGB format
-            const rgbMatch = this.cloudColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+            const rgbMatch = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
 
             if (rgbMatch) {
                 r = parseInt(rgbMatch[1]);
@@ -91,14 +94,14 @@ export default {
                 b = parseInt(rgbMatch[3]);
             } else {
                 // Parse as hex
-                if (this.cloudColor.length == 4) {
-                    r = parseInt("0x" + this.cloudColor[1] + this.cloudColor[1]);
-                    g = parseInt("0x" + this.cloudColor[2] + this.cloudColor[2]);
-                    b = parseInt("0x" + this.cloudColor[3] + this.cloudColor[3]);
-                } else if (this.cloudColor.length == 7) {
-                    r = parseInt("0x" + this.cloudColor[1] + this.cloudColor[2]);
-                    g = parseInt("0x" + this.cloudColor[3] + this.cloudColor[4]);
-                    b = parseInt("0x" + this.cloudColor[5] + this.cloudColor[6]);
+                if (color.length == 4) {
+                    r = parseInt("0x" + color[1] + color[1]);
+                    g = parseInt("0x" + color[2] + color[2]);
+                    b = parseInt("0x" + color[3] + color[3]);
+                } else if (color.length == 7) {
+                    r = parseInt("0x" + color[1] + color[2]);
+                    g = parseInt("0x" + color[3] + color[4]);
+                    b = parseInt("0x" + color[5] + color[6]);
                 }
             }
 
@@ -117,7 +120,7 @@ export default {
     data() {
         return {
             collocCloudWords: [],
-            cloudColor: variables.color,
+            cloudColor: variables.color || '#8e3232', // Use theme color with fallback
             selectedWordIndex: 0
         }
     },

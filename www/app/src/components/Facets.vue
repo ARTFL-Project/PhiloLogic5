@@ -23,7 +23,7 @@
 
             <transition name="slide-fade">
                 <div class="list-group mt-3" style="border-top: 0" flush id="select-word-properties"
-                    v-if="showFacetSelection && report != 'bibliography' && philoConfig.words_facets.length > 0"
+                    v-if="showFacetSelection && formData.report != 'bibliography' && philoConfig.words_facets.length > 0"
                     role="group" :aria-label="$t('facets.selectWordProperty')">
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
                     <button type="button" class="list-group-item list-group-item-action facet-selection"
@@ -35,11 +35,12 @@
             </transition>
 
             <transition name="slide-fade">
-                <div class="list-group mt-3" style="border-top: 0" v-if="showFacetSelection && report != 'bibliography'"
-                    role="group" :aria-label="$t('facets.selectCollocation')">
+                <div class="list-group mt-3" style="border-top: 0"
+                    v-if="showFacetSelection && formData.report != 'bibliography'" role="group"
+                    :aria-label="$t('facets.selectCollocation')">
                     <span class="dropdown-header text-center">{{ $t("facets.collocates") }}</span>
                     <button type="button" class="list-group-item list-group-item-action facet-selection"
-                        @click="getFacet(collocationFacet)" v-if="report !== 'bibliography'"
+                        @click="getFacet(collocationFacet)" v-if="formData.report !== 'bibliography'"
                         :aria-label="`${$t('facets.selectCollocation')} ${$t('common.sameSentence')}`">
                         {{ $t("common.sameSentence") }}
                     </button>
@@ -77,7 +78,7 @@
 
             <!-- Frequency toggle buttons -->
             <div class="btn-group btn-group-sm shadow-sm" role="group" :aria-label="$t('facets.frequencyTypeToggle')"
-                v-if="percent == 100 && report !== 'bibliography' && facet.type === 'facet'">
+                v-if="percent == 100 && formData.report !== 'bibliography' && facet.type === 'facet'">
                 <button type="button" class="btn btn-light" :class="{ active: showingRelativeFrequencies === false }"
                     @click="displayAbsoluteFrequencies()" :aria-pressed="showingRelativeFrequencies === false"
                     :aria-label="$t('facets.showAbsoluteFrequency')">
@@ -192,22 +193,19 @@
 </template>
 
 <script>
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 
 export default {
     name: "facets-report",
     computed: {
-        ...mapFields([
-            "formData.report",
-            "formData.q",
-            "fornData.method",
-            "formData.start",
-            "formData.end",
-            "formData.metadataFields",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "resultsLength",
             "showFacets",
-            "urlUpdate",
+            "urlUpdate"
         ]),
+        ...mapStores(useMainStore),
     },
     inject: ["$http"],
     data() {
@@ -296,17 +294,17 @@ export default {
             let urlString
             if (facetObj.type === "facet") {
                 urlString = this.paramsToUrlString({
-                    ...this.$store.state.formData,
+                    ...this.formData,
                     frequency_field: facetObj.alias,
                 });
             } else if (facetObj.type === "collocationFacet") {
                 urlString = this.paramsToUrlString({
-                    ...this.$store.state.formData,
+                    ...this.formData,
                     report: "collocation",
                 });
             } else if (facetObj.type === "property") {
                 urlString = this.paramsToUrlString({
-                    ...this.$store.state.formData,
+                    ...this.formData,
                     word_property: facetObj.facet,
                 });
             }
@@ -324,7 +322,7 @@ export default {
                 this.loading = true;
                 this.moreResults = true;
                 this.percent = 0;
-                let queryParams = this.copyObject(this.$store.state.formData);
+                let queryParams = this.copyObject(this.formData);
                 if (facetObj.type === "facet") {
                     queryParams.frequency_field = facetObj.facet;
                 } else if (facetObj.type === "collocationFacet") {
@@ -471,22 +469,22 @@ export default {
             this.loading = false;
         },
         collocationToConcordance(word) {
-            this.q = `${this.q} "${word}"`;
-            this.$store.commit("updateFormDataField", {
+            this.formData.q = `${this.formData.q} "${word}"`;
+            this.mainStore.updateFormDataField({
                 key: "method",
                 value: "cooc",
             });
-            this.start = "";
-            this.end = "";
-            this.report = "concordance";
-            this.$router.push(this.paramsToRoute({ ...this.$store.state.formData }));
+            this.formData.start = "";
+            this.formData.end = "";
+            this.formData.report = "concordance";
+            this.$router.push(this.paramsToRoute({ ...this.formData }));
         },
         propertyToConcordance(query) {
-            this.q = query;
-            this.start = "";
-            this.end = "";
-            this.report = "concordance";
-            this.$router.push(this.paramsToRoute({ ...this.$store.state.formData }));
+            this.formData.q = query;
+            this.formData.start = "";
+            this.formData.end = "";
+            this.formData.report = "concordance";
+            this.$router.push(this.paramsToRoute({ ...this.formData }));
         },
         showFacetOptions() {
             this.showFacetSelection = true;
@@ -505,13 +503,13 @@ export default {
         facetClick(metadata) {
             let metadataValue;
             metadataValue = `"${metadata[this.selectedFacet.facet]}"`;
-            this.$store.commit("updateFormDataField", {
+            this.mainStore.updateFormDataField({
                 key: this.selectedFacet.facet,
                 value: metadataValue,
             });
             this.$router.push(
                 this.paramsToRoute({
-                    ...this.$store.state.formData,
+                    ...this.formData,
                     start: "0",
                     end: "0",
                 })

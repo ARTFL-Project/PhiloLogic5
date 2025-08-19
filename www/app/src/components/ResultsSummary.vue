@@ -1,6 +1,6 @@
 <template>
     <div id="results-summary-container" class="mt-4 ms-2 me-2">
-        <div class="card shadow-sm px-3 py-2" :class="{ 'colloc-no-top-border': report == 'collocation' }">
+        <div class="card shadow-sm px-3 py-2" :class="{ 'colloc-no-top-border': formData.report == 'collocation' }">
             <section id="initial_report" role="region" :aria-label="$t('resultsSummary.summaryRegion')">
                 <div id="description">
                     <h1 class="page-heading">
@@ -34,7 +34,7 @@
                     <search-arguments class="pt-4" :result-start="descriptionStart"
                         :result-end="descriptionEnd"></search-arguments>
 
-                    <div v-if="['concordance', 'kwic', 'bibliography'].includes(report)">
+                    <div v-if="['concordance', 'kwic', 'bibliography'].includes(formData.report)">
                         <div id="result-stats" class="pb-2">
                             {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
                             <span class="d-inline-flex" style=" align-items: center;" v-if="fieldSummary.length > 0">
@@ -79,7 +79,7 @@
                         </div>
                     </div>
 
-                    <div v-if="report == 'aggregation' && groupByLabel">
+                    <div v-if="formData.report == 'aggregation' && groupByLabel">
                         <div id="result-stats" class="pb-2" v-if="resultsLength > 0">
                             {{
                                 $t("resultsSummary.groupByOccurrences", {
@@ -95,7 +95,7 @@
                     </div>
 
                     <!-- Progress bar section -->
-                    <div v-if="['collocation', 'time_series'].includes(report)">
+                    <div v-if="['collocation', 'time_series'].includes(formData.report)">
                         <div class="progress ms-3 me-3 mb-3" v-if="runningTotal != resultsLength" role="progressbar"
                             :aria-valuenow="Math.floor((runningTotal / resultsLength) * 100)" :aria-valuemax="100"
                             aria-valuemin="0" :aria-label="$t('resultsSummary.progressLabel', {
@@ -115,7 +115,7 @@
                         </div>
 
                         <!-- Collocation filter section -->
-                        <div v-if="report == 'collocation'">
+                        <div v-if="formData.report == 'collocation'">
                             <span>
                                 <span>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
@@ -158,28 +158,30 @@
         </div>
 
         <!-- Report switch buttons and Results per page control -->
-        <div class="mt-4 mb-3" v-if="report == 'concordance' || report == 'kwic'">
+        <div class="mt-4 mb-3" v-if="formData.report == 'concordance' || formData.report == 'kwic'">
             <div class="row d-none d-sm-flex align-items-center"
-                :style="report === 'concordance' ? 'padding-right: 0.5rem' : ''"
-                :class="report === 'kwic' ? 'px-2' : ''">
+                :style="formData.report === 'concordance' ? 'padding-right: 0.5rem' : ''"
+                :class="formData.report === 'kwic' ? 'px-2' : ''">
                 <div class="col-12" :class="showFacets && $philoConfig.facets.length > 0 ?
-                    (report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
+                    (formData.report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
                     <div class="d-flex justify-content-start align-items-center">
-                        <div class="flex-shrink-0" v-if="['concordance', 'kwic'].includes(report)">
+                        <div class="flex-shrink-0" v-if="['concordance', 'kwic'].includes(formData.report)">
                             <div class="btn-group" role="group" id="report_switch"
                                 :aria-label="$t('resultsSummary.reportViewOptions')">
                                 <button type="button" class="btn btn-secondary"
-                                    :class="{ active: report === 'concordance' }" @click="switchReport('concordance')"
+                                    :class="{ active: formData.report === 'concordance' }"
+                                    @click="switchReport('concordance')"
                                     :aria-label="$t('resultsSummary.switchToConcordance')"
-                                    :aria-pressed="report === 'concordance'">
+                                    :aria-pressed="formData.report === 'concordance'">"
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.concordanceBig")
                                     }}</span>
                                     <span class="d-inline d-lg-none">{{
                                         $t("resultsSummary.concordanceSmall") }}</span>
                                 </button>
-                                <button type="button" class="btn btn-secondary" :class="{ active: report === 'kwic' }"
-                                    @click="switchReport('kwic')" :aria-label="$t('resultsSummary.switchToKwic')"
-                                    :aria-pressed="report === 'kwic'">
+                                <button type="button" class="btn btn-secondary"
+                                    :class="{ active: formData.report === 'kwic' }" @click="switchReport('kwic')"
+                                    :aria-label="$t('resultsSummary.switchToKwic')"
+                                    :aria-pressed="formData.report === 'kwic'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.kwicBig") }}</span>
                                     <span class="d-inline d-lg-none">{{ $t("resultsSummary.kwicSmall")
                                     }}</span>
@@ -199,7 +201,7 @@
                                             border-top-left-radius: 0;
                                         " type="button" id="results-per-page-content-toggle" data-bs-toggle="dropdown"
                                         aria-expanded="false">
-                                        {{ results_per_page }}
+                                        {{ formData.results_per_page }}
                                     </button>
                                     <ul class="dropdown-menu" aria-labelledby="results-per-page-content-toggle">
                                         <li v-for="number in resultsPerPageOptions" :key="number">
@@ -218,10 +220,10 @@
             </div>
             <!-- Show facets button row -->
             <div class="row d-none d-sm-flex mt-2" v-if="!showFacets && facets.length > 0"
-                :style="report === 'concordance' ? 'padding-right: 0.5rem' : ''"
-                :class="report === 'kwic' ? 'px-2' : ''">
+                :style="formData.report === 'concordance' ? 'padding-right: 0.5rem' : ''"
+                :class="formData.report === 'kwic' ? 'px-2' : ''">
                 <div class="col-12" :class="showFacets && $philoConfig.facets.length > 0 ?
-                    (report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
+                    (formData.report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
                     <div class="d-flex justify-content-end">
                         <button type="button" class="btn btn-secondary btn-sm" @click="toggleFacets()"
                             :aria-label="$t('common.showFacetsLabel')">
@@ -241,7 +243,8 @@ import ProgressSpinner from "./ProgressSpinner";
 import ResultsBibliography from "./ResultsBibliography";
 import searchArguments from "./SearchArguments";
 
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 
 export default {
     name: "ResultsSummary",
@@ -253,25 +256,21 @@ export default {
     },
     props: ["description", "runningTotal", "filterList", "groupLength"],
     computed: {
-        ...mapFields([
-            "formData.report",
-            "formData.results_per_page",
-            "formData.first_kwic_sorting_option",
-            "formData.second_kwic_sorting_option",
-            "formData.third_kwic_sorting_option",
-            "formData.start",
-            "formData.end",
-            "formData.group_by",
-            "formData.colloc_filter_choice",
-            "formData.filter_frequency",
-            "formData.start_date",
-            "formData.end_date",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "currentReport",
             "resultsLength",
             "aggregationCache",
             "totalResultsDone",
-            "showFacets",
+            "showFacets"
         ]),
+        ...mapStores(useMainStore),
+        colloc_filter_choice() {
+            return this.formData.colloc_filter_choice;
+        },
+        filter_frequency() {
+            return this.formData.filter_frequency;
+        },
         splitFilterList: function () {
             if (!this.filterList || this.filterList.length === 0) {
                 return [];
@@ -288,12 +287,15 @@ export default {
     },
     inject: ["$http"],
     data() {
+        // Access store directly during data() method
+        const store = useMainStore();
+
         return {
             facets: this.$philoConfig.facets,
             fieldSummary: this.$philoConfig.results_summary,
             hits: "",
             descriptionStart: 1,
-            descriptionEnd: this.$store.state.formData.results_per_page,
+            descriptionEnd: store.formData.results_per_page,
             statsDescription: [],
             resultsPerPage: 0,
             hitlistStatsDone: false,
@@ -309,7 +311,7 @@ export default {
     },
     created() {
         this.currentQuery = {
-            ...this.$store.state.formData,
+            ...this.formData,
             start: "",
             end: "",
             first_kwic_sorting_option: "",
@@ -331,9 +333,9 @@ export default {
             }
             this.buildDescription();
             this.updateTotalResults();
-            if (["concordance", "kwic", "bibliography"].includes(this.report)) {
+            if (["concordance", "kwic", "bibliography"].includes(this.formData.report)) {
                 let newQuery = {
-                    ...this.$store.state.formData,
+                    ...this.formData,
                     start: "",
                     end: "",
                     first_kwic_sorting_option: "",
@@ -355,15 +357,15 @@ export default {
                 this.description.start == 0
             ) {
                 start = 1;
-                end = parseInt(this.results_per_page);
+                end = parseInt(this.formData.results_per_page);
             } else {
                 start = this.description.start || this.$route.query.start || 1;
-                end = this.end || parseInt(this.results_per_page);
+                end = this.formData.end || parseInt(this.formData.results_per_page);
             }
             if (end > this.resultsLength) {
                 end = this.resultsLength;
             }
-            let resultsPerPage = parseInt(this.results_per_page);
+            let resultsPerPage = parseInt(this.formData.results_per_page);
             let description;
             if (this.resultsLength && end <= resultsPerPage && end <= this.resultsLength) {
                 this.descriptionStart = start;
@@ -380,9 +382,9 @@ export default {
             return description;
         },
         updateTotalResults() {
-            let params = { ...this.$store.state.formData };
-            if (this.report == "time_series") {
-                params.year = `${this.start_date || this.$philoConfig.time_series_start_end_date.start_date}-${this.end_date || this.$philoConfig.time_series_start_end_date.end_date
+            let params = { ...this.formData };
+            if (this.formData.report == "time_series") {
+                params.year = `${this.formData.start_date || this.$philoConfig.time_series_start_end_date.start_date}-${this.formData.end_date || this.$philoConfig.time_series_start_end_date.end_date
                     }`;
             }
             this.totalResultsDone = false;
@@ -403,7 +405,7 @@ export default {
             this.hitlistStatsDone = false;
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_hitlist_stats.py`, {
-                    params: this.paramsFilter({ ...this.$store.state.formData }),
+                    params: this.paramsFilter({ ...this.formData }),
                 })
                 .then((response) => {
                     this.hitlistStatsDone = true;
@@ -418,7 +420,7 @@ export default {
                         let link = "";
                         if (stat.link_field) {
                             link = this.paramsToUrlString({
-                                ...this.$store.state.formData,
+                                ...this.formData,
                                 report: "aggregation",
                                 start: "",
                                 end: "",
@@ -442,17 +444,17 @@ export default {
                 });
         },
         switchReport(reportName) {
-            this.report = reportName;
+            this.formData.report = reportName;
             this.first_kwic_sorting_option = "";
             this.second_kwic_sorting_option = "";
             this.third_kwic_sorting_option = "";
-            this.results_per_page = 25;
-            this.$router.push(this.paramsToRoute({ ...this.$store.state.formData }));
+            this.formData.results_per_page = 25;
+            this.$router.push(this.paramsToRoute({ ...this.formData }));
         },
         switchResultsPerPage(number) {
-            this.results_per_page = parseInt(number);
+            this.formData.results_per_page = parseInt(number);
             this.$router.push(
-                this.paramsToRoute({ ...this.$store.state.formData, results_per_page: number, start: "1", end: number })
+                this.paramsToRoute({ ...this.formData, results_per_page: number, start: "1", end: number })
             );
         },
         showResultsBiblio() {

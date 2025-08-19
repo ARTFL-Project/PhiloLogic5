@@ -130,7 +130,8 @@
 import { Popover } from "bootstrap";
 import GLightbox from 'glightbox';
 import 'glightbox/dist/css/glightbox.css';
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 
 export default {
@@ -140,17 +141,17 @@ export default {
     },
     inject: ["$http"],
     computed: {
-        ...mapFields({
-            report: "formData.report",
-            start_byte: "formData.start_byte",
-            end_byte: "formData.end_byte",
-            textNavigationCitation: "textNavigationCitation",
-            navBar: "navBar",
-            tocElements: "tocElements",
-            byte: "byte",
-            searching: "searching",
-            accessAuthorized: "accessAuthorized",
-        }),
+        ...mapWritableState(useMainStore, [
+            "formData",
+            "textNavigationCitation",
+            "navBar",
+            "tocElements",
+            "byte",
+            "searching",
+            "accessAuthorized"
+        ]),
+        ...mapStores(useMainStore),
+
         tocElementsToDisplay: function () {
             return this.tocElements.elements.slice(this.start, this.end);
         },
@@ -165,7 +166,9 @@ export default {
         },
     },
     data() {
+        const store = useMainStore();
         return {
+            store,
             philoConfig: this.$philoConfig,
             textObject: {},
             beforeObjImgs: [],
@@ -193,7 +196,7 @@ export default {
         };
     },
     created() {
-        this.report = "textNavigation";
+        this.formData.report = "textNavigation";
         this.fetchToC();
         this.fetchText();
     },
@@ -237,9 +240,9 @@ export default {
                 report: "navigation",
                 philo_id: this.philoID,
             };
-            if (this.start_byte !== "") {
-                navigationParams.start_byte = this.start_byte;
-                navigationParams.end_byte = this.end_byte;
+            if (this.formData.start_byte !== "") {
+                navigationParams.start_byte = this.formData.start_byte;
+                navigationParams.end_byte = this.formData.end_byte;
             }
             let urlQuery = `${byteString}&${this.paramsToUrlString(navigationParams)}`;
             this.timeToRender = new Date().getTime();
@@ -348,7 +351,7 @@ export default {
                                     offset: -150,
                                 });
                             }
-                        } else if (this.start_byte != "") {
+                        } else if (this.formData.start_byte != "") {
                             this.$scrollTo(document.querySelector(".passage-marker"), 250, {
                                 easing: "ease-out",
                                 offset: -150,

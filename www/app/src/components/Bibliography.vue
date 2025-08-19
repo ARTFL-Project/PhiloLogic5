@@ -20,7 +20,7 @@
                                 <div class="col-12 col-sm-10 col-md-11">
                                     <div class="cite" :data-id="result.philo_id.join(' ')">
                                         <span class="number" aria-hidden="true">{{ results.description.start + index
-                                        }}</span>
+                                            }}</span>
                                         <div class="form-check d-inline-block ms-3 me-2" style="vertical-align: middle"
                                             v-if="resultType == 'doc' && philoConfig.metadata.indexOf('title') !== -1">
                                             <input type="checkbox" class="form-check-input"
@@ -53,7 +53,7 @@
                                     <div class="cite" :data-id="result.philo_id.join(' ')"
                                         :id="`dict-citation-${groupKey}-${index}`">
                                         <span class="number" aria-hidden="true">{{ results.description.start + index
-                                        }}</span>
+                                            }}</span>
                                         <citations :citation="result.citation"></citations>
                                     </div>
                                 </header>
@@ -76,8 +76,9 @@
 </template>
 <script>
 import gsap from "gsap";
+import { mapStores, mapWritableState } from "pinia";
 import { computed } from "vue";
-import { mapFields } from "vuex-map-fields";
+import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 import facets from "./Facets";
 import pages from "./Pages";
@@ -92,23 +93,15 @@ export default {
         pages,
     },
     computed: {
-        ...mapFields([
-            "formData.report",
-            "formData.q",
-            "formData.method_arg",
-            "formData.arg_phrase",
-            "formData.method",
-            "formData.start",
-            "formData.end",
-            "formData.approximate",
-            "formData.approximate_ratio",
-            "formData.metadataFields",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "description",
             "currentReport",
             "metadataUpdate",
             "urlUpdate",
-            "showFacets",
+            "showFacets"
         ]),
+        ...mapStores(useMainStore),
     },
     inject: ["$http"],
     provide() {
@@ -125,13 +118,13 @@ export default {
         };
     },
     created() {
-        this.report = "bibliography";
+        this.formData.report = "bibliography";
         this.currentReport = "bibliography";
         this.fetchResults();
     },
     watch: {
         urlUpdate() {
-            if (this.report == "bibliography") {
+            if (this.formData.report == "bibliography") {
                 this.fetchResults();
             }
         },
@@ -139,7 +132,7 @@ export default {
     methods: {
         fetchResults() {
             this.results = {};
-            this.searchParams = { ...this.$store.state.formData };
+            this.searchParams = { ...this.formData };
             this.$http
                 .get(`${this.$dbUrl}/reports/bibliography.py`, {
                     params: this.paramsFilter(this.searchParams),
@@ -186,7 +179,7 @@ export default {
                 this.metadataAddition.splice(itemIndex, 1);
             }
             let newTitleValue = this.metadataAddition.join(" | ");
-            this.$store.commit("updateFormDataField", {
+            this.mainStore.updateFormDataField({
                 key: "title",
                 value: newTitleValue,
             });

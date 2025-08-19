@@ -58,8 +58,9 @@
 
 <script>
 import gsap from "gsap";
+import { mapStores, mapWritableState } from "pinia";
 import { computed } from "vue";
-import { mapFields } from "vuex-map-fields";
+import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 import facets from "./Facets";
 import pages from "./Pages";
@@ -80,15 +81,16 @@ export default {
         };
     },
     computed: {
-        ...mapFields([
-            "formData.report",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "resultsLength",
             "searching",
             "currentReport",
             "description",
             "showFacets",
-            "urlUpdate",
+            "urlUpdate"
         ]),
+        ...mapStores(useMainStore),
     },
     data() {
         return {
@@ -100,13 +102,13 @@ export default {
         };
     },
     created() {
-        this.report = "concordance";
+        this.formData.report = "concordance";
         this.currentReport = "concordance";
         this.fetchResults();
     },
     watch: {
         urlUpdate() {
-            if (this.report == "concordance") {
+            if (this.formData.report == "concordance") {
                 this.fetchResults();
             }
         },
@@ -114,7 +116,7 @@ export default {
     methods: {
         fetchResults() {
             this.results = { description: { end: 0 } };
-            this.searchParams = { ...this.$store.state.formData };
+            this.searchParams = { ...this.formData };
             this.searching = true;
             this.$http
                 .get(`${this.$dbUrl}/reports/concordance.py`, {
@@ -122,7 +124,7 @@ export default {
                 })
                 .then((response) => {
                     this.results = response.data;
-                    this.$store.commit("updateResultsLength", parseInt(response.data.results_length));
+                    this.mainStore.updateResultsLength(parseInt(response.data.results_length));
                     this.searching = false;
                 })
                 .catch((error) => {

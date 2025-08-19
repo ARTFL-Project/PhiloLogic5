@@ -6,7 +6,7 @@
                 <div id="form-body">
                     <div id="initial-form">
                         <div class="btn-group" role="group" id="report" style="width: 100%; top: -1px">
-                            <button type="button" :id="report" v-for="searchReport in reports"
+                            <button type="button" :id="formData.report" v-for="searchReport in reports"
                                 @click="reportChange(searchReport)" :key="searchReport"
                                 class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }">
                                 <span v-if="searchReport != 'kwic'">{{ $t(`searchForm.${searchReport}`) }}</span>
@@ -107,8 +107,8 @@
                                 </div>
 
                                 <select class="form-select form-select-sm d-inline-block"
-                                    style="max-width: fit-content; margin-left: 0.5rem" v-model="approximate_ratio"
-                                    :disabled="!approximateSelected"
+                                    style="max-width: fit-content; margin-left: 0.5rem"
+                                    v-model="formData.approximate_ratio" :disabled="!approximateSelected"
                                     :aria-label="$t('searchForm.approximateMatchLabel')">
                                     <option v-for="value in approximateValues" :key="value.value" :value="value.value">
                                         {{ value.text }}
@@ -125,21 +125,22 @@
                                 <div class="input-group mb-4" v-if="currentReport != 'collocation'">
                                     <button class="btn btn-outline-secondary" type="button">
                                         {{ $t("searchForm.searchCoOccurrences") }}</button><select class="form-select"
-                                        style="width: fit-content; max-width: fit-content" v-model="method"
+                                        style="width: fit-content; max-width: fit-content" v-model="formData.method"
                                         :aria-label="$t('searchForm.coOccurrenceMethodLabel')">
                                         <option v-for="value in methodOptions" :key="value.value" :value="value.value">
                                             {{ value.text }}
                                         </option>
                                     </select>
                                     <button class="btn btn-outline-secondary" type="button" id="method-arg-label"
-                                        v-if="method == 'proxy' || method == 'exact_cooc'">
+                                        v-if="formData.method == 'proxy' || formData.method == 'exact_cooc'">
                                         {{ $t("searchForm.howMany") }}?
                                     </button>
                                     <input class="form-control" type="text" name="method_arg" id="method-arg"
                                         aria-labelledby="method-arg-label"
-                                        v-if="method == 'proxy' || method == 'exact_cooc'" v-model="method_arg" />
+                                        v-if="formData.method == 'proxy' || formData.method == 'exact_cooc'"
+                                        v-model="formData.method_arg" />
                                     <span class="input-group-text ms-0"
-                                        v-if="method == 'proxy' || method == 'exact_cooc'">{{
+                                        v-if="formData.method == 'proxy' || formData.method == 'exact_cooc'">{{
                                             $t("searchForm.wordsSentence") }}</span>
                                 </div>
                                 <div class="mt-1" id="collocation-params" v-if="currentReport == 'collocation'"
@@ -147,19 +148,19 @@
                                     <h2 id="collocation-params-heading">{{ $t("searchForm.collocationParams") }}:</h2>
                                     <div class="form-check">
                                         <input class="form-check-input" type="radio" name="colloc_within"
-                                            id="collocSentence" value="sent" checked v-model="colloc_within">
+                                            id="collocSentence" value="sent" checked v-model="formData.colloc_within">
                                         <label class="form-check-label" for="collocSentence">
                                             {{ $t("searchForm.collocatesWithinSentence") }}
                                         </label>
                                     </div>
                                     <div class="form-check mt-1">
                                         <input class="form-check-input" type="radio" name="colloc_within"
-                                            id="collocWithinN" value="n" v-model="colloc_within">
+                                            id="collocWithinN" value="n" v-model="formData.colloc_within">
                                         <label class="form-check-label" for="collocWithinN">
                                             {{ $t("searchForm.collocatesWithin") }} <input type="number"
                                                 name="method_arg" class="form-control form-control-sm" id="collocNWords"
                                                 :aria-label="$t('searchForm.collocNWordsLabel')" style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
-min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("searchForm.words") }}
+min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{ $t("searchForm.words") }}
                                         </label>
                                     </div>
                                     <div class="mt-2">
@@ -223,7 +224,8 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                                 {{ $t("searchForm.wordFiltering") }}
                                             </button>
                                             <input type="text" class="form-control d-inline-block" id="filter-frequency"
-                                                name="filter_frequency" placeholder="100" v-model="filter_frequency"
+                                                name="filter_frequency" placeholder="100"
+                                                v-model="formData.filter_frequency"
                                                 aria-labelledby="filter-frequency-label"
                                                 style="width: 60px; text-align: center" />
                                         </div>
@@ -359,11 +361,11 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                     <label for="start_date" class="d-inline-flex align-self-center mx-2">{{
                                         $t("searchForm.dateFrom") }}</label>
                                     <input type="text" class="form-control" name="start_date" id="start_date"
-                                        style="max-width: 65px; text-align: center" v-model="start_date" />
+                                        style="max-width: 65px; text-align: center" v-model="formData.start_date" />
                                     <label for="end_date" class="d-inline-flex align-self-center mx-2">{{
                                         $t("searchForm.dateTo") }}</label>
                                     <input type="text" class="form-control" name="end_date" id="end_date"
-                                        style="max-width: 65px; text-align: center" v-model="end_date" />
+                                        style="max-width: 65px; text-align: center" v-model="formData.end_date" />
                                 </div>
                                 <div class="input-group" v-if="currentReport == 'time_series'">
                                     <button class="btn btn-outline-secondary" id="year-interval-label">
@@ -373,7 +375,7 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                         }}</span>
                                     <input type="text" class="form-control" name="year_interval" id="year_interval"
                                         aria-labelledby="year-interval-label"
-                                        style="max-width: 50px; text-align: center" v-model="year_interval" />
+                                        style="max-width: 50px; text-align: center" v-model="formData.year_interval" />
                                     <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years")
                                         }}</span>
                                 </div>
@@ -381,7 +383,7 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                     <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy")
                                         }}</button>
                                     <select class="form-select" :aria-label="$t('searchForm.groupResultsByLabel')"
-                                        style="max-width: fit-content" v-model="group_by">
+                                        style="max-width: fit-content" v-model="formData.group_by">
                                         <option v-for="aggregationOption in aggregationOptions"
                                             :key="aggregationOption.text" :value="aggregationOption.value">
                                             {{ aggregationOption.text }}
@@ -398,7 +400,8 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
                                         <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy")
                                             }}</button>
                                         <select class="form-select" style="max-width: fit-content"
-                                            :aria-label="$t('searchForm.sortResultsByLabel')" v-model="sort_by">
+                                            :aria-label="$t('searchForm.sortResultsByLabel')"
+                                            v-model="formData.sort_by">
                                             <option v-for="sortValue in sortValues" :key="sortValue.value"
                                                 :value="sortValue.value">
                                                 {{ sortValue.text }}
@@ -426,7 +429,8 @@ min-height: initial; min-height: fit-content;" v-model="method_arg"> {{ $t("sear
 </template>
 
 <script>
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 import SearchTips from "./SearchTips";
 export default {
     name: "SearchForm",
@@ -435,34 +439,19 @@ export default {
     },
     inject: ["$http"],
     computed: {
-        ...mapFields([
-            "formData.report",
-            "formData.q",
-            "formData.colloc_filter_choice",
-            "formData.filter_frequency",
-            "formData.approximate",
-            "formData.approximate_ratio",
-            "formData.method",
-            "formData.method_arg",
-            "formData.start_date",
-            "formData.end_date",
-            "formData.year_interval",
-            "formData.sort_by",
-            "formData.results_per_page",
-            "formData.start",
-            "formData.end",
-            "formData.byte",
-            "formData.group_by",
-            "formData.colloc_within",
-            "formData.cooc_order",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "searching",
             "currentReport",
             "metadataUpdate",
             "searchableMetadata"
         ]),
-        formData() {
-            return this.$store.state.formData;
+        ...mapStores(useMainStore),
+
+        statFieldSelected() {
+            return this.getLoadedStatField();
         },
+
         sortValues() {
             let sortValues = [
                 {
@@ -504,6 +493,9 @@ export default {
         },
     },
     data() {
+        // Access store directly during data() method
+        const store = useMainStore();
+
         return {
             dictionary: this.$philoConfig.dictionary,
             metadataInputStyle: this.$philoConfig.metadata_input_style,
@@ -534,7 +526,6 @@ export default {
                 text: this.$philoConfig.metadata_aliases[f.field] || f.field.charAt(0).toUpperCase() + f.field.slice(1),
                 value: f.field,
             })),
-            statFieldSelected: this.getLoadedStatField(),
             autoCompleteResults: {
                 q: "",
                 ...Object.fromEntries(this.$philoConfig.metadata.map((field) => [field, []])),
@@ -542,7 +533,7 @@ export default {
             arrowCounters: { q: -1 },
             isOpen: false,
             showTips: false,
-            queryTermTyped: this.$route.query.q || this.q || "",
+            queryTermTyped: this.$route.query.q || store.formData.q || "",
             metadataTyped: {},
             dateType: {},
             dateRange: {},
@@ -572,24 +563,24 @@ export default {
             }
         },
         coocOrder(newValue) {
-            this.$store.commit("updateFormDataField", {
+            this.mainStore.updateFormDataField({
                 key: "cooc_order",
                 value: newValue ? "yes" : "no"
             });
         },
-        cooc_order: {
+        'formData.cooc_order': {
             immediate: true,
             handler(newValue) {
                 this.coocOrder = newValue === "yes";
             }
         },
         approximateSelected(newValue) {
-            this.$store.commit("updateFormDataField", {
+            this.mainStore.updateFormDataField({
                 key: "approximate",
                 value: newValue ? "yes" : "no"
             });
         },
-        approximate: {
+        'formData.approximate': {
             immediate: true,
             handler(newValue) {
                 this.approximateSelected = newValue === "yes";
@@ -656,9 +647,9 @@ export default {
             // let attributeSelected = Object.keys(this.$philoConfig.word_attributes)[0];
             // this.attributeSelected = this.$philoConfig.word_property_aliases[attributeSelected] || attributeSelected;
         }
-        if (this.colloc_filter_choice.length > 0) {
+        if (this.formData.colloc_filter_choice && this.formData.colloc_filter_choice.length > 0) {
             for (let collocFilter of this.collocationOptions) {
-                if (collocFilter.value == this.colloc_filter_choice) {
+                if (collocFilter.value == this.formData.colloc_filter_choice) {
                     this.collocFilteringSelected = collocFilter;
                     if (this.collocFilteringSelected.value == "attribute") {
                         this.attributeSelected = this.$philoConfig.word_property_aliases[this.$route.query.q_attribute] || this.$route.query.q_attribute;
@@ -678,11 +669,17 @@ export default {
         this.searchableMetadata = { display: this.metadataDisplay, choiceValues: this.metadataChoiceValues, inputStyle: this.metadataInputStyle };
     },
     mounted() {
+
+        // Initialize queryTermTyped with formData.q if it's not already set from route
+        if (!this.queryTermTyped && this.formData?.q) {
+            this.queryTermTyped = this.formData.q;
+        }
+
         this.$nextTick(() => {
             document.getElementById("form-body").addEventListener("change", (event) => {
                 if (event.target.id in this.$philoConfig.metadata_choice_values) {
                     let value = event.target.options[document.getElementById(event.target.id).selectedIndex].value;
-                    this.$store.commit("updateFormDataField", {
+                    this.mainStore.updateFormDataField({
                         key: event.target.id,
                         value: value,
                     });
@@ -700,13 +697,19 @@ export default {
         toggleApproximate() {
             this.approximateSelected = !this.approximateSelected;
             if (!this.approximateSelected) {
-                this.approximate_ratio = "";
+                this.mainStore.updateFormDataField({
+                    key: "approximate_ratio",
+                    value: ""
+                });
             } else {
-                this.approximate_ratio = "90";
+                this.mainStore.updateFormDataField({
+                    key: "approximate_ratio",
+                    value: "90"
+                });
             }
         },
         updateInputData() {
-            this.queryTermTyped = this.q;
+            this.queryTermTyped = this.formData.q || "";
             for (let field of this.$philoConfig.metadata) {
                 if (this.$philoConfig.metadata_input_style[field] == "text") {
                     this.metadataValues[field] = this.formData[field];
@@ -718,16 +721,19 @@ export default {
             }
         },
         getLoadedStatField() {
-            let queryParam = this.$store.state.formData.group_by;
+            console.log("DEBUG: formData in getLoadedStatField:", this.formData);
+            console.log("DEBUG: formData.group_by:", this.formData?.group_by);
+            let queryParam = this.formData?.group_by;
             if (queryParam) {
                 return (
                     this.$philoConfig.metadata_aliases[queryParam] ||
                     queryParam.charAt(0).toUpperCase() + queryParam.slice(1)
                 );
             }
+            return "";
         },
         onSubmit() {
-            this.report = this.currentReport;
+            this.formData.report = this.currentReport;
             this.formOpen = false;
             let metadataChoices = Object.fromEntries(
                 Object.entries(this.metadataChoiceChecked).map(([key, val]) => [key, val.join(" | ")])
@@ -737,18 +743,24 @@ export default {
             );
             this.metadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.metadataValues)
             this.clearAutoCompletePopup();
-            if (this.currentReport == 'collocation' && this.colloc_within == "sent") {
-                this.method_arg = "";
+            if (this.currentReport == 'collocation' && this.formData.colloc_within == "sent") {
+                this.mainStore.updateFormDataField({
+                    key: "method_arg",
+                    value: ""
+                });
             }
-            this.colloc_filter_choice = this.collocFilteringSelected.value;
-            if (this.colloc_filter_choice == "frequency" || this.colloc_filter_choice == "stopwords") {
+            this.mainStore.updateFormDataField({
+                key: "colloc_filter_choice",
+                value: this.collocFilteringSelected.value
+            });
+            if (this.formData.colloc_filter_choice == "frequency" || this.formData.colloc_filter_choice == "stopwords") {
                 this.attributeSelected = "";
                 this.wordAttributeSelected = "";
             }
 
             this.$router.push(
                 this.paramsToRoute({
-                    ...this.$store.state.formData,
+                    ...this.formData,
                     ...this.metadataValues,
                     ...metadataChoices,
                     ...metadataSelected,
@@ -756,16 +768,16 @@ export default {
                     start: "",
                     end: "",
                     byte: "",
-                    start_date: this.start_date,
-                    end_date: this.end_date,
+                    start_date: this.formData.start_date,
+                    end_date: this.formData.end_date,
                     q_attribute: this.attributeSelected,
                     q_attribute_value: this.wordAttributeSelected,
-                    method_arg: this.method_arg
+                    method_arg: this.formData.method_arg
                 })
             );
         },
         onReset() {
-            this.$store.commit("setDefaultFields", this.$parent.defaultFieldValues);
+            this.mainStore.setDefaultFields(this.$parent.defaultFieldValues);
             for (let field of this.$philoConfig.metadata) {
                 this.metadataValues[field] = "";
             }
@@ -782,15 +794,26 @@ export default {
         },
         reportChange(report) {
             if (report === "landing_page") {
-                this.report = this.$philoConfig.search_reports[0];
-            } else if (report === "collocation") {
+                this.formData.report = this.$philoConfig.search_reports[0];
+            } else {
+                this.formData.report = report;
+            }
+
+            if (report === "collocation") {
                 if (this.$philoConfig.stopwords.length > 0) {
-                    this.colloc_filter_choice = "stopwords";
+                    this.mainStore.updateFormDataField({
+                        key: "colloc_filter_choice",
+                        value: "stopwords"
+                    });
                 } else {
-                    this.colloc_filter_choice = "frequency";
+                    this.mainStore.updateFormDataField({
+                        key: "colloc_filter_choice",
+                        value: "frequency"
+                    });
                 }
             }
             this.currentReport = report;
+
             if (!this.formOpen) {
                 this.toggleForm();
             }
@@ -804,7 +827,10 @@ export default {
         },
         clearFormData() { },
         selectApproximate(approximateValue) {
-            this.approximate_ratio = approximateValue;
+            this.mainStore.updateFormDataField({
+                key: "approximate_ratio",
+                value: approximateValue
+            });
         },
         onChange(field) {
             if (this.$philoConfig.autocomplete.includes(field)) {
@@ -916,7 +942,7 @@ export default {
                     }
                     let finalInput = `${prefix}"${lastInput}"`;
                     this.metadataValues[field] = finalInput;
-                    this.$store.commit("updateFormDataField", {
+                    this.mainStore.updateFormDataField({
                         key: field,
                         value: finalInput,
                     });

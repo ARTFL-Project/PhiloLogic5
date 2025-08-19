@@ -70,7 +70,8 @@
     </div>
 </template>
 <script>
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 import ResultsSummary from "./ResultsSummary";
 
@@ -84,14 +85,15 @@ export default {
         };
     },
     computed: {
-        ...mapFields([
-            "formData.report",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "resultsLength",
             "aggregationCache",
             "searching",
             "currentReport",
-            "urlUpdate",
+            "urlUpdate"
         ]),
+        ...mapStores(useMainStore),
         statsConfig() {
             for (let fieldObject of this.$philoConfig.aggregation_config) {
                 if (fieldObject.field == this.$route.query.group_by) {
@@ -113,13 +115,13 @@ export default {
         };
     },
     created() {
-        this.report = "aggregation";
+        this.formData.report = "aggregation";
         this.currentReport = "aggregation";
         this.fetchResults();
     },
     watch: {
         urlUpdate() {
-            if (this.report == "aggregation") {
+            if (this.formData.report == "aggregation") {
                 this.groupedByField = this.$route.query.group_by;
                 this.fetchResults();
             }
@@ -144,7 +146,7 @@ export default {
                 this.$http
                     .get(`${this.$dbUrl}/reports/aggregation.py`, {
                         params: this.paramsFilter({
-                            ...this.$store.state.formData,
+                            ...this.formData,
                         }),
                     })
                     .then((response) => {
@@ -200,7 +202,7 @@ export default {
                 }
                 if (citation["field"] == fieldToLink) {
                     let queryParams = {
-                        ...this.$store.state.formData,
+                        ...this.formData,
                         start: "0",
                         end: "25",
                     };

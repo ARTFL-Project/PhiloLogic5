@@ -176,7 +176,7 @@
                 </div>
                 <span class="ms-2">{{ $t("collocation.mostSimilarUsage") }}</span>
 
-                <bibliography-criteria class="ms-2 mt-2" :biblio="biblio" :query-report="report"
+                <bibliography-criteria class="ms-2 mt-2" :biblio="biblio" :query-report="formData.report"
                     :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
             </div>
 
@@ -188,7 +188,7 @@
             </div>
         </div>
         <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'timeSeries'">
-            <bibliography-criteria :biblio="biblio" :query-report="report"
+            <bibliography-criteria :biblio="biblio" :query-report="formData.report"
                 :results-length="resultsLength"></bibliography-criteria>
             <div class="input-group mt-2">
                 <button class="btn btn-outline-secondary">
@@ -241,11 +241,11 @@
             <div class="card shadow-sm mx-2 my-3 p-2" v-if="comparativeSearchStarted">
                 <div class="row mt-2">
                     <div class="col-6">
-                        <bibliography-criteria :biblio="biblio" :query-report="report"
+                        <bibliography-criteria :biblio="biblio" :query-report="formData.report"
                             :results-length="resultsLength"></bibliography-criteria>
                     </div>
                     <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                        <bibliography-criteria :biblio="otherBiblio" :query-report="report"
+                        <bibliography-criteria :biblio="otherBiblio" :query-report="formData.report"
                             :results-length="resultsLength"></bibliography-criteria>
                     </div>
                 </div>
@@ -414,7 +414,8 @@
 
 <script>
 import { Collapse } from "bootstrap";
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 import BibliographyCriteria from "./BibliographyCriteria";
 import ProgressSpinner from "./ProgressSpinner";
 import ResultsSummary from "./ResultsSummary";
@@ -426,15 +427,8 @@ export default {
         ResultsSummary, WordCloud, BibliographyCriteria, ProgressSpinner
     },
     computed: {
-        ...mapFields([
-            "formData.report",
-            "formData.colloc_filter_choice",
-            "formData.q",
-            "formData.filter_frequency",
-            "formData.method_arg",
-            "formData.colloc_within",
-            "formData.q_attribute",
-            "formData.q_attribute_value",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "currentReport",
             "resultsLength",
             "searching",
@@ -442,9 +436,7 @@ export default {
             "accessAuthorized",
             "searchableMetadata"
         ]),
-        formData() {
-            return this.$store.state.formData;
-        },
+        ...mapStores(useMainStore),
         fieldsToCompare() {
             let fields = []
             for (let field of this.philoConfig.collocation_fields_to_compare) {
@@ -505,7 +497,7 @@ export default {
         };
     },
     created() {
-        this.report = "collocation";
+        this.formData.report = "collocation";
         this.currentReport = "collocation";
         this.fetchResults();
         this.buildMetadata(this.searchableMetadata);
@@ -527,7 +519,7 @@ export default {
     },
     methods: {
         fetchResults() {
-            this.localFormData = this.copyObject(this.$store.state.formData);
+            this.localFormData = this.copyObject(this.formData);
             this.searching = true;
             this.relativeFrequencies = {};
             this.collocMethod = "frequency"
@@ -552,7 +544,7 @@ export default {
         },
         updateCollocation(fullResults, start) {
             let params = {
-                ...this.$store.state.formData,
+                ...this.formData,
                 start: start.toString(),
                 max_time: 2
             };
@@ -591,24 +583,24 @@ export default {
         collocateCleanup(collocate) {
             let q
             if (collocate.surfaceForm.startsWith("lemma:")) {
-                q = `${this.q} ${collocate.surfaceForm}`;
+                q = `${this.formData.q} ${collocate.surfaceForm}`;
             } else if (collocate.surfaceForm.search(/\w+:.*/) != -1) {
-                q = `${this.q} ${collocate.surfaceForm}`;
+                q = `${this.formData.q} ${collocate.surfaceForm}`;
             }
             else {
-                q = `${this.q} "${collocate.surfaceForm}"`;
+                q = `${this.formData.q} "${collocate.surfaceForm}"`;
             }
             return q
         },
         collocateClick(item) {
             let q = this.collocateCleanup(item)
             let method = "sentence"
-            if (this.colloc_within == "n") {
+            if (this.formData.colloc_within == "n") {
                 method = "proxy"
             }
             this.$router.push(
                 this.paramsToRoute({
-                    ...this.$store.state.formData,
+                    ...this.formData,
                     report: "concordance",
                     q: q,
                     method: method,
@@ -619,7 +611,7 @@ export default {
         otherCollocateClick(item) {
             let q = this.collocateCleanup(item)
             let method = "sentence"
-            if (this.colloc_within == "n") {
+            if (this.formData.colloc_within == "n") {
                 method = "proxy"
             }
             this.$router.push(
@@ -668,12 +660,12 @@ export default {
             this.collocMethod = 'compare';
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             let params = {
-                q: this.q,
-                colloc_filter_choice: this.colloc_filter_choice,
-                colloc_within: this.colloc_within,
-                filter_frequency: this.filter_frequency,
-                q_attribute: this.q_attribute || "",
-                q_attribute_value: this.q_attribute_value || "",
+                q: this.formData.q,
+                colloc_filter_choice: this.formData.colloc_filter_choice,
+                colloc_within: this.formData.colloc_within,
+                filter_frequency: this.formData.filter_frequency,
+                q_attribute: this.formData.q_attribute || "",
+                q_attribute_value: this.formData.q_attribute_value || "",
                 ...this.comparedMetadataValues,
                 start: start.toString(),
             };
@@ -751,13 +743,13 @@ export default {
                     current_collocates: [],
                 }, {
                     params: {
-                        q: this.q, start: start.toString(),
-                        colloc_filter_choice: this.colloc_filter_choice,
-                        colloc_within: this.colloc_within,
-                        filter_frequency: this.filter_frequency,
+                        q: this.formData.q, start: start.toString(),
+                        colloc_filter_choice: this.formData.colloc_filter_choice,
+                        colloc_within: this.formData.colloc_within,
+                        filter_frequency: this.formData.filter_frequency,
                         map_field: field.value,
-                        q_attribute: this.q_attribute || "",
-                        q_attribute_value: this.q_attribute_value || "",
+                        q_attribute: this.formData.q_attribute || "",
+                        q_attribute_value: this.formData.q_attribute_value || "",
                         first: first,
                         max_time: 2
                     }
@@ -813,7 +805,7 @@ export default {
             this.searching = true
             const interval = parseInt(this.timeSeriesInterval)
             let params = {
-                ...this.$store.state.formData,
+                ...this.formData,
                 max_time: 2,
                 time_series_interval: interval,
                 map_field: "year",
@@ -912,12 +904,12 @@ export default {
             let localClick = (item) => {
                 let q = this.collocateCleanup(item)
                 let method = "sentence_unordered"
-                if (this.colloc_within == "n") {
+                if (this.formData.colloc_within == "n") {
                     method = "proxy_unordered"
                 }
                 this.$router.push(
                     this.paramsToRoute({
-                        ...this.$store.state.formData,
+                        ...this.formData,
                         report: "concordance",
                         q: q,
                         method: method,

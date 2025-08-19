@@ -137,7 +137,8 @@
     </div>
 </template>
 <script>
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 
 export default {
@@ -145,10 +146,15 @@ export default {
     components: {
         citations,
     },
-    computed: { ...mapFields(["accessAuthorized"]) },
+    computed: {
+        ...mapWritableState(useMainStore, ["formData", "accessAuthorized"]),
+        ...mapStores(useMainStore)
+    },
     inject: ["$http"],
     data() {
+        const store = useMainStore();
         return {
+            store,
             dictionary: this.$philoConfig.dictionary,
             logo: this.$philoConfig.logo,
             landingPageBrowsing: this.$philoConfig.landing_page_browsing,
@@ -271,7 +277,7 @@ export default {
                         citationObject.push({ ...citation, href: link, label: metadataFields.title });
                     } else {
                         let queryParams = {
-                            ...this.$store.state.formData,
+                            ...this.formData,
                             start: "0",
                             end: "25",
                         };

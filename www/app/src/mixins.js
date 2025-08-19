@@ -1,11 +1,12 @@
+import { useMainStore } from "./stores/main";
+
 export function paramsFilter(formValues) {
     let localFormData = {};
     let validFields = [];
-    if (
-        "report" in formValues &&
-        formValues.report in this.$store.state.reportValues
-    ) {
-        validFields = this.$store.state.reportValues[formValues.report];
+    const store = useMainStore();
+
+    if ("report" in formValues && formValues.report in store.reportValues) {
+        validFields = store.reportValues[formValues.report];
     } else {
         validFields = new Set(Object.keys(formValues));
     }
@@ -20,7 +21,10 @@ export function paramsFilter(formValues) {
         if (!validFields.has(field)) {
             continue;
         }
-        if (value.length > 0 || field === "results_per_page") {
+        if (
+            (value !== undefined && value !== null && value.length > 0) ||
+            field === "results_per_page"
+        ) {
             if (
                 (field === "method" && value === "proxy") ||
                 (field === "approximate" && value == "no") ||
@@ -49,7 +53,7 @@ export function paramsFilter(formValues) {
 export function paramsToRoute(formValues) {
     let report;
     if (
-        formValues.q.length == 0 &&
+        (!formValues.q || formValues.q.length == 0) &&
         !["bibliography", "aggregation", "time_series"].includes(
             formValues.report
         )

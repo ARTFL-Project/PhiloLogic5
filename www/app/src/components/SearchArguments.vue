@@ -5,15 +5,15 @@
                 {{ $t("searchArgs.searchingDbFor") }}
                 <span v-if="exactPhrase">
                     {{ $t("searchArgs.exactPhrase") }}<button
-                        class="btn rounded-pill btn-outline-secondary btn-sm ms-1">{{ q
+                        class="btn rounded-pill btn-outline-secondary btn-sm ms-1">{{ formData.q
                         }}</button>
                 </span>
                 <span v-else>
-                    <span v-if="approximate == 'yes'">
+                    <span v-if="formData.approximate == 'yes'">
                         {{ $t("searchArgs.termsSimilarTo") }} <b>{{ currentWordQuery }}</b>:
                     </span>
                     <span v-else>{{ $t("searchArgs.terms") }}&nbsp;</span>
-                    <span v-if="approximate.length == 0 || approximate == 'no'"></span>
+                    <span v-if="formData.approximate.length == 0 || formData.approximate == 'no'"></span>
 
                     <div class="term-groups-container" v-for="(group, index) in wordGroups" :key="index">
                         <button type="button" class="term-group-word" @click="getQueryTerms(group, index)"
@@ -58,7 +58,7 @@
             </div>
             <div v-else>
                 {{ $t("searchArgs.searchingCollocates") }} <b>{{ currentWordQuery }}</b>&nbsp;
-                <span v-if="colloc_within == 'sent'">
+                <span v-if="formData.colloc_within == 'sent'">
                     {{ $t("searchArgs.sameSentence") }}
                 </span>
                 <span v-else>
@@ -72,14 +72,16 @@
             </div>
         </div>
         <bibliography-criteria :biblio="queryArgs.biblio" :queryReport="queryReport" :resultsLength="resultsLength"
-            :start_date="start_date" :end_date="end_date" :removeMetadata="removeMetadata"></bibliography-criteria>
+            :start_date="formData.start_date" :end_date="formData.end_date"
+            :removeMetadata="removeMetadata"></bibliography-criteria>
         <div style="margin-top: 10px" v-if="queryReport === 'collocation'">
             {{ $t("searchArgs.collocOccurrences", { n: resultsLength }) }}
         </div>
     </div>
 </template>
 <script>
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 import BibliographyCriteria from "./BibliographyCriteria";
 
 export default {
@@ -89,30 +91,13 @@ export default {
     },
     props: ["resultStart", "resultEnd"],
     computed: {
-        ...mapFields([
-            "formData.report",
-            "formData.q",
-            "formData.method_arg",
-            "formData.arg_phrase",
-            "formData.method",
-            "formData.start",
-            "formData.end",
-            "formData.approximate",
-            "formData.approximate_ratio",
-            "formData.metadataFields",
-            "formData.start_date",
-            "formData.end_date",
-            "formData.colloc_within",
-            "formData.colloc_filter_choice",
-            "formData.q_attribute",
-            "formData.q_attribute_value",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "currentReport",
             "resultsLength",
-            "description",
+            "description"
         ]),
-        formData() {
-            return this.$store.state.formData;
-        },
+        ...mapStores(useMainStore),
         wordGroups() {
             return this.description.termGroups;
         },
@@ -127,8 +112,8 @@ export default {
             }
         },
         exactPhrase() {
-            let querySplit = this.q.split(" ");
-            if (this.q.split('"').length - 1 == 2 && querySplit.length > 1) {
+            let querySplit = this.formData.q.split(" ");
+            if (this.formData.q.split('"').length - 1 == 2 && querySplit.length > 1) {
                 let lastWord = querySplit.pop();
                 let firstWord = querySplit.shift();
                 if (firstWord.startsWith('"') && lastWord.endsWith('"')) {
@@ -163,7 +148,7 @@ export default {
         fetchSearchArgs() {
             this.queryReport = this.$route.name;
             this.currentWordQuery = typeof this.$route.query.q == "undefined" ? "" : this.$route.query.q;
-            let queryParams = { ...this.$store.state.formData };
+            let queryParams = { ...this.formData };
             if ("q" in queryParams) {
                 this.queryArgs.queryTerm = queryParams.q;
             } else {
@@ -207,10 +192,10 @@ export default {
             }
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_term_groups.py`, {
-                    params: this.paramsFilter({ report: this.report, ...this.$route.query }),
+                    params: this.paramsFilter({ report: this.formData.report, ...this.$route.query }),
                 })
                 .then((response) => {
-                    this.$store.commit("updateDescription", {
+                    this.mainStore.updateDescription({
                         ...this.description,
                         start: this.resultStart,
                         end: this.resultEnd,
@@ -227,15 +212,15 @@ export default {
         },
         proximity() {
             return this.$t("searchArgs.withinProximity", {
-                n: this.method_arg,
+                n: this.formData.method_arg,
             });
         },
         removeMetadata(metadata) {
-            if (this.q.length == 0 && this.currentReport != "aggregation") {
-                this.report = "bibliography";
+            if (this.formData.q.length == 0 && this.currentReport != "aggregation") {
+                this.formData.report = "bibliography";
             }
-            this.start = "";
-            this.end = "";
+            this.formData.start = "";
+            this.formData.end = "";
             let localParams = this.copyObject(this.formData);
             localParams[metadata] = "";
             this.$router.push(this.paramsToRoute(localParams));
@@ -275,32 +260,32 @@ export default {
             } else {
                 this.termGroupsCopy[groupIndex] += " NOT " + word.trim();
             }
-            this.q = this.termGroupsCopy.join(" ");
-            this.approximate = "no";
-            this.approximate_ratio = "";
+            this.formData.q = this.termGroupsCopy.join(" ");
+            this.formData.approximate = "no";
+            this.formData.approximate_ratio = "";
         },
         rerunQuery() {
-            this.$router.push(this.paramsToRoute({ ...this.$store.state.formData, q: this.q }));
+            this.$router.push(this.paramsToRoute({ ...this.formData, q: this.formData.q }));
         },
         removeTerm(index) {
             let queryTermGroup = this.copyObject(this.description.termGroups);
             queryTermGroup.splice(index, 1);
-            this.q = queryTermGroup.join(" ");
+            this.formData.q = queryTermGroup.join(" ");
             if (queryTermGroup.length === 0 && this.currentReport != "aggregation") {
-                this.report = "bibliography";
+                this.formData.report = "bibliography";
             }
-            this.start = 0;
-            this.end = 0;
+            this.formData.start = 0;
+            this.formData.end = 0;
             if (queryTermGroup.length == 1) {
-                this.method = "proxy";
-                this.method_arg = "";
-                this.arg_phrase = "";
+                this.formData.method = "proxy";
+                this.formData.method_arg = "";
+                this.formData.arg_phrase = "";
             }
-            this.$store.commit("updateDescription", {
+            this.mainStore.updateDescription({
                 ...this.description,
                 termGroups: queryTermGroup,
             });
-            this.$router.push(this.paramsToRoute({ ...this.$store.state.formData }));
+            this.$router.push(this.paramsToRoute({ ...this.formData }));
         },
     },
 };

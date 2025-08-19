@@ -10,7 +10,7 @@
             <div class="modal-body">
                 <div id="results-bibliography" role="list">
                     <router-link v-for="(result, resultIndex) in uniquedResults" :key="resultIndex"
-                        :to="`/${report}?${buildLink(result.metadata_fields.title)}`" class="result-card-link"
+                        :to="`/${formData.report}?${buildLink(result.metadata_fields.title)}`" class="result-card-link"
                         role="listitem" :aria-label="$t('resultsBiblio.viewOccurrences', {
                             count: result.count,
                             title: result.metadata_fields.title || 'Unknown title'
@@ -25,7 +25,7 @@
                                 </div>
                                 <div class="occurrence-badge">
                                     <span class="occurrence-count">{{ result.count }} {{ $t("resultsBiblio.occurrences")
-                                    }}</span>
+                                        }}</span>
                                 </div>
                             </div>
                         </article>
@@ -37,8 +37,9 @@
 </template>
 
 <script>
-import { mapFields } from "vuex-map-fields";
+import { mapWritableState } from "pinia";
 import variables from "../assets/styles/theme.module.scss";
+import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 
 export default {
@@ -53,7 +54,7 @@ export default {
         }
     },
     computed: {
-        ...mapFields(["formData.report"]),
+        ...mapWritableState(useMainStore, ["formData"]),
         themeColors() {
             return {
                 linkColor: variables.linkColor,
@@ -100,10 +101,10 @@ export default {
     methods: {
         buildLink(title) {
             return this.paramsToUrlString({
-                ...this.$store.state.formData,
+                ...this.formData,
                 title: `"${title}"`,
                 start: 1,
-                end: this.$store.state.formData,
+                end: this.formData.results_per_page,
             });
         },
     },

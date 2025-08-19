@@ -15,6 +15,11 @@ $link-color: rgb(142, 50, 50);
 $passage-color: rgb(155, 65, 55);
 $card-header-color: rgb(173, 66, 66);
 
+// Export colors for JavaScript usage
+:export {
+  color: $link-color;
+}
+
 // Themed elements
 nav.navbar {
     background-color: $header-color !important;

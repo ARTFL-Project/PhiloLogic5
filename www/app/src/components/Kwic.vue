@@ -91,8 +91,9 @@
 
 <script>
 import gsap from "gsap";
+import { mapStores, mapWritableState } from "pinia";
 import { computed } from "vue";
-import { mapFields } from "vuex-map-fields";
+import { useMainStore } from "../stores/main";
 import facets from "./Facets";
 import pages from "./Pages";
 import ResultsSummary from "./ResultsSummary";
@@ -105,23 +106,41 @@ export default {
         pages,
     },
     computed: {
-        ...mapFields([
-            "formData.report",
-            "formData.q",
-            "formData.start",
-            "formData.end",
-            "formData.results_per_page",
-            "formData.first_kwic_sorting_option",
-            "formData.second_kwic_sorting_option",
-            "formData.third_kwic_sorting_option",
+        ...mapWritableState(useMainStore, [
+            "formData",
             "resultsLength",
             "searching",
             "currentReport",
             "description",
             "sortedKwicCache",
             "urlUpdate",
-            "showFacets",
+            "showFacets"
         ]),
+        ...mapStores(useMainStore),
+        first_kwic_sorting_option: {
+            get() {
+                return this.formData.first_kwic_sorting_option;
+            },
+            set(value) {
+                this.formData.first_kwic_sorting_option = value;
+            }
+        },
+        second_kwic_sorting_option: {
+            get() {
+                return this.formData.second_kwic_sorting_option;
+            },
+            set(value) {
+                this.formData.second_kwic_sorting_option = value;
+            }
+        },
+        third_kwic_sorting_option: {
+            get() {
+                return this.formData.third_kwic_sorting_option;
+            },
+            set(value) {
+                this.formData.third_kwic_sorting_option = value;
+            }
+        },
         sortingFields() {
             let sortingFields = [
                 {
@@ -213,13 +232,13 @@ export default {
         };
     },
     created() {
-        this.report = "kwic";
+        this.formData.report = "kwic";
         this.currentReport = "kwic";
         this.fetchResults();
     },
     watch: {
         urlUpdate() {
-            if (this.report == "kwic") {
+            if (this.formData.report == "kwic") {
                 this.fetchResults();
             }
         },
@@ -288,7 +307,7 @@ export default {
         },
         fetchResults() {
             this.results = { description: { end: 0 }, results: [] };
-            this.searchParams = { ...this.$store.state.formData };
+            this.searchParams = { ...this.formData };
             if (this.first_kwic_sorting_option === "") {
                 this.searching = true;
                 this.$http
@@ -308,9 +327,9 @@ export default {
                         this.debug(this, error);
                     });
             } else {
-                if (this.start == "") {
-                    this.start = "0";
-                    this.end = this.results_per_page;
+                if (this.formData.start == "") {
+                    this.formData.start = "0";
+                    this.formData.end = this.formData.results_per_page;
                 }
                 this.searching = true;
                 this.runningTotal = 0;
@@ -321,7 +340,7 @@ export default {
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_neighboring_words.py`, {
                     params: {
-                        ...this.paramsFilter({ ...this.$store.state.formData }),
+                        ...this.paramsFilter({ ...this.formData }),
                         hits_done: hitsDone,
                         max_time: 5,
                     },
@@ -339,18 +358,18 @@ export default {
                 });
         },
         getKwicResults(hitsDone) {
-            let start = parseInt(this.start);
+            let start = parseInt(this.formData.start);
             let end = 0;
-            if (this.results_per_page === "") {
+            if (this.formData.results_per_page === "") {
                 end = start + 25;
             } else {
-                end = start + parseInt(this.results_per_page);
+                end = start + parseInt(this.formData.results_per_page);
             }
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_sorted_kwic.py`, {
                     params: {
                         hits_done: hitsDone,
-                        ...this.paramsFilter({ ...this.$store.state.formData }),
+                        ...this.paramsFilter({ ...this.formData }),
                         start: start,
                         end: end,
                         cache_path: this.cachePath,
@@ -365,14 +384,14 @@ export default {
             let start = this.results.description.start;
             let currentPos = start + index;
             let currentPosLength = currentPos.toString().length;
-            let endPos = start + parseInt(this.results_per_page) || 25;
+            let endPos = start + parseInt(this.formData.results_per_page) || 25;
             let endPosLength = endPos.toString().length;
             let spaces = endPosLength - currentPosLength + 1;
             return currentPos + "." + Array(spaces).join("&nbsp");
         },
         sortResults() {
             this.results.results = [];
-            this.$router.push(this.paramsToRoute({ ...this.$store.state.formData }));
+            this.$router.push(this.paramsToRoute({ ...this.formData }));
         },
         dicoLookup() { },
         onBeforeEnter(el) {

@@ -17,12 +17,13 @@
     </nav>
 </template>
 <script>
-import { mapFields } from "vuex-map-fields";
+import { mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 
 export default {
     name: "pages-component",
     computed: {
-        ...mapFields(["formData.results_per_page", "resultsLength", "totalResultsDone", "urlUpdate"]),
+        ...mapWritableState(useMainStore, ["formData", "resultsLength", "totalResultsDone", "urlUpdate"]),
     },
     data() {
         return { pages: [] };
@@ -40,7 +41,7 @@ export default {
     methods: {
         buildPages() {
             let start = parseInt(this.$route.query.start);
-            let resultsPerPage = parseInt(this.results_per_page) || 25;
+            let resultsPerPage = parseInt(this.formData.results_per_page) || 25;
             let resultsLength = this.resultsLength;
 
             // first find out what page we are on currently.
@@ -124,7 +125,7 @@ export default {
         },
         goToPage(start, end) {
             let route = this.paramsToRoute({
-                ...this.$store.state.formData,
+                ...this.formData,
                 start: start,
                 end: end,
             });

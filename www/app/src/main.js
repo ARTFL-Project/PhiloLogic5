@@ -1,5 +1,6 @@
 import axios from "axios";
 import "bootstrap";
+import { createPinia } from "pinia";
 import { createApp } from "vue";
 import vueScrollTo from "vue-scrollto";
 import App from "./App.vue";
@@ -19,7 +20,6 @@ import {
     sortResults,
 } from "./mixins.js";
 import router from "./router";
-import store from "./store";
 
 import appConfig from "../appConfig.json";
 import i18n from "./i18n";
@@ -28,6 +28,8 @@ axios
     .get(`${appConfig.dbUrl}/scripts/get_web_config.py`, {})
     .then((response) => {
         const app = createApp(App).use(i18n);
+        const pinia = createPinia();
+
         app.config.globalProperties.$philoConfig = response.data;
         app.config.globalProperties.$scrollTo = vueScrollTo.scrollTo;
         app.config.globalProperties.$dbUrl = appConfig.dbUrl;
@@ -36,7 +38,7 @@ axios
         app.provide("$dbUrl", appConfig.dbUrl);
         app.provide("$philoConfig", response.data);
         app.use(router);
-        app.use(store);
+        app.use(pinia);
         app.mixin({
             methods: {
                 paramsFilter,

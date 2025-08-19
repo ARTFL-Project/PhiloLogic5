@@ -35,9 +35,10 @@
 
 <script>
 import DOMPurify from "dompurify";
+import { mapStores, mapWritableState } from "pinia";
 import { defineAsyncComponent } from "vue";
-import { mapFields } from "vuex-map-fields";
 import Header from "./components/Header.vue";
+import { useMainStore } from "./stores/main";
 const SearchForm = defineAsyncComponent(() => import("./components/SearchForm.vue"));
 const AccessControl = defineAsyncComponent(() => import("./components/AccessControl.vue"));
 
@@ -58,7 +59,8 @@ export default {
         };
     },
     computed: {
-        ...mapFields(["formData.report", "formData.q", "urlUpdate", "showFacets"]),
+        ...mapWritableState(useMainStore, ["formData", "urlUpdate", "showFacets"]),
+        ...mapStores(useMainStore),
         defaultFieldValues() {
             let localFields = {
                 report: "home",
@@ -237,13 +239,13 @@ export default {
         },
 
         setupApp() {
-            this.$store.commit("setDefaultFields", this.defaultFieldValues);
-            this.$store.commit("setReportValues", this.reportValues);
+            this.mainStore.setDefaultFields(this.defaultFieldValues);
+            this.mainStore.setReportValues(this.reportValues);
             this.formDataUpdate();
         },
         formDataUpdate() {
             let localParams = this.copyObject(this.defaultFieldValues);
-            this.$store.commit("updateFormData", {
+            this.mainStore.updateFormData({
                 ...localParams,
                 ...this.$route.query,
             });
@@ -258,17 +260,17 @@ export default {
             }
             if (
                 !["home", "textNavigation", "tableOfContents"].includes(this.$route.name) &&
-                this.q.length > 0 &&
+                this.formData.q && this.formData.q.length > 0 &&
                 this.$route.name == "bibliography"
             ) {
-                this.$store.commit("updateFormDataField", {
+                this.mainStore.updateFormDataField({
                     key: "report",
                     value: "concordance",
                 });
-                this.debug(this, this.report);
-                this.$router.push(this.paramsToRoute({ ...this.$store.state.formData }));
+                this.debug(this, this.formData.report);
+                this.$router.push(this.paramsToRoute({ ...this.mainStore.formData }));
             } else {
-                this.report = this.$route.name;
+                this.formData.report = this.$route.name;
             }
         },
     },

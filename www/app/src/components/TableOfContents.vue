@@ -59,7 +59,8 @@
     </div>
 </template>
 <script>
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
+import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 import ProgressSpinner from "./ProgressSpinner";
 
@@ -71,11 +72,12 @@ export default {
     },
     inject: ["$http"],
     computed: {
-        ...mapFields({
-            report: "formData.report",
-            textNavigationCitation: "textNavigationCitation",
-            searching: "searching",
-        }),
+        ...mapWritableState(useMainStore, [
+            "formData",
+            "textNavigationCitation",
+            "searching"
+        ]),
+        ...mapStores(useMainStore),
     },
     data() {
         return {

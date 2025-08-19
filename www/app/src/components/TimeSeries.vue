@@ -80,8 +80,9 @@ import {
 } from 'chart.js';
 import { Bar } from 'vue-chartjs';
 
-import { mapFields } from "vuex-map-fields";
+import { mapStores, mapWritableState } from "pinia";
 import cssVariables from "../assets/styles/theme.module.scss";
+import { useMainStore } from "../stores/main";
 import ResultsSummary from "./ResultsSummary";
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
@@ -99,17 +100,15 @@ export default {
         };
     },
     computed: {
-        ...mapFields({
-            report: "formData.report",
-            interval: "formData.year_interval",
-            start_date: "formData.start_date",
-            end_date: "formData.end_date",
-            currentReport: "currentReport",
-            searching: "searching",
-            resultsLength: "resultsLength",
-            urlUpdate: "urlUpdate",
-            accessAuthorized: "accessAuthorized",
-        }),
+        ...mapWritableState(useMainStore, [
+            "formData",
+            "currentReport",
+            "searching",
+            "resultsLength",
+            "urlUpdate",
+            "accessAuthorized"
+        ]),
+        ...mapStores(useMainStore),
 
         // Accessibility computed properties
         chartAriaLabel() {
@@ -131,12 +130,15 @@ export default {
 
         // Chart data - computed property for reactivity
         chartData() {
+            // Use theme color with fallback
+            const backgroundColor = cssVariables.color || '#8e3232';
+
             return {
                 labels: this.dateLabels,
                 datasets: [{
                     label: this.currentFrequencyLabel,
-                    backgroundColor: cssVariables.color,
-                    hoverBackgroundColor: this.hexToRGBA(cssVariables.color),
+                    backgroundColor: backgroundColor,
+                    hoverBackgroundColor: this.hexToRGBA(backgroundColor),
                     borderWidth: 1,
                     data: this.frequencyType === 'absolute_time' ?
                         this.absoluteCounts :
@@ -216,13 +218,13 @@ export default {
         };
     },
     mounted() {
-        this.report = "time_series";
+        this.formData.report = "time_series";
         this.currentReport = "time_series";
         this.fetchResults();
     },
     watch: {
         urlUpdate() {
-            if (this.report == "time_series") {
+            if (this.formData.report == "time_series") {
                 this.fetchResults();
             }
         },
@@ -230,10 +232,10 @@ export default {
     methods: {
         // Accessibility helper methods
         formatDateRange(label, index) {
-            if (this.interval == 1) {
+            if (this.formData.year_interval == 1) {
                 return label;
             } else {
-                return `${label}-${parseInt(label) + parseInt(this.interval) - 1}`;
+                return `${label}-${parseInt(label) + parseInt(this.formData.year_interval) - 1}`;
             }
         },
 
@@ -323,16 +325,16 @@ export default {
 
         navigateToYear(index) {
             const startDate = parseInt(this.dateLabels[index]);
-            const endDate = startDate + parseInt(this.interval) - 1;
+            const endDate = startDate + parseInt(this.formData.year_interval) - 1;
             const year = startDate === endDate ? startDate.toString() : `${startDate}-${endDate}`;
 
-            this.$store.commit("updateFormDataField", {
+            this.mainStore.updateFormDataField({
                 key: "year",
                 value: year,
             });
             this.$router.push(
                 this.paramsToRoute({
-                    ...this.$store.state.formData,
+                    ...this.formData,
                     report: "concordance",
                     start_date: "",
                     end_date: "",
@@ -342,25 +344,25 @@ export default {
         },
         fetchResults() {
             this.runningTotal = 0;
-            if (this.interval == "") {
-                this.interval = this.$philoConfig.time_series.interval;
+            if (this.formData.year_interval == "") {
+                this.formData.year_interval = this.$philoConfig.time_series.interval;
             }
-            this.interval = parseInt(this.interval);
+            this.formData.year_interval = parseInt(this.formData.year_interval);
             this.frequencyType = "absolute_time";
             this.searching = true;
-            this.startDate = parseInt(this.start_date || this.$philoConfig.time_series_start_end_date.start_date);
-            this.endDate = parseInt(this.end_date || this.$philoConfig.time_series_start_end_date.end_date);
-            this.$store.dispatch("updateStartEndDate", {
+            this.startDate = parseInt(this.formData.start_date || this.$philoConfig.time_series_start_end_date.start_date);
+            this.endDate = parseInt(this.formData.end_date || this.$philoConfig.time_series_start_end_date.end_date);
+            this.mainStore.updateStartEndDate({
                 startDate: this.startDate,
                 endDate: this.endDate,
             });
 
-            this.globalQuery = this.copyObject(this.$store.state.formData);
+            this.globalQuery = this.copyObject(this.formData);
             this.localQuery = this.copyObject(this.globalQuery);
 
             var dateList = [];
             var zeros = [];
-            for (let i = this.startDate; i <= this.endDate; i += this.interval) {
+            for (let i = this.startDate; i <= this.endDate; i += this.formData.year_interval) {
                 dateList.push(i);
                 zeros.push(0);
             }
@@ -379,10 +381,10 @@ export default {
             this.$http
                 .get(`${this.$dbUrl}/reports/time_series.py`, {
                     params: {
-                        ...this.paramsFilter({ ...this.$store.state.formData }),
+                        ...this.paramsFilter({ ...this.formData }),
                         start_date: this.startDate,
                         max_time: 5,
-                        year_interval: this.interval,
+                        year_interval: this.formData.year_interval,
                     },
                 })
                 .then((results) => {
@@ -417,7 +419,7 @@ export default {
                 }
             }
 
-            if (this.report === "time_series" && this.deepEqual(this.globalQuery, this.localQuery)) {
+            if (this.formData.report === "time_series" && this.deepEqual(this.globalQuery, this.localQuery)) {
                 if (this.moreResults) {
                     this.searching = true;
                     this.updateTimeSeries(fullResults);
@@ -452,6 +454,11 @@ export default {
         },
 
         hexToRGBA(h) {
+            // Use theme color if h is undefined
+            if (!h) {
+                h = cssVariables.color || '#8e3232'; // Use theme color with fallback
+            }
+
             let r = 0, g = 0, b = 0;
             if (h.length == 4) {
                 r = "0x" + h[1] + h[1];
