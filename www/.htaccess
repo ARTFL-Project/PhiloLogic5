@@ -6,6 +6,7 @@ DirectoryIndex dispatcher.py
 RewriteEngine on
 RewriteRule ^assets/(.*) app/dist/assets/$1 [L]
 RewriteRule ^img/(.*) app/dist/img/$1 [L]
+RewriteRule ^landing(.*) dispatcher.py$1 [PT,QSA]
 RewriteRule ^concordance(.*) dispatcher.py$1 [PT,QSA]
 RewriteRule ^kwic(.*) dispatcher.py$1 [PT,QSA]
 RewriteRule ^collocation(.*) dispatcher.py$1 [PT,QSA]

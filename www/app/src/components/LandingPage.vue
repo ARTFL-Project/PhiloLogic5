@@ -184,6 +184,15 @@ export default {
         } else if (this.landingPageBrowsing == "simple") {
             this.getSimpleLandingPageData();
         }
+
+        // Handle URL parameters for direct linking
+        this.handleUrlParameters();
+    },
+    watch: {
+        $route() {
+            // Handle browser back/forward navigation
+            this.handleUrlParameters();
+        }
     },
     methods: {
         setupDictView() {
@@ -224,6 +233,36 @@ export default {
                 .then((response) => (this.customLandingPage = response.data));
         },
         getContent(browseType, range) {
+            // Navigate to the URL with query parameters instead of just loading content
+            this.$router.push({
+                path: '/landing',
+                query: {
+                    browse: browseType.group_by_field,
+                    range: range,
+                    display_count: browseType.display_count,
+                    is_range: browseType.is_range
+                }
+            });
+        },
+
+        // New method to handle URL parameters and load content
+        handleUrlParameters() {
+            const { browse, range, display_count, is_range } = this.$route.query;
+
+            if (browse && range) {
+                // Reconstruct browseType object from URL parameters
+                const browseType = {
+                    group_by_field: browse,
+                    display_count: display_count || 'true',
+                    is_range: is_range || 'true'
+                };
+
+                this.loadContentFromUrl(browseType, range);
+            }
+        },
+
+        // Extracted content loading logic
+        loadContentFromUrl(browseType, range) {
             this.selectedField = browseType.group_by_field;
             this.loading = true;
             this.$http
