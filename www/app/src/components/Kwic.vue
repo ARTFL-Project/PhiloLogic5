@@ -237,8 +237,8 @@ export default {
         this.fetchResults();
     },
     watch: {
-        urlUpdate() {
-            if (this.formData.report == "kwic") {
+        urlUpdate(newUrl, oldUrl) {
+            if (!this.isOnlyFacetChange(newUrl, oldUrl)) {
                 this.fetchResults();
             }
         },

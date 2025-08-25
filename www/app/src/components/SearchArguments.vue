@@ -142,7 +142,16 @@ export default {
     },
     watch: {
         // call again the method if the route changes
-        $route: "fetchSearchArgs",
+        $route(newUrl, oldUrl) {
+            let facetReports = ["concordance", "kwic", "bibliography"]
+            if (facetReports.includes(this.formData.report)) {
+                if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
+                    this.fetchSearchArgs();
+                }
+            } else {
+                this.fetchSearchArgs();
+            }
+        }
     },
     methods: {
         fetchSearchArgs() {

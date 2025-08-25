@@ -251,7 +251,7 @@ export default {
             });
             if (!["textNavigation", "tableOfContents", "home"].includes(this.$route.name)) {
                 this.evaluateRoute();
-                this.urlUpdate = this.$route.fullPath;
+                this.urlUpdate = this.$route.query;
             }
         },
         evaluateRoute() {

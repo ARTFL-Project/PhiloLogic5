@@ -212,6 +212,7 @@ export default {
         return {
             philoConfig: this.$philoConfig,
             facets: [],
+            wordFacets: [],
             queryArgs: {},
             showFacetSelection: true,
             showFacetResults: false,
@@ -226,24 +227,53 @@ export default {
             facet: {},
             selectedFacet: {},
             showingRelativeFrequencies: false,
+            shouldShowRelativeFrequency: false,
             fullResults: {},
+            fullRelativeFrequencies: {},
             relativeFrequencies: [],
             absoluteFrequencies: [],
+            facetResults: [],
             interrupt: false,
             selected: "",
             runningTotal: 0,
+            percent: 0,
         };
     },
     created() {
         this.facets = this.populateFacets();
         this.wordFacets = this.populateWordFacets();
+        this.checkFacetStateFromUrl();
     },
     watch: {
-        urlUpdate() {
-            this.facetResults = [];
-            this.fullResults = {};
-            this.showFacetSelection = true;
-            this.showFacetResults = false;
+        $route(newUrl, oldUrl) {
+            console.log(this.isOnlyFacetChange(newUrl.query, oldUrl.query))
+            if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
+                this.facetResults = [];
+                this.fullResults = {};
+                this.relativeFrequencies = [];
+                this.absoluteFrequencies = [];
+                this.hideFacets();
+
+            }
+            if (newUrl.query.facet != oldUrl.query.facet) { // this is just a facet change
+                this.checkFacetStateFromUrl();
+            }
+            if (newUrl.query.relative_frequency != oldUrl.query.relative_frequency) { // Just a frequency type change
+                if (newUrl.query.relative_frequency == "false") {
+                    this.displayAbsoluteFrequencies(false)
+                } else {
+                    this.displayRelativeFrequencies(false)
+                }
+            }
+        },
+        showFacetResults(newVal) {
+            // When facet results are shown and we need relative frequency, trigger it
+            if (newVal && this.shouldShowRelativeFrequency && !this.showingRelativeFrequencies) {
+                this.shouldShowRelativeFrequency = false; // Reset flag
+                this.$nextTick(() => {
+                    this.displayRelativeFrequencies();
+                });
+            }
         },
     },
     methods: {
@@ -284,13 +314,26 @@ export default {
             }
             return wordFacets;
         },
-        getFacet(facetObj) {
+        getFacet(facetObj, updateUrl = true) {
+            console.log('getFacet called', { facetObj, updateUrl, formData: this.formData });
+            this.selectedFacet = facetObj;
+            this.facet = facetObj;
+            this.showFacetSelection = false;
             this.relativeFrequencies = [];
             this.absoluteFrequencies = [];
             this.showingRelativeFrequencies = false;
-            this.facet = facetObj;
-            this.selectedFacet = facetObj;
             this.selected = facetObj.alias;
+
+            if (updateUrl) {
+                const routeParams = this.paramsToRoute({
+                    ...this.formData,
+                    facet: facetObj.facet,
+                    relative_frequency: 'false',
+                });
+                console.log('getFacet pushing route:', routeParams);
+                this.$router.push(routeParams);
+            }
+
             let urlString
             if (facetObj.type === "facet") {
                 urlString = this.paramsToUrlString({
@@ -429,6 +472,7 @@ export default {
             return +(Math.round(num + "e+2") + "e-2");
         },
         getRelativeFrequencies() {
+            console.log("getRelativeFrequencies called");
             let relativeResults = {};
             for (let label in this.fullResults.unsorted) {
                 let resultObj = this.fullResults.unsorted[label];
@@ -447,7 +491,8 @@ export default {
             this.loading = false;
             this.percent = 100;
         },
-        displayRelativeFrequencies() {
+        displayRelativeFrequencies(updateUrl = true) {
+            console.log('displayRelativeFrequencies called');
             this.loading = true;
             if (this.relativeFrequencies.length == 0) {
                 this.absoluteFrequencies = this.copyObject(this.facetResults);
@@ -460,13 +505,50 @@ export default {
                 this.showingRelativeFrequencies = true;
                 this.loading = false;
             }
+            if (updateUrl && (this.selectedFacet.facet !== this.$route.query.facet || this.showingRelativeFrequencies.toString() !== this.$route.query.relative_frequency)) {
+                this.updateFacetUrl();
+            }
         },
-        displayAbsoluteFrequencies() {
+        displayAbsoluteFrequencies(updateUrl = true) {
+            console.log('displayAbsoluteFrequencies called');
             this.loading = true;
             this.relativeFrequencies = this.copyObject(this.facetResults);
             this.facetResults = this.absoluteFrequencies;
             this.showingRelativeFrequencies = false;
             this.loading = false;
+            if (updateUrl && (this.selectedFacet.facet !== this.$route.query.facet || this.showingRelativeFrequencies.toString() !== this.$route.query.relative_frequency)) {
+                this.updateFacetUrl();
+            }
+        },
+        updateFacetUrl() {
+            if (this.selectedFacet && this.selectedFacet.facet) {
+                const routeParams = this.paramsToRoute({
+                    ...this.formData,
+                    facet: this.selectedFacet.facet,
+                    relative_frequency: this.showingRelativeFrequencies ? 'true' : 'false',
+                });
+                this.$router.push(routeParams);
+            }
+        },
+        checkFacetStateFromUrl() {
+            if (this.$route.query.facet) {
+                const facet = this.$route.query.facet;
+                this.shouldShowRelativeFrequency = this.$route.query.relative_frequency === 'true';
+
+                // Find the facet object
+                const allFacets = [...this.facets, ...this.wordFacets];
+                const facetObj = allFacets.find(f => f.alias === facet);
+
+                console.log(facetObj, this.shouldShowRelativeFrequency)
+
+                if (facetObj) {
+                    this.getFacet(facetObj, false);
+                }
+            } else {
+                // Reset state if no facet in URL
+                this.showFacetSelection = true;
+                this.showFacetResults = false;
+            }
         },
         collocationToConcordance(word) {
             this.formData.q = `${this.formData.q} "${word}"`;
@@ -521,7 +603,7 @@ export default {
             } else {
                 this.showFacets = true;
             }
-        },
+        }
     },
 };
 </script>

@@ -12,6 +12,7 @@ import {
     deepEqual,
     dictionaryLookup,
     extractSurfaceFromCollocate,
+    isOnlyFacetChange,
     mergeResults,
     paramsFilter,
     paramsToRoute,
@@ -54,6 +55,7 @@ axios
                 buildBiblioCriteria,
                 extractSurfaceFromCollocate,
                 debug,
+                isOnlyFacetChange,
             },
         });
         app.directive("scroll", {

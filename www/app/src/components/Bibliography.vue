@@ -123,8 +123,8 @@ export default {
         this.fetchResults();
     },
     watch: {
-        urlUpdate() {
-            if (this.formData.report == "bibliography") {
+        urlUpdate(newUrl, oldUrl) {
+            if (!this.isOnlyFacetChange(newUrl, oldUrl)) {
                 this.fetchResults();
             }
         },

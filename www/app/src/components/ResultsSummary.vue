@@ -321,7 +321,16 @@ export default {
         this.updateDescriptions();
     },
     watch: {
-        $route: "updateDescriptions",
+        $route(newUrl, oldUrl) {
+            let facetReports = ["concordance", "kwic", "bibliography"]
+            if (facetReports.includes(this.formData.report)) {
+                if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
+                    this.updateDescriptions();
+                }
+            } else {
+                this.updateDescriptions();
+            }
+        },
     },
     methods: {
         updateDescriptions() {

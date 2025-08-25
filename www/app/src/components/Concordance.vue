@@ -107,8 +107,9 @@ export default {
         this.fetchResults();
     },
     watch: {
-        urlUpdate() {
-            if (this.formData.report == "concordance") {
+        urlUpdate(newUrl, oldUrl) {
+            console.log(this.isOnlyFacetChange(newUrl, oldUrl))
+            if (!this.isOnlyFacetChange(newUrl, oldUrl)) {
                 this.fetchResults();
             }
         },

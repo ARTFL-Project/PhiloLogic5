@@ -18,7 +18,13 @@ export function paramsFilter(formValues) {
         if (field === "report") {
             continue;
         }
-        if (!validFields.has(field)) {
+        // Allow facet-related parameters for reports that support facets
+        const facetSupportedReports = ["concordance", "kwic", "bibliography"];
+        const isFacetParam =
+            field === "facet" || field === "relative_frequency";
+        if (isFacetParam && facetSupportedReports.includes(formValues.report)) {
+            // Skip the validFields check for facet parameters on supported reports
+        } else if (!validFields.has(field)) {
             continue;
         }
         if (
@@ -48,6 +54,7 @@ export function paramsFilter(formValues) {
             localFormData[field] = value;
         }
     }
+
     return localFormData;
 }
 export function paramsToRoute(formValues) {
@@ -148,7 +155,7 @@ export function deepEqual(x, y) {
         ty = typeof y;
     return x && y && tx === "object" && tx === ty
         ? ok(x).length === ok(y).length &&
-              ok(x).every((key) => this.deepEqual(x[key], y[key]))
+              ok(x).every((key) => deepEqual(x[key], y[key]))
         : x === y;
 }
 export function dictionaryLookup(event, year) {
@@ -276,6 +283,25 @@ export function debug(component, message) {
     console.log(`MESSAGE FROM ${component.$options.name}:`, message);
 }
 
+export function isOnlyFacetChange(newUrl, oldUrl) {
+    const differences = [];
+    const ok = Object.keys;
+
+    // Get all unique keys from both objects
+    const allKeys = new Set([...ok(newUrl || {}), ...ok(oldUrl || {})]);
+
+    for (const key of allKeys) {
+        if (newUrl?.[key] != oldUrl?.[key]) {
+            if (key != "facet" && key != "relative_frequency") {
+                return false;
+            }
+            differences.push(key);
+        }
+    }
+
+    return differences.length > 0;
+}
+
 export default {
     paramsFilter,
     paramsToRoute,
@@ -290,4 +316,5 @@ export default {
     buildBiblioCriteria,
     extractSurfaceFromCollocate,
     debug,
+    isOnlyFacetChange,
 };
