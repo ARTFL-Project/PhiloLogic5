@@ -18,13 +18,24 @@ export function paramsFilter(formValues) {
         if (field === "report") {
             continue;
         }
-        // Allow facet-related parameters for reports that support facets
+        // Check if this field should skip validFields validation
         const facetSupportedReports = ["concordance", "kwic", "bibliography"];
         const isFacetParam =
             field === "facet" || field === "relative_frequency";
-        if (isFacetParam && facetSupportedReports.includes(formValues.report)) {
-            // Skip the validFields check for facet parameters on supported reports
-        } else if (!validFields.has(field)) {
+        const isCollocationParam =
+            field === "collocation_method" ||
+            field === "similarity_by" ||
+            field === "time_series_interval";
+        const isCompareParam =
+            field.startsWith("compare_") && formValues.report === "collocation";
+
+        const shouldSkipValidation =
+            (isFacetParam &&
+                facetSupportedReports.includes(formValues.report)) ||
+            (isCollocationParam && formValues.report === "collocation") ||
+            isCompareParam;
+
+        if (!shouldSkipValidation && !validFields.has(field)) {
             continue;
         }
         if (
@@ -292,7 +303,12 @@ export function isOnlyFacetChange(newUrl, oldUrl) {
 
     for (const key of allKeys) {
         if (newUrl?.[key] != oldUrl?.[key]) {
-            if (key != "facet" && key != "relative_frequency") {
+            if (
+                key != "facet" &&
+                key != "relative_frequency" &&
+                key != "collocation_method" &&
+                key != "similarity_by"
+            ) {
                 return false;
             }
             differences.push(key);

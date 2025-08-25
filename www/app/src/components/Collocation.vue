@@ -474,6 +474,7 @@ export default {
             metadataInputStyle: [],
             metadataChoiceValues: [],
             comparedMetadataValues: {},
+            metadataChoiceChecked: {},
             dateRange: {},
             dateType: {},
             otherCollocates: [],
@@ -493,20 +494,49 @@ export default {
             timeSeriesInterval: 10,
             collocationTimePeriods: [],
             progressPercent: 0,
-            distinctiveView: 'prev' // Default to showing comparison with previous period
+            distinctiveView: 'prev', // Default to showing comparison with previous period
         };
     },
     created() {
         this.formData.report = "collocation";
         this.currentReport = "collocation";
-        this.fetchResults();
         this.buildMetadata(this.searchableMetadata);
         this.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
+        this.collocMethod = this.$route.query.collocation_method || 'frequency';
+
+        switch (this.collocMethod) {
+            case "frequency":
+                this.fetchResults();
+                break;
+            case "similar":
+                this.toggleSimilar(false);
+                this.fetchResults();
+                break;
+            case "timeSeries":
+                this.toggleTimeSeries(false);
+                this.timeSeriesInterval = this.$route.query.time_series_interval || 10;
+                this.getCollocatesOverTime(0, true);
+                break;
+            case "compare":
+                this.toggleCompare(false);
+                this.restoreComparedMetadataFromUrl();
+                this.fetchResults();
+                break;
+        }
     },
     watch: {
-        urlUpdate() {
+        $route(newUrl, oldUrl) {
             if (this.$route.name == "collocation") {
-                this.fetchResults();
+                if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
+                    this.fetchResults();
+                }
+                if (newUrl.query.collocation_method != oldUrl.query.collocation_method) {
+                    this.setCollocationMethod(newUrl.query.collocation_method || 'frequency', false);
+                }
+                // Restore compared metadata if in compare mode
+                if (newUrl.query.collocation_method === 'compare') {
+                    this.restoreComparedMetadataFromUrl();
+                }
                 this.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
             }
         },
@@ -515,14 +545,14 @@ export default {
                 this.buildMetadata(newVal)
             },
             deep: true,
-        },
+        }
     },
     methods: {
         fetchResults() {
             this.localFormData = this.copyObject(this.formData);
-            this.searching = true;
             this.relativeFrequencies = {};
-            this.collocMethod = "frequency"
+            this.searching = true;
+            this.fetchComplete = false; // Reset fetch completion status
             this.overRepresented = [];
             this.underRepresented = [];
             this.other_corpus_metadata = {};
@@ -570,8 +600,14 @@ export default {
                         else {
                             this.collocateCounts = response.data.collocates;
                             this.sortedList = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
-                            this.done = true
+                            this.done = true;
+
+                            // After base collocation results are loaded
+                            this.checkCollocationMethod();
                         }
+                    }
+                    else {
+                        this.fetchComplete = true; // Mark fetch as complete even with no results
                     }
 
                 })
@@ -579,6 +615,20 @@ export default {
                     this.searching = false;
                     this.debug(this, error);
                 });
+        },
+        checkCollocationMethod() {
+            this.collocMethod = this.$route.query.collocation_method || 'frequency';
+            switch (this.collocMethod) {
+                case "frequency":
+                    break;
+                case "similar":
+                    this.toggleSimilar(false);
+                    this.similarCollocDistributions({ value: this.$route.query.similarity_by }, 0);
+                    break;
+                case "compare":
+                    this.getOtherCollocates({}, 0);;
+                    break;
+            }
         },
         collocateCleanup(collocate) {
             let q
@@ -629,26 +679,128 @@ export default {
             this.comparedMetadataValues[metadata] = "";
             this.dateType[metadata] = dateType;
         },
-        getFrequency() {
+        getFrequency(updateUrl = false) {
             this.collocMethod = "frequency";
+            if (updateUrl) {
+                this.updateCollocationUrl();
+            }
         },
-        toggleCompare() {
+        toggleCompare(updateUrl = false) {
             this.collocMethod = "compare";
             this.filterMetadataOpen = true
             this.$nextTick(() => {
                 let collapseElement = document.getElementById('other-corpus-metadata')
-                new Collapse(collapseElement, {
-                    toggle: true
-                })
+                if (collapseElement) {
+                    try {
+                        new Collapse(collapseElement, {
+                            toggle: true
+                        })
+                    } catch (error) {
+                        console.warn('Could not initialize Bootstrap Collapse:', error);
+                    }
+                }
             })
+            if (updateUrl) {
+                this.updateCollocationUrl();
+            }
         },
-        toggleSimilar() {
+        toggleSimilar(updateUrl = false) {
             this.collocMethod = "similar";
+            if (updateUrl) {
+                this.updateCollocationUrl();
+            }
         },
-        toggleTimeSeries() {
+        toggleTimeSeries(updateUrl = false) {
             this.collocMethod = "timeSeries";
+            if (updateUrl) {
+                this.updateCollocationUrl();
+            }
+        },
+        checkCollocationStateFromUrl() {
+            this.collocMethod = this.$route.query.collocation_method || 'frequency';
+            if (this.collocMethod === "similar") {
+                this.similarFieldSelected = this.$route.query.similarity_by
+            }
+        },
+        setCollocationMethod(method, updateUrl = true) {
+            switch (method) {
+                case 'compare':
+                    this.toggleCompare(updateUrl);
+                    break;
+                case 'similar':
+                    this.toggleSimilar(updateUrl);
+                    break;
+                case 'timeSeries':
+                    this.toggleTimeSeries(updateUrl);
+                    this.getCollocatesOverTime(0, true)
+                    break;
+                default:
+                    this.getFrequency(updateUrl);
+                    break;
+            }
+        },
+        updateCollocationUrl() {
+            let urlParams = {
+                ...this.formData,
+                collocation_method: this.collocMethod,
+            };
+
+            // Add method-specific parameters
+            if (this.collocMethod === 'similar' && this.similarFieldSelected) {
+                urlParams.similarity_by = this.similarFieldSelected;
+                delete urlParams.time_series_interval;
+            }
+            if (this.collocMethod === 'timeSeries') {
+                urlParams.time_series_interval = this.timeSeriesInterval;
+                delete urlParams.similarity_by;
+            }
+            if (this.collocMethod === 'compare') {
+                // Add comparative metadata parameters with compare_ prefix
+                const compareParams = this.getNonEmptyComparedMetadata();
+                Object.assign(urlParams, compareParams);
+                delete urlParams.similarity_by;
+                delete urlParams.time_series_interval;
+            }
+
+            const routeParams = this.paramsToRoute(urlParams);
+            this.$router.push(routeParams);
+        },
+        getNonEmptyComparedMetadata() {
+            const nonEmptyMetadata = {};
+
+            // Add all non-empty values from comparedMetadataValues with compare_ prefix
+            for (const [field, value] of Object.entries(this.comparedMetadataValues)) {
+                if (value && value !== '') {
+                    nonEmptyMetadata[`compare_${field}`] = value;
+                }
+            }
+
+            return nonEmptyMetadata;
+        },
+        restoreComparedMetadataFromUrl() {
+            const urlParams = this.$route.query;
+
+            // Clear existing values
+            this.comparedMetadataValues = {};
+
+            // Process compare_ prefixed parameters
+            for (const [key, value] of Object.entries(urlParams)) {
+                if (key.startsWith('compare_')) {
+                    const field = key.substring(8); // Remove 'compare_' prefix
+                    this.comparedMetadataValues[field] = value;
+                }
+            }
         },
         getOtherCollocates(fullResults, start) {
+            // Hide the metadata form immediately when comparison starts
+            if (Object.keys(fullResults).length === 0) {
+                let collapseElement = document.getElementById('other-corpus-metadata')
+                if (collapseElement != null) {
+                    Collapse.getInstance(collapseElement).hide()
+                    this.filterMetadataOpen = false
+                }
+            }
+
             if (Object.keys(this.comparedMetadataValues).length === 0) {
                 this.wholeCorpus = true
             } else {
@@ -658,6 +810,7 @@ export default {
                 this.progressPercent = 0
             }
             this.collocMethod = 'compare';
+            this.updateCollocationUrl(); // Update URL when running compare search
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             let params = {
                 q: this.formData.q,
@@ -703,11 +856,6 @@ export default {
                 });
         },
         comparativeCollocations(otherCollocates) {
-            let collapseElement = document.getElementById('other-corpus-metadata')
-            if (collapseElement != null) {
-                Collapse.getInstance(collapseElement).hide()
-                this.filterMetadataOpen = false
-            }
             this.comparativeSearchStarted = true;
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             this.otherBiblio = this.buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
@@ -727,13 +875,15 @@ export default {
             });
         },
         similarCollocDistributions(field, start, first) {
-            this.similarFieldSelected = field.label
+            this.similarFieldSelected = field.value // Store the field value for URL
             this.similarSearching = true
             this.similarSearchProgress = this.$t("collocation.similarCollocGatheringMessage")
             this.mostSimilarDistributions = []
             if (typeof first === 'undefined') {
                 first = true
                 this.progressPercent = 0
+                this.collocMethod = 'similar';
+                this.updateCollocationUrl(); // Update URL when running similar usage search
             }
             else {
                 first = false
@@ -803,6 +953,10 @@ export default {
         getCollocatesOverTime(start, first) {
             this.collocationTimePeriods = []
             this.searching = true
+            if (first) {
+                this.collocMethod = 'timeSeries';
+                this.updateCollocationUrl(); // Update URL when running time series search
+            }
             const interval = parseInt(this.timeSeriesInterval)
             let params = {
                 ...this.formData,
