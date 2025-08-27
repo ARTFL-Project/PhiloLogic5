@@ -1,5 +1,5 @@
 <template>
-    <div style="margin-top: 0.2rem">
+    <div>
         <div class="dropdown">
             <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="language-selector"
                 data-bs-toggle="dropdown" aria-expanded="false" :aria-label="$t('common.changeLanguage')">
@@ -42,6 +42,11 @@ button {
     border-width: 0 !important;
 }
 
+.btn-outline-secondary {
+    color: #fff !important;
+    background-color: inherit !important;
+    border-color: #fff !important;
+}
 
 .dropdown-menu {
     left: initial !important;

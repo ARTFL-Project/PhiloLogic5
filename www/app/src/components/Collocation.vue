@@ -175,10 +175,10 @@
                     </ul>
                 </div>
                 <span class="ms-2">{{ $t("collocation.mostSimilarUsage") }}</span>
-
-                <bibliography-criteria class="ms-2 mt-2" :biblio="biblio" :query-report="formData.report"
-                    :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
             </div>
+
+            <bibliography-criteria class="ms-2 mt-3" :biblio="biblio" :query-report="formData.report"
+                :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
 
             <div class="mt-2" style="display: flex; align-items: center;" v-if="similarSearching">
                 <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert">
@@ -1125,14 +1125,6 @@ th {
     color: inherit;
 }
 
-/* Remove the Bootstrap overrides that aren't working */
-/* .table-light {
-    --bs-table-bg: #fff;
-    --bs-table-striped-bg: rgba(theme.$card-header-color, 0.05);
-    --bs-table-hover-bg: rgba(theme.$link-color, 0.1);
-    --bs-table-border-color: rgba(theme.$card-header-color, 0.2);
-} */
-
 #description {
     position: relative;
 }
@@ -1234,5 +1226,9 @@ input:focus::placeholder {
     font-size: 0.8rem;
     padding: 0.4rem 0.5rem;
     flex: 1;
+}
+
+.badge {
+    font-size: 0.75rem;
 }
 </style>

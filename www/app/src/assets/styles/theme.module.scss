@@ -177,8 +177,10 @@ input {
 }
 
 // Theme color overrides for specific components
-.badge.bg-secondary {
+.badge.bg-secondary,
+.badge.text-bg-secondary {
     background-color: $button-color !important;
+    color: #fff !important;
 }
 
 .nav-tabs .nav-link {
