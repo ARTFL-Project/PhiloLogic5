@@ -21,7 +21,9 @@ export function paramsFilter(formValues) {
         // Check if this field should skip validFields validation
         const facetSupportedReports = ["concordance", "kwic", "bibliography"];
         const isFacetParam =
-            field === "facet" || field === "relative_frequency";
+            field === "facet" ||
+            field === "relative_frequency" ||
+            field === "word_property";
         const isCollocationParam =
             field === "collocation_method" ||
             field === "similarity_by" ||
@@ -307,7 +309,8 @@ export function isOnlyFacetChange(newUrl, oldUrl) {
                 key != "facet" &&
                 key != "relative_frequency" &&
                 key != "collocation_method" &&
-                key != "similarity_by"
+                key != "similarity_by" &&
+                key != "word_property"
             ) {
                 return false;
             }

@@ -14,7 +14,7 @@
                     :aria-label="$t('facets.selectFacetType')">
                     <span class="dropdown-header text-center">{{ $t("facets.frequencyBy") }}</span>
                     <button type="button" class="list-group-item list-group-item-action facet-selection"
-                        v-for="facet in facets" :key="facet.alias" @click="getFacet(facet)"
+                        v-for="facet in facets" :key="facet.alias" @click="facetSearch(facet)"
                         :aria-label="`${$t('facets.selectFacet')} ${facet.alias}`">
                         {{ facet.alias }}
                     </button>
@@ -27,7 +27,7 @@
                     role="group" :aria-label="$t('facets.selectWordProperty')">
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
                     <button type="button" class="list-group-item list-group-item-action facet-selection"
-                        v-for="facet in wordFacets" :key="facet.facet" @click="getFacet(facet)"
+                        v-for="facet in wordFacets" :key="facet.facet" @click="facetSearch(facet)"
                         :aria-label="`${$t('facets.selectWordProperty')} ${facet.alias}`">
                         {{ facet.alias }}
                     </button>
@@ -40,7 +40,7 @@
                     :aria-label="$t('facets.selectCollocation')">
                     <span class="dropdown-header text-center">{{ $t("facets.collocates") }}</span>
                     <button type="button" class="list-group-item list-group-item-action facet-selection"
-                        @click="getFacet(collocationFacet)" v-if="formData.report !== 'bibliography'"
+                        @click="facetSearch(collocationFacet)" v-if="formData.report !== 'bibliography'"
                         :aria-label="`${$t('facets.selectCollocation')} ${$t('common.sameSentence')}`">
                         {{ $t("common.sameSentence") }}
                     </button>
@@ -92,7 +92,7 @@
             </div>
 
             <div class="m-2 text-center" style="opacity: 0.7">
-                {{ $t("facets.top500Results", { label: selectedFacet.alias }) }}
+                {{ $t("facets.top100Results", { label: selectedFacet.alias }) }}
             </div>
 
             <!-- Progress bar -->
@@ -129,15 +129,15 @@
 
                     <!-- Relative frequency description -->
                     <div class="relative-frequency-info"
-                        v-if="showingRelativeFrequencies && Object.keys(fullRelativeFrequencies).length">
+                        v-if="showingRelativeFrequencies && fullResults.unsorted && fullResults.unsorted[result.label]">
                         <small class="text-muted" :aria-label="$t('facets.relativeFrequencyLabel', {
                             total: fullResults.unsorted[result.label].count,
-                            wordCount: fullRelativeFrequencies[result.label].total_count,
+                            wordCount: getTotalCount(result.label),
                         })">
                             {{
                                 $t("facets.relativeFrequencyDescription", {
                                     total: fullResults.unsorted[result.label].count,
-                                    wordCount: fullRelativeFrequencies[result.label].total_count,
+                                    wordCount: getTotalCount(result.label),
                                 })
                             }}
                         </small>
@@ -230,7 +230,6 @@ export default {
             showingRelativeFrequencies: false,
             shouldShowRelativeFrequency: false,
             fullResults: {},
-            fullRelativeFrequencies: {},
             relativeFrequencies: [],
             absoluteFrequencies: [],
             facetResults: [],
@@ -247,11 +246,11 @@ export default {
     },
     watch: {
         $route(newUrl, oldUrl) {
+            console.log(newUrl, oldUrl)
             if (typeof newUrl.query.facet === "undefined") {
                 return;
             }
 
-            console.log(this.isOnlyFacetChange(newUrl.query, oldUrl.query))
             if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
                 this.facetResults = [];
                 this.fullResults = {};
@@ -260,7 +259,7 @@ export default {
                 this.hideFacets();
 
             }
-            if (newUrl.query.facet != oldUrl.query.facet) { // this is just a facet change
+            if (newUrl.query.facet != oldUrl.query.facet || newUrl.query.word_property != oldUrl.query.word_property) { // this is just a facet change
                 this.checkFacetStateFromUrl();
             }
             if (newUrl.query.relative_frequency != oldUrl.query.relative_frequency) { // Just a frequency type change
@@ -310,6 +309,33 @@ export default {
             }
             return wordFacets;
         },
+        facetSearch(facetObj) {
+            console.log('facetSearch called', { facetObj });
+            switch (facetObj.type) {
+                case "facet":
+                    this.$router.push(this.paramsToRoute({
+                        ...this.formData,
+                        facet: facetObj.facet,
+                        relative_frequency: false
+                    }));
+                    break;
+                case "collocationFacet":
+                    this.$router.push(this.paramsToRoute({
+                        ...this.formData,
+                        facet: 'collocation',
+                    }));
+                    break;
+                case "property":
+                    this.$router.push(this.paramsToRoute({
+                        ...this.formData,
+                        facet: 'property',
+                        word_property: facetObj.facet
+                    }));
+                    break;
+                default:
+                    return;
+            }
+        },
         getFacet(facetObj, updateUrl = true) {
             console.log('getFacet called', { facetObj, updateUrl, formData: this.formData });
             this.selectedFacet = facetObj;
@@ -317,6 +343,15 @@ export default {
             this.showFacetSelection = false;
             this.relativeFrequencies = [];
             this.absoluteFrequencies = [];
+            this.facetResults = []; // Clear old results when switching facets
+
+            // Preserve the relative frequency state when restoring from URL
+            if (!updateUrl && this.shouldShowRelativeFrequency) {
+                this.showingRelativeFrequencies = true;
+            } else {
+                this.showingRelativeFrequencies = false;
+            }
+
             this.selected = facetObj.alias;
 
             let urlString
@@ -339,7 +374,7 @@ export default {
             if (typeof sessionStorage[urlString] !== "undefined" && this.philoConfig.production === true) {
                 this.loading = true;
                 this.fullResults = JSON.parse(sessionStorage[urlString]);
-                this.facetResults = this.fullResults.sorted.slice(0, 500);
+                this.facetResults = this.fullResults.sorted.slice(0, 100);
                 this.loading = false;
                 this.percent = 100;
                 this.showFacetResults = true;
@@ -387,7 +422,7 @@ export default {
                                     } else {
                                         merge = this.mergeResults(fullResults.unsorted, results);
                                     }
-                                    this.facetResults = merge.sorted.slice(0, 500);
+                                    this.facetResults = merge.sorted.slice(0, 100);
                                     this.loading = false;
                                     this.showFacetResults = true;
                                     fullResults = merge;
@@ -459,25 +494,32 @@ export default {
         roundToTwo(num) {
             return +(Math.round(num + "e+2") + "e-2");
         },
+        getTotalCount(label) {
+            return this.fullResults.unsorted?.[label]?.total_word_count || 0;
+        },
         getRelativeFrequencies() {
             console.log("getRelativeFrequencies called");
-            let relativeResults = {};
-            for (let label in this.fullResults.unsorted) {
-                let resultObj = this.fullResults.unsorted[label];
-                relativeResults[label] = {
-                    count: this.roundToTwo((resultObj.count / resultObj.total_word_count) * 10000),
-                    url: resultObj.url,
-                    label: label,
-                    total_count: resultObj.total_word_count,
-                    metadata: resultObj.metadata,
-                };
-            }
-            this.fullRelativeFrequencies = relativeResults;
-            let sortedRelativeResults = this.sortResults(this.fullRelativeFrequencies);
-            this.facetResults = this.copyObject(sortedRelativeResults.slice(0, 500));
-            this.showingRelativeFrequencies = true;
-            this.loading = false;
-            this.percent = 100;
+
+            // Use nextTick to make computation non-blocking
+            this.$nextTick(() => {
+                let relativeResults = {};
+                for (let label in this.fullResults.unsorted) {
+                    let resultObj = this.fullResults.unsorted[label];
+                    relativeResults[label] = {
+                        count: this.roundToTwo((resultObj.count / resultObj.total_word_count) * 10000),
+                        url: resultObj.url,
+                        label: label,
+                        total_count: resultObj.total_word_count,
+                        metadata: resultObj.metadata,
+                    };
+                }
+                let fullRelativeFrequencies = relativeResults;
+                let sortedRelativeResults = this.sortResults(fullRelativeFrequencies);
+                this.facetResults = this.copyObject(sortedRelativeResults.slice(0, 100));
+                this.showingRelativeFrequencies = true;
+                this.loading = false;
+                this.percent = 100;
+            });
         },
         displayRelativeFrequencies() {
             console.log('displayRelativeFrequencies called');
@@ -485,7 +527,6 @@ export default {
             if (this.relativeFrequencies.length == 0) {
                 this.absoluteFrequencies = this.copyObject(this.facetResults);
                 this.percent = 0;
-                this.fullRelativeFrequencies = {};
                 this.getRelativeFrequencies();
             } else {
                 this.absoluteFrequencies = this.copyObject(this.facetResults);
@@ -521,14 +562,20 @@ export default {
         },
         checkFacetStateFromUrl() {
             console.log("checkFacetStateFromUrl called");
+            console.log(this.$route.query);
             if (this.$route.query.facet) {
                 const facet = this.$route.query.facet;
                 this.shouldShowRelativeFrequency = this.$route.query.relative_frequency === 'true';
 
                 // Find the facet object
-                const allFacets = [...this.facets, ...this.wordFacets];
-                const facetObj = allFacets.find(f => f.facet === facet);
-
+                let facetObj;
+                if (facet == "property") {
+                    facetObj = { type: facet, facet: this.$route.query.word_property };
+                } else if (facet == "collocation") {
+                    facetObj = { type: facet };
+                } else {
+                    facetObj = this.facets.find(f => f.facet === facet);
+                }
                 if (facetObj) {
                     this.getFacet(facetObj, false);
                 }
@@ -560,7 +607,9 @@ export default {
             this.showFacetSelection = true;
         },
         toggleFrequencies() {
+            console.log('toggleFrequencies called');
             this.showingRelativeFrequencies = !this.showingRelativeFrequencies;
+            console.log(this.showingRelativeFrequencies);
             if (this.showingRelativeFrequencies) {
                 this.$router.push(this.paramsToRoute({ ...this.formData, facet: this.selectedFacet.facet, relative_frequency: "true" }));
             } else {
@@ -580,14 +629,8 @@ export default {
             })
             delete routeParams.query.facet;
             delete routeParams.query.relative_frequency;
+            delete routeParams.query.word_property;
             this.$router.push(routeParams);
-        },
-        occurrence(count) {
-            if (count == 1) {
-                return "occurrence";
-            } else {
-                return "occurrences";
-            }
         },
         facetClick(metadata) {
             let metadataValue;

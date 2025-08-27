@@ -208,7 +208,7 @@
         "collocates": "Collocate of query term(s)",
         "showOptions": "Show options",
         "frequencyByLabel": "Frequency by {label}",
-        "top500Results": "Top 500 results for {label}",
+        "top100Results": "Top 100 results for {label}",
         "relativeFrequencyDescription": "{total} actual occurrence(s) in {wordCount} words",
         "wordProperty": "Word property",
         "collocate": "Collocate",
