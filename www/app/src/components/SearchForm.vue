@@ -11,7 +11,7 @@
                                 class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }">
                                 <span v-if="searchReport != 'kwic'">{{ $t(`searchForm.${searchReport}`) }}</span>
                                 <span v-else><span class="d-md-inline d-sm-none">{{ $t(`searchForm.${searchReport}`)
-                                        }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
+                                }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
                             </button>
                         </div>
                         <div id="search_terms_container" class="p-3">
@@ -280,7 +280,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                                     <label class="form-check-label" :for="metadataChoice.value">{{
                                                         metadataChoice.text
-                                                        }}</label>
+                                                    }}</label>
                                                 </div>
                                             </div>
                                         </div>
@@ -356,32 +356,38 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                         </div>
                                     </div>
                                 </div>
-                                <div class="input-group mt-4 pt-1 pb-2" v-if="currentReport === 'time_series'">
-                                    <button class="btn btn-outline-secondary">{{ $t("searchForm.dateRange") }}</button>
-                                    <label for="start_date" class="d-inline-flex align-self-center mx-2">{{
-                                        $t("searchForm.dateFrom") }}</label>
-                                    <input type="text" class="form-control" name="start_date" id="start_date"
-                                        style="max-width: 65px; text-align: center" v-model="formData.start_date" />
-                                    <label for="end_date" class="d-inline-flex align-self-center mx-2">{{
-                                        $t("searchForm.dateTo") }}</label>
-                                    <input type="text" class="form-control" name="end_date" id="end_date"
-                                        style="max-width: 65px; text-align: center" v-model="formData.end_date" />
-                                </div>
-                                <div class="input-group" v-if="currentReport == 'time_series'">
-                                    <button class="btn btn-outline-secondary" id="year-interval-label">
-                                        {{ $t("searchForm.yearInterval") }}
-                                    </button>
-                                    <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.every")
+                                <div class="mt-1" id="time-series-params" v-if="currentReport === 'time_series'"
+                                    role="group" aria-labelledby="time-series-params-heading">
+                                    <h2 id="time-series-params-heading">{{ $t("searchForm.timeSeriesParams") }}:</h2>
+                                    <div class="input-group mt-1 pb-2">
+                                        <button class="btn btn-outline-secondary">{{ $t("searchForm.dateRange")
+                                        }}</button>
+                                        <label for="start_date" class="d-inline-flex align-self-center mx-2">{{
+                                            $t("searchForm.dateFrom") }}</label>
+                                        <input type="text" class="form-control" name="start_date" id="start_date"
+                                            style="max-width: 65px; text-align: center" v-model="formData.start_date" />
+                                        <label for="end_date" class="d-inline-flex align-self-center mx-2">{{
+                                            $t("searchForm.dateTo") }}</label>
+                                        <input type="text" class="form-control" name="end_date" id="end_date"
+                                            style="max-width: 65px; text-align: center" v-model="formData.end_date" />
+                                    </div>
+                                    <div class="input-group">
+                                        <button class="btn btn-outline-secondary" id="year-interval-label">
+                                            {{ $t("searchForm.yearInterval") }}
+                                        </button>
+                                        <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.every")
                                         }}</span>
-                                    <input type="text" class="form-control" name="year_interval" id="year_interval"
-                                        aria-labelledby="year-interval-label"
-                                        style="max-width: 50px; text-align: center" v-model="formData.year_interval" />
-                                    <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years")
+                                        <input type="text" class="form-control" name="year_interval" id="year_interval"
+                                            aria-labelledby="year-interval-label"
+                                            style="max-width: 50px; text-align: center"
+                                            v-model="formData.year_interval" />
+                                        <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years")
                                         }}</span>
+                                    </div>
                                 </div>
                                 <div class="input-group mt-4" v-if="currentReport === 'aggregation'">
                                     <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy")
-                                        }}</button>
+                                    }}</button>
                                     <select class="form-select" :aria-label="$t('searchForm.groupResultsByLabel')"
                                         style="max-width: fit-content" v-model="formData.group_by">
                                         <option v-for="aggregationOption in aggregationOptions"
@@ -391,14 +397,14 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                     </select>
                                 </div>
                                 <div role="group" aria-labelledby="display-options-heading"
-                                    v-if="['concordance', 'kwic', 'bibliography'].includes(currentReport)">
+                                    v-if="['concordance', 'bibliography'].includes(currentReport)">
                                     <h2 class="mt-3" id="display-options-heading">
                                         {{ $t("searchForm.displayOptions") }}:
                                     </h2>
                                     <div class="input-group pb-2"
                                         v-if="['concordance', 'bibliography'].includes(currentReport)">
                                         <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy")
-                                            }}</button>
+                                        }}</button>
                                         <select class="form-select" style="max-width: fit-content"
                                             :aria-label="$t('searchForm.sortResultsByLabel')"
                                             v-model="formData.sort_by">
@@ -1234,7 +1240,8 @@ h5 {
 #search-terms-params-heading,
 #filter-by-field-heading,
 #collocation-params-heading,
-#display-options-heading {
+#display-options-heading,
+#time-series-params-heading {
     font-variant: small-caps;
     font-weight: 700;
     font-size: 1.15rem;

@@ -1,12 +1,3 @@
-
-// Custom Bootstrap changes: don't edit
-$popover-max-width: 50%;
-.custom-popover {
-    overflow: auto;
-    text-align: justify !important;
-    max-height: 60%;
-}
-
 // Theme colors
 $header-color: rgb(95, 2, 2);
 $button-color: rgb(173, 66, 66);
@@ -15,9 +6,11 @@ $link-color: rgb(142, 50, 50);
 $passage-color: rgb(155, 65, 55);
 $card-header-color: rgb(173, 66, 66);
 
-// Export colors for JavaScript usage
-:export {
-  color: $link-color;
+$popover-max-width: 50%;
+.custom-popover {
+    overflow: auto;
+    text-align: justify !important;
+    max-height: 60%;
 }
 
 // Themed elements
@@ -181,4 +174,52 @@ input {
 }
 .text-view {
     font-family: "Source Serif Pro", serif;
+}
+
+// Theme color overrides for specific components
+.badge.bg-secondary {
+    background-color: $button-color !important;
+}
+
+.nav-tabs .nav-link {
+    color: $link-color !important;
+    border-color: $link-color $link-color #fff $link-color !important;
+}
+
+.nav-tabs .nav-link.active {
+    color: $link-color !important;
+    background-color: transparent !important;
+    border-color: transparent transparent $link-color transparent !important;
+    font-weight: 700 !important;
+}
+
+.nav-tabs .nav-item:last-child .nav-link.active {
+    box-shadow: none !important;
+}
+
+.nav-tabs .nav-link:hover {
+    color: $button-color !important;
+    border-color: transparent transparent $button-color !important;
+}
+
+// Ensure btn-link follows theme colors globally
+.btn-link, .btn-link:hover, .btn-link:focus {
+    color: $link-color !important;
+}
+
+.alert-info {
+    background-color: rgba($button-color, 0.15);
+    color: #000;
+    border-color: rgba($button-color, 0.15);
+}
+
+// Simple checkbox theming
+.form-check-input:checked {
+    background-color: $button-color !important;
+    border-color: $button-color !important;
+}
+
+// Export colors for JavaScript usage
+:export {
+  color: $link-color;
 }

@@ -50,6 +50,7 @@
         "time_series": "Série Temporelle",
         "searchTerms": "Recherche par mots",
         "collocationParams": "Paramètres de collocation",
+        "timeSeriesParams": "Paramètres de série temporelle",
         "selectAttribute": "attribut de mot",
         "selectAttributeType": "Sélectionner un attribut de mot",
         "selectAttributeValue": "Sélectionner une valeur pour l'attribut",
