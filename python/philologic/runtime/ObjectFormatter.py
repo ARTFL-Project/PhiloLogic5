@@ -215,6 +215,9 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
     xml = FragmentParserParse(text)
     allowed_tags = set(["philoHighlight", "l", "ab", "ln", "w", "sp", "speaker", "stage", "i", "sc", "scx", "br"])
     for el in xml.iter():
+        # Delete lang attributes if present to avoid accessibility issues
+        if "lang" in el.attrib:
+            del el.attrib["lang"]
         if el.tag.startswith("DIV"):
             el.tag = el.tag.lower()
         if el.tag not in allowed_tags:
@@ -338,6 +341,9 @@ def format_text_object(
     for el in xml.iter():
         is_page = False
         try:
+            # Delete lang attributes if present to avoid accessibility issues
+            if "lang" in el.attrib:
+                del el.attrib["lang"]
             if el.tag.startswith("DIV"):
                 el.tag = el.tag.lower()
             if el.tag == "h1" or el.tag == "h2":
@@ -497,7 +503,7 @@ def format_text_object(
                         link_tag.attrib["large-img"] = (
                             os.path.join(config.page_images_url_root, img_split[0]) + config.page_image_extension
                         )
-                    link_tag.text = f'[page {el.attrib["n"]}]'
+                    link_tag.text = f'page {el.attrib["n"]}'
                     if config.external_page_images:
                         link_tag.attrib["target"] = "_blank"
                     else:

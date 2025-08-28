@@ -47,15 +47,9 @@
                         <span aria-hidden="true">X</span>
                     </button>
                     <transition name="slide-fade">
-                        <div class="card p-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"
+                        <div class="card py-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"
                             :aria-label="$t('textNav.tocContent')">
                             <ol class="toc-list" role="list">
-                                <li v-if="start !== 0" role="listitem">
-                                    <button type="button" class="btn btn-secondary btn-sm" @click="loadBefore()"
-                                        :aria-label="$t('textNav.loadPrevious')">
-                                        {{ $t('textNav.loadMore') }}
-                                    </button>
-                                </li>
                                 <li v-for="(element, tocIndex) in tocElementsToDisplay" :key="tocIndex"
                                     :class="'toc-' + element.philo_type" role="listitem">
                                     <span :class="'bullet-point-' + element.philo_type" aria-hidden="true"></span>
@@ -66,12 +60,6 @@
                                         :aria-label="$t('textNav.goToSection', { title: element.label })"
                                         :aria-current="element.philo_id === currentPhiloId ? 'page' : null">
                                         {{ element.label }}
-                                    </button>
-                                </li>
-                                <li v-if="end < tocElements.length" role="listitem">
-                                    <button type="button" class="btn btn-secondary btn-sm" @click="loadAfter()"
-                                        :aria-label="$t('textNav.loadNext')">
-                                        {{ $t('textNav.loadMore') }}
                                     </button>
                                 </li>
                             </ol>
@@ -218,6 +206,12 @@ export default {
             this.gallery.close();
         }
         this.destroyPopovers();
+
+        // Clean up TOC scroll listener
+        const tocContent = document.getElementById('toc-content');
+        if (tocContent) {
+            tocContent.removeEventListener('scroll', this.handleTocScroll);
+        }
     },
     methods: {
         fetchText() {
@@ -546,15 +540,48 @@ export default {
             }
         },
         loadBefore() {
-            var firstElement = this.tocElements[this.start - 2].philo_id;
+            // Store current first visible element to maintain position
+            if (this.tocElements.elements && this.start < this.tocElements.elements.length) {
+                var firstElement = this.tocElements.elements[this.start]?.philo_id;
+                if (firstElement) {
+                    this.tocPosition = firstElement;
+                }
+            }
+
+            // Load 200 more entries before current start
             this.start -= 200;
             if (this.start < 0) {
                 this.start = 0;
             }
-            this.tocPosition = firstElement;
         },
         loadAfter() {
             this.end += 200;
+        },
+        handleTocScroll() {
+            const tocContent = document.getElementById('toc-content');
+            if (!tocContent || !this.tocElements.elements) return;
+
+            const scrollTop = tocContent.scrollTop;
+            const scrollHeight = tocContent.scrollHeight;
+            const clientHeight = tocContent.clientHeight;
+
+            // Load previous entries when scrolled to within 100px of the top
+            if (scrollTop <= 100 && this.start > 0) {
+                const oldScrollHeight = scrollHeight;
+                this.loadBefore();
+
+                // Maintain scroll position after loading previous entries
+                this.$nextTick(() => {
+                    const newScrollHeight = tocContent.scrollHeight;
+                    const heightDifference = newScrollHeight - oldScrollHeight;
+                    tocContent.scrollTop = scrollTop + heightDifference;
+                });
+            }
+
+            // Load more entries when scrolled to within 100px of the bottom
+            if (scrollTop + clientHeight >= scrollHeight - 100 && this.end < this.tocElements.elements.length) {
+                this.loadAfter();
+            }
         },
         toggleTableOfContents() {
             this.tocOpen = !this.tocOpen;
@@ -565,7 +592,21 @@ export default {
                         currentElement.scrollIntoView({ behavior: "smooth", block: "center" });
                         currentElement.focus();
                     }
+
+                    // Add scroll listener for automatic loading with a slight delay
+                    setTimeout(() => {
+                        const tocContent = document.getElementById('toc-content');
+                        if (tocContent) {
+                            tocContent.addEventListener('scroll', this.handleTocScroll, { passive: true });
+                        }
+                    }, 100);
                 });
+            } else {
+                // Remove scroll listener when TOC is closed
+                const tocContent = document.getElementById('toc-content');
+                if (tocContent) {
+                    tocContent.removeEventListener('scroll', this.handleTocScroll);
+                }
             }
         },
         backToTop() {
@@ -763,6 +804,14 @@ export default {
     backdrop-filter: blur(5px) contrast(0.8);
 }
 
+.toc-list {
+    padding-left: 1rem;
+}
+
+.toc-link {
+    text-decoration: none;
+}
+
 a.current-obj,
 #toc-container a:hover {
     background: #e8e8e8;
@@ -904,6 +953,20 @@ a.current-obj,
 :deep(.xml-pb::before) {
     content: "-" attr(n) "-";
     white-space: pre;
+}
+
+:deep(#main-text .xml-pb-image a) {
+    text-decoration: none;
+    border: 1px solid theme.$link-color;
+    border-radius: 0.25rem;
+    padding: 0.15rem;
+    font-weight: 700;
+}
+
+:deep(#main-text .xml-pb-image a:hover),
+:deep(#main-text .xml-pb-image a:focus) {
+    background-color: rgba(theme.$link-color, 0.025);
+    border: 2px solid theme.$link-color;
 }
 
 :deep(.xml-lg) {

@@ -527,9 +527,7 @@ export default {
     watch: {
         $route(newUrl, oldUrl) {
             if (this.$route.name == "collocation") {
-                if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
-                    this.fetchResults();
-                }
+                this.fetchResults();
                 if (newUrl.query.collocation_method != oldUrl.query.collocation_method) {
                     this.setCollocationMethod(newUrl.query.collocation_method || 'frequency', false);
                 }
@@ -615,6 +613,23 @@ export default {
                     this.searching = false;
                     this.debug(this, error);
                 });
+        },
+        setCollocationMethod(method, updateUrl = true) {
+            switch (method) {
+                case 'compare':
+                    this.toggleCompare(updateUrl);
+                    break;
+                case 'similar':
+                    this.toggleSimilar(updateUrl);
+                    break;
+                case 'timeSeries':
+                    this.toggleTimeSeries(updateUrl);
+                    this.getCollocatesOverTime(0, true)
+                    break;
+                default:
+                    this.getFrequency(updateUrl);
+                    break;
+            }
         },
         checkCollocationMethod() {
             this.collocMethod = this.$route.query.collocation_method || 'frequency';
@@ -720,23 +735,6 @@ export default {
             this.collocMethod = this.$route.query.collocation_method || 'frequency';
             if (this.collocMethod === "similar") {
                 this.similarFieldSelected = this.$route.query.similarity_by
-            }
-        },
-        setCollocationMethod(method, updateUrl = true) {
-            switch (method) {
-                case 'compare':
-                    this.toggleCompare(updateUrl);
-                    break;
-                case 'similar':
-                    this.toggleSimilar(updateUrl);
-                    break;
-                case 'timeSeries':
-                    this.toggleTimeSeries(updateUrl);
-                    this.getCollocatesOverTime(0, true)
-                    break;
-                default:
-                    this.getFrequency(updateUrl);
-                    break;
             }
         },
         updateCollocationUrl() {

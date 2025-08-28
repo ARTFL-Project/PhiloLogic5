@@ -20,7 +20,7 @@
                                 <div class="modal-header">
                                     <h2 class="modal-title" id="export-modal-header">{{
                                         $t('resultsSummary.exportResults')
-                                        }}</h2>
+                                    }}</h2>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"
                                         :aria-label="$t('common.close')"></button>
                                 </div>
@@ -49,7 +49,7 @@
                                         </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
-                                        }}&nbsp;</span>
+                                            }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
@@ -172,9 +172,9 @@
                                     :class="{ active: formData.report === 'concordance' }"
                                     @click="switchReport('concordance')"
                                     :aria-label="$t('resultsSummary.switchToConcordance')"
-                                    :aria-pressed="formData.report === 'concordance'">"
+                                    :aria-pressed="formData.report === 'concordance'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.concordanceBig")
-                                    }}</span>
+                                        }}</span>
                                     <span class="d-inline d-lg-none">{{
                                         $t("resultsSummary.concordanceSmall") }}</span>
                                 </button>
@@ -184,7 +184,7 @@
                                     :aria-pressed="formData.report === 'kwic'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.kwicBig") }}</span>
                                     <span class="d-inline d-lg-none">{{ $t("resultsSummary.kwicSmall")
-                                    }}</span>
+                                        }}</span>
                                 </button>
                             </div>
                         </div>

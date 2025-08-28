@@ -1,6 +1,6 @@
 <template>
     <header role="banner">
-        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1" style="height: 53px"
+        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1" style="height: 73px"
             aria-label="Main navigation">
             <div class="collapse navbar-collapse top-links">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
@@ -50,7 +50,7 @@
                 </li>
                 <li class="nav-item">
                     <a class="nav-link" href="https://artfl-project.uchicago.edu/content/contact-us"
-                        title="Contact information for the ARTFL Project" aria-label="Contact ARTFL Project">
+                        title="Contact information for the ARTFL Project" aria-label="Contact us">
                         {{ $t("header.contactUs") }}
                     </a>
                 </li>
@@ -160,14 +160,7 @@ export default {
 
 .top-links {
     margin-left: -0.25rem;
-    font-size: 80%;
     margin-top: -2rem;
-    font-variant: small-caps;
-}
-
-#right-side-links {
-    font-size: 80%;
-    margin-top: -1rem;
     font-variant: small-caps;
 }
 
@@ -193,8 +186,11 @@ nav.navbar a,
     font-size: 1.6rem !important;
     font-variant: small-caps;
     position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
+    left: 0;
+    right: 0;
+    text-align: center;
+    margin: 0 auto;
+    width: fit-content;
     line-height: 80%;
 }
 
@@ -222,5 +218,9 @@ nav.navbar a,
     font-weight: 700;
     font-size: 1.2rem;
     font-variant: small-caps;
+}
+
+.nav-item a {
+    height: 44px;
 }
 </style>

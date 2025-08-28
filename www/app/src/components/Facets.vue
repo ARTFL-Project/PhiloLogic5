@@ -783,7 +783,8 @@ export default {
 }
 
 .relative-frequency-info small {
-    opacity: 0.8;
+    opacity: 1;
+    color: #6c757d !important;
     transition: opacity 0.25s ease;
 }
 
