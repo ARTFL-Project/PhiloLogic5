@@ -22,7 +22,7 @@
                         </button>
                         <button type="button" class="close-pill" @click="removeTerm(index)"
                             :aria-label="$t('searchArgs.removeTerm', { term: group })">
-                            X
+                            <span class="icon-x"></span>
                         </button>
                     </div>
                     {{ queryArgs.proximity }}
@@ -31,7 +31,7 @@
                     aria-modal="true" :aria-labelledby="'query-terms-title'">
                     <button type="button" class="btn btn-secondary btn-sm close" @click="closeTermsList()"
                         :aria-label="$t('common.close')">
-                        <span aria-hidden="true">&times;</span>
+                        <span class="icon-x"></span>
                     </button>
                     <span class="pe-4 h6" id="query-terms-title">
                         {{ $t("searchArgs.termsExpanded", { length: words.length }) }}:
@@ -49,7 +49,7 @@
                                 <button type="button" class="close-pill"
                                     @click="removeFromTermsList(word, groupIndexSelected)"
                                     :aria-label="$t('searchArgs.excludeTerm', { term: word })">
-                                    X
+                                    <span class="icon-x"></span>
                                 </button>
                             </div>
                         </div>

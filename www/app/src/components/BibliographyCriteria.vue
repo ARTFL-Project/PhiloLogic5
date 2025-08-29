@@ -3,7 +3,8 @@
         <div>
             <span>{{ $t("searchArgs.biblioCriteria") }}:&nbsp;</span>
 
-            <div role="list" aria-live="polite" :aria-label="$t('biblioCriteria.activeFiltersLabel')">
+            <div role="list" aria-live="polite" :aria-label="$t('biblioCriteria.activeFiltersLabel')"
+                v-if="biblio.length !== 0">
                 <div class="metadata-args rounded-pill" v-for="metadata in biblio" :key="metadata.key" role="listitem"
                     :aria-label="`${$t('biblioCriteria.filterLabel')}: ${metadata.alias} ${metadata.value.replace('<=>', '—')}`">
 
@@ -17,7 +18,7 @@
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata(metadata.key)"
                         :aria-label="`${$t('biblioCriteria.removeFilter')} ${metadata.alias}`"
                         :aria-describedby="`label-${metadata.key.replace(/\s+/g, '-')} value-${metadata.key.replace(/\s+/g, '-')}`">
-                        <span aria-hidden="true">×</span>
+                        <span class="icon-x" aria-hidden="true"></span>
                     </button>
                 </div>
             </div>
@@ -36,7 +37,7 @@
                     <span class="metadata-value" id="start-date-value">{{ start_date }}</span>
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata('start_date')"
                         :aria-label="`${$t('biblioCriteria.removeStartDate')}`" aria-describedby="start-date-value">
-                        <span aria-hidden="true">×</span>
+                        <span class="icon-x" aria-hidden="true"></span>
                     </button>
                 </div>
             </div>
@@ -50,7 +51,7 @@
                     <span class="metadata-value" id="end-date-value">{{ end_date }}</span>
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata('end_date')"
                         :aria-label="`${$t('biblioCriteria.removeEndDate')}`" aria-describedby="end-date-value">
-                        <span aria-hidden="true">×</span>
+                        <span class="icon-x" aria-hidden="true"></span>
                     </button>
                 </div>
             </div>
@@ -115,7 +116,7 @@ export default {
     border-left: #ddd solid 1px;
     border-top-right-radius: 50rem;
     border-bottom-right-radius: 50rem;
-    padding: 0 0.5rem;
+    padding: 0.4rem 0.5rem;
     border-right: none;
     border-top: none;
     border-bottom: none;
@@ -123,15 +124,24 @@ export default {
     cursor: pointer;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     height: 100%;
+    min-width: 2rem;
+    line-height: 1;
 }
 
 .remove-metadata:hover,
 .remove-metadata:focus {
-    background-color: #e9ecef;
+    background-color: theme.$button-color !important;
+    color: #fff !important;
     cursor: pointer;
     outline: 2px solid theme.$link-color;
     outline-offset: -2px;
+}
+
+.remove-metadata:hover .icon-x,
+.remove-metadata:focus .icon-x {
+    background-color: #fff !important;
 }
 
 .rounded-pill a {

@@ -44,7 +44,7 @@
                 <nav id="toc" role="navigation" :aria-label="$t('textNav.tableOfContents')">
                     <button type="button" class="btn btn-secondary visually-hidden" id="hide-toc"
                         @click="toggleTableOfContents()" :aria-label="$t('textNav.closeToc')">
-                        <span aria-hidden="true">X</span>
+                        <span class="icon-x"></span>
                     </button>
                     <transition name="slide-fade">
                         <div class="card py-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"

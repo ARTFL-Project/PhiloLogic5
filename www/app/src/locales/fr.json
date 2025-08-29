@@ -21,7 +21,6 @@
         "sameSentence": "dans la même phrase",
         "showFacetsLabel": "Afficher les facettes de recherche",
         "facetsRegion": "Facettes de recherche",
-        "tab": "onglet",
         "closeModal": "Fermer",
         "changeLanguage": "Changer de langue",
         "languageIcon": "Langue",
@@ -143,14 +142,12 @@
         "kwicSmall": "Occurrences par ligne",
         "summaryRegion": "Résumé des résultats de recherche",
         "showBibliography": "Afficher la bibliographie",
-        "viewAggregation": "View aggregation of {count} {label}",
-        "progressLabel": "Processing results, {percent}% complete",
-        "progressDescription": "Processing {current} of {total} results, {percent} percent complete",
-        "showFilteredWords": "Show filtered words list",
-        "filteredWordsList": "List of filtered words",
+        "browseByField": "voir l'agrégation par {label}",
+        "progressLabel": "Traitement des résultats, {percent}% terminé",
+        "progressDescription": "Traitement de {current} sur {total} résultats, {percent} pour cent terminé",
+        "showFilteredWords": "Afficher la liste des mots filtrés",
+        "filteredWordsList": "Liste des mots filtrés",
         "reportViewOptions": "Report view options",
-        "switchToConcordance": "Switch to concordance view",
-        "switchToKwic": "Switch to KWIC view",
         "progressChanged": "Résultats mis à jour, {percent}% terminé"
     },
     "collocation": {
@@ -187,8 +184,6 @@
         "similarUsageResults": "Résultats d'analyse d'usage similaire",
         "timeSeriesResults": "Résultats d'analyse de séries temporelles",
         "viewToggle": "Basculer la vue pour la période",
-        "showOverRepresented": "Afficher les collocants sur-représentés pour",
-        "showFrequent": "Afficher les collocants fréquents pour",
         "filterBy": "Filtrer par",
         "selectDateType": "Sélectionner le type de date pour"
     },
@@ -399,8 +394,7 @@
         "viewText": "Voir le texte"
     },
     "pages": {
-        "searchResultsPages": "Pages de résultats de recherche",
-        "pageAriaLabel": "Page {page}, résultats {range}"
+        "searchResultsPages": "Pages de résultats de recherche"
     },
     "toc": {
         "showHeader": "Afficher l'en-tête",

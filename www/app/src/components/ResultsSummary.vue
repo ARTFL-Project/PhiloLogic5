@@ -43,9 +43,9 @@
                                 <span v-else>
                                     <span v-for="(stat, statIndex) in statsDescription" :key="stat.field">
                                         <router-link :to="`/aggregation?${stat.link}&group_by=${stat.field}`"
-                                            class="stat-link" v-if="stat.link.length > 0"
-                                            :aria-label="$t('resultsSummary.viewAggregation', { count: stat.count, label: stat.label })">
-                                            {{ stat.count }} {{ stat.label }}(s)
+                                            class="stat-link" v-if="stat.link.length > 0">
+                                            {{ stat.count }} {{ stat.label }}(s)<span class="visually-hidden"> - {{
+                                                $t('resultsSummary.browseByField', { label: stat.label }) }}</span>
                                         </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
@@ -67,9 +67,9 @@
 
                             <button type="button" class="btn rounded-pill btn-outline-secondary btn-sm ms-1"
                                 style="margin-top: -0.05rem" data-bs-toggle="modal"
-                                data-bs-target="#results-bibliography"
-                                :aria-label="$t('resultsSummary.showBibliography')">
-                                {{ $t("resultsSummary.fromTheseTitles") }}
+                                data-bs-target="#results-bibliography">
+                                {{ $t("resultsSummary.fromTheseTitles") }}<span class="visually-hidden"> - {{
+                                    $t("resultsSummary.showBibliography") }}</span>
                             </button>
                         </div>
 
@@ -138,7 +138,7 @@
                                 role="region" :aria-label="$t('resultsSummary.filteredWordsList')">
                                 <button type="button" class="btn btn-secondary" id="close-filter-list"
                                     @click="toggleFilterList($event)" :aria-label="$t('common.close')">
-                                    &times;
+                                    <span class="icon-x"></span>
                                 </button>
                                 <div class="row mt-4">
                                     <div class="col" v-for="wordGroup in splitFilterList" :key="wordGroup[0]">
@@ -171,7 +171,7 @@
                                 <button type="button" class="btn btn-secondary"
                                     :class="{ active: formData.report === 'concordance' }"
                                     @click="switchReport('concordance')"
-                                    :aria-label="$t('resultsSummary.switchToConcordance')"
+                                    :aria-label="$t('resultsSummary.concordanceBig')"
                                     :aria-pressed="formData.report === 'concordance'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.concordanceBig")
                                         }}</span>
@@ -180,7 +180,7 @@
                                 </button>
                                 <button type="button" class="btn btn-secondary"
                                     :class="{ active: formData.report === 'kwic' }" @click="switchReport('kwic')"
-                                    :aria-label="$t('resultsSummary.switchToKwic')"
+                                    :aria-label="$t('resultsSummary.kwicBig')"
                                     :aria-pressed="formData.report === 'kwic'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.kwicBig") }}</span>
                                     <span class="d-inline d-lg-none">{{ $t("resultsSummary.kwicSmall")

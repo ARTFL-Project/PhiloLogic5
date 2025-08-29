@@ -8,7 +8,7 @@
                         :class="{ active: collocMethod === 'frequency' }" data-bs-target="#frequency-tab-pane"
                         type="button" role="tab" aria-controls="frequency-tab-pane"
                         :aria-selected="collocMethod === 'frequency'" @click="getFrequency()"
-                        :aria-label="`${$t('collocation.collocation')} ${$t('common.tab')}`">
+                        :aria-label="$t('collocation.collocation')">
                         {{ $t("collocation.collocation") }}
                     </button>
                 </li>
@@ -16,7 +16,7 @@
                     <button class="nav-link shadow-sm" id="compare-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'compare' }" data-bs-target="#compare-tab-pane" type="button"
                         role="tab" aria-controls="compare-tab-pane" :aria-selected="collocMethod === 'compare'"
-                        @click="toggleCompare()" :aria-label="`${$t('collocation.compareTo')} ${$t('common.tab')}`">
+                        @click="toggleCompare()" :aria-label="$t('collocation.compareTo')">
                         {{ $t("collocation.compareTo") }}
                     </button>
                 </li>
@@ -24,7 +24,7 @@
                     <button class="nav-link shadow-sm" id="similar-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'similar' }" data-bs-target="#similar-tab-pane" type="button"
                         role="tab" aria-controls="similar-tab-pane" :aria-selected="collocMethod === 'similar'"
-                        @click="toggleSimilar()" :aria-label="`${$t('collocation.similarUsage')} ${$t('common.tab')}`">
+                        @click="toggleSimilar()" :aria-label="$t('collocation.similarUsage')">
                         {{ $t("collocation.similarUsage") }}
                     </button>
                 </li>
@@ -33,7 +33,7 @@
                         :class="{ active: collocMethod === 'timeSeries' }" data-bs-target="#time-series-tab-pane"
                         type="button" role="tab" aria-controls="time-series-tab-pane"
                         :aria-selected="collocMethod === 'timeSeries'" @click="toggleTimeSeries()"
-                        :aria-label="`${$t('collocation.timeSeries')} ${$t('common.tab')}`">
+                        :aria-label="$t('collocation.timeSeries')">
                         {{ $t("collocation.timeSeries") }}
                     </button>
                 </li>
@@ -255,14 +255,14 @@
                         <button class="nav-link active" style="border-left-width: 0" id="frequent-tab"
                             data-bs-toggle="tab" data-bs-target="#freq-tab-pane" type="button" role="tab"
                             aria-controls="freq-tab-pane" aria-selected="true"
-                            :aria-label="`${$t('collocation.frequentCollocates')} ${$t('common.tab')}`">
+                            :aria-label="$t('collocation.frequentCollocates')">
                             {{ $t('collocation.frequentCollocates') }}
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="rep-tab" data-bs-toggle="tab" data-bs-target="#rep-tab-pane"
                             type="button" role="tab" aria-controls="rep-tab-pane" aria-selected="false"
-                            :aria-label="`${$t('collocation.overRepresentedCollocates')} ${$t('common.tab')}`">
+                            :aria-label="$t('collocation.overRepresentedCollocates')">
                             {{ $t('collocation.overRepresentedCollocates') }}
                         </button>
                     </li>
@@ -384,13 +384,13 @@
                             <button class="btn btn-sm rounded-0"
                                 :class="period.showDistinctive ? 'btn-secondary active' : 'btn-outline-secondary'"
                                 @click="period.showDistinctive = true" :aria-pressed="period.showDistinctive"
-                                :aria-label="`${$t('collocation.showOverRepresented')} ${period.periodYear}`">
+                                :aria-label="$t('collocation.overRepresentedCollocates')">
                                 {{ $t('collocation.overRepresentedCollocates') }}
                             </button>
                             <button class="btn btn-sm rounded-0"
                                 :class="!period.showDistinctive ? 'btn-secondary active' : 'btn-outline-secondary'"
                                 @click="period.showDistinctive = false" :aria-pressed="!period.showDistinctive"
-                                :aria-label="`${$t('collocation.showFrequent')} ${period.periodYear}`">
+                                :aria-label="$t('collocation.frequentCollocates')">
                                 {{ $t('collocation.frequentCollocates') }}
                             </button>
                         </div>

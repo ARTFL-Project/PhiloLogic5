@@ -98,9 +98,24 @@ a.btn-secondary {
     background-color: $card-header-color !important;
     font-weight: 700 !important;
 }
+
+// Close box buttons in card headers need inverted colors
 .close-box {
-    color: fff !important;
+    color: #fff !important;
     border-width: 0 !important;
+    background-color: transparent !important;
+}
+
+.close-box .icon-x {
+    background-color: #fff !important;
+}
+
+.close-box:hover {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.close-box:hover .icon-x {
+    background-color: #fff !important;
 }
 
 .input-group-text,
@@ -219,6 +234,79 @@ input {
 .form-check-input:checked {
     background-color: $button-color !important;
     border-color: $button-color !important;
+}
+
+.icon-x {
+    background-color: $link-color !important;
+}
+.close-pill:hover .icon-x {
+    background-color: #fff !important;
+}
+
+// Focus indicators for accessibility - subtle and elegant
+.nav-link:focus,
+.btn:focus,
+button:focus {
+    outline: none !important;
+    box-shadow: inset 0 0 0 2px $button-color !important;
+}
+
+.nav-tabs .nav-link:focus {
+    outline: none !important;
+    box-shadow: inset 0 -3px 0 0 $button-color !important;
+}
+
+.nav-tabs .nav-link:focus:not(.active) {
+    background-color: rgba($button-color, 0.05) !important;
+}
+
+// Special styling for collocation method selector tabs (on white background)
+#colloc-method-switch .nav-link:focus {
+    background-color: rgba($button-color, 0.08) !important;
+    border-color: rgba($button-color, 0.3) !important;
+    box-shadow: inset 0 -2px 0 0 $button-color !important;
+}
+
+#colloc-method-switch .nav-link:focus.active {
+    background-color: rgba($button-color, 0.12) !important;
+}
+
+// Elegant focus styling for search report buttons
+#report .btn:focus {
+    box-shadow: inset 3px 0 4px 0 rgba(255, 255, 255, 0.4), inset -3px 0 4px 0 rgba(255, 255, 255, 0.4), inset 0 3px 4px 0 rgba(255, 255, 255, 0.4), inset 0 -3px 4px 0 rgba(255, 255, 255, 0.4) !important;
+    outline: none !important;
+}
+
+#report .btn:focus:not(.active) {
+    background-color: $button-color-active !important;
+    color: #fff !important;
+}
+
+// Don't show focus on mouse clicks, only keyboard navigation
+.nav-link:focus:not(:focus-visible),
+.btn:focus:not(:focus-visible),
+button:focus:not(:focus-visible) {
+    box-shadow: none !important;
+}
+
+/* Override Bootstrap's default focus outline for all buttons */
+.btn:focus-visible,
+button:focus-visible {
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+}
+
+form .btn:focus-visible,
+form button:focus-visible,
+.card .btn:focus-visible,
+.card button:focus-visible,
+.input-group .btn:focus-visible,
+.input-group button:focus-visible,
+.btn.btn-secondary:focus-visible,
+.btn.btn-outline-secondary:focus-visible {
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 0.25rem rgba(     $button-color, 0.25) !important;
 }
 
 // Export colors for JavaScript usage

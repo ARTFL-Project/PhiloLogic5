@@ -1,10 +1,14 @@
 <template>
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" style="margin-top: 12rem;">
         <div class="modal-content">
-            <div class="modal-header">
-                <h2 class="modal-title" id="biblio-modal-title">{{ $t("resultsBiblio.heading") }}</h2>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" :aria-label="$t('common.closeModal')"
-                    @click="$event.target.blur()">
+            <div class="card-header text-center position-relative">
+                <h2 class="modal-title mb-0 h6" id="biblio-modal-title"
+                    style="font-variant: small-caps; font-size: 1.2rem; font-weight: 700;">{{
+                        $t("resultsBiblio.heading") }}</h2>
+                <button type="button" class="btn btn-secondary btn-sm close-box" data-bs-dismiss="modal"
+                    :aria-label="$t('common.closeModal')" @click="$event.target.blur()"
+                    style="position: absolute; top: 1px; right: 0;">
+                    <span class="icon-x"></span>
                 </button>
             </div>
             <div class="modal-body">
@@ -25,7 +29,7 @@
                                 </div>
                                 <div class="occurrence-badge">
                                     <span class="occurrence-count">{{ result.count }} {{ $t("resultsBiblio.occurrences")
-                                        }}</span>
+                                    }}</span>
                                 </div>
                             </div>
                         </article>

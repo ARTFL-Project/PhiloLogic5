@@ -6,7 +6,6 @@
                 <div class="btn-group shadow" role="group">
                     <button type="button" class="btn btn-outline-secondary" v-for="page in pages" :key="page.display"
                         :class="page.active" @click="goToPage(page.start, page.end)"
-                        :aria-label="$t('pages.pageAriaLabel', { page: page.display, range: page.range })"
                         :aria-current="page.active === 'active' ? 'page' : null">
                         <span class="page-number">{{ page.display }}</span>
                         <span class="page-range">{{ page.range }}</span>

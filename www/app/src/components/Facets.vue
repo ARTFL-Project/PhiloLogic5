@@ -6,7 +6,7 @@
             </div>
             <button type="button" class="btn btn-secondary btn-sm close-box" @click="toggleFacets()"
                 :aria-label="$t('facets.closeFacets')">
-                ×
+                <span class="icon-x"></span>
             </button>
 
             <transition name="slide-fade">
@@ -72,7 +72,7 @@
                 <h4 class="mb-0 h6">{{ $t("facets.frequencyByLabel", { label: selectedFacet.alias }) }}</h4>
                 <button type="button" class="btn btn-secondary btn-sm close-box" @click="hideFacets()"
                     :aria-label="$t('facets.hideFacetResults')">
-                    ×
+                    <span class="icon-x"></span>
                 </button>
             </div>
 

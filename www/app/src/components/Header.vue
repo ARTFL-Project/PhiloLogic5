@@ -5,8 +5,7 @@
             <div class="collapse navbar-collapse top-links">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item">
-                        <a class="nav-link" :href="philoConfig.link_to_home_page"
-                            :aria-label="`Go to ${philoConfig.dbname} home page`"
+                        <a class="nav-link" :href="philoConfig.link_to_home_page" :aria-label="$t('header.goHome')"
                             v-if="philoConfig.link_to_home_page != ''">
                             {{ $t("header.goHome") }}
                         </a>
@@ -27,12 +26,12 @@
             </div>
 
             <button type="button" id="academic-citation-link" class="nav-link position-absolute" data-bs-toggle="modal"
-                data-bs-target="#academic-citation" :aria-label="$t('header.citationHelpText')"
+                data-bs-target="#academic-citation" :aria-label="$t('header.citeUs')"
                 v-if="philoConfig.academic_citation.collection.length > 0">
                 {{ $t("header.citeUs") }}
             </button>
 
-            <router-link class="navbar-brand" to="/" :aria-label="`Go to ${philoConfig.dbname} homepage`"
+            <router-link class="navbar-brand" to="/" :aria-label="stripHtmlTags(philoConfig.dbname)"
                 v-html="philoConfig.dbname">
             </router-link>
 
@@ -60,7 +59,7 @@
             </ul>
 
             <a id="report-error-link" class="nav-link position-absolute" :href="philoConfig.report_error_link"
-                target="_blank" rel="noopener noreferrer" aria-label="Report an error (opens in new tab)"
+                target="_blank" rel="noopener noreferrer" :aria-label="$t('common.reportError') + ' (opens in new tab)'"
                 v-if="philoConfig.report_error_link.length > 0">
                 {{ $t("common.reportError") }}
             </a>
@@ -83,7 +82,7 @@
                                 <citations :citation="docCitation.citation" separator=",&nbsp;" />,
                             </span>
                             <span v-html="philoConfig.academic_citation.collection"></span>:
-                            <a :href="docCitation.link" :aria-label="`Visit citation link: ${docCitation.link}`">
+                            <a :href="docCitation.link" :aria-label="docCitation.link">
                                 {{ docCitation.link }}.&nbsp;
                             </a>
                             <span>Accessed on {{ date }}</span>
@@ -150,6 +149,13 @@ export default {
             } else {
                 this.docCitation.citation = [];
             }
+        },
+        stripHtmlTags(html) {
+            if (!html) return '';
+            // Create a temporary element to extract text content
+            const div = document.createElement('div');
+            div.innerHTML = html;
+            return div.textContent || div.innerText || '';
         },
     },
 };

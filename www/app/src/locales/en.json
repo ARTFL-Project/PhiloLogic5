@@ -21,7 +21,6 @@
         "sameSentence": "in the same sentence",
         "showFacetsLabel": "Show search facets",
         "facetsRegion": "Search facets",
-        "tab": "tab",
         "closeModal": "Close",
         "loadingFacets": "Loading facets",
         "changeLanguage": "Change language",
@@ -36,7 +35,6 @@
     "header": {
         "citationModalTitle": "How to cite {dbname}:",
         "closeCitationDialog": "Close citation dialog",
-        "citationHelpText": "Opens a dialog with information on how to cite this database",
         "accessedOn": "Accessed on {date}",
         "goHome": "Go to home page",
         "citeUs": "Cite us",
@@ -145,14 +143,12 @@
         "kwicSmall": "Keyword in context",
         "summaryRegion": "Search results summary",
         "showBibliography": "Show bibliography of sources",
-        "viewAggregation": "View aggregation of {count} {label}",
+        "browseByField": "view {label} aggregation",
         "progressLabel": "Processing results, {percent}% complete",
         "progressDescription": "Processing {current} of {total} results, {percent} percent complete",
         "showFilteredWords": "Show filtered words list",
         "filteredWordsList": "List of filtered words",
         "reportViewOptions": "Report view options",
-        "switchToConcordance": "Switch to concordance view",
-        "switchToKwic": "Switch to KWIC view",
         "progressChanged": "Progress updated: {percent}% complete"
     },
     "collocation": {
@@ -189,8 +185,6 @@
         "similarUsageResults": "Similar usage analysis results",
         "timeSeriesResults": "Time series analysis results",
         "viewToggle": "View toggle for period",
-        "showOverRepresented": "Show over-represented collocates for",
-        "showFrequent": "Show frequent collocates for",
         "filterBy": "Filter by",
         "selectDateType": "Select date type for"
     },
@@ -401,8 +395,7 @@
         "viewText": "View text"
     },
     "pages": {
-        "searchResultsPages": "Search results pages",
-        "pageAriaLabel": "Page {page}, résultats {range}"
+        "searchResultsPages": "Search results pages"
     },
     "toc": {
         "showHeader": "Show Header",
