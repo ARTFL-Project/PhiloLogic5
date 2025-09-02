@@ -20,7 +20,7 @@
                                 <div class="modal-header">
                                     <h2 class="modal-title" id="export-modal-header">{{
                                         $t('resultsSummary.exportResults')
-                                    }}</h2>
+                                        }}</h2>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"
                                         :aria-label="$t('common.close')"></button>
                                 </div>
@@ -49,7 +49,7 @@
                                         </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
-                                            }}&nbsp;</span>
+                                        }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
@@ -120,13 +120,13 @@
                                 <span>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                         v-if="colloc_filter_choice === 'frequency'"
-                                        :aria-label="$t('resultsSummary.showFilteredWords')"
+                                        :aria-label="$t('resultsSummary.commonWords', { n: filter_frequency }) + ' ' + $t('resultsSummary.filtered')"
                                         :aria-expanded="showFilteredWords" aria-controls="filter-list">
                                         {{ $t("resultsSummary.commonWords", { n: filter_frequency }) }}
                                     </button>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                         v-if="colloc_filter_choice === 'stopwords'"
-                                        :aria-label="$t('resultsSummary.showFilteredWords')"
+                                        :aria-label="$t('resultsSummary.commonStopwords') + ' ' + $t('resultsSummary.filtered')"
                                         :aria-expanded="showFilteredWords" aria-controls="filter-list">
                                         {{ $t("resultsSummary.commonStopwords") }}
                                     </button>
@@ -174,7 +174,7 @@
                                     :aria-label="$t('resultsSummary.concordanceBig')"
                                     :aria-pressed="formData.report === 'concordance'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.concordanceBig")
-                                        }}</span>
+                                    }}</span>
                                     <span class="d-inline d-lg-none">{{
                                         $t("resultsSummary.concordanceSmall") }}</span>
                                 </button>
@@ -184,7 +184,7 @@
                                     :aria-pressed="formData.report === 'kwic'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.kwicBig") }}</span>
                                     <span class="d-inline d-lg-none">{{ $t("resultsSummary.kwicSmall")
-                                        }}</span>
+                                    }}</span>
                                 </button>
                             </div>
                         </div>

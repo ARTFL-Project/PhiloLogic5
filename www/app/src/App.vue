@@ -181,7 +181,8 @@ export default {
     },
     created() {
         if (this.$philoConfig.valid_config) {
-            document.title = DOMPurify.sanitize(this.$philoConfig.dbname);
+            const titleCasedDbname = this.toTitleCase(DOMPurify.sanitize((this.$philoConfig.dbname)));
+            document.title = this.$t('common.documentTitle', { dbname: titleCasedDbname });
             const html = document.documentElement;
 
             // Fix: Use dynamic locale instead of hardcoded 'sv'
@@ -225,6 +226,11 @@ export default {
         },
     },
     methods: {
+        toTitleCase(str) {
+            return str.replace(/\w\S*/g, (txt) => {
+                return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+            });
+        },
         getBaseUrl() {
             let href = window.location.href;
             href = href.replace(/\/concordance.*/, "");

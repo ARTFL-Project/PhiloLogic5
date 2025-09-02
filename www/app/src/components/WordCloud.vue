@@ -1,5 +1,5 @@
 <template>
-    <div class="word-cloud-container" role="img" :aria-label="wordCloudAriaLabel"
+    <div class="word-cloud-container" role="region" :aria-label="wordCloudAriaLabel"
         aria-describedby="word-cloud-instructions">
         <!-- Instructions for screen readers -->
         <div id="word-cloud-instructions" class="visually-hidden">

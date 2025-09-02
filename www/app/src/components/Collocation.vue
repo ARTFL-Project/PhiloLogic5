@@ -221,8 +221,7 @@
                             <tr style="line-height: 1.75rem" v-for="(word, index) in sortedList" :key="word.collocate"
                                 :tabindex="0" @click="collocateClick(word)" @keydown.enter="collocateClick(word)"
                                 @keydown.space.prevent="collocateClick(word)"
-                                :aria-label="`${$t('collocation.viewConcordance')}: ${word.collocate}, ${$t('collocation.count')}: ${word.count}`"
-                                :aria-describedby="`collocate-${index} count-${index}`">
+                                :aria-label="`${word.collocate} ${word.count}`">
                                 <td class="text-view" :id="`collocate-${index}`">{{ word.collocate }}</td>
                                 <td :id="`count-${index}`">{{ word.count }}</td>
                             </tr>
@@ -1088,11 +1087,38 @@ th {
 .table tbody tr {
     cursor: pointer;
     transition: all 0.2s ease;
+    border: 1px solid transparent;
 }
 
 .table tbody tr:hover {
-    background-color: rgba(theme.$link-color, 0.1) !important;
-    color: theme.$link-color !important;
+    transform: scale(1.01);
+    background-color: rgba(theme.$link-color, 0.15) !important;
+    border-color: rgba(theme.$link-color, 0.3);
+    box-shadow: inset 0 0 8px rgba(theme.$link-color, 0.1);
+    cursor: pointer;
+    z-index: 1;
+}
+
+.table tbody tr:active {
+    transform: scale(0.98);
+}
+
+.table tbody tr:hover {
+    transform: scale(1.01) !important;
+    background-color: rgba(theme.$link-color, 0.15) !important;
+    border: 1px solid rgba(theme.$link-color, 0.3) !important;
+    box-shadow: inset 0 0 8px rgba(theme.$link-color, 0.1) !important;
+    cursor: pointer !important;
+    z-index: 1 !important;
+}
+
+.table tbody tr:hover td {
+    background-color: rgba(theme.$link-color, 0.15) !important;
+    color: inherit !important;
+}
+
+.table tbody tr:active {
+    transform: scale(0.98);
 }
 
 .table tbody tr:focus {
@@ -1100,18 +1126,6 @@ th {
     color: theme.$button-color !important;
     outline: 2px solid theme.$button-color;
     outline-offset: -2px;
-}
-
-/* Striped rows with even lighter theme color */
-.table tbody tr:nth-of-type(odd) {
-    background-color: rgba(theme.$link-color, 0.03) !important;
-    /* Much lighter than hover (0.1) */
-}
-
-.table tbody tr:nth-of-type(odd):hover {
-    background-color: rgba(theme.$link-color, 0.1) !important;
-    /* Same as regular hover */
-    color: theme.$link-color !important;
 }
 
 /* Ensure cells inherit the row colors */

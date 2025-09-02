@@ -7,6 +7,7 @@
         "philoTitle": "PhiloLogic 5 : Moteur de recherche et de récupération ARTFL open source",
         "philoLinkLabel": "Visiter le site web PhiloLogic",
         "philoAlt": "PhiloLogic - Moteur de recherche et de récupération ARTFL open source",
+        "documentTitle": "{dbname} sous PhiloLogic - Une plateforme d'analyse de texte",
         "invalidConfigTitle": "Fichier de configuration web invalide : {path}",
         "invalidConfigMessage": "Vérifiez les erreurs de syntaxe dans le fichier de configuration.",
         "loading": "Chargement en cours",
@@ -145,7 +146,6 @@
         "browseByField": "voir l'agrégation par {label}",
         "progressLabel": "Traitement des résultats, {percent}% terminé",
         "progressDescription": "Traitement de {current} sur {total} résultats, {percent} pour cent terminé",
-        "showFilteredWords": "Afficher la liste des mots filtrés",
         "filteredWordsList": "Liste des mots filtrés",
         "reportViewOptions": "Report view options",
         "progressChanged": "Résultats mis à jour, {percent}% terminé"
@@ -172,7 +172,6 @@
         "gatheringTimeSeriesPeriod": "Récupération de la période",
         "collocatesTable": "Tableau de fréquence des collocants",
         "collocatesTableCaption": "Tableau montrant les collocants et leurs nombres de fréquence. Cliquez sur n'importe quelle ligne pour voir les concordances.",
-        "viewConcordance": "Voir les concordances pour",
         "methodSelectionTabs": "Sélection de la méthode d'analyse de collocation",
         "comparisonResultsTabs": "Onglets des résultats de comparaison",
         "frequentCollocatesPanel": "Panneau des résultats de collocants fréquents",

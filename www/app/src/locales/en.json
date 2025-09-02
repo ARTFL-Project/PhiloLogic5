@@ -7,6 +7,7 @@
         "philoTitle": "PhiloLogic 5: Open Source ARTFL Search and Retrieval Engine",
         "philoLinkLabel": "Visit PhiloLogic website",
         "philoAlt": "PhiloLogic - Open Source ARTFL Search and Retrieval Engine",
+        "documentTitle": "{dbname} under PhiloLogic - A Text Analysis Platform",
         "invalidConfigTitle": "Invalid web config file: {path}",
         "invalidConfigMessage": "Check for syntax errors in the configuration file.",
         "loading": "Loading content, please wait",
@@ -146,7 +147,6 @@
         "browseByField": "view {label} aggregation",
         "progressLabel": "Processing results, {percent}% complete",
         "progressDescription": "Processing {current} of {total} results, {percent} percent complete",
-        "showFilteredWords": "Show filtered words list",
         "filteredWordsList": "List of filtered words",
         "reportViewOptions": "Report view options",
         "progressChanged": "Progress updated: {percent}% complete"
@@ -173,7 +173,6 @@
         "gatheringTimeSeriesPeriod": "Fetching period",
         "collocatesTable": "Collocates frequency table",
         "collocatesTableCaption": "Table showing collocates and their frequency counts. Click on any row to view concordances.",
-        "viewConcordance": "View concordances for",
         "methodSelectionTabs": "Collocation analysis method selection",
         "comparisonResultsTabs": "Comparison results tabs",
         "frequentCollocatesPanel": "Frequent collocates results panel",
