@@ -96,7 +96,7 @@ class FragmentStripper:
         return self.buffer
 
 
-def parse(text):
+def parse(text) -> etree.Element:
     try:
         parser = FragmentParser()
         driver = LXMLTreeDriver(target=parser)

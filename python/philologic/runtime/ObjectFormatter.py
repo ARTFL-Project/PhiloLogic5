@@ -332,7 +332,7 @@ def format_text_object(
     current_obj_img = []
     current_graphic_img = []
     text = "<div>" + text.decode("utf8", "ignore") + "</div>"
-    xml = FragmentParserParse(text)
+    xml: etree.Element = FragmentParserParse(text)
     c = obj.db.dbh.cursor()
     passage_number = None
     tei_header = xml.find(".//teiHeader")
@@ -701,7 +701,7 @@ def page_images(config, output, current_obj_img, current_graphic_img, philo_id):
                         + config.page_image_extension
                     )
                 output = (
-                    '<span class="xml-pb-image"><a href="%s" large-img="%s" class="page-image-link" data-gallery>[page %s]</a></span>'
+                    '<span class="xml-pb-image"><a href="%s" large-img="%s" class="page-image-link" data-gallery>page %s</a></span>'
                     % (page_href, large_img, first_page_object["n"])
                     + output
                 )
@@ -711,7 +711,7 @@ def page_images(config, output, current_obj_img, current_graphic_img, philo_id):
                     current_obj_img.insert(0, first_page_object["filename"][0])
             else:
                 output = (
-                    '<span class="xml-pb-image"><a href="%s" target="_blank">[page %s]</a></span>'
+                    '<span class="xml-pb-image"><a href="%s" target="_blank">page %s</a></span>'
                     % (page_href, first_page_object["n"])
                     + output
                 )
