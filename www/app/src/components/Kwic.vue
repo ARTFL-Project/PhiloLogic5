@@ -56,24 +56,46 @@
                     <div id="kwic-concordance" role="region" :aria-label="$t('kwic.concordanceRegion')"
                         aria-live="polite">
                         <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
-                            <div class="kwic-line" v-for="(result, kwicIndex) in filteredKwic(results.results)"
-                                :key="result.philo_id.join('-')" :data-index="kwicIndex"
-                                :aria-label="`${$t('kwic.resultNumber')} ${results.description.start + kwicIndex}`">
-                                <span v-html="initializePos(kwicIndex)"></span>
-                                <div class="kwic-biblio-container" style="display: inline-block; position: relative;"
-                                    @mouseover="showFullBiblio($event)" @mouseleave="hideFullBiblio($event)"
-                                    @focus="showFullBiblio($event)" @blur="hideFullBiblio($event)"
-                                    :aria-describedby="`full-biblio-${kwicIndex}`"
-                                    :aria-label="`${$t('kwic.viewFullText')} ${result.fullBiblio}`">
-                                    <router-link :to="result.citation_links.div1" class="kwic-biblio">
-                                        <span class="short-biblio" v-html="result.shortBiblio"></span>
-                                        <div :id="`full-biblio-${kwicIndex}`" class="full-biblio" role="tooltip"
-                                            :aria-hidden="true">
-                                            {{ result.fullBiblio }}
-                                        </div>
-                                    </router-link>
+                            <div v-for="(result, kwicIndex) in filteredKwic(results.results)"
+                                :key="result.philo_id.join('-')" :data-index="kwicIndex">
+
+                                <!-- Default KWIC view -->
+                                <div class="kwic-line visual-kwic" aria-hidden="true">
+                                    <span v-html="initializePos(kwicIndex)"></span>
+                                    <div class="kwic-biblio-container"
+                                        style="display: inline-block; position: relative;"
+                                        @mouseover="showFullBiblio($event)" @mouseleave="hideFullBiblio($event)">
+                                        <router-link :to="result.citation_links.div1" class="kwic-biblio" tabindex="-1"
+                                            @focus="showFullBiblio($event)" @blur="hideFullBiblio($event)">
+                                            <span class="short-biblio" v-html="result.shortBiblio"></span>
+                                            <div :id="`full-biblio-${kwicIndex}`" class="full-biblio" role="tooltip"
+                                                :aria-hidden="true">
+                                                {{ result.fullBiblio }}
+                                            </div>
+                                        </router-link>
+                                    </div>
+                                    <div class="kwic-context">
+                                        <span v-html="result.context"></span>
+                                    </div>
                                 </div>
-                                <span v-html="result.context"></span>
+
+                                <!-- Accessible version for screen readers -->
+                                <div class="kwic-line accessible-kwic visually-hidden"
+                                    :aria-label="`${$t('kwic.resultNumber')} ${results.description.start + kwicIndex}`">
+                                    <span>{{ results.description.start + kwicIndex }}.</span>
+                                    <router-link :to="result.citation_links.div1" class="kwic-biblio"
+                                        :aria-describedby="`kwic-context-${kwicIndex}`">
+                                        {{ result.fullBiblio }}
+                                    </router-link>
+                                    <span :id="`kwic-context-${kwicIndex}`">
+                                        {{ $t('kwic.contextDescription', {
+                                            context: result.context.replace(/<[^>]*>/g, '').trim().substring(0, 60)
+                                        }) }}
+                                    </span>
+                                    <div class="accessible-context">
+                                        <span v-html="result.context"></span>
+                                    </div>
+                                </div>
                             </div>
                         </transition-group>
                     </div>
@@ -429,10 +451,45 @@ export default {
     font-family: monospace;
 }
 
-.kwic-line {
-    line-height: 180%;
+/* Visual KWIC layout for sighted users */
+.visual-kwic {
+    line-height: 1.8rem;
     white-space: nowrap;
+    display: flex;
     overflow: hidden;
+}
+
+.visual-kwic .kwic-biblio-container {
+    flex-shrink: 0;
+}
+
+.visual-kwic .kwic-context {
+    overflow: hidden;
+    white-space: nowrap;
+    flex: 1;
+    position: relative;
+}
+
+.visual-kwic :deep(.kwic-before) {
+    text-align: right;
+    display: inline-block;
+    position: absolute;
+}
+
+/* Accessible version for screen readers */
+.accessible-kwic {
+    white-space: normal;
+    line-height: 1.6;
+    padding: 0.5rem 0;
+}
+
+.accessible-kwic .accessible-context {
+    margin-top: 0.25rem;
+}
+
+.accessible-kwic .kwic-biblio {
+    font-weight: bold;
+    margin: 0 0.5rem;
 }
 
 .kwic-biblio {
@@ -514,13 +571,6 @@ export default {
     background-color: rgba(theme.$button-color, 0.1);
 }
 
-:deep(.kwic-before) {
-    text-align: right;
-    overflow: hidden;
-    display: inline-block;
-    position: absolute;
-}
-
 :deep(.inner-before) {
     float: right;
 }
@@ -540,50 +590,70 @@ export default {
     margin-left: -3px;
 }
 
-@media (min-width: 1300px) {
-    :deep(.kwic-highlight) {
+@media (min-width: 2000px) {
+    .visual-kwic :deep(.kwic-highlight) {
+        margin-left: 600px;
+    }
+
+    .visual-kwic :deep(.kwic-before) {
+        width: 600px;
+    }
+}
+
+@media (min-width: 1600px) and (max-width: 1999px) {
+    .visual-kwic :deep(.kwic-highlight) {
+        margin-left: 450px;
+    }
+
+    .visual-kwic :deep(.kwic-before) {
+        width: 450px;
+    }
+}
+
+@media (min-width: 1300px) and (max-width: 1599px) {
+    .visual-kwic :deep(.kwic-highlight) {
         margin-left: 330px;
     }
 
-    :deep(.kwic-before) {
+    .visual-kwic :deep(.kwic-before) {
         width: 330px;
     }
 }
 
 @media (min-width: 992px) and (max-width: 1299px) {
-    :deep(.kwic-highlight) {
+    .visual-kwic :deep(.kwic-highlight) {
         margin-left: 230px;
     }
 
-    :deep(.kwic-before) {
+    .visual-kwic :deep(.kwic-before) {
         width: 230px;
     }
 }
 
 @media (min-width: 768px) and (max-width: 991px) {
-    :deep(.kwic-highlight) {
+    .visual-kwic :deep(.kwic-highlight) {
         margin-left: 120px;
     }
 
-    :deep(.kwic-before) {
+    .visual-kwic :deep(.kwic-before) {
         width: 120px;
     }
 
-    :deep(.kwic-line) {
+    .visual-kwic :deep(.kwic-line) {
         font-size: 12px;
     }
 }
 
 @media (max-width: 767px) {
-    :deep(.kwic-highlight) {
+    .visual-kwic :deep(.kwic-highlight) {
         margin-left: 200px;
     }
 
-    :deep(.kwic-before) {
+    .visual-kwic :deep(.kwic-before) {
         width: 200px;
     }
 
-    :deep(.kwic-line) {
+    .visual-kwic :deep(.kwic-line) {
         font-size: 12px;
     }
 }

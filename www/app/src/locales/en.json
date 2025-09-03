@@ -252,7 +252,7 @@
         "resultsPerPageControl": "Results per page control",
         "concordanceRegion": "KWIC concordance results",
         "resultNumber": "Result number",
-        "viewFullText": "View full text for"
+        "contextDescription": "Context: {context}..."
     },
     "aggregation": {
         "performance": "For performance reasons, only the first 1000 results are displayed. Click on the link above for full results.",

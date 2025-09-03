@@ -251,7 +251,7 @@
         "resultsPerPageControl": "Contrôle des résultats par page",
         "concordanceRegion": "Résultats de concordance KWIC",
         "resultNumber": "Numéro de résultat",
-        "viewFullText": "Voir le texte complet pour"
+        "contextDescription": "Contexte : {context}..."
     },
     "aggregation": {
         "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats.",
