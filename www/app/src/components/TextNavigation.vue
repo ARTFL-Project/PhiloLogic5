@@ -57,7 +57,7 @@
                                     <!-- Section content -->
                                     <div class="toc-content-wrapper">
                                         <span v-if="element.philo_type === 'div1'" class="div1-marker"
-                                            aria-hidden="true">§</span>
+                                            aria-hidden="true">※</span>
                                         <span v-else :class="'bullet-point-' + element.philo_type"
                                             aria-hidden="true"></span>
                                         <button type="button"
@@ -798,6 +798,7 @@ export default {
     line-height: 180%;
     z-index: 50;
     background: #fff;
+    padding: 0 1rem;
 }
 
 #toc-wrapper {
@@ -884,6 +885,10 @@ export default {
 
 .toc-tree {
     margin-left: 1rem;
+}
+
+.div1-marker {
+    margin-left: -1.25rem;
 }
 
 #book-page {

@@ -33,7 +33,7 @@
                                         <!-- Section content -->
                                         <div class="toc-content-wrapper">
                                             <span v-if="element.philo_type === 'div1'" class="div1-marker"
-                                                aria-hidden="true">§</span>
+                                                aria-hidden="true">※</span>
                                             <span v-else :class="'bullet-point-' + element.philo_type"
                                                 aria-hidden="true"></span>
                                             <router-link :to="element.href" class="toc-section" :aria-label="$t('toc.sectionLink', {
@@ -213,7 +213,7 @@ export default {
 @use "../assets/styles/theme.module.scss" as theme;
 
 #toc-content {
-    padding: 1rem;
+    padding: 0 2rem;
 }
 
 #toc-content:focus {

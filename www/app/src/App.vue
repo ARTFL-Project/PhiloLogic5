@@ -463,10 +463,6 @@ span.note {
     mask-size: cover;
 }
 
-/* ==============================================
-   SHARED TOC TREE STRUCTURE STYLES
-   ============================================== */
-
 .toc-tree {
     list-style: none;
     padding-left: 0;
@@ -535,8 +531,9 @@ span.note {
 .div1-marker {
     color: theme.$link-color;
     margin-right: 0.5rem;
-    font-size: 1.2rem;
-    margin-left: -0.5rem;
+    font-size: 1.1rem;
+    margin-left: -1rem;
+    font-weight: 700;
 }
 
 .toc-div1 .toc-section {
