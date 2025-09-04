@@ -4,7 +4,7 @@
         <p>{{ $t('common.invalidConfigMessage') }}</p>
     </div>
     <Header v-if="$philoConfig.valid_config" />
-    <main role="main" id="app" v-if="$philoConfig.valid_config">
+    <main id="main" v-if="$philoConfig.valid_config">
         <!-- Skip navigation for keyboard users -->
         <a href="#main-content" class="visually-hidden-focusable">
             {{ $t('common.skipToMain') }}
@@ -13,15 +13,15 @@
         <SearchForm v-if="accessAuthorized" />
 
         <!-- Main content landmark -->
-        <nav id="main-content" role="navigation" tabindex="-1">
+        <nav id="main-content" tabindex="-1">
             <router-view v-if="accessAuthorized" />
         </nav>
 
-        <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized" role="main"
+        <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized" role="navigation"
             :aria-label="$t('common.accessControlLabel')" />
     </main>
     <!-- Footer -->
-    <footer class="container-fluid" v-if="accessAuthorized" role="contentinfo">
+    <footer class="container-fluid" v-if="accessAuthorized">
         <div class="text-center mb-4">
             <hr class="mb-3" style="width: 20%; margin: auto" />
             <p>{{ $t('common.poweredBy') }}</p>
@@ -324,12 +324,12 @@ a:focus {
 
 /* Ensure focus is always visible */
 a:focus-visible {
-    outline: 2px solid var(--bs-primary);
+    outline: 2px solid theme.$link-color;
     outline-offset: 2px;
 }
 
 .btn:focus-visible {
-    outline: 2px solid var(--bs-primary) !important;
+    outline: 2px solid theme.$link-color !important;
     outline-offset: 2px !important;
 }
 
@@ -358,67 +358,6 @@ input {
 
 .custom-control {
     min-height: auto;
-}
-
-// TOC styles with better accessibility
-.toc-div1>a,
-.toc-div2>a,
-.toc-div3>a {
-    padding: 5px 5px 5px 0px;
-}
-
-.toc-div1:focus,
-.toc-div2:focus,
-.toc-div3:focus {
-    outline: 2px solid var(--bs-primary) !important;
-    outline-offset: 2px !important;
-}
-
-.bullet-point-div1,
-.bullet-point-div2,
-.bullet-point-div3 {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-right: 5px;
-}
-
-.bullet-point-div1 {
-    background: #000;
-}
-
-.bullet-point-div2 {
-    border: solid 2px;
-}
-
-.bullet-point-div3 {
-    border: solid 1px;
-}
-
-.toc-div1,
-.toc-div2,
-.toc-div3 {
-    text-indent: -0.9em;
-    margin-bottom: 5px;
-}
-
-.toc-div1 {
-    padding-left: 0.9em;
-}
-
-.toc-div2 {
-    padding-left: 1.9em;
-}
-
-.toc-div3 {
-    padding-left: 2.9em;
-}
-
-.toc-div1:hover,
-.toc-div2:hover,
-.toc-div3:hover {
-    cursor: pointer;
 }
 
 br {
@@ -522,5 +461,85 @@ span.note {
     mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' y1='6' x2='6' y2='18'%3E%3C/line%3E%3Cline x1='6' y1='6' x2='18' y2='18'%3E%3C/line%3E%3C/svg%3E");
     -webkit-mask-size: cover;
     mask-size: cover;
+}
+
+/* ==============================================
+   SHARED TOC TREE STRUCTURE STYLES
+   ============================================== */
+
+.toc-tree {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+.toc-item {
+    margin-bottom: 0.25rem;
+    border-radius: 4px;
+    padding: 0.25rem 0;
+    position: relative;
+}
+
+.toc-children {
+    list-style: none;
+    padding-left: 1.25rem;
+    margin-bottom: 0;
+    position: relative;
+}
+
+.toc-child {
+    position: relative;
+    padding-left: 0.75rem;
+}
+
+.toc-content-wrapper {
+    display: inline-block;
+    width: 100%;
+    vertical-align: top;
+}
+
+/* Tree visual lines (dotted) */
+.toc-children::before {
+    content: '';
+    position: absolute;
+    left: 0.75rem;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    border-left: 1px dotted theme.$link-color;
+    opacity: 0.4;
+}
+
+.toc-child::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 1.25rem;
+    width: 0.75rem;
+    height: 1px;
+    border-top: 1px dotted theme.$link-color;
+    opacity: 0.4;
+}
+
+.toc-child:last-child::after {
+    content: '';
+    position: absolute;
+    left: -0.25rem;
+    top: 50%;
+    bottom: -0.5rem;
+    width: 1px;
+    background-color: white;
+}
+
+/* Special markers */
+.div1-marker {
+    color: theme.$link-color;
+    margin-right: 0.5rem;
+    font-size: 1.2rem;
+    margin-left: -0.5rem;
+}
+
+.toc-div1 .toc-section {
+    font-size: 1.1rem;
 }
 </style>

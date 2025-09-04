@@ -321,6 +321,45 @@ export function isOnlyFacetChange(newUrl, oldUrl) {
     return differences.length > 0;
 }
 
+export function buildTocTree(elements) {
+    const tree = [];
+    const typeHierarchy = {
+        doc: 1,
+        div1: 2,
+        div2: 3,
+        div3: 4,
+        para: 9,
+    };
+
+    let stack = [];
+
+    for (let element of elements) {
+        const elementLevel = typeHierarchy[element.philo_type] || 1;
+        element.level = elementLevel;
+        element.children = [];
+
+        // Find the appropriate parent in the stack
+        while (
+            stack.length > 0 &&
+            stack[stack.length - 1].level >= elementLevel
+        ) {
+            stack.pop();
+        }
+
+        if (stack.length === 0) {
+            // This is a top-level element
+            tree.push(element);
+        } else {
+            // This is a child of the last element in the stack
+            stack[stack.length - 1].children.push(element);
+        }
+
+        stack.push(element);
+    }
+
+    return tree;
+}
+
 export default {
     paramsFilter,
     paramsToRoute,
@@ -336,4 +375,5 @@ export default {
     extractSurfaceFromCollocate,
     debug,
     isOnlyFacetChange,
+    buildTocTree,
 };

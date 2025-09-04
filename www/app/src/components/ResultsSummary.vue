@@ -142,9 +142,8 @@
                                 </button>
                                 <div class="row mt-4">
                                     <div class="col" v-for="wordGroup in splitFilterList" :key="wordGroup[0]">
-                                        <ul class="list-group list-group-flush" role="list">
-                                            <li class="list-group-item" v-for="word in wordGroup" :key="word"
-                                                role="listitem">
+                                        <ul class="list-group list-group-flush">
+                                            <li class="list-group-item" v-for="word in wordGroup" :key="word">
                                                 {{ word }}
                                             </li>
                                         </ul>
@@ -191,7 +190,7 @@
                         <div class="flex-shrink-1 ms-auto">
                             <div class="btn-group" role="group" :aria-label="$t('kwic.resultsPerPageControl')">
                                 <button type="button" class="btn btn-outline-secondary results-label-btn"
-                                    style="border-right: solid">
+                                    style="border-right: solid" tabindex="-1">
                                     {{ $t("kwic.resultsDisplayed") }}
                                 </button>
                                 <div class="dropdown d-inline-block">

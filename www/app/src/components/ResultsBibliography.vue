@@ -12,29 +12,31 @@
                 </button>
             </div>
             <div class="modal-body">
-                <div id="results-bibliography" role="list">
-                    <router-link v-for="(result, resultIndex) in uniquedResults" :key="resultIndex"
-                        :to="`/${formData.report}?${buildLink(result.metadata_fields.title)}`" class="result-card-link"
-                        role="listitem" :aria-label="$t('resultsBiblio.viewOccurrences', {
-                            count: result.count,
-                            title: result.metadata_fields.title || 'Unknown title'
-                        })">
-                        <article class="result-card">
-                            <div class="result-content">
-                                <div class="result-number">
-                                    {{ resultIndex + 1 }}
+                <ul id="results-bibliography">
+                    <li v-for="(result, resultIndex) in uniquedResults" :key="resultIndex">
+                        <router-link :to="`/${formData.report}?${buildLink(result.metadata_fields.title)}`"
+                            class="result-card-link" role="listitem" :aria-label="$t('resultsBiblio.viewOccurrences', {
+                                count: result.count,
+                                title: result.metadata_fields.title || 'Unknown title'
+                            })">
+                            <article class="result-card">
+                                <div class="result-content">
+                                    <div class="result-number">
+                                        {{ resultIndex + 1 }}
+                                    </div>
+                                    <div class="citation-content">
+                                        <citations :citation="result.citation"></citations>
+                                    </div>
+                                    <div class="occurrence-badge">
+                                        <span class="occurrence-count">{{ result.count }} {{
+                                            $t("resultsBiblio.occurrences")
+                                            }}</span>
+                                    </div>
                                 </div>
-                                <div class="citation-content">
-                                    <citations :citation="result.citation"></citations>
-                                </div>
-                                <div class="occurrence-badge">
-                                    <span class="occurrence-count">{{ result.count }} {{ $t("resultsBiblio.occurrences")
-                                    }}</span>
-                                </div>
-                            </div>
-                        </article>
-                    </router-link>
-                </div>
+                            </article>
+                        </router-link>
+                    </li>
+                </ul>
             </div>
         </div>
     </div>

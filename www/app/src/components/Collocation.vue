@@ -315,10 +315,8 @@
                         <h6 class="sim-dist" role="heading" aria-level="3">
                             {{ $t("collocation.topSimilarUses") }}
                         </h6>
-                        <ul class="list-group list-group-flush mt-3" role="list"
-                            :aria-label="$t('collocation.topSimilarUses')">
-                            <li role="listitem" v-for="(metadataValue, index) in mostSimilarDistributions"
-                                :key="metadataValue">
+                        <ul class="list-group list-group-flush mt-3" :aria-label="$t('collocation.topSimilarUses')">
+                            <li v-for="(metadataValue, index) in mostSimilarDistributions" :key="metadataValue">
                                 <button type="button"
                                     class="list-group-item position-relative w-100 text-start border-0"
                                     style="text-align: justify" @click="similarToComparative(metadataValue[0])"
@@ -340,10 +338,8 @@
                         <h6 class="sim-dist" role="heading" aria-level="3">
                             {{ $t("collocation.topDissimilarUses") }}
                         </h6>
-                        <ul class="list-group list-group-flush mt-3" role="list"
-                            :aria-label="$t('collocation.topDissimilarUses')">
-                            <li role="listitem" v-for="(metadataValue, index) in mostDissimilarDistributions"
-                                :key="metadataValue">
+                        <ul class="list-group list-group-flush mt-3" :aria-label="$t('collocation.topDissimilarUses')">
+                            <li v-for="(metadataValue, index) in mostDissimilarDistributions" :key="metadataValue">
                                 <button type="button"
                                     class="list-group-item position-relative w-100 text-start border-0"
                                     style="text-align: justify" @click="similarToComparative(metadataValue[0])"

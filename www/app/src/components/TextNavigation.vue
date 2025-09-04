@@ -49,30 +49,81 @@
                     <transition name="slide-fade">
                         <div class="card py-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"
                             :aria-label="$t('textNav.tocContent')">
-                            <ol class="toc-list" role="list">
-                                <li v-for="(element, tocIndex) in tocElementsToDisplay" :key="tocIndex"
-                                    :class="'toc-' + element.philo_type" role="listitem">
-                                    <span :class="'bullet-point-' + element.philo_type" aria-hidden="true"></span>
-                                    <button type="button"
-                                        :class="{ 'current-obj': element.philo_id === currentPhiloId }"
-                                        class="btn btn-link toc-link"
-                                        @click="textObjectSelection(element.philo_id, tocIndex, $event)"
-                                        :aria-label="$t('textNav.goToSection', { title: element.label })"
-                                        :aria-current="element.philo_id === currentPhiloId ? 'page' : null">
-                                        {{ element.label }}
-                                    </button>
+                            <ul class="toc-tree" role="tree">
+                                <li v-for="(element, elIndex) in processedTocElements" :key="elIndex"
+                                    :class="'toc-item toc-' + element.philo_type" role="treeitem"
+                                    :aria-level="element.level || 1">
+
+                                    <!-- Section content -->
+                                    <div class="toc-content-wrapper">
+                                        <span v-if="element.philo_type === 'div1'" class="div1-marker"
+                                            aria-hidden="true">§</span>
+                                        <span v-else :class="'bullet-point-' + element.philo_type"
+                                            aria-hidden="true"></span>
+                                        <button type="button"
+                                            :class="{ 'current-obj': element.philo_id === currentPhiloId }"
+                                            class="btn btn-link toc-link"
+                                            @click="textObjectSelection(element.philo_id, elIndex, $event)"
+                                            :aria-label="$t('textNav.goToSection', { title: element.label })"
+                                            :aria-current="element.philo_id === currentPhiloId ? 'page' : null">
+                                            {{ element.label }}
+                                        </button>
+                                    </div>
+
+                                    <!-- Child sections -->
+                                    <ul v-if="element.children && element.children.length > 0" class="toc-children"
+                                        role="group">
+                                        <li v-for="(child, childIndex) in element.children" :key="childIndex"
+                                            :class="'toc-item toc-child toc-' + child.philo_type" role="treeitem"
+                                            :aria-level="child.level || 2">
+                                            <div class="toc-content-wrapper">
+                                                <span :class="'bullet-point-' + child.philo_type"
+                                                    aria-hidden="true"></span>
+                                                <button type="button"
+                                                    :class="{ 'current-obj': child.philo_id === currentPhiloId }"
+                                                    class="btn btn-link toc-link"
+                                                    @click="textObjectSelection(child.philo_id, childIndex, $event)"
+                                                    :aria-label="$t('textNav.goToSection', { title: child.label })"
+                                                    :aria-current="child.philo_id === currentPhiloId ? 'page' : null">
+                                                    {{ child.label }}
+                                                </button>
+                                            </div>
+
+                                            <!-- Grandchildren (div3 level) -->
+                                            <ul v-if="child.children && child.children.length > 0" class="toc-children"
+                                                role="group">
+                                                <li v-for="(grandchild, grandchildIndex) in child.children"
+                                                    :key="grandchildIndex"
+                                                    :class="'toc-item toc-child toc-' + grandchild.philo_type"
+                                                    role="treeitem" :aria-level="grandchild.level || 3">
+                                                    <div class="toc-content-wrapper">
+                                                        <span :class="'bullet-point-' + grandchild.philo_type"
+                                                            aria-hidden="true"></span>
+                                                        <button type="button"
+                                                            :class="{ 'current-obj': grandchild.philo_id === currentPhiloId }"
+                                                            class="btn btn-link toc-link"
+                                                            @click="textObjectSelection(grandchild.philo_id, grandchildIndex, $event)"
+                                                            :aria-label="$t('textNav.goToSection', { title: grandchild.label })"
+                                                            :aria-current="grandchild.philo_id === currentPhiloId ? 'page' : null">
+                                                            {{ grandchild.label }}
+                                                        </button>
+                                                    </div>
+                                                </li>
+                                            </ul>
+                                        </li>
+                                    </ul>
                                 </li>
-                            </ol>
+                            </ul>
                         </div>
                     </transition>
                 </nav>
             </div>
         </section>
-        <aside class="text-center" style="font-size: 85%" v-if="philoConfig.dictionary_lookup.url_root != ''"
-            role="complementary" :aria-label="$t('textNav.dictionaryLookup')">
+        <div class="text-center" style="font-size: 85%" v-if="philoConfig.dictionary_lookup.url_root != ''"
+            :aria-label="$t('textNav.dictionaryLookup')">
             <p>{{ $t("textNav.dicoLookUp") }}.</p>
-        </aside>
-        <main class="row" id="all-content" role="main" :aria-label="$t('textNav.textContent')">
+        </div>
+        <main class="row" id="all-content" :aria-label="$t('textNav.textContent')">
             <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text"
                 style="text-align: center">
                 <article class="card text-view mt-2 mb-4 p-4 shadow d-inline-block">
@@ -119,11 +170,13 @@ import { Popover } from "bootstrap";
 import GLightbox from 'glightbox';
 import 'glightbox/dist/css/glightbox.css';
 import { mapStores, mapWritableState } from "pinia";
+import mixins from "../mixins";
 import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 
 export default {
     name: "textNavigation",
+    mixins: [mixins],
     components: {
         citations
     },
@@ -142,6 +195,10 @@ export default {
 
         tocElementsToDisplay: function () {
             return this.tocElements.elements.slice(this.start, this.end);
+        },
+        processedTocElements() {
+            const elementsToDisplay = this.tocElements.elements.slice(this.start, this.end);
+            return this.buildTocTree(elementsToDisplay);
         },
         tocHeight() {
             return `max-height: ${window.innerHeight - 200}`;
@@ -735,6 +792,7 @@ export default {
     display: inline-block;
     position: relative;
     max-height: 90vh;
+    min-width: 250px;
     overflow: scroll;
     text-align: justify;
     line-height: 180%;
@@ -804,17 +862,28 @@ export default {
     backdrop-filter: blur(5px) contrast(0.8);
 }
 
-.toc-list {
-    padding-left: 1rem;
-}
-
+/* TextNavigation-specific TOC styling */
 .toc-link {
     text-decoration: none;
+    font-size: 0.95rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.15s ease-in-out;
 }
 
-a.current-obj,
-#toc-container a:hover {
-    background: #e8e8e8;
+.toc-link:hover,
+.toc-link:focus {
+    background: rgba(theme.$link-color, 0.1);
+    transform: scale(1.02);
+}
+
+.toc-link.current-obj {
+    background: rgba(theme.$link-color, 0.1);
+    font-weight: 600;
+}
+
+.toc-tree {
+    margin-left: 1rem;
 }
 
 #book-page {

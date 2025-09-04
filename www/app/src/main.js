@@ -6,6 +6,7 @@ import vueScrollTo from "vue-scrollto";
 import App from "./App.vue";
 import {
     buildBiblioCriteria,
+    buildTocTree,
     copyObject,
     dateRangeHandler,
     debug,
@@ -56,6 +57,7 @@ axios
                 extractSurfaceFromCollocate,
                 debug,
                 isOnlyFacetChange,
+                buildTocTree,
             },
         });
         app.directive("scroll", {

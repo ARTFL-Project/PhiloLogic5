@@ -11,14 +11,15 @@
                                 class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }">
                                 <span v-if="searchReport != 'kwic'">{{ $t(`searchForm.${searchReport}`) }}</span>
                                 <span v-else><span class="d-md-inline d-sm-none">{{ $t(`searchForm.${searchReport}`)
-                                }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
+                                        }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
                             </button>
                         </div>
                         <div id="search_terms_container" class="p-3">
                             <div class="row" id="search_terms">
                                 <div class="cols-12 cols-md-8">
                                     <div class="input-group" id="q-group">
-                                        <button class="btn btn-outline-secondary" type="button" id="search-terms-label">
+                                        <button class="btn btn-outline-secondary" type="button" id="search-terms-label"
+                                            tabindex="-1">
                                             {{ $t("searchForm.searchTerms") }}
                                         </button>
                                         <button class="btn btn-outline-info" type="button" data-bs-toggle="modal"
@@ -123,7 +124,7 @@
                                         $t("searchForm.coOccurrenceWordOrder") }}</label>
                                 </div>
                                 <div class="input-group mb-4" v-if="currentReport != 'collocation'">
-                                    <button class="btn btn-outline-secondary" type="button">
+                                    <button class="btn btn-outline-secondary" type="button" tabindex="-1">
                                         {{ $t("searchForm.searchCoOccurrences") }}</button><select class="form-select"
                                         style="width: fit-content; max-width: fit-content" v-model="formData.method"
                                         :aria-label="$t('searchForm.coOccurrenceMethodLabel')">
@@ -132,6 +133,7 @@
                                         </option>
                                     </select>
                                     <button class="btn btn-outline-secondary" type="button" id="method-arg-label"
+                                        tabindex="-1"
                                         v-if="formData.method == 'proxy' || formData.method == 'exact_cooc'">
                                         {{ $t("searchForm.howMany") }}?
                                     </button>
@@ -165,6 +167,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                     </div>
                                     <div class="mt-2">
                                         <button v-if="wordAttributes" type="button" class="btn btn-outline-secondary"
+                                            tabindex="-1"
                                             style="border-top-right-radius: 0; border-bottom-right-radius: 0">
                                             {{ $t("searchForm.filterCollocate") }}
                                         </button>
@@ -238,7 +241,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                         :key="localField.value">
                                         <div class="input-group pb-2" :id="localField.value + '-group'"
                                             v-if="metadataInputStyle[localField.value] == 'text'">
-                                            <button type="button" class="btn btn-outline-secondary"
+                                            <button type="button" class="btn btn-outline-secondary" tabindex="-1"
                                                 :id="localField.value + '-label'">
                                                 {{ localField.label }}
                                             </button>
@@ -280,13 +283,13 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                         v-model="metadataChoiceChecked[metadataChoice.value]" />
                                                     <label class="form-check-label" :for="metadataChoice.value">{{
                                                         metadataChoice.text
-                                                    }}</label>
+                                                        }}</label>
                                                 </div>
                                             </div>
                                         </div>
                                         <div class="input-group pb-2" :id="localField.value + '-group'"
                                             v-if="metadataInputStyle[localField.value] == 'dropdown'">
-                                            <button type="button" class="btn btn-outline-secondary"
+                                            <button type="button" class="btn btn-outline-secondary" tabindex="-1"
                                                 :id="localField.value + '-label'">
                                                 {{ localField.label }}
                                             </button>
@@ -303,7 +306,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                             v-if="metadataInputStyle[localField.value] == 'date' || metadataInputStyle[localField.value] == 'int'">
                                             <button type="button" class="btn btn-outline-secondary"
                                                 style="border-top-right-radius: 0; border-bottom-right-radius: 0"
-                                                :id="localField.value + '-date-label'">
+                                                :id="localField.value + '-date-label'" tabindex="-1">
                                                 {{ localField.label }}
                                             </button>
                                             <div class="btn-group" role="group">
@@ -332,7 +335,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                             <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
                                                 <div class="input-group ms-3">
                                                     <button class="btn btn-outline-secondary" type="button"
-                                                        :id="localField.value + '-date-from-label'">
+                                                        :id="localField.value + '-date-from-label'" tabindex="-1">
                                                         {{ $t("searchForm.dateFrom") }}
                                                     </button>
                                                     <input type="text" class="form-control date-range"
@@ -342,7 +345,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                         :aria-labelledby="localField.value + '-date-from-label'"
                                                         v-model="dateRange[localField.value].start" />
                                                     <button class="btn btn-outline-secondary ms-3" type="button"
-                                                        :id="localField.value + '-date-to-label'">
+                                                        :id="localField.value + '-date-to-label'" tabindex="-1">
                                                         {{ $t("searchForm.dateTo") }}
                                                     </button>
                                                     <input type="text" class="form-control date-range"
@@ -360,8 +363,9 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                     role="group" aria-labelledby="time-series-params-heading">
                                     <h2 id="time-series-params-heading">{{ $t("searchForm.timeSeriesParams") }}:</h2>
                                     <div class="input-group mt-1 pb-2">
-                                        <button class="btn btn-outline-secondary">{{ $t("searchForm.dateRange")
-                                        }}</button>
+                                        <button class="btn btn-outline-secondary" tabindex="-1">{{
+                                            $t("searchForm.dateRange")
+                                            }}</button>
                                         <label for="start_date" class="d-inline-flex align-self-center mx-2">{{
                                             $t("searchForm.dateFrom") }}</label>
                                         <input type="text" class="form-control" name="start_date" id="start_date"
@@ -372,22 +376,23 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                             style="max-width: 65px; text-align: center" v-model="formData.end_date" />
                                     </div>
                                     <div class="input-group">
-                                        <button class="btn btn-outline-secondary" id="year-interval-label">
+                                        <button class="btn btn-outline-secondary" id="year-interval-label"
+                                            tabindex="-1">
                                             {{ $t("searchForm.yearInterval") }}
                                         </button>
                                         <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.every")
-                                        }}</span>
+                                            }}</span>
                                         <input type="text" class="form-control" name="year_interval" id="year_interval"
                                             aria-labelledby="year-interval-label"
                                             style="max-width: 50px; text-align: center"
                                             v-model="formData.year_interval" />
                                         <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years")
-                                        }}</span>
+                                            }}</span>
                                     </div>
                                 </div>
                                 <div class="input-group mt-4" v-if="currentReport === 'aggregation'">
                                     <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy")
-                                    }}</button>
+                                        }}</button>
                                     <select class="form-select" :aria-label="$t('searchForm.groupResultsByLabel')"
                                         style="max-width: fit-content" v-model="formData.group_by">
                                         <option v-for="aggregationOption in aggregationOptions"
@@ -404,7 +409,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                     <div class="input-group pb-2"
                                         v-if="['concordance', 'bibliography'].includes(currentReport)">
                                         <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy")
-                                        }}</button>
+                                            }}</button>
                                         <select class="form-select" style="max-width: fit-content"
                                             :aria-label="$t('searchForm.sortResultsByLabel')"
                                             v-model="formData.sort_by">

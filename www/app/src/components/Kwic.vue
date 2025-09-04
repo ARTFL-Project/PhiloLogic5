@@ -2,13 +2,14 @@
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
         <div class="row px-2">
-            <main class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }" role="main"
+            <main class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('kwic.resultsRegion')">
                 <div class="card p-2 ml-2 shadow-sm">
                     <div class="p-2 mb-1">
                         <!-- Sorting controls -->
                         <div class="btn-group" role="group" :aria-label="$t('kwic.sortingControls')">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid"
+                                tabindex="-1">
                                 {{ $t("kwic.sortResultsBy") }}
                             </button>
                             <div class="btn-group" v-for="(fields, index) in sortingFields" :key="index">
@@ -103,10 +104,9 @@
                 <pages></pages>
             </main>
 
-            <aside class="col col-md-4 col-xl-3" v-if="showFacets" role="complementary"
-                :aria-label="$t('common.facetsRegion')">
+            <region class="col col-md-4 col-xl-3" v-if="showFacets" :aria-label="$t('common.facetsRegion')">
                 <facets></facets>
-            </aside>
+            </region>
         </div>
     </div>
 </template>

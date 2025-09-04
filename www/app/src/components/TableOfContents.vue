@@ -110,12 +110,14 @@
 </template>
 <script>
 import { mapStores, mapWritableState } from "pinia";
+import mixins from "../mixins";
 import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 import ProgressSpinner from "./ProgressSpinner";
 
 export default {
     name: "tableOfContents",
+    mixins: [mixins],
     components: {
         citations,
         ProgressSpinner,
@@ -204,41 +206,6 @@ export default {
                 }, 100);
             }
         },
-        buildTocTree(elements) {
-            const tree = [];
-            const typeHierarchy = {
-                'doc': 1,
-                'div1': 2,
-                'div2': 3,
-                'div3': 4,
-                'para': 9
-            };
-
-            let stack = [];
-
-            for (let element of elements) {
-                const elementLevel = typeHierarchy[element.philo_type] || 1;
-                element.level = elementLevel;
-                element.children = [];
-
-                // Find the appropriate parent in the stack
-                while (stack.length > 0 && stack[stack.length - 1].level >= elementLevel) {
-                    stack.pop();
-                }
-
-                if (stack.length === 0) {
-                    // This is a top-level element
-                    tree.push(element);
-                } else {
-                    // This is a child of the last element in the stack
-                    stack[stack.length - 1].children.push(element);
-                }
-
-                stack.push(element);
-            }
-
-            return tree;
-        },
     },
 };
 </script>
@@ -254,71 +221,7 @@ export default {
     outline-offset: -2px;
 }
 
-.toc-content-wrapper {
-    display: inline-block;
-    width: 100%;
-    vertical-align: top;
-}
-
-.toc-tree {
-    list-style: none;
-    padding-left: 0;
-    margin: 0;
-}
-
-.toc-item {
-    margin-bottom: 0.25rem;
-    border-radius: 4px;
-    padding: 0.25rem 0;
-    position: relative;
-}
-
-.toc-children {
-    list-style: none;
-    padding-left: 1.25rem;
-    margin-bottom: 0;
-    position: relative;
-}
-
-.toc-child {
-    position: relative;
-    padding-left: 0.75rem;
-}
-
-/* Vertical connecting lines */
-.toc-children::before {
-    content: '';
-    position: absolute;
-    left: 0.75rem;
-    top: 0;
-    bottom: 0;
-    width: 1px;
-    border-left: 1px dotted theme.$link-color;
-    opacity: 0.4;
-}
-
-/* Horizontal connecting lines */
-.toc-child::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    top: 1.25rem;
-    width: 0.75rem;
-    height: 1px;
-    border-top: 1px dotted theme.$link-color;
-    opacity: 0.4;
-}
-
-/* Clean up vertical line for last child */
-.toc-child:last-child::after {
-    content: '';
-    position: absolute;
-    left: -0.25rem;
-    top: 50%;
-    bottom: -0.5rem;
-    width: 1px;
-    background-color: white;
-}
+/* Component-specific styles only - tree structure now in App.vue */
 
 .toc-section {
     font-size: 1.05rem;
@@ -332,17 +235,6 @@ export default {
 .toc-section:hover,
 .toc-section:focus {
     outline: 1px solid theme.$link-color;
-}
-
-.div1-marker {
-    color: theme.$link-color;
-    margin-right: 0.5rem;
-    font-size: 1.2rem;
-    margin-left: -0.5rem;
-}
-
-.toc-div1 .toc-section {
-    font-size: 1.1rem;
 }
 
 .separator {

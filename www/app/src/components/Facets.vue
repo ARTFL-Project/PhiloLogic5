@@ -111,84 +111,89 @@
             </div>
 
             <!-- Facet results list -->
-            <div class="list-group facet-results-container" flush role="list"
-                :aria-label="$t('facets.facetResultsList')">
+            <ul class="list-group facet-results-container" flush :aria-label="$t('facets.facetResultsList')">
                 <!-- Facet link -->
-                <button type="button" class="list-group-item list-group-item-action facet-result-item"
-                    v-if="facet.type == 'facet'" v-for="result in facetResults" :key="result.label" role="listitem"
-                    @click="facetClick(result.metadata)"
-                    :aria-label="`${$t('facets.filterBy')} ${result.label}, ${result.count} ${$t('facets.occurrences')}`">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <span class="sidebar-text text-content-area text-view">
-                            {{ result.label }}
-                        </span>
-                        <span class="badge bg-secondary rounded-pill" aria-hidden="true">
-                            {{ result.count }}
-                        </span>
-                    </div>
+                <li v-if="facet.type == 'facet'" v-for="result in facetResults" :key="result.label">
+                    <button type="button" class="list-group-item list-group-item-action facet-result-item"
+                        @click="facetClick(result.metadata)"
+                        :aria-label="`${$t('facets.filterBy')} ${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <span class="sidebar-text text-content-area text-view">
+                                {{ result.label }}
+                            </span>
+                            <span class="badge bg-secondary rounded-pill" aria-hidden="true">
+                                {{ result.count }}
+                            </span>
+                        </div>
 
-                    <!-- Relative frequency description -->
-                    <div class="relative-frequency-info"
-                        v-if="showingRelativeFrequencies && fullResults.unsorted && fullResults.unsorted[result.label]">
-                        <small class="text-muted" :aria-label="$t('facets.relativeFrequencyLabel', {
-                            total: fullResults.unsorted[result.label].count,
-                            wordCount: getTotalCount(result.label),
-                        })">
-                            {{
-                                $t("facets.relativeFrequencyDescription", {
-                                    total: fullResults.unsorted[result.label].count,
-                                    wordCount: getTotalCount(result.label),
-                                })
-                            }}
-                        </small>
-                    </div>
-                </button>
+                        <!-- Relative frequency description -->
+                        <div class="relative-frequency-info"
+                            v-if="showingRelativeFrequencies && fullResults.unsorted && fullResults.unsorted[result.label]">
+                            <small class="text-muted" :aria-label="$t('facets.relativeFrequencyLabel', {
+                                total: fullResults.unsorted[result.label].count,
+                                wordCount: getTotalCount(result.label),
+                            })">
+                                {{
+                                    $t("facets.relativeFrequencyDescription", {
+                                        total: fullResults.unsorted[result.label].count,
+                                        wordCount: getTotalCount(result.label),
+                                    })
+                                }}
+                            </small>
+                        </div>
+                    </button>
+                </li>
 
                 <!-- Property link -->
-                <button type="button" class="list-group-item list-group-item-action facet-result-item"
-                    v-else-if="facet.type == 'property' && facet.facet != 'lemma'" v-for="result in facetResults"
-                    :key="result.label" role="listitem" @click="propertyToConcordance(result.q)"
-                    :aria-label="`${$t('facets.searchFor')} ${result.label}, ${result.count} ${$t('facets.occurrences')}`">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <span class="sidebar-text text-content-area">
-                            {{ result.label }}
-                        </span>
-                        <span class="badge bg-secondary rounded-pill" aria-hidden="true">
-                            {{ result.count }}
-                        </span>
-                    </div>
-                </button>
+                <li v-if="facet.type == 'property' && facet.facet != 'lemma'" v-for="result in facetResults"
+                    :key="`property-${result.label}`">
+                    <button type="button" class="list-group-item list-group-item-action facet-result-item"
+                        @click="propertyToConcordance(result.q)"
+                        :aria-label="`${$t('facets.searchFor')} ${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <span class="sidebar-text text-content-area">
+                                {{ result.label }}
+                            </span>
+                            <span class="badge bg-secondary rounded-pill" aria-hidden="true">
+                                {{ result.count }}
+                            </span>
+                        </div>
+                    </button>
+                </li>
 
                 <!-- Lemma (non-clickable) -->
-                <div class="list-group-item facet-result-item non-clickable"
-                    v-else-if="facet.type == 'property' && facet.facet == 'lemma'" v-for="result in facetResults"
-                    :key="result.label" role="listitem"
-                    :aria-label="`${result.label}, ${result.count} ${$t('facets.occurrences')}`">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <span class="text-content-area">
-                            {{ result.label }}
-                        </span>
-                        <span class="badge bg-secondary rounded-pill" aria-hidden="true">
-                            {{ result.count }}
-                        </span>
+                <li v-if="facet.type == 'property' && facet.facet == 'lemma'" v-for="result in facetResults"
+                    :key="`lemma-${result.label}`">
+                    <div class="list-group-item facet-result-item non-clickable"
+                        :aria-label="`${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <span class="text-content-area">
+                                {{ result.label }}
+                            </span>
+                            <span class="badge bg-secondary rounded-pill" aria-hidden="true">
+                                {{ result.count }}
+                            </span>
+                        </div>
                     </div>
-                </div>
+                </li>
 
                 <!-- Collocation link -->
-                <button type="button" class="list-group-item list-group-item-action facet-result-item"
-                    v-else-if="facet.type == 'collocationFacet'" v-for="result in facetResults" :key="result.label"
-                    role="listitem" @click="collocationToConcordance(result.collocate)"
-                    :aria-label="`${$t('facets.searchCollocation')} ${result.collocate}, ${result.count} ${$t('facets.occurrences')}`">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <span class="sidebar-text text-content-area">
-                            {{ result.collocate }}
-                        </span>
-                        <span class="badge bg-secondary rounded-pill" aria-hidden="true">
-                            {{ result.count }}
-                        </span>
-                    </div>
-                </button>
-            </div>
+                <li v-if="facet.type == 'collocationFacet'" v-for="result in facetResults"
+                    :key="`colloc-${result.label}`">
+                    <button type="button" class="list-group-item list-group-item-action facet-result-item"
+                        @click="collocationToConcordance(result.collocate)"
+                        :aria-label="`${$t('facets.searchCollocation')} ${result.collocate}, ${result.count} ${$t('facets.occurrences')}`">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <span class="sidebar-text text-content-area">
+                                {{ result.collocate }}
+                            </span>
+                            <span class="badge bg-secondary rounded-pill" aria-hidden="true">
+                                {{ result.count }}
+                            </span>
+                        </div>
+                    </button>
+                </li>
+            </ul>
         </div>
     </div>
 </template>
@@ -881,5 +886,18 @@ export default {
 .options-slide-fade-enter,
 .options-slide-fade-leave-to {
     opacity: 0;
+}
+
+/* Reset list styling for semantic ul/li elements */
+.facet-results-container {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.facet-results-container li {
+    list-style: none;
+    padding: 0;
+    margin: 0;
 }
 </style>

@@ -1,5 +1,5 @@
 <template>
-    <header role="banner">
+    <header>
         <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1" style="height: 73px"
             aria-label="Main navigation">
             <div class="collapse navbar-collapse top-links">

@@ -3,13 +3,12 @@
         <div>
             <span>{{ $t("searchArgs.biblioCriteria") }}:&nbsp;</span>
 
-            <div role="list" aria-live="polite" :aria-label="$t('biblioCriteria.activeFiltersLabel')"
-                v-if="biblio.length !== 0">
-                <div class="metadata-args rounded-pill" v-for="metadata in biblio" :key="metadata.key" role="listitem"
+            <ul aria-live="polite" :aria-label="$t('biblioCriteria.activeFiltersLabel')" v-if="biblio.length !== 0">
+                <li class="metadata-args rounded-pill" v-for="metadata in biblio" :key="metadata.key"
                     :aria-label="`${$t('biblioCriteria.filterLabel')}: ${metadata.alias} ${metadata.value.replace('<=>', '—')}`">
 
                     <span class="metadata-label" :id="`label-${metadata.key.replace(/\s+/g, '-')}`">{{ metadata.alias
-                        }}</span>
+                    }}</span>
                     <span class="metadata-value"
                         :id="`value-${metadata.key.replace(/\s+/g, '-')}`">{{metadata.value.replace("<=>",
                             "&#8212;")}}</span>
@@ -20,8 +19,8 @@
                         :aria-describedby="`label-${metadata.key.replace(/\s+/g, '-')} value-${metadata.key.replace(/\s+/g, '-')}`">
                         <span class="icon-x" aria-hidden="true"></span>
                     </button>
-                </div>
-            </div>
+                </li>
+            </ul>
 
             <strong v-if="biblio.length === 0" role="status">{{ $t("common.none") }}</strong>
         </div>
@@ -32,7 +31,7 @@
 
             <!-- Start date -->
             <div class="biblio-criteria d-inline-block">
-                <div class="metadata-args rounded-pill" role="listitem"
+                <div class="metadata-args rounded-pill"
                     :aria-label="`${$t('biblioCriteria.startDate')}: ${start_date}`">
                     <span class="metadata-value" id="start-date-value">{{ start_date }}</span>
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata('start_date')"
@@ -46,8 +45,7 @@
 
             <!-- End date -->
             <div class="biblio-criteria d-inline-block">
-                <div class="metadata-args rounded-pill" role="listitem"
-                    :aria-label="`${$t('biblioCriteria.endDate')}: ${end_date}`">
+                <div class="metadata-args rounded-pill" :aria-label="`${$t('biblioCriteria.endDate')}: ${end_date}`">
                     <span class="metadata-value" id="end-date-value">{{ end_date }}</span>
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata('end_date')"
                         :aria-label="`${$t('biblioCriteria.removeEndDate')}`" aria-describedby="end-date-value">
@@ -150,12 +148,15 @@ export default {
 }
 
 /* Ensure the criteria list stays inline */
-div[role="list"] {
+ul {
     display: inline;
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
 /* Ensure list items stay inline */
-div[role="listitem"] {
+li {
     display: inline-block;
     vertical-align: middle;
 }
