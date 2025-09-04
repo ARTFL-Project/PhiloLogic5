@@ -155,7 +155,7 @@ export default {
                 weightedWordList.push({
                     collocate: wordObject.collocate,
                     surfaceForm: wordObject.surfaceForm,
-                    weight: 1 + adjustedWeight / 10,
+                    weight: 1.1 + adjustedWeight / 10,
                     color: this.colorCodes[adjustedWeight],
                     originalCount: wordObject.count,
                     adjustedWeight: adjustedWeight
@@ -286,6 +286,7 @@ export default {
 
 .cloud-word {
     display: inline-block;
+    min-width: 24px;
     padding: 5px;
     cursor: pointer;
     line-height: initial;

@@ -717,7 +717,7 @@ def page_images(config, output, current_obj_img, current_graphic_img, philo_id):
                 )
                 return output, {}
         else:
-            output = '<span class="xml-pb-image">[page ' + str(first_page_object["n"]) + "]</span>" + output
+            output = '<span class="xml-pb-image">page ' + str(first_page_object["n"]) + "</span>" + output
     ## Fetch all remaining imgs in document
     all_imgs = get_all_page_images(philo_id, config, current_obj_img)
     all_graphics = get_all_graphics(philo_id, config)
