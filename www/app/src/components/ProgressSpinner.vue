@@ -1,6 +1,6 @@
 <template>
     <div class="spinner-container d-inline-block px-1">
-        <div class="spinner-border text-secondary" role="status"
+        <div class="spinner-border progress-spinner" role="status"
             :class="{ 'spinner-border-sm': sm, 'spinner-large': lg }"><span class="visually-hidden">{{
                 $t("common.loading") }}...</span>
         </div>
@@ -59,5 +59,9 @@ export default {
     width: 4rem;
     height: 4rem;
     border-width: .25em;
+}
+
+.progress-spinner {
+    color: theme.$link-color;
 }
 </style>

@@ -1239,4 +1239,8 @@ input:focus::placeholder {
 .badge {
     font-size: 0.75rem;
 }
+
+:deep(.progress-bar) {
+    background-color: theme.$link-color !important;
+}
 </style>

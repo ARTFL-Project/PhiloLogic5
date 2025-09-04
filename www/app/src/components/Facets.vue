@@ -59,10 +59,9 @@
         <!-- Loading indicator -->
         <div class="d-flex justify-content-center position-relative" v-if="loading" role="status"
             :aria-label="$t('common.loadingFacets')">
-            <div class="spinner-border text-secondary"
-                style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px" aria-hidden="true">
+            <div class="position-absolute" style="z-index: 50; top: 10px">
+                <progress-spinner :lg="true" />
             </div>
-            <span class="visually-hidden">{{ $t("common.loadingFacets") }}...</span>
         </div>
 
         <!-- Facet results -->
@@ -96,10 +95,11 @@
             </div>
 
             <!-- Progress bar -->
-            <div class="progress my-3 mb-3" v-if="percent != 100" role="progressbar" :aria-valuenow="runningTotal"
-                :aria-valuemin="0" :aria-valuemax="resultsLength" :aria-label="$t('facets.loadingProgress')">
-                <div class="progress-bar" :style="`width: ${((runningTotal / resultsLength) * 100)}%`"
-                    :aria-hidden="true">
+            <div class="progress my-3 mb-3 facet-progress" v-if="percent != 100" role="progressbar"
+                :aria-valuenow="runningTotal" :aria-valuemin="0" :aria-valuemax="resultsLength"
+                :aria-label="$t('facets.loadingProgress')">
+                <div class="progress-bar facet-progress-bar"
+                    :style="`width: ${((runningTotal / resultsLength) * 100)}%`" :aria-hidden="true">
                 </div>
                 <span class="visually-hidden">
                     {{ $t('facets.progressDescription', {
@@ -201,9 +201,13 @@
 <script>
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import ProgressSpinner from "./ProgressSpinner";
 
 export default {
     name: "facets-report",
+    components: {
+        ProgressSpinner,
+    },
     computed: {
         ...mapWritableState(useMainStore, [
             "formData",
@@ -899,5 +903,33 @@ export default {
     list-style: none;
     padding: 0;
     margin: 0;
+}
+
+/* Custom progress bar to match theme */
+.facet-progress {
+    background-color: rgba(theme.$link-color, 0.1);
+    border-radius: 0.375rem;
+    overflow: hidden;
+}
+
+.facet-progress-bar {
+    background-color: theme.$link-color;
+    transition: width 0.3s ease-in-out;
+    background-image: linear-gradient(45deg,
+            rgba(255, 255, 255, 0.15) 25%,
+            transparent 25%,
+            transparent 50%,
+            rgba(255, 255, 255, 0.15) 50%,
+            rgba(255, 255, 255, 0.15) 75%,
+            transparent 75%,
+            transparent);
+    background-size: 1rem 1rem;
+    animation: progress-bar-stripes 1s linear infinite;
+}
+
+@keyframes progress-bar-stripes {
+    0% {
+        background-position-x: 1rem;
+    }
 }
 </style>
