@@ -25,19 +25,69 @@
                             :aria-label="$t('toc.navigationLabel')">
                             <div id="toc-content" v-scroll="handleScroll" ref="tocContent" tabindex="0" role="tree"
                                 :aria-label="$t('toc.tocTree')">
-                                <ol class="toc-list" role="list">
-                                    <li v-for="(element, elIndex) in tocElements.slice(0, displayLimit)" :key="elIndex"
-                                        :class="'toc-' + element.philo_type" role="listitem">
-                                        <span :class="'bullet-point-' + element.philo_type" aria-hidden="true"></span>
-                                        <router-link :to="element.href" class="toc-section" :aria-label="$t('toc.sectionLink', {
-                                            type: element.philo_type,
-                                            label: element.label
-                                        })">
-                                            {{ element.label }}
-                                        </router-link>
-                                        <citations :citation="element.citation"></citations>
+                                <ul class="toc-tree" role="tree">
+                                    <li v-for="(element, elIndex) in processedTocElements.slice(0, displayLimit)"
+                                        :key="elIndex" :class="'toc-item toc-' + element.philo_type" role="treeitem"
+                                        :aria-level="element.level || 1">
+
+                                        <!-- Section content -->
+                                        <div class="toc-content-wrapper">
+                                            <span v-if="element.philo_type === 'div1'" class="div1-marker"
+                                                aria-hidden="true">§</span>
+                                            <span v-else :class="'bullet-point-' + element.philo_type"
+                                                aria-hidden="true"></span>
+                                            <router-link :to="element.href" class="toc-section" :aria-label="$t('toc.sectionLink', {
+                                                type: element.philo_type,
+                                                label: element.label
+                                            })">
+                                                {{ element.label }}
+                                            </router-link>
+                                            <citations :citation="element.citation"></citations>
+                                        </div>
+
+                                        <!-- Child sections -->
+                                        <ul v-if="element.children && element.children.length > 0" class="toc-children"
+                                            role="group">
+                                            <li v-for="(child, childIndex) in element.children" :key="childIndex"
+                                                :class="'toc-item toc-child toc-' + child.philo_type" role="treeitem"
+                                                :aria-level="child.level || 2">
+                                                <div class="toc-content-wrapper">
+                                                    <span :class="'bullet-point-' + child.philo_type"
+                                                        aria-hidden="true"></span>
+                                                    <router-link :to="child.href" class="toc-section" :aria-label="$t('toc.sectionLink', {
+                                                        type: child.philo_type,
+                                                        label: child.label
+                                                    })">
+                                                        {{ child.label }}
+                                                    </router-link>
+                                                    <citations :citation="child.citation"></citations>
+                                                </div>
+
+                                                <!-- Grandchildren (div3 level) -->
+                                                <ul v-if="child.children && child.children.length > 0"
+                                                    class="toc-children" role="group">
+                                                    <li v-for="(grandchild, grandchildIndex) in child.children"
+                                                        :key="grandchildIndex"
+                                                        :class="'toc-item toc-child toc-' + grandchild.philo_type"
+                                                        role="treeitem" :aria-level="grandchild.level || 3">
+                                                        <div class="toc-content-wrapper">
+                                                            <span :class="'bullet-point-' + grandchild.philo_type"
+                                                                aria-hidden="true"></span>
+                                                            <router-link :to="grandchild.href" class="toc-section"
+                                                                :aria-label="$t('toc.sectionLink', {
+                                                                    type: grandchild.philo_type,
+                                                                    label: grandchild.label
+                                                                })">
+                                                                {{ grandchild.label }}
+                                                            </router-link>
+                                                            <citations :citation="grandchild.citation"></citations>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </li>
+                                        </ul>
                                     </li>
-                                </ol>
+                                </ul>
 
                                 <!-- Loading indicator for infinite scroll -->
                                 <div v-if="isLoading" class="text-center mt-3" role="status"
@@ -46,7 +96,7 @@
                                 </div>
 
                                 <!-- End of content indicator -->
-                                <div v-if="displayLimit >= tocElements.length && tocElements.length > 0"
+                                <div v-if="displayLimit >= processedTocElements.length && processedTocElements.length > 0"
                                     class="text-center mt-3 text-muted" role="status" aria-live="polite">
                                     {{ $t('toc.endOfContent') }}
                                 </div>
@@ -78,6 +128,9 @@ export default {
             "searching"
         ]),
         ...mapStores(useMainStore),
+        processedTocElements() {
+            return this.buildTocTree(this.tocElements);
+        }
     },
     data() {
         return {
@@ -143,7 +196,7 @@ export default {
             if (!tocContent) return;
 
             const scrollPosition = tocContent.getBoundingClientRect().bottom - 200;
-            if (scrollPosition < window.innerHeight && !this.isLoading && this.displayLimit < this.tocElements.length) {
+            if (scrollPosition < window.innerHeight && !this.isLoading && this.displayLimit < this.processedTocElements.length) {
                 this.isLoading = true;
                 setTimeout(() => {
                     this.displayLimit += 200;
@@ -151,46 +204,152 @@ export default {
                 }, 100);
             }
         },
+        buildTocTree(elements) {
+            const tree = [];
+            const typeHierarchy = {
+                'doc': 1,
+                'div1': 2,
+                'div2': 3,
+                'div3': 4,
+                'para': 9
+            };
+
+            let stack = [];
+
+            for (let element of elements) {
+                const elementLevel = typeHierarchy[element.philo_type] || 1;
+                element.level = elementLevel;
+                element.children = [];
+
+                // Find the appropriate parent in the stack
+                while (stack.length > 0 && stack[stack.length - 1].level >= elementLevel) {
+                    stack.pop();
+                }
+
+                if (stack.length === 0) {
+                    // This is a top-level element
+                    tree.push(element);
+                } else {
+                    // This is a child of the last element in the stack
+                    stack[stack.length - 1].children.push(element);
+                }
+
+                stack.push(element);
+            }
+
+            return tree;
+        },
     },
 };
 </script>
 <style scoped lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;
 
-.separator {
-    padding: 5px;
-    font-size: 60%;
+#toc-content {
+    padding: 1rem;
+}
+
+#toc-content:focus {
+    outline: 2px solid theme.$link-color;
+    outline-offset: -2px;
+}
+
+.toc-content-wrapper {
     display: inline-block;
-    vertical-align: middle;
+    width: 100%;
+    vertical-align: top;
+}
+
+.toc-tree {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+}
+
+.toc-item {
+    margin-bottom: 0.25rem;
+    border-radius: 4px;
+    padding: 0.25rem 0;
+    position: relative;
+}
+
+.toc-children {
+    list-style: none;
+    padding-left: 1.25rem;
+    margin-bottom: 0;
+    position: relative;
+}
+
+.toc-child {
+    position: relative;
+    padding-left: 0.75rem;
+}
+
+/* Vertical connecting lines */
+.toc-children::before {
+    content: '';
+    position: absolute;
+    left: 0.75rem;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    border-left: 1px dotted theme.$link-color;
+    opacity: 0.4;
+}
+
+/* Horizontal connecting lines */
+.toc-child::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 1.25rem;
+    width: 0.75rem;
+    height: 1px;
+    border-top: 1px dotted theme.$link-color;
+    opacity: 0.4;
+}
+
+/* Clean up vertical line for last child */
+.toc-child:last-child::after {
+    content: '';
+    position: absolute;
+    left: -0.25rem;
+    top: 50%;
+    bottom: -0.5rem;
+    width: 1px;
+    background-color: white;
 }
 
 .toc-section {
     font-size: 1.05rem;
     text-decoration: none;
     transition: all 0.15s ease-in-out;
+    display: inline-block;
+    padding: 0.25rem 0.25rem 0.25rem 0.25rem;
+    border-radius: 4px;
 }
 
 .toc-section:hover,
 .toc-section:focus {
     outline: 1px solid theme.$link-color;
-    background-color: rgba(theme.$link-color, 0.05);
-    border-radius: 4px;
 }
 
-.toc-list {
-    list-style: none;
-    padding-left: 0;
+.div1-marker {
+    color: theme.$link-color;
+    margin-right: 0.5rem;
+    font-size: 1.2rem;
+    margin-left: -0.5rem;
 }
 
-.toc-list li {
-    margin-bottom: 0.5rem;
-    border-radius: 4px;
-    padding-top: 0.05rem;
-    padding-bottom: 0.05rem;
+.toc-div1 .toc-section {
+    font-size: 1.1rem;
 }
 
-.toc-list li:hover {
-    background-color: #f8f9fa;
+.separator {
+    padding: 5px;
+    font-size: 60%;
+    display: inline-block;
+    vertical-align: middle;
 }
 
 #tei-header {
@@ -202,15 +361,6 @@ export default {
     background-color: rgb(253, 253, 253);
     margin: 10px;
     border: 1px solid #dee2e6;
-}
-
-#toc-content {
-    padding: 1rem;
-}
-
-#toc-content:focus {
-    outline: 2px solid theme.$link-color;
-    outline-offset: -2px;
 }
 
 :deep(h5 .text-view) {
