@@ -43,7 +43,7 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="https://atilf.fr" aria-label="Visit ATILF-CNRS website">
+                    <a class="nav-link" href="https://www.atilf.fr/" aria-label="Visit ATILF-CNRS website">
                         ATILF-CNRS
                     </a>
                 </li>

@@ -80,10 +80,10 @@ def query(
                 search_phrase(db.path, filename, db.locals.overflow_words, corpus_file=corpus_file)
             elif method == "phrase_unordered":
                 # Phrase searching where words need to be in a specific order with possible words in between
-                search_within_word_span(db.path, db.locals.overflow_words, filename, method_arg or 1, False, False, corpus_file=corpus_file)
+                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)
             elif method == "proxy_ordered":
                 # Proximity searching with possible words in between
-                search_within_word_span(db.path, db.locals.overflow_words, filename, method_arg or 1, True, False, corpus_file=corpus_file)
+                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, True, False, corpus_file=corpus_file)
             elif method == "proxy_unordered":
                 # Proximity searching with possible words in between unordered
                 search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)

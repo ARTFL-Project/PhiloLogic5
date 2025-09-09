@@ -33,7 +33,7 @@ def make_absolute_object_link(config, philo_id, byte_offsets=None):
     return href
 
 
-def make_absolute_query_link(config, params, script_name="/query", **extra_params):
+def make_absolute_query_link(config, params, script_name="/bibliography", **extra_params):
     """Takes a dictionary of query parameters as produced by WSGIHandler,
     and returns an absolute URL representation of such."""
     params = dict([i for i in params])

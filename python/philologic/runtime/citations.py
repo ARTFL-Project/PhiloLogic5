@@ -2,7 +2,8 @@
 """Citations"""
 
 
-from philologic.runtime.link import make_absolute_object_link, make_absolute_query_link
+from philologic.runtime.link import (make_absolute_object_link,
+                                     make_absolute_query_link)
 
 
 def citation_links(db, config, i):
@@ -137,7 +138,6 @@ def cite_linker(hit, citation_object, citation_hrefs, config, report):
                 href = make_absolute_object_link(config, hit.philo_id)
             else:
                 params = [
-                    ("report", "bibliography"),
                     (citation_object["field"], f'"{hit[citation_object["field"]]}"'),
                 ]
                 href = make_absolute_query_link(config, params)
