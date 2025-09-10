@@ -109,7 +109,7 @@
                 <div class="row">
                     <div class="col-12 col-sm-9 offset-sm-1 col-md-8 offset-md-2 text-content-area">
                         <article class="card mb-4 shadow-sm" v-for="(group, groupIndex) in resultGroups"
-                            :key="group.prefix" :id="`landing-${group.prefix}`"
+                            :key="group.prefix" :id="`landing-group-${groupIndex}`"
                             :aria-labelledby="`group-heading-${groupIndex}`">
                             <div class="card-header">
                                 <h3 class="h6 mb-0" :id="`group-heading-${groupIndex}`">{{ group.prefix.toString() }}

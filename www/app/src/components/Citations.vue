@@ -4,9 +4,9 @@
             <span v-html="cite.prefix" v-if="cite.prefix"></span>
 
             <router-link :to="cite.href" :style="cite.style" v-if="cite.href"
-                :aria-describedby="`citation-desc-${citeIndex}`">
+                :aria-describedby="`citation-desc-${$.uid}-${citeIndex}`">
                 {{ cite.label }}
-                <span :id="`citation-desc-${citeIndex}`" class="visually-hidden">
+                <span :id="`citation-desc-${$.uid}-${citeIndex}`" class="visually-hidden">
                     {{ resultNumber }} {{ $t('citations.viewText') }}: {{ cite.label }}
                 </span>
             </router-link>
