@@ -30,18 +30,18 @@
         "loadingFacets": "Chargement des facettes",
         "example": "exemple",
         "or": "ou",
-        "opensInNewWindow": "(s'ouvre dans une nouvelle fenêtre)"
+        "opensInNewWindow": "(s'ouvre dans une nouvelle fenêtre)",
+        "searchInterface": "Interface de recherche"
     },
     "header": {
         "citationModalTitle": "Comment citer {dbname} :",
         "closeCitationDialog": "Fermer la boîte de dialogue de citation",
-        "citationHelpText": "Ouvre une boîte de dialogue avec des informations sur la façon de citer cette base de données",
-        "accessedOn": "Consulté le {date}",
         "goHome": "Page d'accueil",
         "citeUs": "Nous citer",
         "contactUs": "Contactez nous"
     },
     "searchForm": {
+        "searchInterface": "Interface de recherche",
         "concordance": "Concordance",
         "kwic": "Mot-clé en contexte",
         "shortKwic": "KWIC",
@@ -147,8 +147,7 @@
         "progressLabel": "Traitement des résultats, {percent}% terminé",
         "progressDescription": "Traitement de {current} sur {total} résultats, {percent} pour cent terminé",
         "filteredWordsList": "Liste des mots filtrés",
-        "reportViewOptions": "Report view options",
-        "progressChanged": "Résultats mis à jour, {percent}% terminé"
+        "reportViewOptions": "Options d'affichage du rapport"
     },
     "collocation": {
         "collocationResults": "Résultats de collocation",
@@ -193,8 +192,7 @@
         "resultsRegion": "Résultats de recherche de concordance",
         "resultNumber": "Numéro de résultat",
         "showMoreContext": "Afficher plus de contexte pour le",
-        "forResult": "résultat",
-        "contextRegion": "Contexte du texte pour le résultat"
+        "forResult": "résultat"
     },
     "facets": {
         "browseByFacet": "Naviguer par facettes",
@@ -223,8 +221,7 @@
         "filterBy": "Filtrer les résultats par",
         "searchFor": "Rechercher",
         "searchCollocation": "Rechercher la collocation",
-        "occurrences": "occurrences",
-        "relativeFrequencyLabel": "{total} occurrences sur {wordCount} mots au total"
+        "occurrences": "occurrences"
     },
     "exportResults": {
         "currentPage": "Seuls les résultats de la page actuelle seront exportés",
@@ -244,13 +241,9 @@
         "wordsRight": "Mots sur la droite",
         "selectSortCriteria": "Sélectionner les critères de tri : {criteria}",
         "showResults": "Afficher {count} résultats par page",
-        "loadingProgress": "Chargement des résultats KWIC",
-        "progressDescription": "Chargement de {current} sur {total} résultats ({percent}% terminé)",
         "resultsRegion": "Résultats de recherche KWIC",
-        "sortingControls": "Contrôles de tri",
         "applySorting": "Appliquer le tri",
         "resultsPerPageControl": "Contrôle des résultats par page",
-        "concordanceRegion": "Résultats de concordance KWIC",
         "resultNumber": "Numéro de résultat",
         "contextDescription": "Contexte : {context}..."
     },
@@ -258,10 +251,7 @@
         "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats.",
         "resultsRegion": "Résultats d'agrégation",
         "expandBreakdown": "Développer les détails de la répartition",
-        "collapseBreakdown": "Réduire les détails de la répartition",
-        "countLabel": "Nombre",
-        "distributedAcross": "Distribué à travers",
-        "breakdownResults": "Résultats de répartition pour"
+        "collapseBreakdown": "Réduire les détails de la répartition"
     },
     "landingPage": {
         "title": "Parcourir la Collection",
@@ -358,23 +348,16 @@
         "nextGraphics": "Graphiques suivants"
     },
     "timeSeries": {
-        "frequencyDescription": "Basculer entre l'affichage de la fréquence absolue (comptes bruts) et de la fréquence relative (pour 1000 mots) pour le graphique de série temporelle.",
         "chartTitle": "Graphique de Série Temporelle",
-        "dataTableCaption": "Données de série temporelle montrant la fréquence des termes de recherche au fil des périodes",
         "year": "Année",
         "occurrences": "occurrences",
         "per1000Words": "pour 1000 mots",
-        "navigationInstructions": "Utilisez les touches fléchées pour naviguer entre les périodes, Entrée ou Espace pour voir les résultats détaillés de la période sélectionnée, Début/Fin pour aller à la première/dernière période.",
         "chartAriaLabel": "Graphique de série temporelle {type} montrant {count} points de données de {range}",
         "selectionAnnouncement": "{year} sélectionné : {value} {unit}",
-        "frequencyChanged": "Graphique mis à jour pour afficher {type}",
         "loadingProgress": "Chargement des données de série temporelle : {current} sur {total} résultats traités"
     },
     "bibliography": {
-        "resultsRegion": "Résultats de bibliographie",
         "dictionaryResultsRegion": "Résultats de bibliographie du dictionnaire",
-        "titleGroup": "Groupe de titres",
-        "contextRegion": "Contexte",
         "selectForSearch": "Sélectionner cet élément pour la recherche"
     },
     "biblioCriteria": {
@@ -390,7 +373,6 @@
     },
     "citations": {
         "citationGroup": "Citation",
-        "citationItem": "Citation {position} sur {total} : {label}",
         "viewText": "Voir le texte"
     },
     "pages": {
@@ -405,5 +387,21 @@
         "tocTree": "Table des matières hiérarchique",
         "sectionLink": "Aller à {type} : {label}",
         "endOfContent": "Fin de la table des matières"
+    },
+    "wordCloud": {
+        "ariaLabel": "Nuage de mots contenant {count} mots, dimensionnés par fréquence",
+        "instructions": "Utilisez les touches fléchées pour naviguer entre les mots, Entrée ou Espace pour sélectionner un mot",
+        "tableCaption": "Données du nuage de mots montrant les fréquences des mots et les niveaux de signification",
+        "word": "Mot",
+        "frequency": "Fréquence",
+        "significance": "Signification",
+        "wordAriaLabel": "{word}, apparaît {frequency} fois, signification {significance}",
+        "wordTooltip": "{word} (apparaît {frequency} fois)",
+        "noWords": "Aucun mot disponible",
+        "wordsLoaded": "{count} mots chargés dans le nuage de mots",
+        "veryHigh": "très élevée",
+        "high": "élevée",
+        "medium": "moyenne",
+        "low": "faible"
     }
 }

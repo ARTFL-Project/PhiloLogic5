@@ -36,7 +36,6 @@
     "header": {
         "citationModalTitle": "How to cite {dbname}:",
         "closeCitationDialog": "Close citation dialog",
-        "accessedOn": "Accessed on {date}",
         "goHome": "Go to home page",
         "citeUs": "Cite us",
         "contactUs": "Contact Us"
@@ -148,8 +147,7 @@
         "progressLabel": "Processing results, {percent}% complete",
         "progressDescription": "Processing {current} of {total} results, {percent} percent complete",
         "filteredWordsList": "List of filtered words",
-        "reportViewOptions": "Report view options",
-        "progressChanged": "Progress updated: {percent}% complete"
+        "reportViewOptions": "Report view options"
     },
     "collocation": {
         "collocationResults": "Collocation Results",
@@ -194,8 +192,7 @@
         "resultsRegion": "Concordance search results",
         "resultNumber": "Result number",
         "showMoreContext": "Show more context for",
-        "forResult": "result",
-        "contextRegion": "Text context for result"
+        "forResult": "result"
     },
     "facets": {
         "browseByFacet": "Browse by facet",
@@ -224,8 +221,7 @@
         "filterBy": "Filter results by",
         "searchFor": "Search for",
         "searchCollocation": "Search for collocation",
-        "occurrences": "occurrences",
-        "relativeFrequencyLabel": "{total} occurrences out of {wordCount} total words"
+        "occurrences": "occurrences"
     },
     "exportResults": {
         "currentPage": "Only results from the current page will be exported",
@@ -245,13 +241,9 @@
         "wordsRight": "Words to the right",
         "selectSortCriteria": "Select sorting criteria: {criteria}",
         "showResults": "Show {count} results per page",
-        "loadingProgress": "Loading KWIC results",
-        "progressDescription": "Loading {current} of {total} results ({percent}% complete)",
         "resultsRegion": "KWIC search results",
-        "sortingControls": "Sorting controls",
         "applySorting": "Apply sorting",
         "resultsPerPageControl": "Results per page control",
-        "concordanceRegion": "KWIC concordance results",
         "resultNumber": "Result number",
         "contextDescription": "Context: {context}..."
     },
@@ -259,10 +251,7 @@
         "performance": "For performance reasons, only the first 1000 results are displayed. Click on the link above for full results.",
         "resultsRegion": "Aggregation results",
         "expandBreakdown": "Expand breakdown details",
-        "collapseBreakdown": "Collapse breakdown details",
-        "countLabel": "Count",
-        "distributedAcross": "Distributed across",
-        "breakdownResults": "Breakdown results for"
+        "collapseBreakdown": "Collapse breakdown details"
     },
     "landingPage": {
         "title": "Browse Collection",
@@ -359,23 +348,16 @@
         "nextGraphics": "Next graphics"
     },
     "timeSeries": {
-        "frequencyDescription": "Toggle between absolute frequency (raw counts) and relative frequency (per 1000 words) display modes for the time series chart.",
         "chartTitle": "Time Series Chart",
-        "dataTableCaption": "Time series data showing frequency of search terms over time periods",
         "year": "Year",
         "occurrences": "occurrences",
         "per1000Words": "per 1000 words",
-        "navigationInstructions": "Use arrow keys to navigate between time periods, Enter or Space to view detailed results for selected period, Home/End to jump to first/last period.",
         "chartAriaLabel": "{type} time series chart showing {count} data points from {range}",
         "selectionAnnouncement": "Selected {year}: {value} {unit}",
-        "frequencyChanged": "Chart updated to show {type}",
         "loadingProgress": "Loading time series data: {current} of {total} results processed"
     },
     "bibliography": {
-        "resultsRegion": "Bibliography results",
         "dictionaryResultsRegion": "Dictionary bibliography results",
-        "titleGroup": "Title group",
-        "contextRegion": "Context",
         "selectForSearch": "Select this item for search"
     },
     "biblioCriteria": {
@@ -391,7 +373,6 @@
     },
     "citations": {
         "citationGroup": "Citation",
-        "citationItem": "Citation {position} of {total}: {label}",
         "viewText": "View text"
     },
     "pages": {

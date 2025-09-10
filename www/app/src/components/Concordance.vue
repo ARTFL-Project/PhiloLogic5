@@ -3,7 +3,7 @@
         <results-summary :description="results.description"></results-summary>
 
         <div class="row" style="padding-right: 0.5rem">
-            <region class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
+            <div role="region" class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('concordance.resultsRegion')">
 
                 <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
@@ -44,12 +44,13 @@
                         </div>
                     </article>
                 </transition-group>
-            </region>
+            </div>
 
             <!-- Facets sidebar -->
-            <region class="col col-md-3 col-xl-3 ps-0" :aria-label="$t('common.facetsRegion')" v-if="showFacets">
+            <div role="region" class="col col-md-3 col-xl-3 ps-0" :aria-label="$t('common.facetsRegion')"
+                v-if="showFacets">
                 <facets></facets>
-            </region>
+            </div>
 
             <pages></pages>
         </div>

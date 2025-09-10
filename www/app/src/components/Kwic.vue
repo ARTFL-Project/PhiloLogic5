@@ -2,7 +2,7 @@
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
         <div class="row px-2">
-            <region class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }"
+            <div role="region" class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('kwic.resultsRegion')">
                 <div class="card p-2 ml-2 shadow-sm">
                     <div class="p-2 mb-1">
@@ -99,11 +99,11 @@
                     </div>
                 </div>
                 <pages></pages>
-            </region>
+            </div>
 
-            <region class="col col-md-4 col-xl-3" :aria-label="$t('common.facetsRegion')" v-if="showFacets">
+            <div role="region" class="col col-md-4 col-xl-3" :aria-label="$t('common.facetsRegion')" v-if="showFacets">
                 <facets></facets>
-            </region>
+            </div>
         </div>
     </div>
 </template>

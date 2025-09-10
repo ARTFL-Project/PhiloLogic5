@@ -37,7 +37,7 @@
         <results-summary :description="results.description" :running-total="runningTotal" :filter-list="filterList"
             :colloc-method="collocMethod" v-if="collocMethod === 'frequency'"
             style="margin-top:0 !important;"></results-summary>
-        <region :aria-label="$t('collocation.collocationResults')">
+        <div role="region" :aria-label="$t('collocation.collocationResults')">
             <div class="card shadow-sm mx-2 p-2" style="border-top-width: 0;" v-if="collocMethod == 'compare'">
                 <button id="toggle-metadata" class="btn btn-link" style="text-align: start;" type="button"
                     data-bs-toggle="collapse" data-bs-target="#other-corpus-metadata" aria-expanded="false"
@@ -169,7 +169,7 @@
                         <ul class="dropdown-menu">
                             <li v-for="field in fieldsToCompare" :key="field.value"
                                 @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label
-                                }}</a>
+                                    }}</a>
                             </li>
                         </ul>
                     </div>
@@ -410,7 +410,7 @@
                     </div>
                 </div>
             </div>
-        </region>
+        </div>
     </div>
 </template>
 
