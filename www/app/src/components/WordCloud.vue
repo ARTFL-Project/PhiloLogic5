@@ -2,7 +2,7 @@
     <div class="word-cloud-container" role="region" :aria-label="wordCloudAriaLabel"
         aria-describedby="word-cloud-instructions">
         <!-- Instructions for screen readers -->
-        <div id="word-cloud-instructions" class="visually-hidden">
+        <div :id="`word-cloud-instructions-${label}`" class="visually-hidden">
             {{ $t("wordCloud.instructions") }}
         </div>
 
@@ -55,6 +55,11 @@ export default {
         clickHandler: {
             type: Function,
             required: true
+        },
+        label: {
+            type: String,
+            required: false,
+            default: 'default'
         }
     },
     computed: {

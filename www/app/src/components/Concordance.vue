@@ -3,23 +3,25 @@
         <results-summary :description="results.description"></results-summary>
 
         <div class="row" style="padding-right: 0.5rem">
-            <main class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }" role="main"
+            <region class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('concordance.resultsRegion')">
 
                 <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
                     <article class="card philologic-occurrence text-view ms-2 me-2 mb-3 shadow-sm"
-                        v-for="(result, index) in results.results" :key="result.philo_id.join('-')" :data-index="index"
-                        :aria-labelledby="`result-${index}-heading`">
+                        v-for="(result, index) in results.results" :key="result.philo_id.join('-')" :data-index="index">
 
                         <!-- Citation header -->
-                        <header class="row citation-container g-0">
+                        <div class="row citation-container g-0">
                             <div class="col-12 col-sm-10 col-md-11">
                                 <span class="cite" :id="`result-${index}-heading`">
-                                    <span class="number"
-                                        :aria-label="`${$t('concordance.resultNumber')} ${results.description.start + index}`">
+                                    <span class="number" :aria-describedby="`result-number-desc-${index}`">
                                         {{ results.description.start + index }}
+                                        <span :id="`result-number-desc-${index}`" class="visually-hidden">
+                                            {{ $t('concordance.resultNumber') }} {{ results.description.start + index }}
+                                        </span>
                                     </span>
-                                    <citations :citation="result.citation"></citations>
+                                    <citations :citation="result.citation"
+                                        :result-number="results.description.start + index"></citations>
                                 </span>
                             </div>
                             <div class="col-sm-2 col-md-1 d-none d-lg-inline-block">
@@ -30,26 +32,24 @@
                                     <span class="visually-hidden">{{ $t("concordance.more") }}</span>
                                 </button>
                             </div>
-                        </header>
+                        </div>
 
                         <!-- Concordance content -->
                         <div class="row">
                             <div class="col m-2 concordance-text" :position="results.description.start + index"
-                                @keyup="dicoLookup($event, result.metadata_fields.year)"
-                                :aria-label="`${$t('concordance.contextRegion')} ${results.description.start + index}`">
+                                @keyup="dicoLookup($event, result.metadata_fields.year)">
                                 <div class="default-length" v-html="result.context"></div>
                                 <div class="more-length"></div>
                             </div>
                         </div>
                     </article>
                 </transition-group>
-            </main>
+            </region>
 
             <!-- Facets sidebar -->
-            <aside class="col col-md-3 col-xl-3 ps-0" v-if="showFacets" role="complementary"
-                :aria-label="$t('common.facetsRegion')">
+            <region class="col col-md-3 col-xl-3 ps-0" :aria-label="$t('common.facetsRegion')" v-if="showFacets">
                 <facets></facets>
-            </aside>
+            </region>
 
             <pages></pages>
         </div>
@@ -222,7 +222,6 @@ export default {
 }
 
 .number {
-    background-color: rgb(78, 93, 108);
     color: #fff;
     font-size: 1rem;
     line-height: 1.5;
@@ -235,7 +234,6 @@ export default {
 
 .hit_n {
     vertical-align: 5px;
-    /*align numbers*/
 }
 
 .cite {

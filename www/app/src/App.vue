@@ -5,10 +5,6 @@
     </div>
     <Header v-if="$philoConfig.valid_config" />
     <main id="main" v-if="$philoConfig.valid_config">
-        <!-- Skip navigation for keyboard users -->
-        <a href="#main-content" class="visually-hidden-focusable">
-            {{ $t('common.skipToMain') }}
-        </a>
 
         <SearchForm v-if="accessAuthorized" />
 

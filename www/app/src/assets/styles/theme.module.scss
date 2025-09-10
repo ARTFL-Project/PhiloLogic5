@@ -243,17 +243,17 @@ input {
     background-color: #fff !important;
 }
 
-// Focus indicators for accessibility - subtle and elegant
+// Focus indicators for accessibility
 .nav-link:focus,
 .btn:focus,
 button:focus {
-    outline: none !important;
-    box-shadow: inset 0 0 0 2px $button-color !important;
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
 }
 
 .nav-tabs .nav-link:focus {
-    outline: none !important;
-    box-shadow: inset 0 -3px 0 0 $button-color !important;
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
 }
 
 .nav-tabs .nav-link:focus:not(.active) {

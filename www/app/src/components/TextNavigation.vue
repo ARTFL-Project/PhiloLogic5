@@ -123,7 +123,7 @@
             :aria-label="$t('textNav.dictionaryLookup')">
             <p>{{ $t("textNav.dicoLookUp") }}.</p>
         </div>
-        <main class="row" id="all-content" :aria-label="$t('textNav.textContent')">
+        <region class="row" id="all-content" :aria-label="$t('textNav.textContent')">
             <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text"
                 style="text-align: center">
                 <article class="card text-view mt-2 mb-4 p-4 shadow d-inline-block">
@@ -160,7 +160,7 @@
                     </div>
                 </article>
             </div>
-        </main>
+        </region>
         <div id="gallery-template" aria-hidden="true">
         </div>
     </div>

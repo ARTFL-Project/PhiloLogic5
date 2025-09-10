@@ -152,6 +152,7 @@
         "progressChanged": "Progress updated: {percent}% complete"
     },
     "collocation": {
+        "collocationResults": "Collocation Results",
         "collocate": "Collocate",
         "count": "Count",
         "collocation": "Collocation",

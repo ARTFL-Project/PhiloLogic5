@@ -2,10 +2,10 @@
     <div class="container-fluid mt-4">
         <results-summary :groupLength="aggregationResults.length"></results-summary>
         <div class="card shadow mt-4 ms-2 me-2" v-if="resultsLength" v-scroll="handleFullResultsScroll">
-            <div id="aggregation-results" class="list-group" role="main" :aria-label="$t('aggregation.resultsRegion')">
+            <div id="aggregation-results" class="list-group" role="region"
+                :aria-label="$t('aggregation.resultsRegion')">
                 <article class="list-group-item pt-3 pb-3" role="article"
-                    v-for="(result, resultIndex) in aggregationResults.slice(0, lastResult)" :key="resultIndex"
-                    :aria-labelledby="`result-heading-${resultIndex}`">
+                    v-for="(result, resultIndex) in aggregationResults.slice(0, lastResult)" :key="resultIndex">
 
                     <button type="button" class="btn btn-outline-secondary btn-sm d-inline-block"
                         style="padding: 0 0.25rem; margin-right: 0.5rem" :id="`button-${resultIndex}`"
@@ -17,8 +17,7 @@
                         <span aria-hidden="true">{{ breakUpFields[resultIndex].show ? '−' : '+' }}</span>
                     </button>
 
-                    <span class="badge rounded-pill bg-secondary"
-                        :aria-label="`${$t('aggregation.countLabel')}: ${result.count}`">
+                    <span class="badge rounded-pill bg-secondary">
                         {{ result.count }}
                     </span>
 
@@ -27,8 +26,7 @@
                     </div>
 
                     <!-- Breakdown summary -->
-                    <span class="d-inline-block ps-1" v-if="breakUpFields[resultIndex].results.length"
-                        :aria-label="`${$t('aggregation.distributedAcross')} ${breakUpFields[resultIndex].results.length} ${breakUpFieldName}(s)`">
+                    <span class="d-inline-block ps-1" v-if="breakUpFields[resultIndex].results.length">
                         {{ $t("common.across") }} {{ breakUpFields[resultIndex].results.length }}
                         {{ breakUpFieldName }}(s)
                     </span>
@@ -41,16 +39,14 @@
 
                     <!-- Expandable breakdown section -->
                     <div class="breakdown-container ms-4 mt-2" v-if="breakUpFields[resultIndex].show"
-                        :id="`breakdown-${resultIndex}`" role="group"
-                        :aria-label="`${$t('aggregation.breakdownResults')} ${breakUpFieldName}`">
+                        :id="`breakdown-${resultIndex}`" role="group">
 
                         <article class="breakdown-item"
                             v-for="(value, key) in breakUpFields[resultIndex].results.slice(0, breakUpFields[resultIndex].limit)"
                             :key="key" role="article" :aria-labelledby="`breakdown-item-${resultIndex}-${key}`">
 
                             <div class="breakdown-content">
-                                <span class="badge rounded-pill bg-info breakdown-badge"
-                                    :aria-label="`${$t('aggregation.countLabel')}: ${value.count}`">
+                                <span class="badge rounded-pill bg-info breakdown-badge">
                                     {{ value.count }}
                                 </span>
 

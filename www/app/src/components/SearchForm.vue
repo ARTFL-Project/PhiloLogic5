@@ -32,7 +32,8 @@
                                         <input type="text" class="form-control" id="query-term-input"
                                             aria-labelledby="search-terms-label" v-model="queryTermTyped"
                                             @input="onChange('q')" @keyup.down="onArrowDown('q')"
-                                            @keyup.up="onArrowUp('q')" @keyup.enter="onEnter('q')" />
+                                            @keyup.up="onArrowUp('q')" @keyup.enter="onEnter('q')"
+                                            @keyup.escape="clearAutoCompletePopup" autocomplete="off" />
 
                                         <ul id="autocomplete-q" class="autocomplete-results shadow"
                                             :style="autoCompletePosition('q')" v-if="autoCompleteResults.q.length > 0"
@@ -63,7 +64,8 @@
                                     @input="onChange('head')"
                                     @keydown.down="onArrowDown(metadataDisplay[headIndex].value)"
                                     @keydown.up="onArrowUp(metadataDisplay[headIndex].value)"
-                                    @keyup.enter="onEnter(metadataDisplay[headIndex].value)" />
+                                    @keyup.enter="onEnter(metadataDisplay[headIndex].value)"
+                                    @keyup.escape="clearAutoCompletePopup" autocomplete="off" />
                                 <ul :id="'autocomplete-' + metadataDisplay[headIndex].value"
                                     class="autocomplete-results shadow"
                                     :style="autoCompletePosition(metadataDisplay[headIndex].value)"
@@ -253,7 +255,8 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                 @input="onChange(localField.value)"
                                                 @keydown.down="onArrowDown(localField.value)"
                                                 @keydown.up="onArrowUp(localField.value)"
-                                                @keyup.enter="onEnter(localField.value)" />
+                                                @keyup.enter="onEnter(localField.value)"
+                                                @keyup.escape="clearAutoCompletePopup" autocomplete="off" />
                                             <ul :id="'autocomplete-' + localField.value"
                                                 class="autocomplete-results shadow"
                                                 :style="autoCompletePosition(localField.value)"

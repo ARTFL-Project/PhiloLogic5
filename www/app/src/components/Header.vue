@@ -5,6 +5,12 @@
             <div class="collapse navbar-collapse top-links">
                 <ul class="navbar-nav me-auto mb-2 mb-lg-0">
                     <li class="nav-item">
+                        <!-- Skip navigation for keyboard users -->
+                        <a href="#main-content" class="visually-hidden-focusable" @click.prevent="skipToMainContent">
+                            {{ $t('common.skipToMain') }}
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a class="nav-link" :href="philoConfig.link_to_home_page" :aria-label="$t('header.goHome')"
                             v-if="philoConfig.link_to_home_page != ''">
                             {{ $t("header.goHome") }}
@@ -156,6 +162,14 @@ export default {
             const div = document.createElement('div');
             div.innerHTML = html;
             return div.textContent || div.innerText || '';
+        },
+        skipToMainContent() {
+            // Find the main content element and scroll to it
+            const mainContent = document.getElementById('main-content');
+            if (mainContent) {
+                mainContent.scrollIntoView({ behavior: 'smooth' });
+                mainContent.focus({ preventScroll: true });
+            }
         },
     },
 };

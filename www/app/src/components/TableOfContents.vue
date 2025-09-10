@@ -42,7 +42,6 @@
                                             })">
                                                 {{ element.label }}
                                             </router-link>
-                                            <citations :citation="element.citation"></citations>
                                         </div>
 
                                         <!-- Child sections -->
@@ -60,7 +59,6 @@
                                                     })">
                                                         {{ child.label }}
                                                     </router-link>
-                                                    <citations :citation="child.citation"></citations>
                                                 </div>
 
                                                 <!-- Grandchildren (div3 level) -->
@@ -80,7 +78,6 @@
                                                                 })">
                                                                 {{ grandchild.label }}
                                                             </router-link>
-                                                            <citations :citation="grandchild.citation"></citations>
                                                         </div>
                                                     </li>
                                                 </ul>

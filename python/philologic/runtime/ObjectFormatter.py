@@ -218,6 +218,9 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
         # Delete lang attributes if present to avoid accessibility issues
         if "lang" in el.attrib:
             del el.attrib["lang"]
+        if el.tag == "a": # Convert a tags to span since these should not even be in xml
+            el.tag = "span"
+            el.attrib["class"] = "xml-a"
         if el.tag.startswith("DIV"):
             el.tag = el.tag.lower()
         if el.tag not in allowed_tags:
@@ -344,6 +347,8 @@ def format_text_object(
             # Delete lang attributes if present to avoid accessibility issues
             if "lang" in el.attrib:
                 del el.attrib["lang"]
+            if el.tag == "a": # Convert a tags to span since these should not even be in xml
+                el.tag = "span"
             if el.tag.startswith("DIV"):
                 el.tag = el.tag.lower()
             if el.tag == "h1" or el.tag == "h2":

@@ -2,12 +2,12 @@
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
         <div class="row px-2">
-            <main class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }"
+            <region class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('kwic.resultsRegion')">
                 <div class="card p-2 ml-2 shadow-sm">
                     <div class="p-2 mb-1">
                         <!-- Sorting controls -->
-                        <div class="btn-group" role="group" :aria-label="$t('kwic.sortingControls')">
+                        <div class="btn-group" role="group">
                             <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid"
                                 tabindex="-1">
                                 {{ $t("kwic.sortResultsBy") }}
@@ -38,8 +38,7 @@
                     </div>
 
                     <div class="progress mt-3" v-if="runningTotal != resultsLength" role="progressbar"
-                        :aria-valuenow="runningTotal" :aria-valuemin="0" :aria-valuemax="resultsLength"
-                        :aria-label="$t('kwic.loadingProgress')">
+                        :aria-valuenow="runningTotal" :aria-valuemin="0" :aria-valuemax="resultsLength">
                         <div class="progress-bar"
                             :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`" :aria-hidden="true">
                             {{ Math.floor((runningTotal / resultsLength) * 100) }}%
@@ -54,8 +53,7 @@
                     </div>
 
                     <!-- KWIC results -->
-                    <div id="kwic-concordance" role="region" :aria-label="$t('kwic.concordanceRegion')"
-                        aria-live="polite">
+                    <div id="kwic-concordance">
                         <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
                             <div v-for="(result, kwicIndex) in filteredKwic(results.results)"
                                 :key="result.philo_id.join('-')" :data-index="kwicIndex">
@@ -81,8 +79,7 @@
                                 </div>
 
                                 <!-- Accessible version for screen readers -->
-                                <div class="kwic-line accessible-kwic visually-hidden"
-                                    :aria-label="`${$t('kwic.resultNumber')} ${results.description.start + kwicIndex}`">
+                                <div class="kwic-line accessible-kwic visually-hidden">
                                     <span>{{ results.description.start + kwicIndex }}.</span>
                                     <router-link :to="result.citation_links.div1" class="kwic-biblio"
                                         :aria-describedby="`kwic-context-${kwicIndex}`">
@@ -102,9 +99,9 @@
                     </div>
                 </div>
                 <pages></pages>
-            </main>
+            </region>
 
-            <region class="col col-md-4 col-xl-3" v-if="showFacets" :aria-label="$t('common.facetsRegion')">
+            <region class="col col-md-4 col-xl-3" :aria-label="$t('common.facetsRegion')" v-if="showFacets">
                 <facets></facets>
             </region>
         </div>

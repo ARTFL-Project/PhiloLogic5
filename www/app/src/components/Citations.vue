@@ -4,8 +4,11 @@
             <span v-html="cite.prefix" v-if="cite.prefix"></span>
 
             <router-link :to="cite.href" :style="cite.style" v-if="cite.href"
-                :aria-label="`${$t('citations.viewText')}: ${cite.label}`">
+                :aria-describedby="`citation-desc-${citeIndex}`">
                 {{ cite.label }}
+                <span :id="`citation-desc-${citeIndex}`" class="visually-hidden">
+                    {{ resultNumber }} {{ $t('citations.viewText') }}: {{ cite.label }}
+                </span>
             </router-link>
             <span :style="cite.style" v-else>{{ cite.label }}</span>
 
@@ -22,7 +25,7 @@
 <script>
 export default {
     name: "citations-generator",
-    props: ["citation", "separator"],
+    props: ["citation", "separator", "resultNumber"],
 };
 </script>
 <style scoped lang="scss">

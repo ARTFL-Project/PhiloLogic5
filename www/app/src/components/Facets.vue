@@ -2,7 +2,7 @@
     <div id="facet-search" class="d-none d-sm-block mr-2">
         <div class="card shadow-sm" title="Title" header-tag="header" id="facet-panel-wrapper">
             <div class="card-header text-center">
-                <h3 class="h6 mb-0">{{ $t("facets.browseByFacet") }}</h3>
+                <h2 class="h6 mb-0">{{ $t("facets.browseByFacet") }}</h2>
             </div>
             <button type="button" class="btn btn-secondary btn-sm close-box" @click="toggleFacets()"
                 :aria-label="$t('facets.closeFacets')">
@@ -15,8 +15,11 @@
                     <span class="dropdown-header text-center">{{ $t("facets.frequencyBy") }}</span>
                     <button type="button" class="list-group-item list-group-item-action facet-selection"
                         v-for="facet in facets" :key="facet.alias" @click="facetSearch(facet)"
-                        :aria-label="`${$t('facets.selectFacet')} ${facet.alias}`">
+                        :aria-describedby="`facet-desc-${facet.facet}`">
                         {{ facet.alias }}
+                        <span :id="`facet-desc-${facet.facet}`" class="visually-hidden">
+                            {{ $t('facets.selectFacet') }} {{ facet.alias }}
+                        </span>
                     </button>
                 </div>
             </transition>
@@ -28,8 +31,11 @@
                     <span class="dropdown-header text-center">{{ $t("facets.wordProperty") }}</span>
                     <button type="button" class="list-group-item list-group-item-action facet-selection"
                         v-for="facet in wordFacets" :key="facet.facet" @click="facetSearch(facet)"
-                        :aria-label="`${$t('facets.selectWordProperty')} ${facet.alias}`">
+                        :aria-describedby="`word-facet-desc-${facet.facet}`">
                         {{ facet.alias }}
+                        <span :id="`word-facet-desc-${facet.facet}`" class="visually-hidden">
+                            {{ $t('facets.selectWordProperty') }} {{ facet.alias }}
+                        </span>
                     </button>
                 </div>
             </transition>
@@ -41,8 +47,11 @@
                     <span class="dropdown-header text-center">{{ $t("facets.collocates") }}</span>
                     <button type="button" class="list-group-item list-group-item-action facet-selection"
                         @click="facetSearch(collocationFacet)" v-if="formData.report !== 'bibliography'"
-                        :aria-label="`${$t('facets.selectCollocation')} ${$t('common.sameSentence')}`">
+                        :aria-describedby="'collocation-desc'">
                         {{ $t("common.sameSentence") }}
+                        <span id="collocation-desc" class="visually-hidden">
+                            {{ $t('facets.selectCollocation') }} {{ $t('common.sameSentence') }}
+                        </span>
                     </button>
                 </div>
             </transition>
@@ -68,7 +77,7 @@
         <div class="card mt-3 shadow-sm" id="facet-results" v-if="showFacetResults" role="region"
             :aria-label="$t('facets.facetResultsRegion')">
             <div class="card-header text-center">
-                <h4 class="mb-0 h6">{{ $t("facets.frequencyByLabel", { label: selectedFacet.alias }) }}</h4>
+                <h3 class="mb-0 h6">{{ $t("facets.frequencyByLabel", { label: selectedFacet.alias }) }}</h3>
                 <button type="button" class="btn btn-secondary btn-sm close-box" @click="hideFacets()"
                     :aria-label="$t('facets.hideFacetResults')">
                     <span class="icon-x"></span>
@@ -80,13 +89,19 @@
                 v-if="percent == 100 && formData.report !== 'bibliography' && facet.type === 'facet'">
                 <button type="button" class="btn btn-light" :class="{ active: showingRelativeFrequencies === false }"
                     @click="toggleFrequencies()" :aria-pressed="showingRelativeFrequencies === false"
-                    :aria-label="$t('facets.showAbsoluteFrequency')">
+                    :aria-describedby="'absolute-freq-desc'">
                     {{ $t("common.absoluteFrequency") }}
+                    <span id="absolute-freq-desc" class="visually-hidden">
+                        {{ $t('facets.showAbsoluteFrequency') }}
+                    </span>
                 </button>
                 <button type="button" class="btn btn-light" :class="{ active: showingRelativeFrequencies }"
                     @click="toggleFrequencies()" :aria-pressed="showingRelativeFrequencies"
-                    :aria-label="$t('facets.showRelativeFrequency')">
+                    :aria-describedby="'relative-freq-desc'">
                     {{ $t("common.relativeFrequency") }}
+                    <span id="relative-freq-desc" class="visually-hidden">
+                        {{ $t('facets.showRelativeFrequency') }}
+                    </span>
                 </button>
             </div>
 
@@ -116,7 +131,7 @@
                 <li v-if="facet.type == 'facet'" v-for="result in facetResults" :key="result.label">
                     <button type="button" class="list-group-item list-group-item-action facet-result-item"
                         @click="facetClick(result.metadata)"
-                        :aria-label="`${$t('facets.filterBy')} ${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                        :aria-describedby="`facet-result-desc-${result.label.replace(/[^a-zA-Z0-9]/g, '-')}`">
                         <div class="d-flex justify-content-between align-items-start">
                             <span class="sidebar-text text-content-area text-view">
                                 {{ result.label }}
@@ -125,14 +140,16 @@
                                 {{ result.count }}
                             </span>
                         </div>
+                        <span :id="`facet-result-desc-${result.label.replace(/[^a-zA-Z0-9]/g, '-')}`"
+                            class="visually-hidden">
+                            {{ $t('facets.filterBy') }} {{ result.label }}, {{ result.count }} {{
+                                $t('facets.occurrences') }}
+                        </span>
 
                         <!-- Relative frequency description -->
                         <div class="relative-frequency-info"
                             v-if="showingRelativeFrequencies && fullResults.unsorted && fullResults.unsorted[result.label]">
-                            <small class="text-muted" :aria-label="$t('facets.relativeFrequencyLabel', {
-                                total: fullResults.unsorted[result.label].count,
-                                wordCount: getTotalCount(result.label),
-                            })">
+                            <small class="text-muted">
                                 {{
                                     $t("facets.relativeFrequencyDescription", {
                                         total: fullResults.unsorted[result.label].count,
@@ -149,7 +166,7 @@
                     :key="`property-${result.label}`">
                     <button type="button" class="list-group-item list-group-item-action facet-result-item"
                         @click="propertyToConcordance(result.q)"
-                        :aria-label="`${$t('facets.searchFor')} ${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                        :aria-describedby="`property-result-desc-${result.label.replace(/[^a-zA-Z0-9]/g, '-')}`">
                         <div class="d-flex justify-content-between align-items-start">
                             <span class="sidebar-text text-content-area">
                                 {{ result.label }}
@@ -158,6 +175,11 @@
                                 {{ result.count }}
                             </span>
                         </div>
+                        <span :id="`property-result-desc-${result.label.replace(/[^a-zA-Z0-9]/g, '-')}`"
+                            class="visually-hidden">
+                            {{ $t('facets.searchFor') }} {{ result.label }}, {{ result.count }} {{
+                                $t('facets.occurrences') }}
+                        </span>
                     </button>
                 </li>
 
@@ -165,7 +187,7 @@
                 <li v-if="facet.type == 'property' && facet.facet == 'lemma'" v-for="result in facetResults"
                     :key="`lemma-${result.label}`">
                     <div class="list-group-item facet-result-item non-clickable"
-                        :aria-label="`${result.label}, ${result.count} ${$t('facets.occurrences')}`">
+                        :aria-describedby="`lemma-result-desc-${result.label.replace(/[^a-zA-Z0-9]/g, '-')}`">
                         <div class="d-flex justify-content-between align-items-start">
                             <span class="text-content-area">
                                 {{ result.label }}
@@ -174,6 +196,10 @@
                                 {{ result.count }}
                             </span>
                         </div>
+                        <span :id="`lemma-result-desc-${result.label.replace(/[^a-zA-Z0-9]/g, '-')}`"
+                            class="visually-hidden">
+                            {{ result.label }}, {{ result.count }} {{ $t('facets.occurrences') }}
+                        </span>
                     </div>
                 </li>
 
@@ -182,7 +208,7 @@
                     :key="`colloc-${result.label}`">
                     <button type="button" class="list-group-item list-group-item-action facet-result-item"
                         @click="collocationToConcordance(result.collocate)"
-                        :aria-label="`${$t('facets.searchCollocation')} ${result.collocate}, ${result.count} ${$t('facets.occurrences')}`">
+                        :aria-describedby="`colloc-result-desc-${result.collocate.replace(/[^a-zA-Z0-9]/g, '-')}`">
                         <div class="d-flex justify-content-between align-items-start">
                             <span class="sidebar-text text-content-area">
                                 {{ result.collocate }}
@@ -191,6 +217,11 @@
                                 {{ result.count }}
                             </span>
                         </div>
+                        <span :id="`colloc-result-desc-${result.collocate.replace(/[^a-zA-Z0-9]/g, '-')}`"
+                            class="visually-hidden">
+                            {{ $t('facets.searchCollocation') }} {{ result.collocate }}, {{ result.count }} {{
+                                $t('facets.occurrences') }}
+                        </span>
                     </button>
                 </li>
             </ul>
