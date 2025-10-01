@@ -293,11 +293,7 @@ def store_words_and_philo_ids(loader_obj, text):
                 if word == "__philo_virtual":
                     continue
                 attrib = loads(attrib)
-                if philo_type in ("word", "sent", "punct"):
-                    if philo_type == "sent":
-                        attrib["start_byte"] = attrib["end_byte"] - len(
-                            word.encode("utf8")
-                        )  # Parser uses beginning of sent as start_byte
+                if philo_type in ("word", "punct"):
                     word_obj = {
                         "token": word,
                         "position": philo_id,

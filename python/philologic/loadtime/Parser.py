@@ -7,7 +7,8 @@ import sys
 
 import regex as re
 from philologic.loadtime.OHCOVector import CompoundStack
-from philologic.utils import convert_entities, extract_full_date, extract_integer
+from philologic.utils import (convert_entities, extract_full_date,
+                              extract_integer)
 
 DEFAULT_TAG_TO_OBJ_MAP = {
     "div": "div",
@@ -1141,16 +1142,14 @@ class XMLParser:
                             self.v.pull("sent", current_pos + len(word.encode("utf8")))
                     if self.is_word_sentence_breaker(word, last_word, next_word):
                         self.last_sentence_marker = word.replace("\t", " ").strip()
-                    elif self.punct_regex.search(word):
+                    if self.punct_regex.search(word):
                         punc_pos = current_pos - len(word.encode("utf8"))
                         punct = word.strip()
                         punct = punct.replace("\t", " ")
                         punct = self.remove_control_chars(punct)
-                        for single_punct in punct:
-                            if single_punct != " ":
-                                self.v.push("punct", single_punct, punc_pos)
-                                self.v.pull("punct", punc_pos + len(single_punct.encode("utf8")))
-                            punc_pos += len(single_punct.encode("utf8"))
+                        if punct and not punct.isspace():
+                            self.v.push("punct", punct, punc_pos)
+                            self.v.pull("punct", punc_pos + len(punct.encode("utf8")))
 
     def is_word_sentence_breaker(self, word, last_word, next_word):
         is_sent = False

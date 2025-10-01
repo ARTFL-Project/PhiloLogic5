@@ -358,7 +358,8 @@
     },
     "bibliography": {
         "dictionaryResultsRegion": "Résultats de bibliographie du dictionnaire",
-        "selectForSearch": "Sélectionner cet élément pour la recherche"
+        "selectForSearch": "Sélectionner cet élément pour la recherche",
+        "bibliographyResultsRegion": "Résultats de bibliographie"
     },
     "biblioCriteria": {
         "searchCriteriaRegion": "Critères de recherche",
@@ -373,7 +374,7 @@
     },
     "citations": {
         "citationGroup": "Citation",
-        "viewText": "Voir le texte"
+        "viewText": "Voir le texte {resultNumber}"
     },
     "pages": {
         "searchResultsPages": "Pages de résultats de recherche"
@@ -384,7 +385,6 @@
         "toggleHeader": "Basculer la visibilité de l'en-tête du document",
         "headerRegion": "Informations d'en-tête du document",
         "navigationLabel": "Navigation de la table des matières",
-        "tocTree": "Table des matières hiérarchique",
         "sectionLink": "Aller à {type} : {label}",
         "endOfContent": "Fin de la table des matières"
     },

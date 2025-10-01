@@ -11,7 +11,7 @@
         <div class="row mt-4" style="padding-right: 0.5rem">
             <div class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
                 v-if="!philoConfig.dictionary_bibliography || results.result_type == 'doc'">
-                <div role="region">
+                <div role="region" :aria-label="$t('bibliography.bibliographyResultsRegion')" aria-live="polite">
                     <transition-group tag="div" :css="false" v-on:before-enter="beforeEnter" v-on:enter="enter">
                         <article class="card philologic-occurrence mx-2 mb-4 shadow-sm"
                             v-for="(result, index) in results.results" :key="result.philo_id.join('-')" role="article">
@@ -30,7 +30,8 @@
                                         </div>
                                         <div :id="`citation-${results.description.start + index}`"
                                             class="d-inline-block">
-                                            <citations :citation="result.citation"></citations>
+                                            <citations :citation="result.citation"
+                                                :result-number="results.description.start + index"></citations>
                                         </div>
                                     </div>
                                 </div>
@@ -51,7 +52,8 @@
                                         :id="`dict-citation-${groupKey}-${index}`">
                                         <span class="number" aria-hidden="true">{{ results.description.start + index
                                         }}</span>
-                                        <citations :citation="result.citation"></citations>
+                                        <citations :citation="result.citation"
+                                            :result-number="results.description.start + index"></citations>
                                     </div>
                                 </header>
                                 <div class="pt-3 px-3 text-content" select-word :position="result.position">

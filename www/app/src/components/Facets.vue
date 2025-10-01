@@ -59,8 +59,11 @@
             <transition name="options-slide">
                 <button type="button" class="btn btn-link m-2 text-center"
                     style="width: 100%; font-size: 90%; opacity: 0.8" v-if="!showFacetSelection"
-                    @click="showFacetOptions()" :aria-label="$t('facets.showFacetOptions')">
+                    @click="showFacetOptions()" :aria-describedby="'show-options-desc'">
                     {{ $t("facets.showOptions") }}
+                    <span id="show-options-desc" class="visually-hidden">
+                        {{ $t('facets.showFacetOptions') }}
+                    </span>
                 </button>
             </transition>
         </div>

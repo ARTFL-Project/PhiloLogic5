@@ -53,7 +53,7 @@
                             <ul class="list-group" role="list">
                                 <li class="list-group-item" v-for="(biblioObj, bibIndex) in bibliography.results"
                                     :key="bibIndex" role="listitem">
-                                    <citations :citation="biblioObj.citation"></citations>
+                                    <citations :citation="biblioObj.citation" :result-number="bibIndex + 1"></citations>
                                 </li>
                             </ul>
                         </div>
@@ -116,10 +116,11 @@
                                 </h3>
                             </div>
                             <ul class="list-group list-group-flush" role="list">
-                                <li class="list-group-item contentClass p-2"
+                                <li class="pt-1"
                                     v-for="(result, resultIndex) in group.results.slice(0, groupDisplay[groupIndex])"
                                     :key="resultIndex" role="listitem">
-                                    <citations :citation="buildCitationObject(result.metadata, citations)"></citations>
+                                    <citations :citation="buildCitationObject(result.metadata, citations)"
+                                        :result-number="resultIndex + 1"></citations>
                                     <span v-if="displayCount == 'true'">&nbsp;({{ result.count }})</span>
                                 </li>
                             </ul>

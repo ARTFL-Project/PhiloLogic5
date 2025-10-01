@@ -23,8 +23,7 @@
 
                         <nav id="toc-report" class="text-content-area" role="navigation"
                             :aria-label="$t('toc.navigationLabel')">
-                            <div id="toc-content" v-scroll="handleScroll" ref="tocContent" tabindex="0" role="tree"
-                                :aria-label="$t('toc.tocTree')">
+                            <div id="toc-content" v-scroll="handleScroll" ref="tocContent" tabindex="0">
                                 <ul class="toc-tree" role="tree">
                                     <li v-for="(element, elIndex) in processedTocElements.slice(0, displayLimit)"
                                         :key="elIndex" :class="'toc-item toc-' + element.philo_type" role="treeitem"

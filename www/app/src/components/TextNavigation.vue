@@ -19,7 +19,7 @@
                         <span class="d-inline-block d-sm-none">{{ $t("textNav.top") }}</span>
                     </button>
                     <div class="btn-group btn-group-sm" role="group" :aria-label="$t('textNav.navigationControls')">
-                        <button type="button" class="btn btn-secondary" :disabled="!textObject.prev" id="prev-obj"
+                        <button type="button" class="btn btn-secondary" v-if="textObject.prev" id="prev-obj"
                             @click="goToTextObject(textObject.prev)" :aria-label="$t('textNav.previousSection')">
                             <span aria-hidden="true">&lt;</span>
                             <span class="visually-hidden">{{ $t('textNav.previous') }}</span>
@@ -29,7 +29,7 @@
                             :aria-label="$t('textNav.toggleToc')">
                             {{ $t("textNav.toc") }}
                         </button>
-                        <button type="button" class="btn btn-secondary" :disabled="!textObject.next" id="next-obj"
+                        <button type="button" class="btn btn-secondary" v-if="textObject.next" id="next-obj"
                             @click="goToTextObject(textObject.next)" :aria-label="$t('textNav.nextSection')">
                             <span aria-hidden="true">&gt;</span>
                             <span class="visually-hidden">{{ $t('textNav.next') }}</span>
@@ -123,7 +123,7 @@
             :aria-label="$t('textNav.dictionaryLookup')">
             <p>{{ $t("textNav.dicoLookUp") }}.</p>
         </div>
-        <region class="row" id="all-content" :aria-label="$t('textNav.textContent')">
+        <div role="region" class="row" id="all-content" :aria-label="$t('textNav.textContent')">
             <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text"
                 style="text-align: center">
                 <article class="card text-view mt-2 mb-4 p-4 shadow d-inline-block">
@@ -160,7 +160,7 @@
                     </div>
                 </article>
             </div>
-        </region>
+        </div>
         <div id="gallery-template" aria-hidden="true">
         </div>
     </div>
@@ -1275,11 +1275,6 @@ body {
 
 /*Table display*/
 
-:deep(b.headword[rend="center"]) {
-    margin-bottom: 30px;
-    text-align: center;
-}
-
 :deep(.xml-table) {
     display: table;
     position: relative;
@@ -1375,5 +1370,29 @@ body {
 :deep([class*="passage-"]) {
     color: theme.$passage-color;
     font-weight: 700;
+}
+
+// Support for rend attribute of TEI files
+:deep([rend="bold"]) {
+    font-weight: 700;
+}
+
+:deep([rend="italic"]) {
+    font-style: italic;
+}
+
+:deep([rend="smallcaps"]) {
+    font-variant: small-caps;
+}
+
+:deep(p[rend="center"]) {
+    text-align: center;
+    display: block;
+    margin: 1rem 0 0.25rem 0;
+}
+
+:deep(b.headword[rend="center"]) {
+    margin-bottom: 30px;
+    text-align: center;
 }
 </style>

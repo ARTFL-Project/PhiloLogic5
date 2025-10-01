@@ -22,7 +22,7 @@
                     </span>
 
                     <div :id="`result-heading-${resultIndex}`" class="d-inline-block">
-                        <citations :citation="result.citation"></citations>
+                        <citations :citation="result.citation" :result-number="resultIndex + 1"></citations>
                     </div>
 
                     <!-- Breakdown summary -->

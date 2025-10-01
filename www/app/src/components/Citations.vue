@@ -7,7 +7,7 @@
                 :aria-describedby="`citation-desc-${$.uid}-${citeIndex}`">
                 {{ cite.label }}
                 <span :id="`citation-desc-${$.uid}-${citeIndex}`" class="visually-hidden">
-                    {{ resultNumber }} {{ $t('citations.viewText') }}: {{ cite.label }}
+                    {{ $t('citations.viewText', { resultNumber: resultNumber }) }}: {{ cite.label }}
                 </span>
             </router-link>
             <span :style="cite.style" v-else>{{ cite.label }}</span>
@@ -25,7 +25,14 @@
 <script>
 export default {
     name: "citations-generator",
-    props: ["citation", "separator", "resultNumber"],
+    props: {
+        citation: Array | Object,
+        separator: String,
+        resultNumber: {
+            type: [String, Number],
+            default: ""
+        }
+    },
 };
 </script>
 <style scoped lang="scss">

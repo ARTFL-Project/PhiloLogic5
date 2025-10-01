@@ -358,7 +358,8 @@
     },
     "bibliography": {
         "dictionaryResultsRegion": "Dictionary bibliography results",
-        "selectForSearch": "Select this item for search"
+        "selectForSearch": "Select this item for search",
+        "bibliographyResultsRegion": "Bibliography results"
     },
     "biblioCriteria": {
         "searchCriteriaRegion": "Search criteria",
@@ -373,7 +374,7 @@
     },
     "citations": {
         "citationGroup": "Citation",
-        "viewText": "View text"
+        "viewText": "View text {resultNumber}"
     },
     "pages": {
         "searchResultsPages": "Search results pages"
@@ -384,7 +385,6 @@
         "toggleHeader": "Toggle document header visibility",
         "headerRegion": "Document header information",
         "navigationLabel": "Table of contents navigation",
-        "tocTree": "Hierarchical table of contents",
         "sectionLink": "Go to {type}: {label}",
         "endOfContent": "End of table of contents"
     },

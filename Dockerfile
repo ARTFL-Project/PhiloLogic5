@@ -10,10 +10,15 @@ RUN apt-get update && apt-get upgrade -y && \
     apt-get install -y --no-install-recommends libxml2-dev libxslt-dev zlib1g-dev apache2 libgdbm-dev liblz4-tool brotli ripgrep gcc make wget sudo && \
     apt-get clean && rm -rf /var/lib/apt
 
-# Install Node.js repository
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - &&\
-    sudo apt-get install -y nodejs && \
-    apt-get clean && rm -rf /var/lib/apt
+# Install nvm and Node.js
+ENV NVM_DIR=/root/.nvm
+ENV NODE_VERSION=22.14.0
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash \
+    && . $NVM_DIR/nvm.sh \
+    && nvm install $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && nvm use default
+ENV PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 
 # Install PhiloLogic
 COPY . /PhiloLogic5
