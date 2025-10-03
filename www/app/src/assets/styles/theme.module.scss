@@ -198,27 +198,6 @@ input {
     color: #fff !important;
 }
 
-.nav-tabs .nav-link {
-    color: $link-color !important;
-    border-color: $link-color $link-color #fff $link-color !important;
-}
-
-.nav-tabs .nav-link.active {
-    color: $link-color !important;
-    background-color: transparent !important;
-    border-color: transparent transparent $link-color transparent !important;
-    font-weight: 700 !important;
-}
-
-.nav-tabs .nav-item:last-child .nav-link.active {
-    box-shadow: none !important;
-}
-
-.nav-tabs .nav-link:hover {
-    color: $button-color !important;
-    border-color: transparent transparent $button-color !important;
-}
-
 // Ensure btn-link follows theme colors globally
 .btn-link, .btn-link:hover, .btn-link:focus {
     color: $link-color !important;

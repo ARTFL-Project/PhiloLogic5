@@ -184,7 +184,9 @@
         "timeSeriesResults": "Time series analysis results",
         "viewToggle": "View toggle for period",
         "filterBy": "Filter by",
-        "selectDateType": "Select date type for"
+        "selectDateType": "Select date type for",
+        "invalidQuery": "Invalid query for collocations",
+        "invalidQueryExplanation": "Collocations require a single word query. Use OR or NOT for multiple terms (e.g., volonté OR désir, volonté NOT volontés)"
     },
     "concordance": {
         "more": "More",

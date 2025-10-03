@@ -184,7 +184,9 @@
         "timeSeriesResults": "Résultats d'analyse de séries temporelles",
         "viewToggle": "Basculer la vue pour la période",
         "filterBy": "Filtrer par",
-        "selectDateType": "Sélectionner le type de date pour"
+        "selectDateType": "Sélectionner le type de date pour",
+        "invalidQuery": "Requête invalide pour les collocations",
+        "invalidQueryExplanation": "Les collocations nécessitent une requête d'un seul mot. Utilisez OR ou NOT pour plusieurs termes (ex : volonté OR désir, volonté NOT volontés)"
     },
     "concordance": {
         "more": "Plus",

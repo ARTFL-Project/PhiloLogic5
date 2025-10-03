@@ -1,26 +1,33 @@
 <template>
     <div id="collocation-container" class="container-fluid mt-4">
+        <div v-if="isInvalidCollocationQuery" class="alert alert-warning mx-2 mt-2" role="alert">
+            <strong>{{ $t('collocation.invalidQuery') }}</strong>
+            <p class="mb-0">{{ $t('collocation.invalidQueryExplanation') }}</p>
+        </div>
         <div class="d-none d-sm-block mt-3" style="padding: 0 0.5rem">
             <ul class="nav nav-tabs" id="colloc-method-switch" role="tablist"
                 :aria-label="$t('collocation.methodSelectionTabs')">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="frequency-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'frequency' }" data-bs-target="#frequency-tab-pane"
-                        type="button" role="tab" :aria-selected="collocMethod === 'frequency'" @click="getFrequency()">
+                        type="button" role="tab" :aria-selected="collocMethod === 'frequency'"
+                        :disabled="isInvalidCollocationQuery" @click="!isInvalidCollocationQuery && getFrequency()">
                         {{ $t("collocation.collocation") }}
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="compare-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'compare' }" data-bs-target="#compare-tab-pane" type="button"
-                        role="tab" :aria-selected="collocMethod === 'compare'" @click="toggleCompare()">
+                        role="tab" :aria-selected="collocMethod === 'compare'" :disabled="isInvalidCollocationQuery"
+                        @click="!isInvalidCollocationQuery && toggleCompare()">
                         {{ $t("collocation.compareTo") }}
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="similar-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'similar' }" data-bs-target="#similar-tab-pane" type="button"
-                        role="tab" :aria-selected="collocMethod === 'similar'" @click="toggleSimilar()">
+                        role="tab" :aria-selected="collocMethod === 'similar'" :disabled="isInvalidCollocationQuery"
+                        @click="!isInvalidCollocationQuery && toggleSimilar()">
                         {{ $t("collocation.similarUsage") }}
                     </button>
                 </li>
@@ -28,7 +35,7 @@
                     <button class="nav-link shadow-sm" id="time-series-tab" data-bs-toggle="tab"
                         :class="{ active: collocMethod === 'timeSeries' }" data-bs-target="#time-series-tab-pane"
                         type="button" role="tab" :aria-selected="collocMethod === 'timeSeries'"
-                        @click="toggleTimeSeries()">
+                        :disabled="isInvalidCollocationQuery" @click="!isInvalidCollocationQuery && toggleTimeSeries()">
                         {{ $t("collocation.timeSeries") }}
                     </button>
                 </li>
@@ -445,6 +452,18 @@ export default {
                 fields.push({ label: this.philoConfig.metadata_aliases[field] || field, value: field })
             }
             return fields
+        },
+        isInvalidCollocationQuery() {
+            if (!this.formData.q) return false;
+            let query = this.formData.q.trim();
+            // Remove quoted tokens, lemma/attribute queries
+            query = query.replace(/"[^"]*"/g, '').replace(/\S+:\S+/g, '');
+            // Split by OR operators and filter them out
+            let parts = query.split(/\s*(\||OR)\s*/i).filter(p => p.trim() && !p.match(/^\|$|^OR$/i));
+            // Remove NOT patterns
+            parts = parts.map(p => p.replace(/\s+NOT\s+\S+/gi, ''));
+            // Check for multiple consecutive words
+            return parts.some(p => p.trim().split(/\s+/).filter(w => w.length > 0).length > 1);
         }
 
     },
@@ -549,6 +568,10 @@ export default {
     },
     methods: {
         fetchResults() {
+            if (this.isInvalidCollocationQuery) {
+                this.searching = false;
+                return;
+            }
             this.localFormData = this.copyObject(this.formData);
             this.relativeFrequencies = {};
             this.searching = true;
@@ -573,6 +596,10 @@ export default {
             }
         },
         updateCollocation(fullResults, start) {
+            if (this.isInvalidCollocationQuery) {
+                this.searching = false;
+                return;
+            }
             let params = {
                 ...this.formData,
                 start: start.toString(),
@@ -1208,9 +1235,31 @@ input:focus::placeholder {
     font-size: 1rem;
 }
 
+.nav-link {
+    border-bottom: 1px solid #dee2e6;
+    background-color: #fff;
+    color: theme.$link-color;
+}
+
+.nav-link.active {
+    color: theme.$link-color;
+    font-weight: bold;
+}
+
+#colloc-tab .nav-link:hover {
+    background-color: rgba(theme.$link-color, 0.1);
+    border-color: theme.$link-color;
+}
+
+#colloc-method-switch .nav-link:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .sim-dist {
     text-align: center;
     font-variant: small-caps;
+    font-size: 1rem;
     color: #fff;
     background-color: theme.$link-color;
     padding: 0.5rem;
@@ -1246,6 +1295,44 @@ input:focus::placeholder {
 
 .badge {
     font-size: 0.75rem;
+}
+
+.alert-warning {
+    background-color: rgba(theme.$card-header-color, 0.05);
+    border-color: theme.$card-header-color;
+}
+
+// Similarity search list items - same hover effect as facets
+.list-group-item {
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: scale(1);
+}
+
+.list-group-item:hover {
+    transform: scale(1.01);
+    background-color: rgba(theme.$link-color, 0.15) !important;
+    border-color: rgba(theme.$link-color, 0.3) !important;
+    box-shadow: inset 0 0 8px rgba(theme.$link-color, 0.1);
+    z-index: 1;
+}
+
+.list-group-item:active {
+    transform: scale(0.98);
+    background-color: rgba(theme.$link-color, 0.2) !important;
+}
+
+.list-group-item:hover .badge {
+    background-color: theme.$link-color !important;
+    transform: scale(1.1);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.list-group-item:focus {
+    outline: 2px solid theme.$link-color;
+    outline-offset: -2px;
+    box-shadow: inset 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
+    z-index: 2;
 }
 
 :deep(.progress-bar) {
