@@ -9,7 +9,6 @@ import orjson
 import regex as re
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import metadata_pattern_search
-
 ## parse_query now resides in this script ##
 # from philologic.runtime.QuerySyntax import parse_query
 from unidecode import unidecode

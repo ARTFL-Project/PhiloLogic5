@@ -3,6 +3,8 @@
     "common": {
         "skipToMain": "Skip to main content",
         "accessControlLabel": "Access control verification",
+        "checkingAccess": "Verifying access permissions",
+        "pleaseWait": "This may take a moment, please wait...",
         "poweredBy": "Powered by",
         "philoTitle": "PhiloLogic 5: Open Source ARTFL Search and Retrieval Engine",
         "philoLinkLabel": "Visit PhiloLogic website",

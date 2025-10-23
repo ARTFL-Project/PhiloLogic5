@@ -176,7 +176,7 @@
                         <ul class="dropdown-menu">
                             <li v-for="field in fieldsToCompare" :key="field.value"
                                 @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label
-                                    }}</a>
+                                }}</a>
                             </li>
                         </ul>
                     </div>
@@ -1300,6 +1300,7 @@ input:focus::placeholder {
 .alert-warning {
     background-color: rgba(theme.$card-header-color, 0.05);
     border-color: theme.$card-header-color;
+    color: #000;
 }
 
 // Similarity search list items - same hover effect as facets

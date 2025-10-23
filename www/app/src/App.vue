@@ -6,15 +6,27 @@
     <Header v-if="$philoConfig.valid_config" />
     <main id="main" v-if="$philoConfig.valid_config">
 
-        <SearchForm v-if="accessAuthorized" />
+        <!-- Access checking indicator -->
+        <div v-if="checkingAccess" class="access-checking-container" role="status"
+            :aria-label="$t('common.checkingAccess')">
+            <div class="card shadow-sm">
+                <div class="card-body text-center py-5">
+                    <progress-spinner :lg="true" />
+                    <h5 class="card-title mt-3">{{ $t('common.checkingAccess') }}</h5>
+                    <p class="card-text text-muted">{{ $t('common.pleaseWait') }}</p>
+                </div>
+            </div>
+        </div>
+
+        <SearchForm v-if="accessAuthorized && !checkingAccess" />
 
         <!-- Main content landmark -->
         <nav id="main-content" tabindex="-1">
-            <router-view v-if="accessAuthorized" />
+            <router-view v-if="accessAuthorized && !checkingAccess" />
         </nav>
 
-        <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized" role="navigation"
-            :aria-label="$t('common.accessControlLabel')" />
+        <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized && !checkingAccess"
+            role="navigation" :aria-label="$t('common.accessControlLabel')" />
     </main>
     <!-- Footer -->
     <footer class="container-fluid" v-if="accessAuthorized">
@@ -34,6 +46,7 @@ import DOMPurify from "dompurify";
 import { mapStores, mapWritableState } from "pinia";
 import { defineAsyncComponent } from "vue";
 import Header from "./components/Header.vue";
+import ProgressSpinner from "./components/ProgressSpinner.vue";
 import { useMainStore } from "./stores/main";
 const SearchForm = defineAsyncComponent(() => import("./components/SearchForm.vue"));
 const AccessControl = defineAsyncComponent(() => import("./components/AccessControl.vue"));
@@ -44,6 +57,7 @@ export default {
         Header,
         SearchForm,
         AccessControl,
+        ProgressSpinner,
     },
     inject: ["$http"],
     data() {
@@ -52,6 +66,7 @@ export default {
             clientIp: "",
             domainName: "",
             accessAuthorized: true,
+            checkingAccess: false,
         };
     },
     computed: {
@@ -148,6 +163,7 @@ export default {
             this.accessAuthorized = this.$philoConfig.access_control ? false : true;
             let baseUrl = this.getBaseUrl();
             if (this.$philoConfig.access_control) {
+                this.checkingAccess = true;
                 this.$http
                     .get(`${baseUrl}/scripts/access_request.py`, {
                         headers: {
@@ -162,6 +178,9 @@ export default {
                             this.clientIp = response.data.incoming_address;
                             this.domainName = response.data.domain_name;
                         }
+                    })
+                    .finally(() => {
+                        this.checkingAccess = false;
                     });
             } else {
                 this.setupApp();
@@ -327,6 +346,19 @@ br {
     border: 1px solid #f5c6cb;
     border-radius: 0.25rem;
     margin: 1rem;
+}
+
+.access-checking-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 400px;
+    padding: 2rem;
+}
+
+.access-checking-container .card {
+    max-width: 500px;
+    width: 100%;
 }
 
 /*Text formatting*/
