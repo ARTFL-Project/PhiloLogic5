@@ -109,6 +109,7 @@ export default {
     },
     watch: {
         urlUpdate(newUrl, oldUrl) {
+            console.log(newUrl.q, oldUrl.q);
             if (!this.isOnlyFacetChange(newUrl, oldUrl)) {
                 this.fetchResults();
             }

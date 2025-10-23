@@ -261,7 +261,7 @@ export default {
             showFacetSelection: true,
             showFacetResults: false,
             collocationFacet: {
-                facet: "all_collocates",
+                facet: "collocation",
                 alias: this.$t("facets.collocate"),
                 type: "collocationFacet",
             },
@@ -289,22 +289,29 @@ export default {
     },
     watch: {
         $route(newUrl, oldUrl) {
-            if (typeof newUrl.query.facet === "undefined") {
+            // If facet param was removed from URL, hide facets immediately
+            if (oldUrl.query.facet && !newUrl.query.facet) {
+                this.showFacetResults = false;
+                this.showFacetSelection = true;
                 return;
             }
 
+            // Handle facet state changes - either showing, hiding, or switching facets
             if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
+                // Clear facet data when query changes (not just facet selection)
                 this.facetResults = [];
                 this.fullResults = {};
                 this.relativeFrequencies = [];
                 this.absoluteFrequencies = [];
-                this.hideFacets();
-
-            }
-            if (newUrl.query.facet != oldUrl.query.facet || newUrl.query.word_property != oldUrl.query.word_property) { // this is just a facet change
+                // Check if new URL has facet params - if so, show them; if not, hide
+                this.checkFacetStateFromUrl();
+            } else if (newUrl.query.facet != oldUrl.query.facet || newUrl.query.word_property != oldUrl.query.word_property) { // this is just a facet change
                 this.checkFacetStateFromUrl();
             }
-            if (newUrl.query.relative_frequency != oldUrl.query.relative_frequency) { // Just a frequency type change
+            // Only handle relative_frequency changes for regular metadata facets, not for collocation or property facets
+            if (newUrl.query.relative_frequency != oldUrl.query.relative_frequency &&
+                newUrl.query.facet !== 'collocation' &&
+                newUrl.query.facet !== 'property') {
                 if (newUrl.query.relative_frequency == "false") {
                     this.displayAbsoluteFrequencies()
                 } else {
@@ -417,6 +424,7 @@ export default {
                 this.facetResults = this.fullResults.sorted.slice(0, 100);
                 this.loading = false;
                 this.percent = 100;
+                this.moreResults = false;
                 this.showFacetResults = true;
                 this.showFacetSelection = false;
             } else {
@@ -600,12 +608,20 @@ export default {
                 const facet = this.$route.query.facet;
                 this.shouldShowRelativeFrequency = this.$route.query.relative_frequency === 'true';
 
+                // Clean up irrelevant facet params from store
+                if (facet === 'collocation') {
+                    this.mainStore.updateFormDataField({ key: 'word_property', value: '' });
+                    this.mainStore.updateFormDataField({ key: 'relative_frequency', value: '' });
+                } else if (facet === 'property') {
+                    this.mainStore.updateFormDataField({ key: 'relative_frequency', value: '' });
+                }
+
                 // Find the facet object
                 let facetObj;
                 if (facet == "property") {
                     facetObj = { type: facet, facet: this.$route.query.word_property };
                 } else if (facet == "collocation") {
-                    facetObj = { type: facet };
+                    facetObj = { type: "collocationFacet", alias: this.$t("facets.collocate"), facet: "collocation" };
                 } else {
                     facetObj = this.facets.find(f => f.facet === facet);
                 }
@@ -619,15 +635,20 @@ export default {
             }
         },
         collocationToConcordance(word) {
-            this.formData.q = `${this.formData.q} "${word}"`;
-            this.mainStore.updateFormDataField({
-                key: "method",
-                value: "cooc",
+            let routeParams = this.paramsToRoute({
+                ...this.formData,
+                q: `${this.formData.q} "${word}"`,
+                method: "sentence",
+                cooc_order: "no",
+                start: "",
+                end: "",
+                report: "concordance",
             });
-            this.formData.start = "";
-            this.formData.end = "";
-            this.formData.report = "concordance";
-            this.$router.push(this.paramsToRoute({ ...this.formData }));
+            // Remove facet params when clicking a collocation - we're navigating away from facet view
+            delete routeParams.query.facet;
+            delete routeParams.query.relative_frequency;
+            delete routeParams.query.word_property;
+            this.$router.push(routeParams);
         },
         propertyToConcordance(query) {
             this.formData.q = query;
@@ -647,7 +668,7 @@ export default {
                 this.$router.push(this.paramsToRoute({ ...this.formData, facet: this.selectedFacet.facet, relative_frequency: "false" }));
             }
         },
-        hideFacets() {
+        hideFacets(skipRouterPush = false) {
             this.showFacetResults = false;
             this.showFacetSelection = true;
             this.showingRelativeFrequencies = false;
@@ -655,13 +676,15 @@ export default {
             this.absoluteFrequencies = [];
             this.facetResults = [];
             this.fullResults = {};
-            let routeParams = this.paramsToRoute({
-                ...this.formData,
-            })
-            delete routeParams.query.facet;
-            delete routeParams.query.relative_frequency;
-            delete routeParams.query.word_property;
-            this.$router.push(routeParams);
+            if (!skipRouterPush) {
+                let routeParams = this.paramsToRoute({
+                    ...this.formData,
+                })
+                delete routeParams.query.facet;
+                delete routeParams.query.relative_frequency;
+                delete routeParams.query.word_property;
+                this.$router.push(routeParams);
+            }
         },
         facetClick(metadata) {
             let metadataValue;
@@ -670,13 +693,16 @@ export default {
                 key: this.selectedFacet.facet,
                 value: metadataValue,
             });
-            this.$router.push(
-                this.paramsToRoute({
-                    ...this.formData,
-                    start: "0",
-                    end: "0",
-                })
-            );
+            let routeParams = this.paramsToRoute({
+                ...this.formData,
+                start: "0",
+                end: "0",
+            });
+            // Remove facet params when clicking a facet result - we're navigating away from facet view
+            delete routeParams.query.facet;
+            delete routeParams.query.relative_frequency;
+            delete routeParams.query.word_property;
+            this.$router.push(routeParams);
         },
         toggleFacets() {
             if (this.showFacets) {
