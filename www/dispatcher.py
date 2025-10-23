@@ -4,6 +4,7 @@
 
 import datetime
 import os
+import sys
 from random import randint
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
@@ -14,6 +15,18 @@ from philologic.runtime import WebConfig, WSGIHandler
 from webApp import start_web_app
 
 path = os.path.abspath(os.path.dirname(__file__))
+
+# Whitelist of allowed report names to prevent code injection
+ALLOWED_REPORTS = {
+    "concordance",
+    "kwic",
+    "bibliography",
+    "collocation",
+    "time_series",
+    "navigation",
+    "table_of_contents",
+    "aggregation",
+}
 
 
 def philo_dispatcher(environ, start_response):
@@ -35,6 +48,16 @@ def philo_dispatcher(environ, start_response):
                 report_name: str = parse_qs(environ["QUERY_STRING"])["report"][0]
             except KeyError:
                 report_name = urlparse(environ["REQUEST_URI"]).path.split("/")[-1]
+
+            # Security: Validate report name against whitelist
+            if report_name not in ALLOWED_REPORTS:
+                # Log the security violation
+                print(f"SECURITY WARNING: Invalid report name attempted: {report_name!r} from {environ.get('REMOTE_ADDR', 'unknown')}",
+                      file=sys.stderr)
+                start_response("400 Bad Request", [("Content-type", "text/plain")])
+                yield b"Invalid report name"
+                return
+
             report: Callable = getattr(reports, report_name)
             yield b"".join(report(environ, start_response))
     elif request.full_bibliography is True:
