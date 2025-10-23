@@ -249,7 +249,8 @@
         "applySorting": "Apply sorting",
         "resultsPerPageControl": "Results per page control",
         "resultNumber": "Result number",
-        "contextDescription": "Context: {context}..."
+        "contextDescription": "Context: {context}...",
+        "progressDescription": "Sorting results..."
     },
     "aggregation": {
         "performance": "For performance reasons, only the first 1000 results are displayed. Click on the link above for full results.",

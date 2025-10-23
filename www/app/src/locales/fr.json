@@ -249,7 +249,8 @@
         "applySorting": "Appliquer le tri",
         "resultsPerPageControl": "Contrôle des résultats par page",
         "resultNumber": "Numéro de résultat",
-        "contextDescription": "Contexte : {context}..."
+        "contextDescription": "Contexte : {context}...",
+        "progressDescription": "Tri des résultats..."
     },
     "aggregation": {
         "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats.",
