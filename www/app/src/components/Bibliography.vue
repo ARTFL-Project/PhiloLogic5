@@ -17,10 +17,11 @@
                             v-for="(result, index) in results.results" :key="result.philo_id.join('-')" role="article">
                             <div class="row citation-container">
                                 <div class="col-12 col-sm-10 col-md-11">
-                                    <div class="cite" :data-id="result.philo_id.join(' ')">
-                                        <span class="number" aria-hidden="true">{{ results.description.start + index
-                                        }}</span>
-                                        <div class="form-check d-inline-block ms-3 me-2" style="vertical-align: middle"
+                                    <div class="cite d-flex align-items-center" :data-id="result.philo_id.join(' ')">
+                                        <span class="number flex-shrink-0" aria-hidden="true">{{
+                                            results.description.start + index
+                                            }}</span>
+                                        <div class="form-check flex-shrink-0 ms-3 me-2"
                                             v-if="resultType == 'doc' && philoConfig.metadata.indexOf('title') !== -1">
                                             <input type="checkbox" class="form-check-input"
                                                 :id="`biblio-checkbox-${results.description.start + index}`"
@@ -28,8 +29,7 @@
                                                 :aria-describedby="`citation-${results.description.start + index}`"
                                                 :aria-label="$t('bibliography.selectForSearch')" />
                                         </div>
-                                        <div :id="`citation-${results.description.start + index}`"
-                                            class="d-inline-block">
+                                        <div :id="`citation-${results.description.start + index}`" class="flex-grow-1">
                                             <citations :citation="result.citation"
                                                 :result-number="results.description.start + index"></citations>
                                         </div>
