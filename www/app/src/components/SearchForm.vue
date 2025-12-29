@@ -316,16 +316,23 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                 <button class="btn btn-secondary dropdown-toggle"
                                                     style="border-top-left-radius: 0; border-bottom-left-radius: 0"
                                                     type="button" :id="localField.value + '-selector'"
-                                                    data-bs-toggle="dropdown" aria-expanded="false">
+                                                    data-bs-toggle="dropdown" aria-expanded="false"
+                                                    :aria-label="`${$t('searchForm.selectDateType')} ${localField.label}`">
                                                     {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
                                                 </button>
                                                 <ul class="dropdown-menu"
                                                     :aria-labelledby="localField.value + '-selector'">
-                                                    <li @click="dateTypeToggle(localField.value, 'exact')">
-                                                        <a class="dropdown-item">{{ $t("searchForm.exactDate") }}</a>
+                                                    <li>
+                                                        <button type="button" class="dropdown-item"
+                                                            @click="dateTypeToggle(localField.value, 'exact')">
+                                                            {{ $t("searchForm.exactDate") }}
+                                                        </button>
                                                     </li>
-                                                    <li @click="dateTypeToggle(localField.value, 'range')">
-                                                        <a class="dropdown-item">{{ $t("searchForm.rangeDate") }}</a>
+                                                    <li>
+                                                        <button type="button" class="dropdown-item"
+                                                            @click="dateTypeToggle(localField.value, 'range')">
+                                                            {{ $t("searchForm.rangeDate") }}
+                                                        </button>
                                                     </li>
                                                 </ul>
                                             </div>
@@ -411,10 +418,11 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                     </h2>
                                     <div class="input-group pb-2"
                                         v-if="['concordance', 'bibliography'].includes(currentReport)">
-                                        <button class="btn btn-outline-secondary">{{ $t("searchForm.sortResultsBy")
-                                            }}</button>
+                                        <label class="btn btn-outline-secondary" for="sort-results-select">
+                                            {{ $t("searchForm.sortResultsBy") }}
+                                        </label>
                                         <select class="form-select" style="max-width: fit-content"
-                                            :aria-label="$t('searchForm.sortResultsByLabel')"
+                                            id="sort-results-select" :aria-label="$t('searchForm.sortResultsByLabel')"
                                             v-model="formData.sort_by">
                                             <option v-for="sortValue in sortValues" :key="sortValue.value"
                                                 :value="sortValue.value">

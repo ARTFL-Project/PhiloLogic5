@@ -5,6 +5,7 @@ $button-color-active: rgba(160, 55, 55, 0.9);
 $link-color: rgb(142, 50, 50);
 $passage-color: rgb(155, 65, 55);
 $card-header-color: rgb(173, 66, 66);
+$focus-on-dark-color: #fff; // Focus indicator for dark backgrounds (WCAG 3:1 contrast)
 
 $popover-max-width: 50%;
 .custom-popover {
@@ -136,8 +137,14 @@ a.btn-secondary {
 
 .metadata-label,
 .remove-metadata:hover,
+.remove-metadata:focus,
+.remove-metadata:focus-visible,
 .term-group-word:hover,
-.close-pill:hover {
+.term-group-word:focus,
+.term-group-word:focus-visible,
+.close-pill:hover,
+.close-pill:focus,
+.close-pill:focus-visible {
     background-color: $button-color !important;
     color: #fff !important;
 }
@@ -218,7 +225,9 @@ input {
 .icon-x {
     background-color: $link-color !important;
 }
-.close-pill:hover .icon-x {
+.close-pill:hover .icon-x,
+.close-pill:focus .icon-x,
+.close-pill:focus-visible .icon-x {
     background-color: #fff !important;
 }
 
@@ -227,6 +236,16 @@ input {
 .btn:focus,
 button:focus {
     outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+}
+
+// Higher contrast focus indicator for navbar elements (WCAG 3:1 requirement)
+nav.navbar .btn:focus,
+nav.navbar button:focus,
+nav.navbar a:focus,
+nav.navbar .nav-link:focus,
+nav.navbar .navbar-brand:focus {
+    outline: 2px solid $focus-on-dark-color !important;
     outline-offset: 2px !important;
 }
 
@@ -272,6 +291,16 @@ button:focus:not(:focus-visible) {
 .btn:focus-visible,
 button:focus-visible {
     outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+}
+
+/* Higher contrast for navbar buttons on keyboard focus */
+nav.navbar .btn:focus-visible,
+nav.navbar button:focus-visible,
+nav.navbar a:focus-visible,
+nav.navbar .nav-link:focus-visible,
+nav.navbar .navbar-brand:focus-visible {
+    outline: 2px solid $focus-on-dark-color !important;
     outline-offset: 2px !important;
 }
 

@@ -100,7 +100,8 @@
         "approximateMatchLabel": "Select approximate match percentage",
         "coOccurrenceMethodLabel": "Select co-occurrence search method",
         "collocNWordsLabel": "Number of words for collocation search",
-        "advancedSearchOptions": "Advanced search options"
+        "advancedSearchOptions": "Advanced search options",
+        "selectDateType": "Select date type for"
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",

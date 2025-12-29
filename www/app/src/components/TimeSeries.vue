@@ -31,9 +31,9 @@
                             {{ $t("timeSeries.chartTitle") }} - {{ currentFrequencyLabel }}
                         </h3>
 
-                        <Bar id="time-series-chart" :data="chartData" :options="chartOptions" role="img"
-                            :aria-label="chartAriaLabel" aria-describedby="chart-instructions" tabindex="0"
-                            @keydown="handleChartKeydown" />
+                        <Bar ref="chartComponent" id="time-series-chart" :data="chartData" :options="chartOptions"
+                            role="img" :aria-label="chartAriaLabel" aria-describedby="chart-instructions" tabindex="0"
+                            @keydown="handleChartKeydown" @focus="highlightBar(selectedBarIndex)" />
 
                         <div class="visually-hidden" id="chart-instructions">
                             Use arrow keys to navigate between time periods, Enter or Space to view detailed results for
@@ -292,36 +292,41 @@ export default {
 
             if (shouldNavigate) {
                 this.selectedBarIndex = newIndex;
-                this.announceSelection();
+                this.highlightBar(newIndex);
             }
         },
 
-        announceSelection() {
-            const year = this.formatDateRange(this.dateLabels[this.selectedBarIndex], this.selectedBarIndex);
-            const value = this.getCurrentData(this.selectedBarIndex);
-            const unit = this.getCurrentUnit();
+        highlightBar(index) {
+            // Try different ways to access the chart instance from vue-chartjs
+            let chartInstance = this.$refs.chartComponent?.chart;
 
-            // Create announcement for screen readers
-            const announcement = this.$t("timeSeries.selectionAnnouncement", {
-                year: year,
-                value: value,
-                unit: unit
-            });
+            if (!chartInstance) {
+                chartInstance = this.$refs.chartComponent?.$data?.chart;
+            }
 
-            // Announce to screen readers
-            this.$nextTick(() => {
-                const announcer = document.createElement('div');
-                announcer.setAttribute('aria-live', 'assertive');
-                announcer.setAttribute('aria-atomic', 'true');
-                announcer.className = 'visually-hidden';
-                announcer.textContent = announcement;
-                document.body.appendChild(announcer);
+            if (!chartInstance) {
+                chartInstance = this.$refs.chartComponent?.chartInstance;
+            }
 
-                setTimeout(() => {
-                    document.body.removeChild(announcer);
-                }, 1000);
-            });
+            if (!chartInstance) {
+                return;
+            }
+
+            // Set active elements to show tooltip and hover effect
+            chartInstance.setActiveElements([{
+                datasetIndex: 0,
+                index: index
+            }]);
+
+            chartInstance.tooltip.setActiveElements([{
+                datasetIndex: 0,
+                index: index
+            }]);
+
+            chartInstance.update('none'); // Update without animation
         },
+
+
 
         navigateToYear(index) {
             const startDate = parseInt(this.dateLabels[index]);

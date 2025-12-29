@@ -799,6 +799,7 @@ export default {
     padding: 0.75rem 1rem;
     position: relative;
     margin: 0 !important;
+    border-radius: 0.5rem;
 }
 
 .facet-result-item:not(.non-clickable):hover {
@@ -807,6 +808,12 @@ export default {
     border-color: rgba(theme.$link-color, 0.3);
     box-shadow: inset 0 0 8px rgba(theme.$link-color, 0.1);
     z-index: 1;
+}
+
+.facet-result-item:not(.non-clickable):hover:focus,
+.facet-result-item:not(.non-clickable):hover:focus-visible {
+    box-shadow: 0 0 0 3px theme.$button-color !important;
+    z-index: 3;
 }
 
 .facet-result-item:not(.non-clickable):active {
@@ -863,27 +870,23 @@ export default {
 
 /* Focus styles for accessibility */
 .facet-selection:focus {
-    outline: 2px solid theme.$link-color;
+    outline: 2px solid theme.$button-color !important;
     outline-offset: -2px;
-    box-shadow: 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
+    box-shadow: 0 0 0 0.2rem rgba(theme.$button-color, 0.25) !important;
 }
 
+/* Override global focus-visible-only behavior for facet items */
 .facet-result-item:focus {
-    outline: 2px solid theme.$link-color;
-    outline-offset: -2px;
-    box-shadow: inset 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
-    z-index: 2;
+    outline: 2px solid theme.$button-color !important;
+    outline-offset: -4px !important;
+    z-index: 3;
 }
 
-.facet-result-item:focus:not(:focus-visible) {
-    outline: none;
-    box-shadow: inset 0 0 8px rgba(theme.$link-color, 0.15);
-}
-
-.facet-result-item:focus-visible {
-    outline: 2px solid theme.$link-color;
-    outline-offset: -2px;
-    box-shadow: inset 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
+button.facet-result-item:focus-visible,
+.list-group-item.facet-result-item:focus-visible {
+    outline: 2px solid theme.$button-color !important;
+    outline-offset: -4px !important;
+    z-index: 3;
 }
 
 /* Frequency switcher enhanced styles */

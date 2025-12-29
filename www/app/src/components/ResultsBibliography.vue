@@ -232,4 +232,12 @@ export default {
         padding: 0.5rem;
     }
 }
+
+/* Focus indicator for close button */
+button.close-box:focus,
+button.btn.close-box:focus-visible {
+    outline: 2px solid #fff !important;
+    outline-offset: -2px !important;
+    background-color: rgba(255, 255, 255, 0.2) !important;
+}
 </style>

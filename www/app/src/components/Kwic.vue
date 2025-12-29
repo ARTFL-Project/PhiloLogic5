@@ -64,7 +64,7 @@
                                     <div class="kwic-biblio-container"
                                         style="display: inline-block; position: relative;"
                                         @mouseover="showFullBiblio($event)" @mouseleave="hideFullBiblio($event)">
-                                        <router-link :to="result.citation_links.div1" class="kwic-biblio" tabindex="-1"
+                                        <router-link :to="result.citation_links.div1" class="kwic-biblio"
                                             @focus="showFullBiblio($event)" @blur="hideFullBiblio($event)">
                                             <span class="short-biblio" v-html="result.shortBiblio"></span>
                                             <div :id="`full-biblio-${kwicIndex}`" class="full-biblio" role="tooltip"
@@ -81,7 +81,7 @@
                                 <!-- Accessible version for screen readers -->
                                 <div class="kwic-line accessible-kwic visually-hidden">
                                     <span>{{ results.description.start + kwicIndex }}.</span>
-                                    <router-link :to="result.citation_links.div1" class="kwic-biblio"
+                                    <router-link :to="result.citation_links.div1" class="kwic-biblio" tabindex="-1"
                                         :aria-describedby="`kwic-context-${kwicIndex}`">
                                         {{ result.fullBiblio }}
                                     </router-link>

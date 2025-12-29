@@ -100,7 +100,8 @@
         "resultsPerPageLabel": "Sélectionner le nombre de résultats par page",
         "coOccurrenceMethodLabel": "Sélectionner la méthode de recherche de co-occurrence",
         "collocNWordsLabel": "Nombre de mots pour la recherche de collocation",
-        "advancedSearchOptions": "Options de recherche avancée"
+        "advancedSearchOptions": "Options de recherche avancée",
+        "selectDateType": "Sélectionner le type de date pour"
     },
     "resultsBiblio": {
         "heading": "Bibliographie des résultats sur cette page",

@@ -122,11 +122,17 @@
                                         {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
                                     </button>
                                     <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
-                                        <li @click="dateTypeToggle(localField.value, 'exact')">
-                                            <a class="dropdown-item">{{ $t("searchForm.exactDate") }}</a>
+                                        <li>
+                                            <button type="button" class="dropdown-item"
+                                                @click="dateTypeToggle(localField.value, 'exact')">
+                                                {{ $t("searchForm.exactDate") }}
+                                            </button>
                                         </li>
-                                        <li @click="dateTypeToggle(localField.value, 'range')">
-                                            <a class="dropdown-item">{{ $t("searchForm.rangeDate") }}</a>
+                                        <li>
+                                            <button type="button" class="dropdown-item"
+                                                @click="dateTypeToggle(localField.value, 'range')">
+                                                {{ $t("searchForm.rangeDate") }}
+                                            </button>
                                         </li>
                                     </ul>
                                 </div>
@@ -174,9 +180,11 @@
                             {{ this.similarFieldSelected || "Select a field" }}
                         </button>
                         <ul class="dropdown-menu">
-                            <li v-for="field in fieldsToCompare" :key="field.value"
-                                @click="similarCollocDistributions(field, 0)"><a class="dropdown-item">{{ field.label
-                                }}</a>
+                            <li v-for="field in fieldsToCompare" :key="field.value">
+                                <button type="button" class="dropdown-item"
+                                    @click="similarCollocDistributions(field, 0)">
+                                    {{ field.label }}
+                                </button>
                             </li>
                         </ul>
                     </div>

@@ -318,13 +318,30 @@ export default {
                         // Handle inline notes if there are any
                         let notes = document.getElementsByClassName("note");
                         if (notes.length > 0) {
-                            Array.from(notes).forEach((note) => {
+                            Array.from(notes).forEach((note, index) => {
                                 let innerHTML = note.nextElementSibling.innerHTML;
+                                const noteId = `note-content-${index}`;
+
+                                // Add ARIA attributes for screen reader accessibility
+                                note.setAttribute('role', 'button');
+                                note.setAttribute('tabindex', '0');
+                                note.setAttribute('aria-label', `Note ${note.textContent || index + 1}`);
+                                note.setAttribute('aria-describedby', noteId);
+
                                 new Popover(note, {
                                     html: true,
                                     content: innerHTML,
                                     trigger: "focus",
                                     customClass: "custom-popover shadow-lg",
+                                });
+
+                                // Set ID on popover when it shows so aria-describedby works
+                                note.addEventListener('shown.bs.popover', () => {
+                                    const popoverElement = document.querySelector(`.popover`);
+                                    if (popoverElement) {
+                                        popoverElement.setAttribute('id', noteId);
+                                        popoverElement.setAttribute('role', 'tooltip');
+                                    }
                                 });
                             });
                         }
@@ -332,7 +349,15 @@ export default {
                         // Handle ref notes if there are any
                         let noteRefs = document.getElementsByClassName("note-ref");
                         if (noteRefs.length > 0) {
-                            Array.from(noteRefs).forEach((noteRef) => {
+                            Array.from(noteRefs).forEach((noteRef, index) => {
+                                const noteRefId = `note-ref-content-${index}`;
+
+                                // Add ARIA attributes for screen reader accessibility
+                                noteRef.setAttribute('role', 'button');
+                                noteRef.setAttribute('tabindex', '0');
+                                noteRef.setAttribute('aria-label', `Note reference ${noteRef.textContent || index + 1}`);
+                                noteRef.setAttribute('aria-describedby', noteRefId);
+
                                 let getNotes = () => {
                                     this.$http
                                         .get(`${this.$dbUrl}/scripts/get_notes.py?`, {
@@ -348,6 +373,16 @@ export default {
                                                 trigger: "focus",
                                                 customClass: "custom-popover shadow-lg",
                                             });
+
+                                            // Set ID on popover when it shows so aria-describedby works
+                                            noteRef.addEventListener('shown.bs.popover', () => {
+                                                const popoverElement = document.querySelector(`.popover`);
+                                                if (popoverElement) {
+                                                    popoverElement.setAttribute('id', noteRefId);
+                                                    popoverElement.setAttribute('role', 'tooltip');
+                                                }
+                                            });
+
                                             noteRef.removeEventListener("click", getNotes);
                                         });
                                 };

@@ -239,8 +239,4 @@ nav.navbar a,
     font-size: 1.2rem;
     font-variant: small-caps;
 }
-
-.nav-item a {
-    height: 44px;
-}
 </style>

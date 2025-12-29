@@ -324,11 +324,9 @@ export function isOnlyFacetChange(newUrl, oldUrl) {
 export function buildTocTree(elements) {
     const tree = [];
     const typeHierarchy = {
-        doc: 1,
-        div1: 2,
-        div2: 3,
-        div3: 4,
-        para: 9,
+        div1: 1,
+        div2: 2,
+        div3: 3,
     };
 
     let stack = [];
