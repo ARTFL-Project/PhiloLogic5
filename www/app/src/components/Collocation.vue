@@ -94,12 +94,13 @@
                             <!-- Dropdown fields -->
                             <div class="input-group pb-2" :id="localField.value + '-group'"
                                 v-if="metadataInputStyle[localField.value] == 'dropdown'">
-                                <label class="btn btn-outline-secondary" :for="localField.value + '-select'">
+                                <button type="button" class="btn btn-outline-secondary" tabindex="-1"
+                                    :id="localField.value + '-label'">
                                     {{ localField.label }}
-                                </label>
+                                </button>
                                 <select class="form-select" :id="localField.value + '-select'"
                                     v-model="metadataChoiceSelected[localField.value]"
-                                    :aria-label="`${$t('collocation.filterBy')} ${localField.label}`">
+                                    :aria-labelledby="localField.value + '-label'">
                                     <option v-for="innerValue in metadataChoiceValues[localField.value]"
                                         :key="innerValue.value" :value="innerValue.value">
                                         {{ innerValue.text }}

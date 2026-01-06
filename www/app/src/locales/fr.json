@@ -10,6 +10,7 @@
         "philoLinkLabel": "Visiter le site web PhiloLogic",
         "philoAlt": "PhiloLogic - Moteur de recherche et de récupération ARTFL open source",
         "documentTitle": "{dbname} sous PhiloLogic - Une plateforme d'analyse de texte",
+        "documentTitleWithReport": "{dbname} sous PhiloLogic - Une plateforme d'analyse de texte - {report}",
         "invalidConfigTitle": "Fichier de configuration web invalide : {path}",
         "invalidConfigMessage": "Vérifiez les erreurs de syntaxe dans le fichier de configuration.",
         "loading": "Chargement en cours",
@@ -36,6 +37,7 @@
         "searchInterface": "Interface de recherche"
     },
     "header": {
+        "toggleNavigation": "Basculer le menu de navigation",
         "citationModalTitle": "Comment citer {dbname} :",
         "closeCitationDialog": "Fermer la boîte de dialogue de citation",
         "goHome": "Page d'accueil",
@@ -50,6 +52,8 @@
         "aggregation": "Aggrégation",
         "collocation": "Collocation",
         "time_series": "Série Temporelle",
+        "textNavigation": "Navigation dans le texte",
+        "tableOfContents": "Table des matières",
         "searchTerms": "Recherche par mots",
         "collocationParams": "Paramètres de collocation",
         "timeSeriesParams": "Paramètres de série temporelle",

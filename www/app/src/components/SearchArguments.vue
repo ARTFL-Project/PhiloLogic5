@@ -27,7 +27,7 @@
                     </div>
                     {{ queryArgs.proximity }}
                 </span>
-                <div class="card outline-secondary shadow" id="query-terms" v-show="showQueryTerms" role="dialog"
+                <div class="card outline-secondary shadow" id="query-terms" v-if="showQueryTerms" role="dialog"
                     aria-modal="true" :aria-labelledby="'query-terms-title'">
                     <button type="button" class="btn btn-secondary btn-sm close" @click="closeTermsList()"
                         :aria-label="$t('common.close')">

@@ -1,9 +1,14 @@
 <template>
     <header>
-        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1" style="height: 73px"
+        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1" style="min-height: 73px"
             aria-label="Main navigation">
-            <div class="collapse navbar-collapse top-links">
-                <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
+                aria-controls="navbarContent" aria-expanded="false" :aria-label="$t('header.toggleNavigation')">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+
+            <div class="collapse navbar-collapse top-links" id="navbarContent">
+                <ul class="navbar-nav me-auto mb-lg-0">
                     <li class="nav-item">
                         <!-- Skip navigation for keyboard users -->
                         <a href="#main-content" class="visually-hidden-focusable" @click.prevent="skipToMainContent">
@@ -28,6 +33,27 @@
                             Textual Optics Lab
                         </a>
                     </li>
+                    <!-- Right side items - only shown in hamburger menu -->
+                    <li class="nav-item d-lg-none">
+                        <a class="nav-link" href="https://www.uchicago.edu"
+                            aria-label="Visit University of Chicago website">
+                            University of Chicago
+                        </a>
+                    </li>
+                    <li class="nav-item d-lg-none">
+                        <a class="nav-link" href="https://www.atilf.fr/" aria-label="Visit ATILF-CNRS website">
+                            ATILF-CNRS
+                        </a>
+                    </li>
+                    <li class="nav-item d-lg-none">
+                        <a class="nav-link" href="https://artfl-project.uchicago.edu/content/contact-us"
+                            title="Contact information for the ARTFL Project" aria-label="Contact us">
+                            {{ $t("header.contactUs") }}
+                        </a>
+                    </li>
+                    <li class="nav-item d-lg-none">
+                        <locale-changer />
+                    </li>
                 </ul>
             </div>
 
@@ -41,7 +67,8 @@
                 v-html="philoConfig.dbname">
             </router-link>
 
-            <ul class="navbar-nav ml-auto top-links">
+            <!-- Right side items - only shown on desktop -->
+            <ul class="navbar-nav ml-auto top-links d-none d-lg-flex">
                 <li class="nav-item">
                     <a class="nav-link" href="https://www.uchicago.edu"
                         aria-label="Visit University of Chicago website">
@@ -182,6 +209,40 @@ export default {
     margin-left: -0.25rem;
     margin-top: -2rem;
     font-variant: small-caps;
+}
+
+// Proper spacing for hamburger menu items
+@media (max-width: 991.98px) {
+    .top-links {
+        margin-top: 0;
+        margin-left: 0;
+    }
+
+    .top-links .nav-item {
+        margin-bottom: 0.25rem;
+    }
+
+    // Disable transform scale in hamburger menu
+    nav.navbar a:hover,
+    nav.navbar a:focus {
+        transform: none !important;
+    }
+
+    // Use flexbox for navbar-brand in hamburger menu
+    nav.navbar {
+        flex-wrap: wrap;
+    }
+
+    .navbar-brand {
+        position: static !important;
+        order: 1;
+        flex-grow: 1;
+        text-align: center;
+    }
+
+    .navbar-toggler {
+        order: 0;
+    }
 }
 
 nav.navbar a:hover,

@@ -151,8 +151,7 @@ export default {
     },
     created() {
         if (this.$philoConfig.valid_config) {
-            const titleCasedDbname = this.toTitleCase(DOMPurify.sanitize((this.$philoConfig.dbname)));
-            document.title = this.$t('common.documentTitle', { dbname: titleCasedDbname });
+            this.updateDocumentTitle(this.$route.name);
             const html = document.documentElement;
 
             // Fix: Use dynamic locale instead of hardcoded 'sv'
@@ -192,7 +191,10 @@ export default {
     },
     watch: {
         // call again the method if the route changes
-        $route: "formDataUpdate",
+        $route(to) {
+            this.formDataUpdate();
+            this.updateDocumentTitle(to.name);
+        },
         accessAuthorized(authorized) {
             if (authorized) {
                 this.setupApp();
@@ -204,6 +206,37 @@ export default {
             return str.replace(/\w\S*/g, (txt) => {
                 return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
             });
+        },
+        updateDocumentTitle(routeName) {
+            if (!this.$philoConfig.valid_config) return;
+
+            const titleCasedDbname = this.toTitleCase(DOMPurify.sanitize((this.$philoConfig.dbname)));
+
+            // Define which routes should have their name in the title
+            const reportTypes = ['concordance', 'kwic', 'collocation', 'aggregation', 'time_series', 'bibliography'];
+            const pageTypes = ['textNavigation', 'tableOfContents'];
+
+            if (routeName && reportTypes.includes(routeName)) {
+                // Get translated report name
+                let reportName;
+                if (routeName === 'bibliography') {
+                    reportName = this.$t('landingPage.bibliography');
+                } else {
+                    reportName = this.$t(`searchForm.${routeName}`);
+                }
+
+                document.title = this.$t('common.documentTitleWithReport', {
+                    dbname: titleCasedDbname,
+                    report: reportName
+                });
+            } else if (routeName && pageTypes.includes(routeName)) {
+                // For textNavigation and tableOfContents, append without "Report"
+                const pageName = this.$t(`searchForm.${routeName}`);
+                const baseTitle = this.$t('common.documentTitle', { dbname: titleCasedDbname });
+                document.title = `${baseTitle} - ${pageName}`;
+            } else {
+                document.title = this.$t('common.documentTitle', { dbname: titleCasedDbname });
+            }
         },
         getBaseUrl() {
             let href = window.location.href;

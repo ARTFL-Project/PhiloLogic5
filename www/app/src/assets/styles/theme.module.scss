@@ -22,6 +22,14 @@ nav.navbar a, #academic-citation-link {
     color: #fff !important;
 }
 
+// Hamburger menu styling
+.navbar-toggler {
+    border-color: $focus-on-dark-color !important;
+}
+.navbar-toggler-icon {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255, 255, 255, 1)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
+}
+
 .btn-secondary {
     color: #fff !important;
     background-color: $button-color !important;
@@ -107,7 +115,8 @@ a.btn-secondary {
     background-color: transparent !important;
 }
 
-.close-box .icon-x {
+.close-box .icon-x,
+.btn-secondary .icon-x {
     background-color: #fff !important;
 }
 
@@ -169,9 +178,13 @@ a.btn-secondary {
 .custom-select:focus,
 .custom-control-input:checked~.custom-control-label::before,
 .custom-control-input:focus~.custom-control-label::before,
-input[type="text"]:focus {
-    box-shadow: 0 0 0 0.075rem $button-color !important;
+input[type="text"]:focus,
+select:focus,
+.form-select:focus {
     border-color: $button-color !important;
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+    box-shadow: none !important;
 }
 
 .landing-page-btn {
@@ -217,9 +230,27 @@ input {
 }
 
 // Simple checkbox theming
+.form-check-input {
+    border-color: $button-color !important;
+    background-color: $button-color !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
+}
+
 .form-check-input:checked {
     background-color: $button-color !important;
     border-color: $button-color !important;
+}
+
+.form-check-input:focus {
+    border-color: $button-color !important;
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+    box-shadow: none !important;
+}
+
+.form-check-input:focus:not(:checked) {
+    background-color: $button-color !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
 }
 
 .icon-x {

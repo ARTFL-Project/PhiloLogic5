@@ -538,6 +538,10 @@ export default {
     right: 0;
 }
 
+#close-filter-list .icon-x {
+    background-color: #fff !important;
+}
+
 #filter-list .list-group-item {
     border-width: 0px;
     padding: 0.1rem;

@@ -10,6 +10,7 @@
         "philoLinkLabel": "Visit PhiloLogic website",
         "philoAlt": "PhiloLogic - Open Source ARTFL Search and Retrieval Engine",
         "documentTitle": "{dbname} under PhiloLogic - A Text Analysis Platform",
+        "documentTitleWithReport": "{dbname} under PhiloLogic - A Text Analysis Platform - {report} Report",
         "invalidConfigTitle": "Invalid web config file: {path}",
         "invalidConfigMessage": "Check for syntax errors in the configuration file.",
         "loading": "Loading content, please wait",
@@ -36,6 +37,7 @@
         "searchInterface": "Search Interface"
     },
     "header": {
+        "toggleNavigation": "Toggle navigation menu",
         "citationModalTitle": "How to cite {dbname}:",
         "closeCitationDialog": "Close citation dialog",
         "goHome": "Go to home page",
@@ -50,6 +52,8 @@
         "aggregation": "Aggregation",
         "collocation": "Collocation",
         "time_series": "Time-Series",
+        "textNavigation": "Text Navigation",
+        "tableOfContents": "Table of Contents",
         "searchTerms": "Search Terms",
         "collocationParams": "Collocation Parameters",
         "timeSeriesParams": "Time Series Parameters",
@@ -98,7 +102,7 @@
         "sortResultsByLabel": "Select field to sort results by",
         "resultsPerPageLabel": "Select number of results per page",
         "approximateMatchLabel": "Select approximate match percentage",
-        "coOccurrenceMethodLabel": "Select co-occurrence search method",
+        "coOccurrenceMethodLabel": "Select search co-occurrence method",
         "collocNWordsLabel": "Number of words for collocation search",
         "advancedSearchOptions": "Advanced search options",
         "selectDateType": "Select date type for"

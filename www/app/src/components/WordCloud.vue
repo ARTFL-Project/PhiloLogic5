@@ -13,27 +13,6 @@
             {{ word.collocate }}
         </button>
 
-        <!-- Hidden data table for screen readers -->
-        <div class="visually-hidden">
-            <table role="table" aria-label="Word cloud data table">
-                <caption>{{ $t("wordCloud.tableCaption") }}</caption>
-                <thead>
-                    <tr>
-                        <th scope="col">{{ $t("wordCloud.word") }}</th>
-                        <th scope="col">{{ $t("wordCloud.frequency") }}</th>
-                        <th scope="col">{{ $t("wordCloud.significance") }}</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr v-for="word in sortedWordsForTable" :key="word.collocate">
-                        <td>{{ word.collocate }}</td>
-                        <td>{{ getOriginalCount(word) }}</td>
-                        <td>{{ getSignificanceLevel(word) }}</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-
         <!-- Status for screen readers -->
         <div class="visually-hidden" aria-live="polite" aria-atomic="true" id="word-cloud-status">
             {{ statusMessage }}
@@ -66,15 +45,6 @@ export default {
         wordCloudAriaLabel() {
             const wordCount = this.collocCloudWords.length;
             return this.$t("wordCloud.ariaLabel", { count: wordCount });
-        },
-
-        sortedWordsForTable() {
-            return [...this.collocCloudWords].sort((a, b) => {
-                // Sort by original frequency (highest first)
-                const aCount = this.getOriginalCount(a);
-                const bCount = this.getOriginalCount(b);
-                return bCount - aCount;
-            });
         },
 
         statusMessage() {

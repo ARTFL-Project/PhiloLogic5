@@ -45,7 +45,7 @@
 
                 <section aria-labelledby="word-searches-heading">
                     <h3 id="word-searches-heading" class="h5" style="margin-top: 20px">{{ $t('searchTips.wordSearches')
-                    }}</h3>
+                        }}</h3>
                     <p class="mb-0">{{ $t('searchTips.wordSearchDescription') }}</p>
                     <ol>
                         <li>{{ $t('searchTips.plainTerms') }}</li>
@@ -178,11 +178,12 @@ li {
 
 .code-block {
     background-color: #f8f9fa;
+    color: theme.$link-color; // Use theme color for consistency
     border: 1px solid #e9ecef;
     border-radius: 0.25rem;
     padding: 0.125rem 0.25rem;
     font-family: 'Courier New', Courier, monospace;
-    font-size: 0.875em;
+    font-size: 0.875rem;
 }
 
 /* Focus styles for links */

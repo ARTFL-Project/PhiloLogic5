@@ -10,8 +10,11 @@
             </div>
             <div class="d-flex justify-content-center position-relative">
                 <div class="spinner-border text-secondary" role="status" v-if="loading"
-                    style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px">
-                    <span class="visually-hidden">{{ $t('common.loading') }}</span>
+                    style="width: 4rem; height: 4rem; position: absolute; z-index: 50; top: 10px" aria-hidden="true">
+                </div>
+                <!-- Persistent live region for screen readers -->
+                <div aria-live="polite" aria-atomic="true" class="visually-hidden">
+                    <span v-if="loading">{{ $t('common.loading') }}</span>
                 </div>
             </div>
             <div id="default-landing-page" class="row justify-content-center" v-if="landingPageBrowsing === 'default'">

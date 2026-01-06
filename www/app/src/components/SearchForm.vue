@@ -6,9 +6,10 @@
                 <div id="form-body">
                     <div id="initial-form">
                         <div class="btn-group" role="group" id="report" style="width: 100%; top: -1px">
-                            <button type="button" :id="formData.report" v-for="searchReport in reports"
+                            <button type="button" :id="searchReport" v-for="searchReport in reports"
                                 @click="reportChange(searchReport)" :key="searchReport"
-                                class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }">
+                                class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }"
+                                :aria-pressed="currentReport == searchReport">
                                 <span v-if="searchReport != 'kwic'">{{ $t(`searchForm.${searchReport}`) }}</span>
                                 <span v-else><span class="d-md-inline d-sm-none">{{ $t(`searchForm.${searchReport}`)
                                         }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
@@ -439,7 +440,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
         </div>
         <div class="d-flex justify-content-center position-relative" v-if="searching">
             <div class="spinner-border" style="width: 8rem; height: 8rem; position: absolute; z-index: 50; top: 30px"
-                role="status">
+                role="status" aria-live="polite" :aria-label="$t('common.loading')">
                 <span class="visually-hidden">{{ $t("common.loading") }}</span>
             </div>
         </div>
