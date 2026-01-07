@@ -1,5 +1,5 @@
 <template>
-    <div id="facet-search" class="d-none d-sm-block mr-2">
+    <div id="facet-search">
         <div class="card shadow-sm" title="Title" header-tag="header" id="facet-panel-wrapper">
             <div class="card-header text-center">
                 <h2 class="h6 mb-0">{{ $t("facets.browseByFacet") }}</h2>
@@ -70,10 +70,11 @@
 
         <!-- Loading indicator -->
         <div class="d-flex justify-content-center position-relative" v-if="loading" role="status"
-            :aria-label="$t('common.loadingFacets')">
+            aria-live="polite" aria-atomic="true" :aria-label="$t('common.loadingFacets')">
             <div class="position-absolute" style="z-index: 50; top: 10px">
                 <progress-spinner :lg="true" />
             </div>
+            <span class="visually-hidden">{{ $t('common.loadingFacets') }}</span>
         </div>
 
         <!-- Facet results -->
@@ -861,11 +862,12 @@ export default {
 .relative-frequency-info small {
     opacity: 1;
     color: #6c757d !important;
-    transition: opacity 0.25s ease;
+    transition: color 0.25s ease, opacity 0.25s ease;
 }
 
 .facet-result-item:hover .relative-frequency-info small {
     opacity: 1;
+    color: #212529 !important;
 }
 
 /* Focus styles for accessibility */

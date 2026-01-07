@@ -158,9 +158,7 @@
 
         <!-- Report switch buttons and Results per page control -->
         <div class="mt-4 mb-3" v-if="formData.report == 'concordance' || formData.report == 'kwic'">
-            <div class="row d-flex align-items-center"
-                :style="formData.report === 'concordance' ? 'padding-right: 0.5rem' : ''"
-                :class="formData.report === 'kwic' ? 'px-2' : ''">
+            <div class="row d-flex align-items-center">
                 <div class="col-12" :class="showFacets && $philoConfig.facets.length > 0 ?
                     (formData.report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
                     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
@@ -218,9 +216,7 @@
                 </div>
             </div>
             <!-- Show facets button row -->
-            <div class="row d-none d-sm-flex mt-2" v-if="!showFacets && facets.length > 0"
-                :style="formData.report === 'concordance' ? 'padding-right: 0.5rem' : ''"
-                :class="formData.report === 'kwic' ? 'px-2' : ''">
+            <div class="row d-none d-sm-flex mt-2" v-if="!showFacets && $philoConfig.facets.length > 0">
                 <div class="col-12" :class="showFacets && $philoConfig.facets.length > 0 ?
                     (formData.report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
                     <div class="d-flex justify-content-end">

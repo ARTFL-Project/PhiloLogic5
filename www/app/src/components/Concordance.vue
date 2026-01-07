@@ -2,12 +2,19 @@
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
 
-        <div class="row" style="padding-right: 0.5rem">
+        <div class="row concordance-layout px-2">
+            <!-- Facets sidebar - appears first in DOM for mobile accessibility -->
+            <div role="region" class="col-12 col-md-3 col-xl-3 facets-column" :aria-label="$t('common.facetsRegion')"
+                v-if="showFacets">
+                <facets></facets>
+            </div>
+
+            <!-- Results column -->
             <div role="region" class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('concordance.resultsRegion')">
 
                 <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
-                    <article class="card philologic-occurrence text-view ms-2 me-2 mb-3 shadow-sm"
+                    <article class="card philologic-occurrence text-view mb-3 shadow-sm"
                         v-for="(result, index) in results.results" :key="result.philo_id.join('-')" :data-index="index">
 
                         <!-- Citation header -->
@@ -46,13 +53,9 @@
                 </transition-group>
             </div>
 
-            <!-- Facets sidebar -->
-            <div role="region" class="col col-md-3 col-xl-3 ps-0" :aria-label="$t('common.facetsRegion')"
-                v-if="showFacets">
-                <facets></facets>
+            <div class="pages-wrapper">
+                <pages></pages>
             </div>
-
-            <pages></pages>
         </div>
     </div>
 </template>
@@ -317,5 +320,50 @@ export default {
 
 .xml-stage {
     font-style: italic;
+}
+
+/* Mobile layout: facets above results */
+@media (max-width: 767px) {
+    .concordance-layout {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .facets-column {
+        order: 1;
+        margin-bottom: 1rem;
+    }
+
+    .concordance-layout>div[role="region"]:not(.facets-column) {
+        order: 2;
+    }
+
+    .pages-wrapper {
+        order: 3;
+        width: 100%;
+    }
+}
+
+/* Desktop layout: facets on right side */
+@media (min-width: 768px) {
+    .concordance-layout {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .facets-column {
+        order: 2;
+        padding-left: 0 !important;
+    }
+
+    .concordance-layout>div[role="region"]:not(.facets-column) {
+        order: 1;
+    }
+
+    .pages-wrapper {
+        order: 3;
+        width: 100%;
+    }
 }
 </style>

@@ -1,7 +1,13 @@
 <template>
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
-        <div class="row px-2">
+        <div class="row px-2 kwic-layout">
+            <!-- Facets sidebar - appears first in DOM for mobile accessibility -->
+            <div role="region" class="col-12 col-md-4 col-xl-3 facets-column" :aria-label="$t('common.facetsRegion')" v-if="showFacets">
+                <facets></facets>
+            </div>
+
+            <!-- Results column -->
             <div role="region" class="col-12" :class="{ 'col-md-8': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('kwic.resultsRegion')">
                 <div class="card p-2 ml-2 shadow-sm">
@@ -101,11 +107,10 @@
                         </transition-group>
                     </div>
                 </div>
-                <pages></pages>
             </div>
 
-            <div role="region" class="col col-md-4 col-xl-3" :aria-label="$t('common.facetsRegion')" v-if="showFacets">
-                <facets></facets>
+            <div class="pages-wrapper">
+                <pages></pages>
             </div>
         </div>
     </div>
@@ -655,6 +660,48 @@ export default {
 
     .visual-kwic :deep(.kwic-line) {
         font-size: 12px;
+    }
+
+    /* Mobile layout: facets above results */
+    .kwic-layout {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .facets-column {
+        order: 1;
+        margin-bottom: 1rem;
+    }
+
+    .kwic-layout > div[role="region"]:not(.facets-column) {
+        order: 2;
+    }
+
+    .pages-wrapper {
+        order: 3;
+        width: 100%;
+    }
+}
+
+/* Desktop layout: facets on right side */
+@media (min-width: 768px) {
+    .kwic-layout {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .facets-column {
+        order: 2;
+    }
+
+    .kwic-layout > div[role="region"]:not(.facets-column) {
+        order: 1;
+    }
+
+    .pages-wrapper {
+        order: 3;
+        width: 100%;
     }
 }
 </style>
