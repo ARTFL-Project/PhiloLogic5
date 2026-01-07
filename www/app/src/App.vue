@@ -235,7 +235,7 @@ export default {
                 const baseTitle = this.$t('common.documentTitle', { dbname: titleCasedDbname });
                 document.title = `${baseTitle} - ${pageName}`;
             } else {
-                document.title = this.$t('common.documentTitle', { dbname: titleCasedDbname });
+                document.title = `${this.$t('common.documentTitle', { dbname: titleCasedDbname })} - ${this.$t('landingPage.title')}`;
             }
         },
         getBaseUrl() {

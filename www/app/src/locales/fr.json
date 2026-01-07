@@ -255,7 +255,13 @@
         "resultsPerPageControl": "Contrôle des résultats par page",
         "resultNumber": "Numéro de résultat",
         "contextDescription": "Contexte : {context}...",
-        "progressDescription": "Tri des résultats..."
+        "progressDescription": "Tri des résultats...",
+        "firstSortingCriteria": "Premier critère de tri : {current}",
+        "secondSortingCriteria": "Deuxième critère de tri : {current}",
+        "thirdSortingCriteria": "Troisième critère de tri : {current}",
+        "firstLabel": "Premier critère",
+        "secondLabel": "Deuxième critère",
+        "thirdLabel": "Troisième critère"
     },
     "aggregation": {
         "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats.",

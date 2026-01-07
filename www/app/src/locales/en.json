@@ -255,7 +255,13 @@
         "resultsPerPageControl": "Results per page control",
         "resultNumber": "Result number",
         "contextDescription": "Context: {context}...",
-        "progressDescription": "Sorting results..."
+        "progressDescription": "Sorting results...",
+        "firstSortingCriteria": "First sorting criteria: {current}",
+        "secondSortingCriteria": "Second sorting criteria: {current}",
+        "thirdSortingCriteria": "Third sorting criteria: {current}",
+        "firstLabel": "First criteria",
+        "secondLabel": "Second criteria",
+        "thirdLabel": "Third criteria"
     },
     "aggregation": {
         "performance": "For performance reasons, only the first 1000 results are displayed. Click on the link above for full results.",

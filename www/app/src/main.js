@@ -1,5 +1,6 @@
 import axios from "axios";
 import "bootstrap";
+import "bootstrap-icons/font/bootstrap-icons.css";
 import { createPinia } from "pinia";
 import { createApp } from "vue";
 import vueScrollTo from "vue-scrollto";

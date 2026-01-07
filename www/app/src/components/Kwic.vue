@@ -7,27 +7,30 @@
                 <div class="card p-2 ml-2 shadow-sm">
                     <div class="p-2 mb-1">
                         <!-- Sorting controls -->
-                        <div class="btn-group" role="group">
+                        <div class="btn-group">
                             <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid"
-                                tabindex="-1">
+                                tabindex="-1" id="sort-group-label">
                                 {{ $t("kwic.sortResultsBy") }}
                             </button>
-                            <div class="btn-group" v-for="(fields, index) in sortingFields" :key="index">
-                                <div class="dropdown">
-                                    <button class="btn btn-light btn-sm dropdown-toggle sort-toggle"
-                                        :style="index == 0 ? 'border-left: 0 !important' : ''" :id="`kwicDrop${index}`"
-                                        data-bs-toggle="dropdown" aria-expanded="false">
-                                        {{ sortingSelection[index] }}
-                                    </button>
-                                    <ul class="dropdown-menu" :aria-labelledby="`kwicDrop${index}`">
-                                        <li v-for="(selection, fieldIndex) in fields" :key="fieldIndex">
-                                            <button type="button" class="dropdown-item"
-                                                @click="updateSortingSelection(index, selection)"
-                                                :aria-label="`${$t('kwic.selectSortCriteria', { criteria: selection.label })}`">
-                                                {{ selection.label }}
-                                            </button>
-                                        </li>
-                                    </ul>
+                            <div role="group" aria-labelledby="sort-group-label" style="display: contents;">
+                                <div class="btn-group" v-for="(fields, index) in sortingFields" :key="index">
+                                    <div class="dropdown">
+                                        <button class="btn btn-light btn-sm dropdown-toggle sort-toggle"
+                                            :style="index == 0 ? 'border-left: 0 !important' : ''" :id="`kwicDrop${index}`"
+                                            data-bs-toggle="dropdown" aria-expanded="false"
+                                            :aria-label="getSortingAriaLabel(index)">
+                                            {{ sortingSelection[index] }}
+                                        </button>
+                                        <ul class="dropdown-menu" :aria-labelledby="`kwicDrop${index}`">
+                                            <li v-for="(selection, fieldIndex) in fields" :key="fieldIndex">
+                                                <button type="button" class="dropdown-item"
+                                                    @click="updateSortingSelection(index, selection)"
+                                                    :aria-label="`${$t('kwic.selectSortCriteria', { criteria: selection.label })}`">
+                                                    {{ selection.label }}
+                                                </button>
+                                            </li>
+                                        </ul>
+                                    </div>
                                 </div>
                             </div>
                             <button type="button" class="btn btn-secondary btn-sm" id="sort-button"
@@ -212,24 +215,11 @@ export default {
             return sortKeys;
         },
         sortingSelection() {
-            let sortingSelection = [];
-            if (this.first_kwic_sorting_option !== "") {
-                sortingSelection.push(this.sortKeys[this.first_kwic_sorting_option]);
-            }
-            if (this.second_kwic_sorting_option !== "") {
-                sortingSelection.push(this.sortKeys[this.second_kwic_sorting_option]);
-            }
-            if (this.third_kwic_sorting_option !== "") {
-                sortingSelection.push(this.sortKeys[this.third_kwic_sorting_option]);
-            }
-            if (sortingSelection.length === 0) {
-                sortingSelection = [this.$t("common.none"), this.$t("common.none"), this.$t("common.none")];
-            } else if (sortingSelection.length === 1) {
-                sortingSelection.push(this.$t("common.none"));
-                sortingSelection.push(this.$t("common.none"));
-            } else if (sortingSelection.length === 2) {
-                sortingSelection.push(this.$t("common.none"));
-            }
+            let sortingSelection = [
+                this.first_kwic_sorting_option !== "" ? this.sortKeys[this.first_kwic_sorting_option] : this.$t("kwic.firstLabel"),
+                this.second_kwic_sorting_option !== "" ? this.sortKeys[this.second_kwic_sorting_option] : this.$t("kwic.secondLabel"),
+                this.third_kwic_sorting_option !== "" ? this.sortKeys[this.third_kwic_sorting_option] : this.$t("kwic.thirdLabel")
+            ];
             return sortingSelection;
         },
     },
@@ -303,6 +293,16 @@ export default {
             let target = event.currentTarget.querySelector(".full-biblio");
             target.classList.remove("show");
         },
+        getSortingAriaLabel(index) {
+            const current = this.sortingSelection[index];
+            if (index === 0) {
+                return this.$t('kwic.firstSortingCriteria', { current });
+            } else if (index === 1) {
+                return this.$t('kwic.secondSortingCriteria', { current });
+            } else {
+                return this.$t('kwic.thirdSortingCriteria', { current });
+            }
+        },
         updateSortingSelection(index, selection) {
             if (index === 0) {
                 if (selection.label == this.$t("common.none")) {
@@ -327,7 +327,10 @@ export default {
         fetchResults() {
             this.results = { description: { end: 0 }, results: [] };
             this.searchParams = { ...this.formData };
-            if (this.first_kwic_sorting_option === "") {
+            const hasSorting = this.first_kwic_sorting_option !== "" ||
+                             this.second_kwic_sorting_option !== "" ||
+                             this.third_kwic_sorting_option !== "";
+            if (!hasSorting) {
                 this.searching = true;
                 this.$http
                     .get(`${this.$dbUrl}/reports/kwic.py`, {

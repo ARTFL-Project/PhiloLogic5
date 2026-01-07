@@ -158,12 +158,12 @@
 
         <!-- Report switch buttons and Results per page control -->
         <div class="mt-4 mb-3" v-if="formData.report == 'concordance' || formData.report == 'kwic'">
-            <div class="row d-none d-sm-flex align-items-center"
+            <div class="row d-flex align-items-center"
                 :style="formData.report === 'concordance' ? 'padding-right: 0.5rem' : ''"
                 :class="formData.report === 'kwic' ? 'px-2' : ''">
                 <div class="col-12" :class="showFacets && $philoConfig.facets.length > 0 ?
                     (formData.report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
-                    <div class="d-flex justify-content-start align-items-center">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
                         <div class="flex-shrink-0" v-if="['concordance', 'kwic'].includes(formData.report)">
                             <div class="btn-group" role="group" id="report_switch"
                                 :aria-label="$t('resultsSummary.reportViewOptions')">
@@ -182,12 +182,12 @@
                                     :aria-label="$t('resultsSummary.kwicBig')"
                                     :aria-pressed="formData.report === 'kwic'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.kwicBig") }}</span>
-                                    <span class="d-inline d-lg-none">{{ $t("resultsSummary.kwicSmall")
-                                    }}</span>
+                                    <span class="d-none d-sm-inline d-lg-none">{{ $t("resultsSummary.kwicSmall") }}</span>
+                                    <span class="d-inline d-sm-none">KWIC</span>
                                 </button>
                             </div>
                         </div>
-                        <div class="flex-shrink-1 ms-auto">
+                        <div class="flex-shrink-0">
                             <div class="btn-group" role="group" :aria-label="$t('kwic.resultsPerPageControl')">
                                 <button type="button" class="btn btn-outline-secondary results-label-btn"
                                     style="border-right: solid" tabindex="-1">

@@ -12,7 +12,7 @@
 
                         <!-- Citation header -->
                         <div class="row citation-container g-0">
-                            <div class="col-12 col-sm-10 col-md-11">
+                            <div class="col-10 col-md-11">
                                 <span class="cite" :id="`result-${index}-heading`">
                                     <span class="number" :aria-describedby="`result-number-desc-${index}`">
                                         {{ results.description.start + index }}
@@ -24,12 +24,12 @@
                                         :result-number="results.description.start + index"></citations>
                                 </span>
                             </div>
-                            <div class="col-sm-2 col-md-1 d-none d-lg-inline-block">
+                            <div class="col-2 col-md-1">
                                 <button type="button" class="btn btn-secondary more-context"
                                     @click="moreContext(index, $event)"
                                     :aria-label="`${$t('concordance.showMoreContext')} ${$t('concordance.forResult')} ${results.description.start + index}`">
-                                    <span class="more d-none d-lg-inline-block">{{ $t("concordance.more") }}</span>
-                                    <span class="visually-hidden">{{ $t("concordance.more") }}</span>
+                                    <span class="more-text">{{ $t("concordance.more") }}</span>
+                                    <i class="bi bi-plus-square more-icon" aria-hidden="true"></i>
                                 </button>
                             </div>
                         </div>
@@ -136,15 +136,18 @@ export default {
                 });
         },
         moreContext(index, event) {
-            let button = event.srcElement;
-            if (button.tagName == "BUTTON") {
-                button = button.querySelector("span");
-            }
+            let button = event.target.closest("button");
+            let textSpan = button.querySelector(".more-text");
+            let icon = button.querySelector(".more-icon");
             let defaultNode = document.getElementsByClassName("default-length")[index];
             let moreNode = document.getElementsByClassName("more-length")[index];
             let resultNumber = this.results.description.start + index - 1;
             let localParams = { hit_num: resultNumber, ...this.searchParams };
-            if (button.innerHTML == this.$t("concordance.more")) {
+
+            const isExpanded = textSpan.innerHTML == this.$t("concordance.less") ||
+                icon.classList.contains("bi-dash-square");
+
+            if (!isExpanded) {
                 if (moreNode.innerHTML.length == 0) {
                     this.$http
                         .get(`${this.$dbUrl}/scripts/get_more_context.py`, {
@@ -155,7 +158,9 @@ export default {
                             moreNode.innerHTML = moreText;
                             defaultNode.style.display = "none";
                             moreNode.style.display = "block";
-                            button.innerHTML = this.$t("concordance.less");
+                            textSpan.innerHTML = this.$t("concordance.less");
+                            icon.classList.remove("bi-plus-square");
+                            icon.classList.add("bi-dash-square");
                         })
                         .catch((error) => {
                             this.loading = false;
@@ -165,12 +170,16 @@ export default {
                 } else {
                     defaultNode.style.display = "none";
                     moreNode.style.display = "block";
-                    button.innerHTML = this.$t("concordance.less");
+                    textSpan.innerHTML = this.$t("concordance.less");
+                    icon.classList.remove("bi-plus-square");
+                    icon.classList.add("bi-dash-square");
                 }
             } else {
                 defaultNode.style.display = "block";
                 moreNode.style.display = "none";
-                button.innerHTML = this.$t("concordance.more");
+                textSpan.innerHTML = this.$t("concordance.more");
+                icon.classList.remove("bi-dash-square");
+                icon.classList.add("bi-plus-square");
             }
         },
         dicoLookup() { },
@@ -218,6 +227,39 @@ export default {
     right: 0;
 }
 
+/* Show text by default on larger screens (> 991px / Bootstrap lg) */
+.more-text {
+    display: inline-block;
+}
+
+.more-icon {
+    display: none;
+    font-size: 1.125rem;
+    vertical-align: middle;
+}
+
+/* At smaller viewports or zoom, switch to icon-only */
+@media (max-width: 991px) {
+    .more-text {
+        display: none;
+    }
+
+    .more-icon {
+        display: inline-block;
+    }
+
+    .more-context {
+        padding: 0.25rem 0.5rem;
+        min-width: auto;
+        line-height: 1.2;
+    }
+
+    .number {
+        padding: 0.25rem 0.5rem !important;
+        line-height: 1.2 !important;
+    }
+}
+
 .more_context,
 .citation-container {
     border-bottom: solid 1px #eee !important;
@@ -231,7 +273,6 @@ export default {
     display: inline-block;
     margin-right: 5px;
     border-radius: 0.25rem;
-    height: 100%;
 }
 
 .hit_n {
