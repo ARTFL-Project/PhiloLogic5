@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Default Python version
-PYTHON_VERSION="python3"
+PYTHON_VERSION="3.12"
 INSTALL_TRANSFORMERS=false
 
 # Parse command line arguments
@@ -12,7 +12,7 @@ while getopts "p:t" opt; do
     t) INSTALL_TRANSFORMERS=true
     ;;
     *) echo "Usage: $0 [-p python_version] [-t]"
-       echo "  -p: Python version (default: python3)"
+       echo "  -p: Python version (default: 3.12)"
        echo "  -t: Install transformers support (includes CUDA)"
        exit 1
     ;;

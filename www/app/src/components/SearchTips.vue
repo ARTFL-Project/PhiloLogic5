@@ -177,8 +177,8 @@ li {
 }
 
 .code-block {
-    background-color: #f8f9fa;
     color: theme.$link-color; // Use theme color for consistency
+    font-weight: 700;
     border: 1px solid #e9ecef;
     border-radius: 0.25rem;
     padding: 0.125rem 0.25rem;

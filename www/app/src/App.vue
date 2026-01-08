@@ -358,8 +358,16 @@ select,
 .custom-control-label,
 .custom-control,
 .input-group-text,
-input {
+input,
+.card,
+.modal-content {
     font-size: 14px !important;
+    color: #000;
+}
+
+input,
+.form-select {
+    border-color: #888 !important;
 }
 
 

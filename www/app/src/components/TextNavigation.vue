@@ -888,7 +888,6 @@ export default {
 
 #nav-buttons {
     position: absolute;
-    opacity: 0.9;
     width: 100%;
 }
 
