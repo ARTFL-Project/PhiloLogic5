@@ -24,12 +24,11 @@ if [ "$INSTALL_TRANSFORMERS" = true ]; then
     echo "Transformers support will be installed (with CUDA)"
 fi
 
-# Install uv if not present
+# Install uv system-wide if not present
 if ! command -v uv &> /dev/null
 then
-    echo "uv could not be found. Installing..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
+    echo "uv could not be found. Installing system-wide..."
+    curl -LsSf https://astral.sh/uv/install.sh | sudo sh -s -- --prefix /usr/local
 fi
 
 # Delete virtual environment if it already exists
@@ -38,10 +37,19 @@ if [ -d /var/lib/philologic5 ]; then
     sudo rm -rf /var/lib/philologic5
 fi
 
-# Create virtual environment
+# Create base directory with write permissions for current user
 sudo mkdir -p /var/lib/philologic5
 sudo chown -R $USER:$USER /var/lib/philologic5
-uv venv /var/lib/philologic5/philologic_env --python $PYTHON_VERSION
+sudo chmod -R 755 /var/lib/philologic5
+
+# Configure uv to install Python in /var/lib/philologic5/python
+# This location is accessible by all users
+export UV_PYTHON_INSTALL_DIR=/var/lib/philologic5/python
+mkdir -p "$UV_PYTHON_INSTALL_DIR"
+
+# Download and use uv-managed Python (e.g., "3.12" will download cpython-3.12.x)
+# --managed-python forces uv to download its own Python instead of using system Python
+uv venv /var/lib/philologic5/philologic_env --python $PYTHON_VERSION --managed-python
 
 # Activate virtual environment
 source /var/lib/philologic5/philologic_env/bin/activate
@@ -73,7 +81,8 @@ deactivate
 cd ..
 
 # Install philoload5 script
-echo -e '#!/bin/bash\nsource /var/lib/philologic5/philologic_env/bin/activate\npython3 -m philologic.loadtime "$@"\ndeactivate' > philoload5 && sudo mv philoload5 /usr/local/bin/
+# Use absolute path to venv's Python to avoid PATH issues
+echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -m philologic.loadtime "$@"' > philoload5 && sudo mv philoload5 /usr/local/bin/
 sudo chmod 775 /usr/local/bin/philoload5
 sudo mkdir -p /etc/philologic/
 sudo mkdir -p /var/lib/philologic5/web_app/
