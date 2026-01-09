@@ -11,9 +11,10 @@
                         style="padding: 0 0.25rem; margin-right: 0.5rem" :id="`button-${resultIndex}`"
                         @click="toggleBreakUp(resultIndex)" v-if="result.break_up_field.length > 0"
                         :aria-expanded="breakUpFields[resultIndex].show" :aria-controls="`breakdown-${resultIndex}`"
-                        :aria-label="breakUpFields[resultIndex].show ?
+                        :aria-describedby="`result-heading-${resultIndex}`"
+                        :aria-label="(breakUpFields[resultIndex].show ?
                             $t('aggregation.collapseBreakdown') :
-                            $t('aggregation.expandBreakdown')">
+                            $t('aggregation.expandBreakdown')) + ' ' + $t('common.forResult') + ' ' + (resultIndex + 1)">
                         <span aria-hidden="true">{{ breakUpFields[resultIndex].show ? '−' : '+' }}</span>
                     </button>
 

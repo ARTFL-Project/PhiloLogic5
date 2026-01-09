@@ -34,7 +34,8 @@
         "or": "or",
         "opensInNewWindow": "(opens in new window)",
         "noDataAvailable": "No data available",
-        "searchInterface": "Search Interface"
+        "searchInterface": "Search Interface",
+        "forResult": "for result"
     },
     "header": {
         "toggleNavigation": "Toggle navigation menu",
@@ -200,8 +201,7 @@
         "less": "Less",
         "resultsRegion": "Concordance search results",
         "resultNumber": "Result number",
-        "showMoreContext": "Show more context for",
-        "forResult": "result"
+        "showMoreContext": "Show more context for"
     },
     "facets": {
         "browseByFacet": "Browse by facet",

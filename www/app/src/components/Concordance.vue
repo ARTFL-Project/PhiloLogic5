@@ -34,7 +34,7 @@
                             <div class="col-2 col-md-1">
                                 <button type="button" class="btn btn-secondary more-context"
                                     @click="moreContext(index, $event)"
-                                    :aria-label="`${$t('concordance.showMoreContext')} ${$t('concordance.forResult')} ${results.description.start + index}`">
+                                    :aria-label="`${$t('concordance.showMoreContext')} ${$t('common.forResult')} ${results.description.start + index}`">
                                     <span class="more-text">{{ $t("concordance.more") }}</span>
                                     <i class="bi bi-plus-square more-icon" aria-hidden="true"></i>
                                 </button>

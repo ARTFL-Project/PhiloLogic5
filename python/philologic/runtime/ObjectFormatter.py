@@ -354,6 +354,8 @@ def format_text_object(
             if el.tag == "h1" or el.tag == "h2":
                 el.tag = "b"
                 el.attrib["class"] = "headword"
+                el.attrib["role"] = "heading"
+                el.attrib["aria-level"] = "3"
             if el.tag == "sc" or el.tag == "scx":
                 el.tag = "span"
                 el.attrib["class"] = "small-caps"
@@ -371,6 +373,8 @@ def format_text_object(
                 else:
                     el.tag = "b"
                     el.attrib["class"] = "headword"
+                    el.attrib["role"] = "heading"
+                    el.attrib["aria-level"] = "3"
             elif el.tag == "list":
                 el.tag = "ul"
             elif el.tag == "title":

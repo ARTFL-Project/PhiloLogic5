@@ -1,66 +1,67 @@
 <template>
     <div class="container-fluid">
         <results-summary :description="results.description"></results-summary>
-        <div style="position: relative" v-if="!showFacets && philoConfig.facets.length > 0">
-            <button type="button" class="btn btn-sm btn-secondary"
-                style="position: absolute; bottom: 0; right: 0.5rem; padding: 0.125rem 0.25rem" @click="toggleFacets()"
-                :aria-label="$t('common.showFacetsLabel')">
-                {{ $t("common.showFacets") }}
-            </button>
-        </div>
-        <div class="row mt-4" style="padding-right: 0.5rem">
-            <div class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
-                v-if="!philoConfig.dictionary_bibliography || results.result_type == 'doc'">
-                <div role="region" :aria-label="$t('bibliography.bibliographyResultsRegion')" aria-live="polite">
-                    <transition-group tag="div" :css="false" v-on:before-enter="beforeEnter" v-on:enter="enter">
-                        <article class="card philologic-occurrence mx-2 mb-4 shadow-sm"
-                            v-for="(result, index) in results.results" :key="result.philo_id.join('-')" role="article">
-                            <div class="row citation-container">
-                                <div class="col-12 col-sm-10 col-md-11">
-                                    <div class="cite d-flex align-items-center" :data-id="result.philo_id.join(' ')">
-                                        <span class="number flex-shrink-0" aria-hidden="true">{{
-                                            results.description.start + index
-                                            }}</span>
-                                        <div :id="`citation-${results.description.start + index}`" class="flex-grow-1">
-                                            <citations :citation="result.citation"
-                                                :result-number="results.description.start + index"></citations>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </article>
-                    </transition-group>
-                </div>
+
+        <div class="row bibliography-layout mt-3 pe-1">
+            <!-- Facets sidebar - appears first in DOM for mobile accessibility -->
+            <div role="region" class="col-12 col-md-3 col-xl-3 facets-column" :aria-label="$t('common.facetsRegion')"
+                v-if="showFacets">
+                <facets></facets>
             </div>
-            <div class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
-                v-if="philoConfig.dictionary_bibliography && results.result_type != 'doc'">
-                <div role="region" :aria-label="$t('bibliography.dictionaryResultsRegion')" aria-live="polite">
-                    <div class="list-group" v-for="(group, groupKey) in results.results" :key="groupKey" role="group">
-                        <article class="list-group-item p-0" v-for="(result, index) in group" :key="index"
-                            style="border-width: 0">
-                            <div class="card philologic-occurrence mx-2 mb-4 shadow-sm">
-                                <header class="citation-dico-container">
-                                    <div class="cite" :data-id="result.philo_id.join(' ')"
-                                        :id="`dict-citation-${groupKey}-${index}`">
-                                        <span class="number" aria-hidden="true">{{ results.description.start + index
-                                        }}</span>
+
+            <!-- Results column for regular bibliography -->
+            <div role="region" class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
+                :aria-label="$t('bibliography.bibliographyResultsRegion')"
+                v-if="!philoConfig.dictionary_bibliography || results.result_type == 'doc'">
+                <transition-group tag="div" :css="false" v-on:before-enter="beforeEnter" v-on:enter="enter">
+                    <article class="card philologic-occurrence mx-2 mb-4 shadow-sm"
+                        v-for="(result, index) in results.results" :key="result.philo_id.join('-')" role="article">
+                        <div class="row citation-container">
+                            <div class="col-12">
+                                <div class="cite d-flex align-items-center" :data-id="result.philo_id.join(' ')">
+                                    <span class="number flex-shrink-0" aria-hidden="true">{{
+                                        results.description.start + index
+                                    }}</span>
+                                    <div :id="`citation-${results.description.start + index}`" class="flex-grow-1">
                                         <citations :citation="result.citation"
                                             :result-number="results.description.start + index"></citations>
                                     </div>
-                                </header>
-                                <div class="pt-3 px-3 text-content" select-word :position="result.position">
-                                    <div v-html="result.context"></div>
                                 </div>
                             </div>
-                        </article>
-                    </div>
+                        </div>
+                    </article>
+                </transition-group>
+            </div>
+
+            <!-- Results column for dictionary bibliography -->
+            <div role="region" class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
+                :aria-label="$t('bibliography.dictionaryResultsRegion')"
+                v-if="philoConfig.dictionary_bibliography && results.result_type != 'doc'">
+                <div class="list-group" v-for="(group, groupKey) in results.results" :key="groupKey" role="group">
+                    <article class="list-group-item p-0" v-for="(result, index) in group" :key="index"
+                        style="border-width: 0">
+                        <div class="card philologic-occurrence mx-2 mb-4 shadow-sm">
+                            <header class="citation-dico-container">
+                                <div class="cite" :data-id="result.philo_id.join(' ')"
+                                    :id="`dict-citation-${groupKey}-${index}`">
+                                    <span class="number" aria-hidden="true">{{ results.description.start + index
+                                        }}</span>
+                                    <citations :citation="result.citation"
+                                        :result-number="results.description.start + index"></citations>
+                                </div>
+                            </header>
+                            <div class="pt-3 px-3 text-content" select-word :position="result.position">
+                                <div v-html="result.context"></div>
+                            </div>
+                        </div>
+                    </article>
                 </div>
             </div>
-            <region class="col" md="5" xl="4" v-if="showFacets">
-                <facets></facets>
-            </region>
+
+            <div class="pages-wrapper">
+                <pages></pages>
+            </div>
         </div>
-        <pages></pages>
     </div>
 </template>
 <script>
@@ -168,13 +169,6 @@ export default {
                 onComplete: done,
             });
         },
-        toggleFacets() {
-            if (this.showFacets) {
-                this.showFacets = false;
-            } else {
-                this.showFacets = true;
-            }
-        },
     },
 };
 </script>
@@ -200,5 +194,50 @@ export default {
 
 .text-content {
     text-align: justify;
+}
+
+/* Mobile layout: facets above results */
+@media (max-width: 767px) {
+    .bibliography-layout {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .facets-column {
+        order: 1;
+        margin-bottom: 1rem;
+    }
+
+    .bibliography-layout>div[role="region"]:not(.facets-column) {
+        order: 2;
+    }
+
+    .pages-wrapper {
+        order: 3;
+        width: 100%;
+    }
+}
+
+/* Desktop layout: facets on right side */
+@media (min-width: 768px) {
+    .bibliography-layout {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    .facets-column {
+        order: 2;
+        padding-left: 0 !important;
+    }
+
+    .bibliography-layout>div[role="region"]:not(.facets-column) {
+        order: 1;
+    }
+
+    .pages-wrapper {
+        order: 3;
+        width: 100%;
+    }
 }
 </style>

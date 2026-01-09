@@ -31,13 +31,23 @@
                             {{ $t("timeSeries.chartTitle") }} - {{ currentFrequencyLabel }}
                         </h3>
 
-                        <Bar ref="chartComponent" id="time-series-chart" :data="chartData" :options="chartOptions"
-                            role="img" :aria-label="chartAriaLabel" aria-describedby="chart-instructions" tabindex="0"
-                            @keydown="handleChartKeydown" @focus="highlightBar(selectedBarIndex)" />
+                        <div class="chart-with-tooltip">
+                            <Bar ref="chartComponent" id="time-series-chart" :data="chartData" :options="chartOptions"
+                                role="img" :aria-label="chartAriaLabel" aria-describedby="chart-instructions"
+                                tabindex="0" @keydown="handleChartKeydown" @focus="highlightBar(selectedBarIndex)" />
+
+                            <!-- Custom HTML tooltip -->
+                            <div v-if="customTooltip.visible" class="custom-tooltip" :style="customTooltip.style"
+                                @mouseenter="handleTooltipMouseEnter" @mouseleave="handleTooltipMouseLeave">
+                                <div class="tooltip-title">{{ customTooltip.title }}</div>
+                                <div class="tooltip-value">{{ customTooltip.value }}</div>
+                            </div>
+                        </div>
 
                         <div class="visually-hidden" id="chart-instructions">
                             Use arrow keys to navigate between time periods, Enter or Space to view detailed results for
-                            selected period.
+                            selected period, Escape to dismiss tooltip. A complete data table is available below for
+                            screen readers.
                         </div>
 
                         <!-- Hidden data table for screen readers -->
@@ -157,17 +167,8 @@ export default {
                         display: false,
                     },
                     tooltip: {
-                        callbacks: {
-                            title: (tooltipItems) => {
-                                const item = tooltipItems[0];
-                                return this.formatDateRange(item.label, tooltipItems[0].dataIndex);
-                            },
-                            label: (tooltipItem) => {
-                                const value = tooltipItem.parsed.y;
-                                const unit = this.getCurrentUnit();
-                                return `${value} ${unit}`;
-                            },
-                        },
+                        enabled: false, // Disable default canvas tooltip
+                        external: (context) => this.externalTooltipHandler(context),
                     }
                 },
                 scales: {
@@ -215,12 +216,27 @@ export default {
             runningTotal: 0,
             dateCounts: {},
             selectedBarIndex: 0, // For keyboard navigation
+            customTooltip: {
+                visible: false,
+                title: '',
+                value: '',
+                style: {}
+            },
+            tooltipHoverTimeout: null,
+            isMouseOverTooltip: false,
         };
     },
     mounted() {
         this.formData.report = "time_series";
         this.currentReport = "time_series";
         this.fetchResults();
+
+        // Add global escape key listener for dismissing tooltip
+        document.addEventListener('keydown', this.handleGlobalEscape);
+    },
+    beforeUnmount() {
+        // Clean up global escape key listener
+        document.removeEventListener('keydown', this.handleGlobalEscape);
     },
     watch: {
         urlUpdate() {
@@ -288,12 +304,106 @@ export default {
                     shouldNavigate = true;
                     event.preventDefault();
                     break;
+                case 'Escape':
+                    this.dismissTooltip();
+                    event.preventDefault();
+                    break;
             }
 
             if (shouldNavigate) {
                 this.selectedBarIndex = newIndex;
                 this.highlightBar(newIndex);
             }
+        },
+
+        dismissTooltip() {
+            // Clear any pending hover timeout
+            if (this.tooltipHoverTimeout) {
+                clearTimeout(this.tooltipHoverTimeout);
+                this.tooltipHoverTimeout = null;
+            }
+            this.customTooltip.visible = false;
+            this.isMouseOverTooltip = false;
+        },
+
+        handleGlobalEscape(event) {
+            if (event.key === 'Escape' && this.customTooltip.visible) {
+                this.dismissTooltip();
+                event.preventDefault();
+            }
+        },
+
+        externalTooltipHandler(context) {
+            const { chart, tooltip } = context;
+
+            // If Chart.js wants to hide tooltip (mouse left bar area)
+            if (tooltip.opacity === 0) {
+                // Keep tooltip visible if mouse is over it, otherwise start delayed hide
+                if (!this.isMouseOverTooltip) {
+                    // Clear any existing timeout
+                    if (this.tooltipHoverTimeout) {
+                        clearTimeout(this.tooltipHoverTimeout);
+                    }
+                    // Give user time to move mouse to tooltip
+                    this.tooltipHoverTimeout = setTimeout(() => {
+                        // Only hide if mouse is still not over tooltip
+                        if (!this.isMouseOverTooltip) {
+                            this.customTooltip.visible = false;
+                        }
+                        this.tooltipHoverTimeout = null;
+                    }, 250);
+                }
+                return;
+            }
+
+            // Cancel any pending hide timeout when showing new tooltip
+            if (this.tooltipHoverTimeout) {
+                clearTimeout(this.tooltipHoverTimeout);
+                this.tooltipHoverTimeout = null;
+            }
+
+            // Set tooltip data
+            if (tooltip.body) {
+                const dataIndex = tooltip.dataPoints[0].dataIndex;
+                const title = this.formatDateRange(this.dateLabels[dataIndex], dataIndex);
+                const value = this.getCurrentData(dataIndex);
+                const unit = this.getCurrentUnit();
+
+                this.customTooltip.title = title;
+                this.customTooltip.value = `${value} ${unit}`;
+                this.customTooltip.visible = true;
+
+                // Position the tooltip
+                const position = chart.canvas.getBoundingClientRect();
+                this.customTooltip.style = {
+                    left: position.left + window.pageXOffset + tooltip.caretX + 'px',
+                    top: position.top + window.pageYOffset + tooltip.caretY + 'px',
+                };
+            }
+        },
+
+        handleTooltipMouseEnter() {
+            // Mark that mouse is over tooltip
+            this.isMouseOverTooltip = true;
+
+            // Cancel any pending hide timeout when mouse enters tooltip
+            if (this.tooltipHoverTimeout) {
+                clearTimeout(this.tooltipHoverTimeout);
+                this.tooltipHoverTimeout = null;
+            }
+        },
+
+        handleTooltipMouseLeave() {
+            // Mark that mouse left tooltip
+            this.isMouseOverTooltip = false;
+
+            // Hide tooltip after delay only if mouse is not back on bar
+            this.tooltipHoverTimeout = setTimeout(() => {
+                if (!this.isMouseOverTooltip) {
+                    this.customTooltip.visible = false;
+                }
+                this.tooltipHoverTimeout = null;
+            }, 200);
         },
 
         highlightBar(index) {
@@ -480,7 +590,9 @@ export default {
 };
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+@use "../assets/styles/theme.module.scss" as theme;
+
 #description {
     position: relative;
 }
@@ -515,6 +627,60 @@ export default {
 #time-series-chart:focus {
     outline: 2px solid #007bff;
     outline-offset: 2px;
+}
+
+/* Custom HTML tooltip */
+.chart-with-tooltip {
+    position: relative;
+}
+
+.custom-tooltip {
+    position: fixed;
+    background: theme.$button-color;
+    color: white;
+    border: 1px solid theme.$button-color;
+    border-radius: 4px;
+    padding: 0.2rem 0.5rem;
+    pointer-events: auto;
+    z-index: 1000;
+    transform: translate(-50%, -100%);
+    margin-top: 0px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3), 0 2px 4px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1.5;
+    white-space: nowrap;
+    transition: opacity 0.15s ease;
+}
+
+.custom-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 8px solid transparent;
+    border-top-color: theme.$button-color;
+}
+
+/* Create an invisible hover bridge between tooltip and chart */
+.custom-tooltip::before {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 40px;
+    height: 20px;
+    background: transparent;
+}
+
+.tooltip-title {
+    font-weight: bold;
+    margin-bottom: 0px;
+}
+
+.tooltip-value {
+    font-size: 13px;
 }
 
 /* Responsive chart sizing */

@@ -390,6 +390,29 @@ export default {
                             });
                         }
 
+                        // Add heading semantics to headword elements for accessibility
+                        let headwords = document.querySelectorAll("#text-obj-content .headword");
+                        headwords.forEach((headword) => {
+                            let current = headword.parentElement;
+                            let depth = 0;
+
+                            // Count every <div> ancestor until we hit the container
+                            while (current && current.id !== 'text-obj-content') {
+                                if (current.tagName.toLowerCase() === 'div') {
+                                    depth++;
+                                }
+                                current = current.parentElement;
+                            }
+
+                            // Start at level 2:
+                            // depth 1 (one div) = level 2
+                            // depth 2 (nested div) = level 3, etc.
+                            const level = Math.min(depth + 1, 6);
+
+                            headword.setAttribute('role', 'heading');
+                            headword.setAttribute('aria-level', level - 2); // Two parents before div1
+                        });
+
                         let linkBack = document.getElementsByClassName("link-back");
                         if (linkBack.length > 0) {
                             Array.from(linkBack).forEach((el) => {

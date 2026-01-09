@@ -34,7 +34,8 @@
         "example": "exemple",
         "or": "ou",
         "opensInNewWindow": "(s'ouvre dans une nouvelle fenêtre)",
-        "searchInterface": "Interface de recherche"
+        "searchInterface": "Interface de recherche",
+        "forResult": "pour le résultat"
     },
     "header": {
         "toggleNavigation": "Basculer le menu de navigation",
@@ -200,8 +201,7 @@
         "less": "Moins",
         "resultsRegion": "Résultats de recherche de concordance",
         "resultNumber": "Numéro de résultat",
-        "showMoreContext": "Afficher plus de contexte pour le",
-        "forResult": "résultat"
+        "showMoreContext": "Afficher plus de contexte pour le"
     },
     "facets": {
         "browseByFacet": "Naviguer par facettes",
