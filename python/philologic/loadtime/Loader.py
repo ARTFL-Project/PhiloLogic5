@@ -24,13 +24,19 @@ import spacy
 from black import FileMode, format_str
 from multiprocess import Pool
 from orjson import loads
-from philologic.Config import MakeDBConfig, MakeWebConfig
-from philologic.loadtime.PostFilters import (make_sentences_database,
-                                             make_sql_table)
-from philologic.utils import (convert_entities, count_lines, extract_full_date,
-                              extract_integer, load_module, pretty_print,
-                              sort_list)
 from tqdm import tqdm
+
+from philologic.Config import MakeDBConfig, MakeWebConfig
+from philologic.loadtime.PostFilters import make_sentences_database, make_sql_table
+from philologic.utils import (
+    convert_entities,
+    count_lines,
+    extract_full_date,
+    extract_integer,
+    load_module,
+    pretty_print,
+    sort_list,
+)
 
 SORT_BY_WORD = "-k 2,2"
 SORT_BY_ID = "-k 3,3n -k 4,4n -k 5,5n -k 6,6n -k 7,7n -k 8,8n -k 9,9n"
@@ -287,6 +293,7 @@ class Loader:
     def parse_tei_header(self, verbose):
         """Parse header in TEI files"""
         load_metadata = []
+        deleted_files_error_cause = []
         metadata_xpaths = self.parser_config["doc_xpaths"]
         doc_count = len(os.listdir(self.textdir))
         if verbose:
@@ -306,12 +313,16 @@ class Loader:
                     file_content = "".join(text_file.readlines())
                 except UnicodeDecodeError:
                     self.deleted_files.append(file.name)
+                    deleted_files_error_cause.append((file.name, "invalid characters"))
                     continue
             try:
                 start_header_index = re.search(r"<teiheader", file_content, re.I).start()
                 end_header_index = re.search(r"</teiheader", file_content, re.I).start()
             except AttributeError:  # tag not found
+                if self.debug:
+                    print(f"File {file.name} contains no TEI header and will be skipped.")
                 self.deleted_files.append(file.name)
+                deleted_files_error_cause.append((file.name, "no TEI header"))
                 continue
             header = file_content[start_header_index:end_header_index]
             header = convert_entities(header)
@@ -365,12 +376,13 @@ class Loader:
                 load_metadata.append(data)
             except lxml.etree.XMLSyntaxError:
                 self.deleted_files.append(file.name)
+                deleted_files_error_cause.append((file.name, "invalid XML"))
         print(f"{prefix}... done.", flush=True)
         if self.deleted_files:
-            print(
-                "\nThe following files have been removed from the load since they have no valid TEI header or contain invalid data:\n",
-                ", ".join(self.deleted_files),
-            )
+            print("\nThe following files have been removed from the load:")
+            for filename, cause in deleted_files_error_cause:
+                print(f"File {filename}: {cause}")
+            print()
         return load_metadata
 
     def parse_dc_header(self):
