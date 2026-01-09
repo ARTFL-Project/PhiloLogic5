@@ -21,14 +21,6 @@
                                         <span class="number flex-shrink-0" aria-hidden="true">{{
                                             results.description.start + index
                                             }}</span>
-                                        <div class="form-check flex-shrink-0 ms-3 me-2"
-                                            v-if="resultType == 'doc' && philoConfig.metadata.indexOf('title') !== -1">
-                                            <input type="checkbox" class="form-check-input"
-                                                :id="`biblio-checkbox-${results.description.start + index}`"
-                                                @click="addToSearch(result.metadata_fields.title)"
-                                                :aria-describedby="`citation-${results.description.start + index}`"
-                                                :aria-label="$t('bibliography.selectForSearch')" />
-                                        </div>
                                         <div :id="`citation-${results.description.start + index}`" class="flex-grow-1">
                                             <citations :citation="result.citation"
                                                 :result-number="results.description.start + index"></citations>
@@ -111,7 +103,6 @@ export default {
             philoConfig: this.$philoConfig,
             results: {},
             resultType: "doc",
-            metadataAddition: [],
         };
     },
     created() {
@@ -166,21 +157,6 @@ export default {
             }
             data.results = groupedResults;
             return data;
-        },
-        addToSearch(titleValue) {
-            let title = '"' + titleValue + '"';
-            let itemIndex = this.metadataAddition.indexOf(title);
-            if (itemIndex === -1) {
-                this.metadataAddition.push(title);
-            } else {
-                this.metadataAddition.splice(itemIndex, 1);
-            }
-            let newTitleValue = this.metadataAddition.join(" | ");
-            this.mainStore.updateFormDataField({
-                key: "title",
-                value: newTitleValue,
-            });
-            this.metadataUpdate = { title: newTitleValue };
         },
         beforeEnter: function (el) {
             el.style.opacity = 0;
