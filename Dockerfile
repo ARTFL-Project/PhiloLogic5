@@ -23,7 +23,7 @@ ENV PATH=$NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 # Install PhiloLogic
 COPY . /PhiloLogic5
 WORKDIR /PhiloLogic5
-RUN ./install.sh -p python3 && a2enmod rewrite && a2enmod cgi && a2enmod brotli && a2enmod headers
+RUN ./install.sh && a2enmod rewrite && a2enmod cgi && a2enmod brotli && a2enmod headers && mkdir -p /var/www/html/philologic
 
 # Configure global variables
 RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic5.cfg && \

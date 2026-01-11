@@ -11,6 +11,9 @@ from itertools import product
 from operator import eq, le
 from pathlib import Path
 
+# Set umask before importing numba to ensure cache files are world-writable
+os.umask(0o000)
+
 import lmdb
 import msgspec
 import numba
@@ -20,7 +23,9 @@ from philologic.runtime import HitList
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 from unidecode import unidecode
 
-numba.config.CACHE_DIR = "/tmp/numba"
+# Set Numba cache directory
+os.environ["NUMBA_CACHE_DIR"] = "/var/lib/philologic5/numba_cache"
+numba.config.CACHE_DIR = "/var/lib/philologic5/numba_cache"
 
 OBJECT_LEVEL = {"para": 5, "sent": 6}
 

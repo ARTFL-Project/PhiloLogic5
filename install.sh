@@ -28,7 +28,7 @@ fi
 if ! command -v uv &> /dev/null
 then
     echo "uv could not be found. Installing system-wide..."
-    curl -LsSf https://astral.sh/uv/install.sh | sudo sh -s -- --prefix /usr/local
+    curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
 fi
 
 # Delete virtual environment if it already exists
@@ -41,6 +41,11 @@ fi
 sudo mkdir -p /var/lib/philologic5
 sudo chown -R $USER:$USER /var/lib/philologic5
 sudo chmod -R 755 /var/lib/philologic5
+
+# Create Numba cache directory with full write permissions
+# The sticky bit (1777) ensures new files/dirs inherit group write permissions
+sudo mkdir -p /var/lib/philologic5/numba_cache
+sudo chmod -R 1777 /var/lib/philologic5/numba_cache
 
 # Configure uv to install Python in /var/lib/philologic5/python
 # This location is accessible by all users
