@@ -87,7 +87,8 @@ export default {
                 let gLocal = Math.max(0, Math.round(g - g * step * i));
                 let bLocal = Math.max(0, Math.round(b - b * step * i));
                 let opacityStep = i * 0.03;
-                colorCodes[i] = `rgba(${rLocal}, ${gLocal}, ${bLocal}, ${0.8 + opacityStep})`;
+                // Start at 0.82 to meet WCAG AA contrast requirement (4.5:1)
+                colorCodes[i] = `rgba(${rLocal}, ${gLocal}, ${bLocal}, ${0.82 + opacityStep})`;
             }
             return colorCodes;
         }

@@ -7,6 +7,7 @@ import sqlite3
 
 import regex as re
 from lxml import etree, html
+
 from philologic.runtime.DB import DB
 from philologic.runtime.FragmentParser import parse as FragmentParserParse
 from philologic.runtime.link import make_absolute_query_link
@@ -355,7 +356,6 @@ def format_text_object(
                 el.tag = "b"
                 el.attrib["class"] = "headword"
                 el.attrib["role"] = "heading"
-                el.attrib["aria-level"] = "3"
             if el.tag == "sc" or el.tag == "scx":
                 el.tag = "span"
                 el.attrib["class"] = "small-caps"
@@ -374,7 +374,6 @@ def format_text_object(
                     el.tag = "b"
                     el.attrib["class"] = "headword"
                     el.attrib["role"] = "heading"
-                    el.attrib["aria-level"] = "3"
             elif el.tag == "list":
                 el.tag = "ul"
             elif el.tag == "title":

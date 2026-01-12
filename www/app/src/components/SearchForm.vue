@@ -5,7 +5,22 @@
             <form @submit.prevent @reset="onReset" @keyup.enter="onSubmit()" role="search">
                 <div id="form-body">
                     <div id="initial-form">
-                        <div class="btn-group" role="group" id="report" style="width: 100%; top: -1px">
+                        <!-- Mobile: Dropdown selector for report types -->
+                        <div class="d-block d-sm-none px-3 pt-3">
+                            <label for="report-type-mobile-select" class="form-label fw-bold">
+                                {{ $t('searchForm.selectReportType') }}
+                            </label>
+                            <select class="form-select" id="report-type-mobile-select" v-model="currentReport"
+                                @change="reportChange(currentReport)"
+                                :aria-label="$t('searchForm.selectReportType')">
+                                <option v-for="searchReport in reports" :key="searchReport" :value="searchReport">
+                                    {{ $t(`searchForm.${searchReport}`) }}
+                                </option>
+                            </select>
+                        </div>
+
+                        <!-- Desktop: Button group for report types -->
+                        <div class="btn-group d-none d-sm-flex" role="group" id="report" style="width: 100%; top: -1px">
                             <button type="button" :id="searchReport" v-for="searchReport in reports"
                                 @click="reportChange(searchReport)" :key="searchReport"
                                 class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }"
@@ -345,25 +360,25 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                 v-if="dateType[localField.value] == 'exact'" />
                                             <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
                                                 <div class="input-group ms-3">
-                                                    <button class="btn btn-outline-secondary" type="button"
-                                                        :id="localField.value + '-date-from-label'" tabindex="-1">
+                                                    <label class="btn btn-outline-secondary"
+                                                        :for="localField.value + '-start-input-filter'">
                                                         {{ $t("searchForm.dateFrom") }}
-                                                    </button>
+                                                    </label>
                                                     <input type="text" class="form-control date-range"
                                                         :id="localField.value + '-start-input-filter'"
                                                         :name="localField.value + '-start'"
                                                         :placeholder="localField.example"
-                                                        :aria-labelledby="localField.value + '-date-from-label'"
+                                                        :aria-label="`${$t('searchForm.dateFrom')} ${localField.label}`"
                                                         v-model="dateRange[localField.value].start" />
-                                                    <button class="btn btn-outline-secondary ms-3" type="button"
-                                                        :id="localField.value + '-date-to-label'" tabindex="-1">
+                                                    <label class="btn btn-outline-secondary ms-3"
+                                                        :for="localField.value + '-end-input-filter'">
                                                         {{ $t("searchForm.dateTo") }}
-                                                    </button>
+                                                    </label>
                                                     <input type="text" class="form-control date-range"
-                                                        :id="localField.value + 'end-input-filter'"
+                                                        :id="localField.value + '-end-input-filter'"
                                                         :name="localField.value + '-end'"
                                                         :placeholder="localField.example"
-                                                        :aria-labelledby="localField.value + '-date-to-label'"
+                                                        :aria-label="`${$t('searchForm.dateTo')} ${localField.label}`"
                                                         v-model="dateRange[localField.value].end" />
                                                 </div>
                                             </span>

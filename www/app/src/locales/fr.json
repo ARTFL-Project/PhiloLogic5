@@ -47,6 +47,7 @@
     },
     "searchForm": {
         "searchInterface": "Interface de recherche",
+        "selectReportType": "Sélectionner le type de rapport",
         "concordance": "Concordance",
         "kwic": "Mot-clé en contexte",
         "shortKwic": "KWIC",
@@ -193,6 +194,8 @@
         "viewToggle": "Basculer la vue pour la période",
         "filterBy": "Filtrer par",
         "selectDateType": "Sélectionner le type de date pour",
+        "compareBy": "Comparer par",
+        "selectField": "Sélectionner un champ",
         "invalidQuery": "Requête invalide pour les collocations",
         "invalidQueryExplanation": "Les collocations nécessitent une requête d'un seul mot. Utilisez OR ou NOT pour plusieurs termes (ex : volonté OR désir, volonté NOT volontés)"
     },

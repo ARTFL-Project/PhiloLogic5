@@ -47,6 +47,7 @@
     },
     "searchForm": {
         "searchInterface": "Search Interface",
+        "selectReportType": "Select report type",
         "concordance": "Concordance",
         "kwic": "Keyword In Context",
         "shortKwic": "KWIC",
@@ -193,6 +194,8 @@
         "viewToggle": "View toggle for period",
         "filterBy": "Filter by",
         "selectDateType": "Select date type for",
+        "compareBy": "Compare by",
+        "selectField": "Select a field",
         "invalidQuery": "Invalid query for collocations",
         "invalidQueryExplanation": "Collocations require a single word query. Use OR or NOT for multiple terms (e.g., volonté OR désir, volonté NOT volontés)"
     },

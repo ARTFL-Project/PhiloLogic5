@@ -1,9 +1,7 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import hashlib
-import mmap
 import os
-import struct
 import subprocess
 import sys
 from collections import deque
@@ -19,9 +17,10 @@ import msgspec
 import numba
 import numpy as np
 import regex as re
+from unidecode import unidecode
+
 from philologic.runtime import HitList
 from philologic.runtime.QuerySyntax import group_terms, parse_query
-from unidecode import unidecode
 
 # Set Numba cache directory
 os.environ["NUMBA_CACHE_DIR"] = "/var/lib/philologic5/numba_cache"

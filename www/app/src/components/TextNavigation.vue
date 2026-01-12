@@ -14,7 +14,7 @@
             <div id="toc-top-bar">
                 <div id="nav-buttons" v-scroll="handleScroll">
                     <button type="button" class="btn btn-secondary btn-sm" id="back-to-top" @click="backToTop()"
-                        :aria-label="$t('textNav.backToTop')">
+                        :aria-label="$t('textNav.backToTop')" v-show="navBarVisible">
                         <span class="d-none d-sm-inline-block">{{ $t("textNav.backToTop") }}</span>
                         <span class="d-inline-block d-sm-none">{{ $t("textNav.top") }}</span>
                     </button>
@@ -42,10 +42,6 @@
                         }}</a>
                 </div>
                 <nav id="toc" role="navigation" :aria-label="$t('textNav.tableOfContents')">
-                    <button type="button" class="btn btn-secondary visually-hidden" id="hide-toc"
-                        @click="toggleTableOfContents()" :aria-label="$t('textNav.closeToc')">
-                        <span class="icon-x"></span>
-                    </button>
                     <transition name="slide-fade">
                         <div class="card py-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"
                             :aria-label="$t('textNav.tocContent')">
@@ -328,7 +324,7 @@ export default {
                                 note.setAttribute('aria-label', `Note ${note.textContent || index + 1}`);
                                 note.setAttribute('aria-describedby', noteId);
 
-                                new Popover(note, {
+                                const popoverInstance = new Popover(note, {
                                     html: true,
                                     content: innerHTML,
                                     trigger: "focus",
@@ -341,6 +337,14 @@ export default {
                                     if (popoverElement) {
                                         popoverElement.setAttribute('id', noteId);
                                         popoverElement.setAttribute('role', 'tooltip');
+                                    }
+                                });
+
+                                // Allow Escape key to dismiss popover (WCAG 2.1 - Content on Focus)
+                                note.addEventListener('keydown', (e) => {
+                                    if (e.key === 'Escape') {
+                                        popoverInstance.hide();
+                                        note.focus();
                                     }
                                 });
                             });
@@ -367,7 +371,7 @@ export default {
                                             },
                                         })
                                         .then((response) => {
-                                            new Popover(noteRef, {
+                                            const popoverInstance = new Popover(noteRef, {
                                                 html: true,
                                                 content: response.data.text,
                                                 trigger: "focus",
@@ -383,6 +387,14 @@ export default {
                                                 }
                                             });
 
+                                            // Allow Escape key to dismiss popover (WCAG 2.1 - Content on Focus)
+                                            noteRef.addEventListener('keydown', (e) => {
+                                                if (e.key === 'Escape') {
+                                                    popoverInstance.hide();
+                                                    noteRef.focus();
+                                                }
+                                            });
+
                                             noteRef.removeEventListener("click", getNotes);
                                         });
                                 };
@@ -391,26 +403,27 @@ export default {
                         }
 
                         // Add heading semantics to headword elements for accessibility
-                        let headwords = document.querySelectorAll("#text-obj-content .headword");
+                        let headwords = document.querySelectorAll(".philologic-fragment .headword");
                         headwords.forEach((headword) => {
                             let current = headword.parentElement;
-                            let depth = 0;
+                            let headingDepth = 0;
 
-                            // Count every <div> ancestor until we hit the container
-                            while (current && current.id !== 'text-obj-content') {
+                            // Count parent divs that contain a .headword child
+                            while (current && current.className !== 'philologic-fragment') {
                                 if (current.tagName.toLowerCase() === 'div') {
-                                    depth++;
+                                    // Check if this div has a direct child .headword (but not the one we're processing)
+                                    const divHeadword = current.querySelector(':scope > .headword');
+                                    if (divHeadword && divHeadword !== headword) {
+                                        headingDepth++;
+                                    }
                                 }
                                 current = current.parentElement;
                             }
 
-                            // Start at level 2:
-                            // depth 1 (one div) = level 2
-                            // depth 2 (nested div) = level 3, etc.
-                            const level = Math.min(depth + 1, 6);
-
+                            // Level 2 is first heading, level 3+ for nested
+                            const level = headingDepth + 2;
                             headword.setAttribute('role', 'heading');
-                            headword.setAttribute('aria-level', level - 2); // Two parents before div1
+                            headword.setAttribute('aria-level', level);
                         });
 
                         let linkBack = document.getElementsByClassName("link-back");
@@ -775,8 +788,6 @@ export default {
                     tocWrapper.style.top = "31px";
                     let navButtons = document.getElementById("nav-buttons");
                     navButtons.classList.add("visible");
-                    let backToTop = document.getElementById("back-to-top");
-                    backToTop.classList.add("visible");
                     let reportError = document.getElementById("report-error");
                     if (reportError != null) {
                         reportError.classList.add("visible");
@@ -792,8 +803,6 @@ export default {
                 let navButtons = document.getElementById("nav-buttons");
                 navButtons.style.top = "initial";
                 navButtons.classList.remove("visible");
-                let backToTop = document.getElementById("back-to-top");
-                backToTop.classList.remove("visible");
                 let reportError = document.getElementById("report-error");
                 if (reportError != null) {
                     reportError.classList.remove("visible");
@@ -831,6 +840,9 @@ export default {
                 if (popover != null) {
                     Popover.getInstance(note).dispose();
                 }
+                // Remove all event listeners by cloning and replacing the node
+                const clone = note.cloneNode(true);
+                note.parentNode.replaceChild(clone, note);
             });
         },
     },
@@ -890,9 +902,6 @@ export default {
 #back-to-top {
     position: absolute;
     left: 0;
-    opacity: 0;
-    transition: opacity 0.25s;
-    pointer-events: none;
 }
 
 #report-error {
@@ -903,7 +912,6 @@ export default {
     pointer-events: none;
 }
 
-#back-to-top.visible,
 #report-error.visible {
     opacity: 0.95;
     pointer-events: all;
@@ -936,8 +944,10 @@ export default {
 }
 
 .toc-link.current-obj {
-    background: rgba(theme.$link-color, 0.1);
+    background: rgba(theme.$link-color, 0.15);
     font-weight: 600;
+    border-left: 3px solid theme.$link-color;
+    padding-left: calc(0.5rem - 3px);
 }
 
 .toc-tree {

@@ -4,6 +4,22 @@
             <strong>{{ $t('collocation.invalidQuery') }}</strong>
             <p class="mb-0">{{ $t('collocation.invalidQueryExplanation') }}</p>
         </div>
+        <!-- Mobile: Dropdown selector for collocation methods -->
+        <div class="d-block d-sm-none mt-3 mx-2">
+            <label for="colloc-method-mobile-select" class="form-label fw-bold">
+                {{ $t('collocation.methodSelectionTabs') }}
+            </label>
+            <select class="form-select" id="colloc-method-mobile-select" v-model="collocMethod"
+                @change="handleMobileMethodChange" :disabled="isInvalidCollocationQuery"
+                :aria-label="$t('collocation.methodSelectionTabs')">
+                <option value="frequency">{{ $t("collocation.collocation") }}</option>
+                <option value="compare">{{ $t("collocation.compareTo") }}</option>
+                <option value="similar">{{ $t("collocation.similarUsage") }}</option>
+                <option value="timeSeries">{{ $t("collocation.timeSeries") }}</option>
+            </select>
+        </div>
+
+        <!-- Desktop: Tab navigation for collocation methods -->
         <div class="d-none d-sm-block mt-3" style="padding: 0 0.5rem">
             <ul class="nav nav-tabs" id="colloc-method-switch" role="tablist"
                 :aria-label="$t('collocation.methodSelectionTabs')">
@@ -175,12 +191,16 @@
             </div>
             <div class="card mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'similar'">
                 <div class="d-flex align-items-center flex-wrap mt-2">
+                    <label for="similarity-field-select" class="me-2 fw-bold">
+                        {{ $t("collocation.compareBy") }}
+                    </label>
                     <div class="btn-group" style="width: fit-content;" role="group">
-                        <button class="btn btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown"
-                            aria-expanded="false">
-                            {{ this.similarFieldSelected || "Select a field" }}
+                        <button class="btn btn-secondary dropdown-toggle" type="button" id="similarity-field-select"
+                            data-bs-toggle="dropdown" aria-expanded="false"
+                            :aria-label="`${$t('collocation.compareBy')}: ${this.similarFieldSelected || $t('collocation.selectField')}`">
+                            {{ this.similarFieldSelected || $t('collocation.selectField') }}
                         </button>
-                        <ul class="dropdown-menu">
+                        <ul class="dropdown-menu" aria-labelledby="similarity-field-select">
                             <li v-for="field in fieldsToCompare" :key="field.value">
                                 <button type="button" class="dropdown-item"
                                     @click="similarCollocDistributions(field, 0)">
@@ -196,7 +216,7 @@
                     :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
 
                 <div class="mt-2" style="display: flex; align-items: center;" v-if="similarSearching">
-                    <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert">
+                    <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert" aria-live="polite" aria-atomic="true">
                         {{ similarSearchProgress }}...
                     </div>
                     <progress-spinner class="px-2" :progress="progressPercent" />
@@ -294,7 +314,7 @@
                                 <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                                     :aria-label="$t('collocation.comparisonCorpusResults')">
                                     <div class="d-flex justify-content-center position-relative" v-if="compareSearching"
-                                        role="status" :aria-label="$t('common.loading')">
+                                        role="status" aria-live="polite" aria-atomic="true" :aria-label="$t('common.loading')">
                                         <progress-spinner :progress="progressPercent" :lg="true" />
                                     </div>
                                     <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates"
@@ -312,7 +332,7 @@
                                 <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                                     :aria-label="$t('collocation.underRepresentedResults')">
                                     <div class="d-flex justify-content-center position-relative" v-if="compareSearching"
-                                        role="status" :aria-label="$t('common.loading')">
+                                        role="status" aria-live="polite" aria-atomic="true" :aria-label="$t('common.loading')">
                                         <progress-spinner :progress="progressPercent" :lg="true" />
                                     </div>
                                     <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
@@ -379,7 +399,7 @@
                 </div>
             </div>
             <div v-if="collocMethod == 'timeSeries'" class="mx-2 my-3">
-                <div v-if="searching" role="status" :aria-label="$t('common.loading')">
+                <div v-if="searching" role="status" aria-live="polite" aria-atomic="true" :aria-label="$t('common.loading')">
                     {{ $t('collocation.similarCollocGatheringMessage') }}...
                 </div>
                 <div v-if="collocationTimePeriods.length > 0" class="row" role="region"
@@ -419,6 +439,7 @@
                             </div>
                         </article>
                         <div style="margin-top: 5em; width: 100%; text-align: center" v-else role="status"
+                            aria-live="polite" aria-atomic="true"
                             :aria-label="`${$t('common.loading')} ${$t('collocation.gatheringTimeSeriesPeriod')}`">
                             <p class="mb-1">{{ $t('collocation.gatheringTimeSeriesPeriod') }}...</p>
                             <progress-spinner />
@@ -667,6 +688,13 @@ export default {
                 default:
                     this.getFrequency(updateUrl);
                     break;
+            }
+        },
+        handleMobileMethodChange() {
+            // The collocMethod v-model already updated the view
+            // Only compare mode needs special handling to open the form
+            if (this.collocMethod === 'compare') {
+                this.toggleCompare(false);
             }
         },
         checkCollocationMethod() {
