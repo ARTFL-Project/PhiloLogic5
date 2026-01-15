@@ -276,6 +276,7 @@ class Loader:
                 encoding="utf8",
                 dtype=str,  # Read all as strings initially to match current behavior
                 keep_default_na=False,  # Don't convert empty strings to NaN
+                skipinitialspace=True,  # Strip leading whitespace from column names and values
             )
         except FileNotFoundError:
             print(f"Error: Bibliography file not found: {bibliography_file}")
@@ -286,6 +287,12 @@ class Loader:
         except Exception as e:
             print(f"Error reading bibliography file {bibliography_file}: {e}")
             sys.exit(1)
+
+        # Strip whitespace from column names to match csv.DictReader behavior
+        df.columns = df.columns.str.strip()
+
+        # Strip whitespace from all string values to match csv.DictReader behavior
+        df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
 
         # Validate that required 'filename' column exists
         if "filename" not in df.columns:
