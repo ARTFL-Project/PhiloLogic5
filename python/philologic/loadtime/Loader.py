@@ -300,6 +300,11 @@ class Loader:
             print(f"Available columns: {', '.join(df.columns)}")
             sys.exit(1)
 
+        # Convert year column to int if present, otherwise keep as string
+        if "year" in df.columns:
+            # Convert year to int, replacing empty/invalid values with 0
+            df["year"] = pd.to_numeric(df["year"], errors="coerce").fillna(0).astype(int)
+
         if self.debug:
             print(f"Found {len(df)} records in bibliography file")
             print(f"Columns: {', '.join(df.columns)}")
@@ -307,7 +312,7 @@ class Loader:
         # Convert DataFrame to list of dictionaries
         load_metadata = df.to_dict("records")
 
-        # Process year field for each record
+        # Process year field for each record only if year column doesn't exist
         for metadata in load_metadata:
             if "year" not in metadata or not metadata["year"]:
                 metadata = self.create_year_field(metadata)
