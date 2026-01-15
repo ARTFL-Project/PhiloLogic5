@@ -191,6 +191,15 @@ class LoadOptions:
         if args.file_type == "plain_text":
             self.values["parser_factory"] = PlainTextParser.PlainTextParser
 
+        # Validate that files were provided
+        if not self.values["files"]:
+            print("\nError: No source files provided.", file=sys.stderr)
+            print("Usage: philoload5 [options] database_name /path/to/files", file=sys.stderr)
+            if args.bibliography:
+                print("\nNote: When using -b (bibliography), you still need to provide the source files.", file=sys.stderr)
+                print("Example: philoload5 -b metadata.csv dbname /path/to/files/*.txt", file=sys.stderr)
+            sys.exit(1)
+
         if self.debug:
             print(self)
 
