@@ -3,7 +3,6 @@
 Calls all parsing functions and stores data in index"""
 
 import collections
-import csv
 import datetime
 import hashlib
 import os
@@ -19,6 +18,7 @@ from json import dump
 import lmdb
 import lxml.etree
 import lz4.frame
+import pandas as pd
 import regex as re
 import spacy
 from black import FileMode, format_str
@@ -262,20 +262,52 @@ class Loader:
 
     def parse_bibliography_file(self, bibliography_file, sort_by_field, reverse_sort=True):
         """Parse tab delimited bibliography file: tsv, tab, or csv"""
-        load_metadata = []
+
+        # Detect delimiter based on file extension
         if bibliography_file.endswith(".tab") or bibliography_file.endswith(".tsv"):
             delimiter = "\t"
         else:
             delimiter = ","
-        with open(bibliography_file, encoding="utf8") as input_file:
-            reader = csv.DictReader(input_file, delimiter=delimiter)
-            load_metadata = []
-            for metadata in reader:
-                if "year" not in metadata:
-                    metadata = self.create_year_field(metadata)
-                if "year" not in metadata:
-                    metadata["year"] = 0
-                load_metadata.append(metadata)
+
+        try:
+            df = pd.read_csv(
+                bibliography_file,
+                delimiter=delimiter,
+                encoding="utf8",
+                dtype=str,  # Read all as strings initially to match current behavior
+                keep_default_na=False,  # Don't convert empty strings to NaN
+            )
+        except FileNotFoundError:
+            print(f"Error: Bibliography file not found: {bibliography_file}")
+            sys.exit(1)
+        except pd.errors.EmptyDataError:
+            print(f"Error: Bibliography file is empty: {bibliography_file}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"Error reading bibliography file {bibliography_file}: {e}")
+            sys.exit(1)
+
+        # Validate that required 'filename' column exists
+        if "filename" not in df.columns:
+            print("Error: Bibliography file must contain a 'filename' column")
+            print(f"Available columns: {', '.join(df.columns)}")
+            sys.exit(1)
+
+        if self.debug:
+            print(f"Found {len(df)} records in bibliography file")
+            print(f"Columns: {', '.join(df.columns)}")
+
+        # Convert DataFrame to list of dictionaries
+        load_metadata = df.to_dict("records")
+
+        # Process year field for each record
+        for metadata in load_metadata:
+            if "year" not in metadata or not metadata["year"]:
+                metadata = self.create_year_field(metadata)
+            if "year" not in metadata or not metadata["year"]:
+                metadata["year"] = 0
+
+        # Sort metadata
         print(
             "Sorting files by the following metadata fields: %s..." % ", ".join([i for i in sort_by_field]),
             end=" ",
@@ -288,6 +320,7 @@ class Loader:
 
         load_metadata.sort(key=make_sort_key, reverse=reverse_sort)
         print("done.")
+
         return load_metadata
 
     def parse_tei_header(self, verbose):
