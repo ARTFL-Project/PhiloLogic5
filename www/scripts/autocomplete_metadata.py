@@ -49,14 +49,29 @@ accented_roman_chars = re.compile(r"[\u00c0-\u0174]")
 
 def metadata_list(environ, start_response):
     """Retrieve metadata list"""
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
     config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
     db = DB(config.db_path + "/data/")
     request = WSGIHandler(environ, config)
     metadata = request.term
     field = request.field
+
+    # Handle list case early (workaround for when jquery sends a list of words via back button)
+    if isinstance(field, list):
+        field = field[-1]
+    if isinstance(metadata, list):
+        metadata = metadata[-1]
+
+    # Security validation - must happen here where start_response is available
+    if field not in db.locals.metadata_fields:
+        status = "400 Bad Request"
+        headers = [("Content-type", "text/plain; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
+        start_response(status, headers)
+        yield b"Invalid metadata field provided."
+        return
+
+    status = "200 OK"
+    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
+    start_response(status, headers)
     yield autocomplete_metadata(metadata, field, db)
 
 
@@ -64,19 +79,6 @@ def autocomplete_metadata(metadata, field, db):
     """Autocomplete metadata"""
     path = os.environ["SCRIPT_FILENAME"].replace("scripts/metadata_list.py", "")
     path += "data/frequencies/%s_frequencies" % field
-
-    ## Workaround for when jquery sends a list of words: this happens when using the back button
-    if isinstance(metadata, list):
-        metadata = metadata[-1]
-        field = field[-1]
-    
-    # --- SECURITY VALIDATION ---
-    if field not in db.locals.metadata_fields:
-        status = "400 Bad Request"
-        headers = [("Content-type", "text/plain"), ("Access-Control-Allow-Origin", "*")]
-        start_response(status, headers)
-        yield b"Invalid metadata field provided."
-        return    
 
     words = format_query(metadata, field, db)[:100]
     return orjson.dumps(words)
@@ -107,7 +109,6 @@ def format_query(q, field, db):
         norm_tok = token.lower()
         if db.locals.ascii_conversion is True:
             norm_tok = unidecode(norm_tok)
-        
 
         safe_token = re_stdlib.escape(token.lower())
         safe_norm_tok = re_stdlib.escape(norm_tok).encode("utf-8")
