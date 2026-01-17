@@ -7,8 +7,10 @@ from wsgiref.handlers import CGIHandler
 
 import orjson
 import regex as re
+import re as re_stdlib
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import metadata_pattern_search
+
 ## parse_query now resides in this script ##
 # from philologic.runtime.QuerySyntax import parse_query
 from unidecode import unidecode
@@ -67,6 +69,14 @@ def autocomplete_metadata(metadata, field, db):
     if isinstance(metadata, list):
         metadata = metadata[-1]
         field = field[-1]
+    
+    # --- SECURITY VALIDATION ---
+    if field not in db.locals.metadata_fields:
+        status = "400 Bad Request"
+        headers = [("Content-type", "text/plain"), ("Access-Control-Allow-Origin", "*")]
+        start_response(status, headers)
+        yield b"Invalid metadata field provided."
+        return    
 
     words = format_query(metadata, field, db)[:100]
     return orjson.dumps(words)
@@ -97,11 +107,14 @@ def format_query(q, field, db):
         norm_tok = token.lower()
         if db.locals.ascii_conversion is True:
             norm_tok = unidecode(norm_tok)
-        norm_tok = "".join(norm_tok).encode("utf-8")
+        
+
+        safe_token = re_stdlib.escape(token.lower())
+        safe_norm_tok = re_stdlib.escape(norm_tok).encode("utf-8")
 
         ## it's not clear that metadata_pattern_search generates suggestions... ##
         matches = metadata_pattern_search(
-            norm_tok, db.locals.db_path + "/data/frequencies/normalized_%s_frequencies" % field
+            safe_norm_tok, db.locals.db_path + "/data/frequencies/normalized_%s_frequencies" % field
         )
 
         ## ... so I'm going to keep all the code local and use only this function, ##
@@ -111,7 +124,7 @@ def format_query(q, field, db):
         ## potential damage to non-latin character sets. Not sure I actually need it ##
         ## but I'm doing it anyway... ##
 
-        substr_token = token.lower()
+        substr_token = safe_token.lower()
         exact_matches = exact_word_pattern_search(
             substr_token + ".*", db.locals.db_path + "/data/frequencies/", field, label, db.locals.ascii_conversion
         )
