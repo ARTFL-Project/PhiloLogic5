@@ -1,6 +1,7 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
+import shlex
 import sys
 from wsgiref.handlers import CGIHandler
 
@@ -55,9 +56,11 @@ def get_sorted_hits(request, config, db):
             key = fields.index(request.third_kwic_sorting_option) + 1
             sort_order.append(f"-k {key},{key}")
         sort_order = " ".join(sort_order)
+        # no numeric sort since we would have to know the type of the field being sorted on: e.g. -k 2,2n
+        safe_path = shlex.quote(request.cache_path)
         os.system(
-            f"tail -n +2 {request.cache_path} | sort {sort_order} > {request.cache_path}.sorted && rm {request.cache_path}"
-        )  # no numeric sort since we would have to know the type of the field being sorted on: e.g. -k 2,2n
+            f"tail -n +2 {safe_path} | sort {sort_order} > {safe_path}.sorted && rm {safe_path}"
+        )
     kwic_results = []
     with open(f"{request.cache_path}.sorted") as sorted_results:
         for line_number, line in enumerate(sorted_results, 1):

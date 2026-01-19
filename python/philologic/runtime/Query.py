@@ -23,8 +23,14 @@ from philologic.runtime import HitList
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 
 # Set Numba cache directory
-os.environ["NUMBA_CACHE_DIR"] = "/var/lib/philologic5/numba_cache"
-numba.config.CACHE_DIR = "/var/lib/philologic5/numba_cache"
+# Try shared cache first, fall back to /tmp if permission denied
+cache_dir = "/var/lib/philologic5/numba_cache"
+if not os.access(cache_dir, os.W_OK):
+    # In hardened containers, use per-user temp cache
+    cache_dir = f"/tmp/philologic_numba_cache_{os.getuid()}"
+    os.makedirs(cache_dir, mode=0o755, exist_ok=True)
+os.environ["NUMBA_CACHE_DIR"] = cache_dir
+numba.config.CACHE_DIR = cache_dir
 
 OBJECT_LEVEL = {"para": 5, "sent": 6}
 
