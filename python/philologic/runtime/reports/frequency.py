@@ -6,12 +6,14 @@ from urllib.parse import quote_plus
 
 from philologic.runtime.DB import DB
 from philologic.runtime.link import make_absolute_query_link
+from philologic.runtime.sql_validation import validate_column
 
 
 def frequency_results(request, config, sorted_results=False):
     """reads through a hitlist. looks up request.frequency_field in each hit, and builds up a list of
     unique values and their frequencies."""
     db = DB(config.db_path + "/data/")
+    frequency_field = validate_column(request.frequency_field, db)
     biblio_search = False
     if request.q == "" and request.no_q:
         biblio_search = True
@@ -32,16 +34,16 @@ def frequency_results(request, config, sorted_results=False):
             **request.metadata,
         )
 
-    metadata_type = db.locals["metadata_types"][request.frequency_field]
+    metadata_type = db.locals["metadata_types"][frequency_field]
     cursor = db.dbh.cursor()
     if metadata_type != "div":
         cursor.execute(
-            f"SELECT philo_id, {request.frequency_field} FROM toms WHERE philo_type=? AND {request.frequency_field} IS NOT NULL",
+            f"SELECT philo_id, {frequency_field} FROM toms WHERE philo_type=? AND {frequency_field} IS NOT NULL",
             (metadata_type,),
         )
     else:
         cursor.execute(
-            f"SELECT philo_id, {request.frequency_field} FROM toms WHERE philo_type IN (?, ?, ?) AND {request.frequency_field} IS NOT NULL",
+            f"SELECT philo_id, {frequency_field} FROM toms WHERE philo_type IN (?, ?, ?) AND {frequency_field} IS NOT NULL",
             ("div1", "div2", "div3"),
         )
     metadata_dict = {}
@@ -49,7 +51,7 @@ def frequency_results(request, config, sorted_results=False):
         philo_id = tuple(map(int, philo_id[: philo_id.index(" 0")].split()))
         metadata_dict[philo_id] = field_name
 
-    word_counts_by_field_name = db.query(get_word_count_field=request.frequency_field, **request.metadata)
+    word_counts_by_field_name = db.query(get_word_count_field=frequency_field, **request.metadata)
 
     counts = {}
     frequency_object = {}
@@ -109,15 +111,15 @@ def frequency_results(request, config, sorted_results=False):
                     continue
             key = f"{key}"  # convert potential integers to strings
             if key not in counts:
-                counts[key] = {"count": 0, "metadata": {request.frequency_field: key}}
-                counts[key]["url"] = f'{base_url}&{request.frequency_field}="{quote_plus(key)}"'
+                counts[key] = {"count": 0, "metadata": {frequency_field: key}}
+                counts[key]["url"] = f'{base_url}&{frequency_field}="{quote_plus(key)}"'
                 if not biblio_search:
                     try:
                         counts[key]["total_word_count"] = word_counts_by_field_name[key]
                     except KeyError:
                         # Worst case when there are different values for the field in div1, div2, and div3
                         query_metadata = {k: v for k, v in request.metadata.items() if v}
-                        query_metadata[request.frequency_field] = f'"{key}"'
+                        query_metadata[frequency_field] = f'"{key}"'
                         local_hits = db.query(**query_metadata)
                         counts[key]["total_word_count"] = local_hits.get_total_word_count()
             counts[key]["count"] += 1
@@ -132,7 +134,7 @@ def frequency_results(request, config, sorted_results=False):
         frequency_object["hits_done"] = request.start + hit_count
         if frequency_object["hits_done"] == len(hits):
             new_metadata = dict([(k, v) for k, v in request.metadata.items() if v])
-            new_metadata[request.frequency_field] = '"NULL"'
+            new_metadata[frequency_field] = '"NULL"'
             if request.q == "" and request.no_q:
                 new_hits = db.query(sort_order=["rowid"], raw_results=True, **new_metadata)
             else:
@@ -145,20 +147,20 @@ def frequency_results(request, config, sorted_results=False):
                 )
             new_hits.finish()
             if len(new_hits):
-                null_url = f'{base_url}&{request.frequency_field}="NULL"'
+                null_url = f'{base_url}&{frequency_field}="NULL"'
                 local_hits = db.query(**new_metadata, raw_results=True)
                 if not biblio_search:
                     frequency_object["results"]["NULL"] = {
                         "count": len(new_hits),
                         "url": null_url,
-                        "metadata": {request.frequency_field: '"NULL"'},
+                        "metadata": {frequency_field: '"NULL"'},
                         "total_word_count": local_hits.get_total_word_count(),
                     }
                 else:
                     frequency_object["results"]["NULL"] = {
                         "count": len(new_hits),
                         "url": null_url,
-                        "metadata": {request.frequency_field: '"NULL"'},
+                        "metadata": {frequency_field: '"NULL"'},
                     }
             frequency_object["more_results"] = False
         else:
@@ -183,6 +185,7 @@ def frequency_results(request, config, sorted_results=False):
 
 if __name__ == "__main__":
     import sys
+
     from philologic.runtime import WebConfig
 
     class Request:

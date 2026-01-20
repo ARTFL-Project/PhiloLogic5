@@ -13,8 +13,10 @@ from typing import Any
 
 import lmdb
 import msgspec
+
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_word_groups
+from philologic.runtime.sql_validation import validate_column, validate_object_level
 
 OBJECT_LEVEL = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5}
 
@@ -26,7 +28,8 @@ def collocation_results(request, config, current_collocates):
 
     map_field = request.map_field or None
     if map_field is not None:
-        obj_level = db.locals.metadata_types[map_field]
+        map_field = validate_column(map_field, db)
+        obj_level = validate_object_level(db.locals.metadata_types[map_field])
         field_obj_index = OBJECT_LEVEL[obj_level]
         file_path = create_file_path(request, map_field, config.db_path)
         if request.first == "true":  # make sure we don't start from a previous count
@@ -261,7 +264,11 @@ def build_filter_list(request, config, count_lemmas):
 
 
 def get_metadata_value(sql_cursor, field, sentence_id, index, obj_level):
-    """Get metadata value"""
+    """Get metadata value
+
+    Note: field and obj_level are expected to be pre-validated by the caller
+    using validate_column() and validate_object_level() to prevent SQL injection.
+    """
     object_id = " ".join(map(str, struct.unpack(f"{index}I", sentence_id[: index * 4])))
     sql_cursor.execute(f"SELECT {field} FROM toms WHERE philo_{obj_level}_id=?", (object_id,))
     return sql_cursor.fetchone()[0]

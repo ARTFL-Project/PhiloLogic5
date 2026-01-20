@@ -2,6 +2,7 @@
 """Report designed to group results by metadata with additional breakdown optional"""
 
 from philologic.runtime.DB import DB
+from philologic.runtime.sql_validation import validate_column, validate_object_level
 
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 OBJ_ZEROS = {"doc": 6, "div1": 5, "div2": 4, "div3": 3, "para": 2, "sent": 1, "word": 0}
@@ -28,18 +29,20 @@ def aggregation_by_field(request, config):
             **request.metadata,
         )
 
-    group_by = request.group_by
+    group_by = validate_column(request.group_by, db)
     field_obj = __get_field_config(group_by, config)
-    metadata_type = field_obj["object_level"]
+    metadata_type = validate_object_level(field_obj["object_level"])
 
     metadata_fields_needed = {group_by, "philo_id", f"philo_{metadata_type}_id"}
     for citation in field_obj["field_citation"]:
         if citation["field"] in db.locals["metadata_fields"]:
-            metadata_fields_needed.add(citation["field"])
+            # Validate citation field
+            metadata_fields_needed.add(validate_column(citation["field"], db))
     if field_obj["break_up_field_citation"] is not None:
         for citation in field_obj["break_up_field_citation"]:
             if citation["field"] in db.locals["metadata_fields"]:
-                metadata_fields_needed.add(citation["field"])
+                # Validate citation field
+                metadata_fields_needed.add(validate_column(citation["field"], db))
 
     # hits.finish()
     philo_ids = __expand_hits(hits, metadata_type)
@@ -166,6 +169,7 @@ def __get_field_config(group_by, config):
 
 if __name__ == "__main__":
     import sys
+
     from philologic.runtime import WebConfig
 
     class Request:

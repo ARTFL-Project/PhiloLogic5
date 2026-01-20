@@ -11,6 +11,7 @@ from unidecode import unidecode
 from . import HitList
 from .HitList import NoHits
 from .QuerySyntax import group_terms, parse_date_query, parse_query
+from .sql_validation import validate_column, validate_philo_type, validate_sort_order
 
 os.environ["PATH"] += ":/usr/local/bin/"
 
@@ -44,7 +45,8 @@ def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, asc
 
 def metadata_total_word_count_query(db, metadata, metadata_field_name, ascii_conversion=True):
     """Retrieve word count from text object"""
-    param_dicts = [{} for level in db.locals["metadata_hierarchy"]]
+    metadata_field_name = validate_column(metadata_field_name, db)
+    param_dicts = [{} for _ in db.locals["metadata_hierarchy"]]
     # Taken from DB.query
     for k, v in list(metadata.items()):
         for i, params in enumerate(db.locals["metadata_hierarchy"]):
@@ -69,14 +71,16 @@ def metadata_total_word_count_query(db, metadata, metadata_field_name, ascii_con
         prev = query
     cursor = db.dbh.cursor()
     philo_type = db.locals["metadata_types"][metadata_field_name]
+    if philo_type != "div":
+        philo_type = validate_philo_type(philo_type)
     if query is not None:
         philo_ids = []
         for row in query:
             philo_ids.append(row["philo_id"])
         if philo_type != "div":
             cursor.execute(
-                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_id IN ({', '.join('?' for _ in range(len(philo_ids)))}) AND philo_type='{philo_type}' GROUP BY {metadata_field_name}",
-                tuple(philo_ids),
+                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_id IN ({', '.join('?' for _ in range(len(philo_ids)))}) AND philo_type=? GROUP BY {metadata_field_name}",
+                tuple(philo_ids) + (philo_type,),
             )
         else:
             cursor.execute(
@@ -86,7 +90,8 @@ def metadata_total_word_count_query(db, metadata, metadata_field_name, ascii_con
     else:
         if philo_type != "div":
             cursor.execute(
-                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_type='{philo_type}' GROUP BY {metadata_field_name}"
+                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_type=? GROUP BY {metadata_field_name}",
+                (philo_type,),
             )
         else:
             cursor.execute(
@@ -124,6 +129,7 @@ def query_lowlevel(db, param_dict, sort_order, ascii_conversion):
     vars = []
     clauses = []
     for column, values in param_dict.items():
+        column = validate_column(column, db)
         norm_path = db.path + "/frequencies/normalized_" + column + "_frequencies"
         for v in values:
             parsed = "text"
@@ -143,6 +149,8 @@ def query_lowlevel(db, param_dict, sort_order, ascii_conversion):
             clauses.append(sql_clause)
     if not sort_order:
         sort_order = ["rowid"]
+    else:
+        sort_order = validate_sort_order(sort_order, db)
     if clauses:
         query = "SELECT philo_id FROM toms WHERE " + " AND ".join("(%s)" % c for c in clauses)
     else:

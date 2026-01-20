@@ -5,8 +5,10 @@ import sqlite3
 import sys
 
 import orjson
-from philologic.runtime.DB import DB
 from unidecode import unidecode
+
+from philologic.runtime.DB import DB
+from philologic.runtime.sql_validation import validate_column
 
 
 def landing_page_bibliography(request, config):
@@ -75,7 +77,7 @@ def landing_page_bibliography(request, config):
 def group_by_range(request_range, request, config):
     """Group metadata by range"""
     db = DB(config.db_path + "/data/")
-    metadata_queried = request.group_by_field
+    metadata_queried = validate_column(request.group_by_field, db)
     is_date = False
     try:
         int(request_range[0])
@@ -84,7 +86,7 @@ def group_by_range(request_range, request, config):
     except ValueError:
         pass
 
-    metadata_fields_needed, citations = get_fields_and_citations(request, config)
+    metadata_fields_needed, citations = get_fields_and_citations(request, config, db)
     cursor = db.dbh.cursor()
     content = {}
     if is_date:
@@ -157,9 +159,10 @@ def group_by_range(request_range, request, config):
 def group_by_metadata(request, config):
     """Count result by metadata field"""
     db = DB(config.db_path + "/data/")
-    metadata_fields_needed, citations = get_fields_and_citations(request, config)
+    group_by_field = validate_column(request.group_by_field, db)
+    metadata_fields_needed, citations = get_fields_and_citations(request, config, db)
     cursor = db.dbh.cursor()
-    query = f"""select * from toms where philo_type="doc" and {request.group_by_field}=?"""
+    query = f"""select * from toms where philo_type="doc" and {group_by_field}=?"""
     cursor.execute(query, (request.query,))
     result_group = []
     for doc in cursor:
@@ -184,14 +187,16 @@ def group_by_metadata(request, config):
     )
 
 
-def get_fields_and_citations(request, config):
+def get_fields_and_citations(request, config, db):
     """Get fields and citations"""
-    metadata_fields_needed = [request.group_by_field, "philo_id"]
+    group_by_field = validate_column(request.group_by_field, db)
+    metadata_fields_needed = [group_by_field, "philo_id"]
     citations = []
     for conf in config.default_landing_page_browsing:
-        if conf["group_by_field"] == request.group_by_field:
+        if conf["group_by_field"] == group_by_field:
             for citation in conf["citation"]:
                 citations.append(citation)
-                metadata_fields_needed.append(citation["field"])
+                citation_field = validate_column(citation["field"], db)
+                metadata_fields_needed.append(citation_field)
             break
     return metadata_fields_needed, citations

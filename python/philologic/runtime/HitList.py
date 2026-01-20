@@ -7,6 +7,7 @@ import time
 from unidecode import unidecode
 
 from .HitWrapper import HitWrapper
+from .sql_validation import validate_column, validate_philo_type
 
 obj_dict = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
@@ -51,6 +52,7 @@ class HitList(object):
         self.update()
 
         if self.sort_order:
+                        self.sort_order = [validate_column(col, dbh) for col in self.sort_order]
             self.sorted_hitlist = []
             iter_position = 0
             self.seek(iter_position)
@@ -67,6 +69,8 @@ class HitList(object):
                 metadata_types.add("div1")
                 metadata_types.add("div2")
                 metadata_types.add("div3")
+            # Validate metadata_types for defense in depth
+            metadata_types = [validate_philo_type(m) for m in metadata_types]
             cursor = self.dbh.dbh.cursor()
             query = "select * from toms where "
             if metadata_types:
