@@ -20,14 +20,14 @@ def generate_toc_object(request, config):
     doc_id = int(obj.philo_id[0])
     next_doc_id = doc_id + 1
     # find the starting rowid for this doc
-    cursor.execute(f'select rowid from toms where philo_id="{doc_id} 0 0 0 0 0 0"')
+    cursor.execute("SELECT rowid FROM toms WHERE philo_id=?", (f"{doc_id} 0 0 0 0 0 0",))
     start_rowid = cursor.fetchone()[0]
     # find the starting rowid for the next doc
-    cursor.execute(f'select rowid from toms where philo_id="{next_doc_id} 0 0 0 0 0 0"')
+    cursor.execute("SELECT rowid FROM toms WHERE philo_id=?", (f"{next_doc_id} 0 0 0 0 0 0",))
     try:
         end_rowid = cursor.fetchone()[0]
     except TypeError:  # if this is the last doc, just get the last rowid in the table.
-        cursor.execute("select max(rowid) from toms;")
+        cursor.execute("SELECT max(rowid) FROM toms;")
         end_rowid = cursor.fetchone()[0]
 
     # use start_rowid and end_rowid to fetch every div in the document.

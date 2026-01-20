@@ -3,6 +3,8 @@
 
 from urllib.parse import quote_plus
 
+from philologic.runtime.sql_validation import validate_object_level
+
 
 def url_encode(q_params):
     """URL encode."""
@@ -59,14 +61,21 @@ def make_byte_range_link(config, philo_id, start_byte, end_byte):
 
 def byte_range_to_link(db, config, request, obj_level="div1"):
     """Find container objects for given byte range and doc id and return links"""
+    # Validate obj_level to prevent SQL injection
+    obj_level = validate_object_level(obj_level)
+
     cursor = db.dbh.cursor()
     cursor.execute("SELECT philo_id FROM toms WHERE filename=?", (request.filename,))
     doc_id = cursor.fetchone()[0].split()[0]
     next_doc_id = str(int(doc_id) + 1)
     cursor.execute("SELECT rowid FROM toms WHERE philo_doc_id=?", (next_doc_id,))
     rowid = cursor.fetchone()[0]
+
+    # Use parameterized query for all user-controlled values
+    # Note: obj_level is validated above, so it's safe to interpolate
     cursor.execute(
-        f"SELECT philo_id FROM toms WHERE rowid < {rowid} and philo_type='{obj_level}' AND philo_id like '{doc_id} %' AND cast(start_byte as decimal) <= {request.start_byte} ORDER BY rowid desc"
+        "SELECT philo_id FROM toms WHERE rowid < ? AND philo_type=? AND philo_id LIKE ? AND CAST(start_byte AS decimal) <= ? ORDER BY rowid DESC",
+        (rowid, obj_level, f"{doc_id} %", request.start_byte)
     )
     philo_id = cursor.fetchone()[0]
     philo_id = philo_id.split()

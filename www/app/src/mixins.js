@@ -18,26 +18,11 @@ export function paramsFilter(formValues) {
         if (field === "report") {
             continue;
         }
-        // Check if this field should skip validFields validation
-        const facetSupportedReports = ["concordance", "kwic", "bibliography"];
-        const isFacetParam =
-            field === "facet" ||
-            field === "relative_frequency" ||
-            field === "word_property";
-        const isCollocationParam =
-            field === "collocation_method" ||
-            field === "similarity_by" ||
-            field === "time_series_interval";
-        const isCompareParam =
-            field.startsWith("compare_") && formValues.report === "collocation";
-
-        const shouldSkipValidation =
-            (isFacetParam &&
-                facetSupportedReports.includes(formValues.report)) ||
-            (isCollocationParam && formValues.report === "collocation") ||
-            isCompareParam;
-
-        if (!shouldSkipValidation && !validFields.has(field)) {
+        // Reports that support facets
+        const facetSupportedReports = ['concordance', 'kwic', 'bibliography'];
+        const supportsFacets = facetSupportedReports.includes(formValues.report);
+        
+        if (!validFields.has(field) && !(field === 'facet' && supportsFacets) && !(field === 'relative_frequency' && supportsFacets)) {
             continue;
         }
         if (
@@ -67,7 +52,6 @@ export function paramsFilter(formValues) {
             localFormData[field] = value;
         }
     }
-
     return localFormData;
 }
 export function paramsToRoute(formValues) {
@@ -168,7 +152,7 @@ export function deepEqual(x, y) {
         ty = typeof y;
     return x && y && tx === "object" && tx === ty
         ? ok(x).length === ok(y).length &&
-              ok(x).every((key) => deepEqual(x[key], y[key]))
+              ok(x).every((key) => this.deepEqual(x[key], y[key]))
         : x === y;
 }
 export function dictionaryLookup(event, year) {
@@ -296,68 +280,6 @@ export function debug(component, message) {
     console.log(`MESSAGE FROM ${component.$options.name}:`, message);
 }
 
-export function isOnlyFacetChange(newUrl, oldUrl) {
-    const differences = [];
-    const ok = Object.keys;
-
-    // Get all unique keys from both objects
-    const allKeys = new Set([...ok(newUrl || {}), ...ok(oldUrl || {})]);
-
-    for (const key of allKeys) {
-        if (newUrl?.[key] != oldUrl?.[key]) {
-            if (
-                key != "facet" &&
-                key != "relative_frequency" &&
-                key != "collocation_method" &&
-                key != "similarity_by" &&
-                key != "word_property"
-            ) {
-                return false;
-            }
-            differences.push(key);
-        }
-    }
-
-    return differences.length > 0;
-}
-
-export function buildTocTree(elements) {
-    const tree = [];
-    const typeHierarchy = {
-        div1: 1,
-        div2: 2,
-        div3: 3,
-    };
-
-    let stack = [];
-
-    for (let element of elements) {
-        const elementLevel = typeHierarchy[element.philo_type] || 1;
-        element.level = elementLevel;
-        element.children = [];
-
-        // Find the appropriate parent in the stack
-        while (
-            stack.length > 0 &&
-            stack[stack.length - 1].level >= elementLevel
-        ) {
-            stack.pop();
-        }
-
-        if (stack.length === 0) {
-            // This is a top-level element
-            tree.push(element);
-        } else {
-            // This is a child of the last element in the stack
-            stack[stack.length - 1].children.push(element);
-        }
-
-        stack.push(element);
-    }
-
-    return tree;
-}
-
 export default {
     paramsFilter,
     paramsToRoute,
@@ -372,6 +294,4 @@ export default {
     buildBiblioCriteria,
     extractSurfaceFromCollocate,
     debug,
-    isOnlyFacetChange,
-    buildTocTree,
 };

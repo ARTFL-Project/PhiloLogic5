@@ -7,6 +7,7 @@ from wsgiref.handlers import CGIHandler
 import numpy as np
 import orjson
 from philologic.runtime.DB import DB
+from philologic.runtime.sql_validation import validate_column, validate_philo_type
 
 sys.path.append("..")
 import custom_functions
@@ -80,17 +81,29 @@ def get_total_count(environ, start_response):
                 philo_type = db.locals["metadata_types"][field_obj["field"]]
             except KeyError:
                 continue
+            # Validate field name to prevent SQL injection
+            field = validate_column(field_obj["field"], db)
+            # Convert doc set to list for parameterized query
+            doc_list = list(docs[pos])
+            placeholders = ", ".join("?" for _ in doc_list)
+            # Strip quotes from philo_ids (they were added for the old string interpolation)
+            doc_values = [d.strip("'") for d in doc_list]
+
             if philo_type != "div":
+                philo_type = validate_philo_type(philo_type)
                 cursor.execute(
-                    f"SELECT COUNT(DISTINCT {field_obj['field']}) FROM toms WHERE philo_type='{philo_type}' AND philo_id IN ({', '.join(docs[pos])})"
+                    f"SELECT COUNT(DISTINCT {field}) FROM toms WHERE philo_type=? AND philo_id IN ({placeholders})",
+                    (philo_type, *doc_values)
                 )
             else:
                 cursor.execute(
-                    f"SELECT COUNT(DISTINCT {field_obj['field']}) FROM toms WHERE philo_type IN ('div1', 'div2', 'div3') AND philo_id IN ({', '.join(docs[pos])})"
+                    f"SELECT COUNT(DISTINCT {field}) FROM toms WHERE philo_type IN ('div1', 'div2', 'div3') AND philo_id IN ({placeholders})",
+                    doc_values
                 )
             count = cursor.fetchone()[0]
             cursor.execute(
-                f"SELECT COUNT(0) FROM (SELECT DISTINCT {field_obj['field']} FROM toms WHERE philo_id IN ({', '.join(docs[pos])}) AND {field_obj['field']} IS NULL)"
+                f"SELECT COUNT(0) FROM (SELECT DISTINCT {field} FROM toms WHERE philo_id IN ({placeholders}) AND {field} IS NULL)",
+                doc_values
             )
             count += cursor.fetchone()[0]
         link_field = False

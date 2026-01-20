@@ -52,7 +52,7 @@ class HitList(object):
         self.update()
 
         if self.sort_order:
-                        self.sort_order = [validate_column(col, dbh) for col in self.sort_order]
+            self.sort_order = [validate_column(col, dbh) for col in self.sort_order]
             self.sorted_hitlist = []
             iter_position = 0
             self.seek(iter_position)

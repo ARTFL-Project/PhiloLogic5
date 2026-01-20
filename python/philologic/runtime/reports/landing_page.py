@@ -31,21 +31,22 @@ def landing_page_bibliography(request, config):
             hit_object["philo_id"] = "/".join([str(i) for i in hit.philo_id])
         doc_id = f"{hit.philo_id[0]} 0 0 0 0 0 0"
         next_doc_id = f"{hit.philo_id[0] + 1} 0 0 0 0 0 0"
-        c.execute(f'select rowid from toms where philo_id="{doc_id}"')
+        c.execute("SELECT rowid FROM toms WHERE philo_id=?", (doc_id,))
         doc_row = c.fetchone()["rowid"]
-        c.execute(f'select rowid from toms where philo_id="{next_doc_id}"')
+        c.execute("SELECT rowid FROM toms WHERE philo_id=?", (next_doc_id,))
         try:
             next_doc_row = c.fetchone()["rowid"]
         except TypeError:  # if this is the last doc, just get the last rowid in the table.
-            c.execute("select max(rowid) from toms;")
+            c.execute("SELECT max(rowid) FROM toms;")
             next_doc_row = c.fetchone()[0]
         try:
             c.execute(
-                f'select * from toms where rowid between {doc_row} and {next_doc_row} and head is not null and head !="" limit 1'
+                'SELECT * FROM toms WHERE rowid BETWEEN ? AND ? AND head IS NOT NULL AND head !="" LIMIT 1',
+                (doc_row, next_doc_row),
             )
         except sqlite3.OperationalError:  # no type field in DB
             c.execute(
-                'select * from toms where rowid between ? and ? and head is not null and head !="" limit 1',
+                'SELECT * FROM toms WHERE rowid BETWEEN ? AND ? AND head IS NOT NULL AND head !="" LIMIT 1',
                 (doc_row, next_doc_row),
             )
         try:
@@ -56,11 +57,13 @@ def landing_page_bibliography(request, config):
             start_head = ""
         try:
             c.execute(
-                f'select head from toms where rowid between {doc_row} and {next_doc_row} and head is not null and head !="" order by rowid desc limit 1'
+                'SELECT head FROM toms WHERE rowid BETWEEN ? AND ? AND head IS NOT NULL AND head !="" ORDER BY rowid DESC LIMIT 1',
+                (doc_row, next_doc_row),
             )
         except sqlite3.OperationalError:  # no type field in DB
             c.execute(
-                f'select head from toms where rowid between {doc_row} and {next_doc_row} and head is not null and head !="" order by rowid desc limit 1'
+                'SELECT head FROM toms WHERE rowid BETWEEN ? AND ? AND head IS NOT NULL AND head !="" ORDER BY rowid DESC LIMIT 1',
+                (doc_row, next_doc_row),
             )
         try:
             end_head = c.fetchone()["head"]

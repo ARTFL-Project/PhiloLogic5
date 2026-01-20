@@ -71,33 +71,46 @@ def metadata_total_word_count_query(db, metadata, metadata_field_name, ascii_con
         prev = query
     cursor = db.dbh.cursor()
     philo_type = db.locals["metadata_types"][metadata_field_name]
-    if philo_type != "div":
-        philo_type = validate_philo_type(philo_type)
+    results = {}
+
     if query is not None:
         philo_ids = []
         for row in query:
             philo_ids.append(row["philo_id"])
-        if philo_type != "div":
-            cursor.execute(
-                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_id IN ({', '.join('?' for _ in range(len(philo_ids)))}) AND philo_type=? GROUP BY {metadata_field_name}",
-                tuple(philo_ids) + (philo_type,),
-            )
-        else:
-            cursor.execute(
-                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_id IN ({', '.join('?' for _ in range(len(philo_ids)))}) AND philo_type IN ('div1', 'div2', 'div3') GROUP BY {metadata_field_name}",
-                tuple(philo_ids),
-            )
+
+        # SQLite has a limit of ~999 SQL variables, so batch large queries
+        BATCH_SIZE = 900
+        for i in range(0, len(philo_ids), BATCH_SIZE):
+            batch = philo_ids[i:i + BATCH_SIZE]
+            placeholders = ', '.join('?' for _ in batch)
+            if philo_type != "div":
+                cursor.execute(
+                    f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_id IN ({placeholders}) AND philo_type='{philo_type}' GROUP BY {metadata_field_name}",
+                    tuple(batch),
+                )
+            else:
+                cursor.execute(
+                    f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_id IN ({placeholders}) AND philo_type IN ('div1', 'div2', 'div3') GROUP BY {metadata_field_name}",
+                    tuple(batch),
+                )
+            for row in cursor:
+                key = row[metadata_field_name]
+                if key in results:
+                    results[key] += row["total_sum"]
+                else:
+                    results[key] = row["total_sum"]
     else:
         if philo_type != "div":
             cursor.execute(
-                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_type=? GROUP BY {metadata_field_name}",
-                (philo_type,),
+                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_type='{philo_type}' GROUP BY {metadata_field_name}"
             )
         else:
             cursor.execute(
                 f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_type IN ('div1', 'div2', 'div3') GROUP BY {metadata_field_name}"
             )
-    results = {row[metadata_field_name]: row["total_sum"] for row in cursor}
+        for row in cursor:
+            results[row[metadata_field_name]] = row["total_sum"]
+
     return results
 
 
@@ -210,7 +223,11 @@ def expand_grouped_query(grouped, norm_path, ascii_conversion):
 
 
 def make_grouped_sql_clause(expanded, column, db):
-    """Make SQL clauses"""
+    """Make SQL clauses
+
+    Note: column is expected to be pre-validated by validate_column() in query_lowlevel()
+    before being passed to this function, ensuring SQL injection protection.
+    """
     clauses = ""
     esc = escape_sql_string
     first_group = True
