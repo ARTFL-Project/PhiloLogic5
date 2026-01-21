@@ -18,11 +18,26 @@ export function paramsFilter(formValues) {
         if (field === "report") {
             continue;
         }
-        // Reports that support facets
-        const facetSupportedReports = ['concordance', 'kwic', 'bibliography'];
-        const supportsFacets = facetSupportedReports.includes(formValues.report);
-        
-        if (!validFields.has(field) && !(field === 'facet' && supportsFacets) && !(field === 'relative_frequency' && supportsFacets)) {
+        // Check if this field should skip validFields validation
+        const facetSupportedReports = ["concordance", "kwic", "bibliography"];
+        const isFacetParam =
+            field === "facet" ||
+            field === "relative_frequency" ||
+            field === "word_property";
+        const isCollocationParam =
+            field === "collocation_method" ||
+            field === "similarity_by" ||
+            field === "time_series_interval";
+        const isCompareParam =
+            field.startsWith("compare_") && formValues.report === "collocation";
+
+        const shouldSkipValidation =
+            (isFacetParam &&
+                facetSupportedReports.includes(formValues.report)) ||
+            (isCollocationParam && formValues.report === "collocation") ||
+            isCompareParam;
+
+        if (!shouldSkipValidation && !validFields.has(field)) {
             continue;
         }
         if (
@@ -52,6 +67,7 @@ export function paramsFilter(formValues) {
             localFormData[field] = value;
         }
     }
+
     return localFormData;
 }
 export function paramsToRoute(formValues) {
@@ -59,7 +75,7 @@ export function paramsToRoute(formValues) {
     if (
         (!formValues.q || formValues.q.length == 0) &&
         !["bibliography", "aggregation", "time_series"].includes(
-            formValues.report
+            formValues.report,
         )
     ) {
         report = "bibliography";
@@ -78,7 +94,7 @@ export function paramsToUrlString(params) {
     let queryParams = [];
     for (let param in filteredParams) {
         queryParams.push(
-            `${param}=${encodeURIComponent(filteredParams[param])}`
+            `${param}=${encodeURIComponent(filteredParams[param])}`,
         );
     }
     return queryParams.join("&");
@@ -152,7 +168,7 @@ export function deepEqual(x, y) {
         ty = typeof y;
     return x && y && tx === "object" && tx === ty
         ? ok(x).length === ok(y).length &&
-              ok(x).every((key) => this.deepEqual(x[key], y[key]))
+              ok(x).every((key) => deepEqual(x[key], y[key]))
         : x === y;
 }
 export function dictionaryLookup(event, year) {
@@ -177,7 +193,7 @@ export function dateRangeHandler(
     metadataInputStyle,
     dateRange,
     dateType,
-    metadataValues
+    metadataValues,
 ) {
     for (let metadata in metadataInputStyle) {
         if (
@@ -192,23 +208,20 @@ export function dateRangeHandler(
                 dateRange[metadata].start.length > 0 &&
                 dateRange[metadata].end.length > 0
             ) {
-                metadataValues[
-                    metadata
-                ] = `${dateRange[metadata].start}${separator}${dateRange[metadata].end}`;
+                metadataValues[metadata] =
+                    `${dateRange[metadata].start}${separator}${dateRange[metadata].end}`;
             } else if (
                 dateRange[metadata].start.length > 0 &&
                 dateRange[metadata].end.length == 0
             ) {
-                metadataValues[
-                    metadata
-                ] = `${dateRange[metadata].start}${separator}`;
+                metadataValues[metadata] =
+                    `${dateRange[metadata].start}${separator}`;
             } else if (
                 dateRange[metadata].start.length == 0 &&
                 dateRange[metadata].end.length > 0
             ) {
-                metadataValues[
-                    metadata
-                ] = `${separator}${dateRange[metadata].end}`;
+                metadataValues[metadata] =
+                    `${separator}${dateRange[metadata].end}`;
             }
         }
     }
