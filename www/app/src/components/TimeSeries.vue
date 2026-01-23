@@ -19,7 +19,7 @@
                 <!-- Chart container -->
                 <div class="chart-wrapper p-3 mt-4">
                     <div v-if="searching" class="text-center p-5">
-                        <div class="spinner-border" role="status" aria-live="polite">
+                        <div class="spinner-border" role="status" aria-live="polite" aria-atomic="true">
                             <span class="visually-hidden">{{ $t("common.loading") }}</span>
                         </div>
                         <div class="mt-2" aria-live="polite">

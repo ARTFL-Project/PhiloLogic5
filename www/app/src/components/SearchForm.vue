@@ -333,7 +333,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                     style="border-top-left-radius: 0; border-bottom-left-radius: 0"
                                                     type="button" :id="localField.value + '-selector'"
                                                     data-bs-toggle="dropdown" aria-expanded="false"
-                                                    :aria-label="`${$t('searchForm.selectDateType')} ${localField.label}`">
+                                                    :aria-label="$t(`searchForm.${dateType[localField.value]}DateLabel`, { field: localField.label })">
                                                     {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
                                                 </button>
                                                 <ul class="dropdown-menu"
@@ -361,6 +361,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                             <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
                                                 <div class="input-group ms-3">
                                                     <label class="btn btn-outline-secondary"
+                                                        :id="localField.value + '-from-label'"
                                                         :for="localField.value + '-start-input-filter'">
                                                         {{ $t("searchForm.dateFrom") }}
                                                     </label>
@@ -368,9 +369,10 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                         :id="localField.value + '-start-input-filter'"
                                                         :name="localField.value + '-start'"
                                                         :placeholder="localField.example"
-                                                        :aria-label="`${$t('searchForm.dateFrom')} ${localField.label}`"
+                                                        :aria-labelledby="`${localField.value}-date-label ${localField.value}-from-label`"
                                                         v-model="dateRange[localField.value].start" />
                                                     <label class="btn btn-outline-secondary ms-3"
+                                                        :id="localField.value + '-to-label'"
                                                         :for="localField.value + '-end-input-filter'">
                                                         {{ $t("searchForm.dateTo") }}
                                                     </label>
@@ -378,7 +380,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                         :id="localField.value + '-end-input-filter'"
                                                         :name="localField.value + '-end'"
                                                         :placeholder="localField.example"
-                                                        :aria-label="`${$t('searchForm.dateTo')} ${localField.label}`"
+                                                        :aria-labelledby="`${localField.value}-date-label ${localField.value}-to-label`"
                                                         v-model="dateRange[localField.value].end" />
                                                 </div>
                                             </span>
@@ -454,9 +456,8 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
             </form>
         </div>
         <div class="d-flex justify-content-center position-relative" v-if="searching">
-            <div class="spinner-border" style="width: 8rem; height: 8rem; position: absolute; z-index: 50; top: 30px"
-                role="status" aria-live="polite" :aria-label="$t('common.loading')">
-                <span class="visually-hidden">{{ $t("common.loading") }}</span>
+            <div style="position: absolute; z-index: 50; top: 30px">
+                <ProgressSpinner :xl="true" />
             </div>
         </div>
         <div class="modal fade" id="search-tips" tabindex="-1" aria-labelledby="search-tips-title" aria-hidden="true"
@@ -470,10 +471,12 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
 import SearchTips from "./SearchTips";
+import ProgressSpinner from "./ProgressSpinner";
 export default {
     name: "SearchForm",
     components: {
         SearchTips,
+        ProgressSpinner,
     },
     inject: ["$http"],
     computed: {

@@ -16,8 +16,9 @@
                     <span v-if="formData.approximate.length == 0 || formData.approximate == 'no'"></span>
 
                     <div class="term-groups-container" v-for="(group, index) in wordGroups" :key="index">
-                        <button type="button" class="term-group-word" @click="getQueryTerms(group, index)"
-                            :aria-label="$t('searchArgs.expandTermGroup', { group: group })">
+                        <button type="button" class="term-group-word" @click="getQueryTerms(group, index, $event)"
+                            :aria-label="$t('searchArgs.expandTermGroup', { group: group })"
+                            :ref="el => { if (el) termGroupButtons[index] = el }">
                             {{ group }}
                         </button>
                         <button type="button" class="close-pill" @click="removeTerm(index)"
@@ -28,9 +29,10 @@
                     {{ queryArgs.proximity }}
                 </span>
                 <div class="card outline-secondary shadow" id="query-terms" v-if="showQueryTerms" role="dialog"
-                    aria-modal="true" :aria-labelledby="'query-terms-title'">
+                    aria-modal="true" :aria-labelledby="'query-terms-title'" ref="queryTermsDialog"
+                    @keydown="handleDialogKeydown">
                     <button type="button" class="btn btn-secondary btn-sm close" @click="closeTermsList()"
-                        :aria-label="$t('common.close')">
+                        :aria-label="$t('common.close')" ref="closeButton">
                         <span class="icon-x"></span>
                     </button>
                     <span class="pe-4 h6" id="query-terms-title">
@@ -135,6 +137,8 @@ export default {
             termGroupsCopy: [],
             showQueryTerms: false,
             groupIndexSelected: null,
+            termGroupButtons: {},
+            triggerButtonIndex: null,
         };
     },
     created() {
@@ -236,6 +240,7 @@ export default {
         },
         getQueryTerms(group, index) {
             this.groupIndexSelected = index;
+            this.triggerButtonIndex = index;
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_query_terms.py`, {
                     params: {
@@ -247,6 +252,12 @@ export default {
                 .then((response) => {
                     this.words = response.data;
                     this.showQueryTerms = true;
+                    // Focus the close button when dialog opens
+                    this.$nextTick(() => {
+                        if (this.$refs.closeButton) {
+                            this.$refs.closeButton.focus();
+                        }
+                    });
                 })
                 .catch((error) => {
                     this.error = error.toString();
@@ -255,6 +266,39 @@ export default {
         },
         closeTermsList() {
             this.showQueryTerms = false;
+            // Return focus to the trigger button
+            this.$nextTick(() => {
+                const triggerButton = this.termGroupButtons[this.triggerButtonIndex];
+                if (triggerButton) {
+                    triggerButton.focus();
+                }
+            });
+        },
+        handleDialogKeydown(event) {
+            // Close on Escape
+            if (event.key === 'Escape') {
+                this.closeTermsList();
+                return;
+            }
+            // Focus trapping on Tab
+            if (event.key === 'Tab') {
+                const dialog = this.$refs.queryTermsDialog;
+                if (!dialog) return;
+                const focusableElements = dialog.querySelectorAll(
+                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                );
+                const firstElement = focusableElements[0];
+                const lastElement = focusableElements[focusableElements.length - 1];
+                if (event.shiftKey && document.activeElement === firstElement) {
+                    // Shift+Tab on first element: wrap to last
+                    event.preventDefault();
+                    lastElement.focus();
+                } else if (!event.shiftKey && document.activeElement === lastElement) {
+                    // Tab on last element: wrap to first
+                    event.preventDefault();
+                    firstElement.focus();
+                }
+            }
         },
         removeFromTermsList(word, groupIndex) {
             var index = this.words.indexOf(word);

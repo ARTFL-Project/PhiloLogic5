@@ -45,10 +45,9 @@
                     <transition name="slide-fade">
                         <div class="card py-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"
                             :aria-label="$t('textNav.tocContent')">
-                            <ul class="toc-tree" role="tree">
+                            <ul class="toc-tree">
                                 <li v-for="(element, elIndex) in processedTocElements" :key="elIndex"
-                                    :class="'toc-item toc-' + element.philo_type" role="treeitem"
-                                    :aria-level="element.level || 1">
+                                    :class="'toc-item toc-' + element.philo_type">
 
                                     <!-- Section content -->
                                     <div class="toc-content-wrapper">
@@ -60,18 +59,15 @@
                                             :class="{ 'current-obj': element.philo_id === currentPhiloId }"
                                             class="btn btn-link toc-link"
                                             @click="textObjectSelection(element.philo_id, elIndex, $event)"
-                                            :aria-label="$t('textNav.goToSection', { title: element.label })"
                                             :aria-current="element.philo_id === currentPhiloId ? 'page' : null">
                                             {{ element.label }}
                                         </button>
                                     </div>
 
                                     <!-- Child sections -->
-                                    <ul v-if="element.children && element.children.length > 0" class="toc-children"
-                                        role="group">
+                                    <ul v-if="element.children && element.children.length > 0" class="toc-children">
                                         <li v-for="(child, childIndex) in element.children" :key="childIndex"
-                                            :class="'toc-item toc-child toc-' + child.philo_type" role="treeitem"
-                                            :aria-level="child.level || 2">
+                                            :class="'toc-item toc-child toc-' + child.philo_type">
                                             <div class="toc-content-wrapper">
                                                 <span :class="'bullet-point-' + child.philo_type"
                                                     aria-hidden="true"></span>
@@ -79,19 +75,16 @@
                                                     :class="{ 'current-obj': child.philo_id === currentPhiloId }"
                                                     class="btn btn-link toc-link"
                                                     @click="textObjectSelection(child.philo_id, childIndex, $event)"
-                                                    :aria-label="$t('textNav.goToSection', { title: child.label })"
                                                     :aria-current="child.philo_id === currentPhiloId ? 'page' : null">
                                                     {{ child.label }}
                                                 </button>
                                             </div>
 
                                             <!-- Grandchildren (div3 level) -->
-                                            <ul v-if="child.children && child.children.length > 0" class="toc-children"
-                                                role="group">
+                                            <ul v-if="child.children && child.children.length > 0" class="toc-children">
                                                 <li v-for="(grandchild, grandchildIndex) in child.children"
                                                     :key="grandchildIndex"
-                                                    :class="'toc-item toc-child toc-' + grandchild.philo_type"
-                                                    role="treeitem" :aria-level="grandchild.level || 3">
+                                                    :class="'toc-item toc-child toc-' + grandchild.philo_type">
                                                     <div class="toc-content-wrapper">
                                                         <span :class="'bullet-point-' + grandchild.philo_type"
                                                             aria-hidden="true"></span>
@@ -99,7 +92,6 @@
                                                             :class="{ 'current-obj': grandchild.philo_id === currentPhiloId }"
                                                             class="btn btn-link toc-link"
                                                             @click="textObjectSelection(grandchild.philo_id, grandchildIndex, $event)"
-                                                            :aria-label="$t('textNav.goToSection', { title: grandchild.label })"
                                                             :aria-current="grandchild.philo_id === currentPhiloId ? 'page' : null">
                                                             {{ grandchild.label }}
                                                         </button>

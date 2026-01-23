@@ -1,8 +1,8 @@
 <template>
     <div class="spinner-container d-inline-block px-1">
-        <div class="spinner-border progress-spinner" role="status"
-            :class="{ 'spinner-border-sm': sm, 'spinner-large': lg }"><span class="visually-hidden">{{
-                $t("common.loading") }}...</span>
+        <div class="spinner-border progress-spinner" role="status" aria-live="polite" aria-atomic="true"
+            :class="{ 'spinner-border-sm': sm, 'spinner-large': lg, 'spinner-xl': xl }"><span class="visually-hidden">{{
+                message || $t("common.loading") }}...</span>
         </div>
         <div class="spinner-text" v-if="progress > 0" :class="{ 'spinner-text-large': lg }">
             {{ progress }}%
@@ -30,6 +30,14 @@ export default {
         lg: {
             type: Boolean,
             default: false
+        },
+        xl: {
+            type: Boolean,
+            default: false
+        },
+        message: {
+            type: String,
+            default: ''
         }
     },
 }
@@ -59,6 +67,12 @@ export default {
     width: 4rem;
     height: 4rem;
     border-width: .25em;
+}
+
+.spinner-xl {
+    width: 8rem;
+    height: 8rem;
+    border-width: .35em;
 }
 
 .progress-spinner {

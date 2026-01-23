@@ -69,12 +69,10 @@
         </div>
 
         <!-- Loading indicator -->
-        <div class="d-flex justify-content-center position-relative" v-if="loading" role="status" aria-live="polite"
-            aria-atomic="true" :aria-label="$t('common.loadingFacets')">
+        <div class="d-flex justify-content-center position-relative" v-if="loading">
             <div class="position-absolute" style="z-index: 50; top: 10px">
-                <progress-spinner :lg="true" />
+                <progress-spinner :lg="true" :message="$t('common.loadingFacets')" />
             </div>
-            <span class="visually-hidden">{{ $t('common.loadingFacets') }}</span>
         </div>
 
         <!-- Facet results -->

@@ -313,8 +313,7 @@
                                 </div>
                                 <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                                     :aria-label="$t('collocation.comparisonCorpusResults')">
-                                    <div class="d-flex justify-content-center position-relative" v-if="compareSearching"
-                                        role="status" aria-live="polite" aria-atomic="true" :aria-label="$t('common.loading')">
+                                    <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
                                         <progress-spinner :progress="progressPercent" :lg="true" />
                                     </div>
                                     <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates"
@@ -331,8 +330,7 @@
                                 </div>
                                 <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                                     :aria-label="$t('collocation.underRepresentedResults')">
-                                    <div class="d-flex justify-content-center position-relative" v-if="compareSearching"
-                                        role="status" aria-live="polite" aria-atomic="true" :aria-label="$t('common.loading')">
+                                    <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
                                         <progress-spinner :progress="progressPercent" :lg="true" />
                                     </div>
                                     <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
@@ -438,11 +436,9 @@
                                 </word-cloud>
                             </div>
                         </article>
-                        <div style="margin-top: 5em; width: 100%; text-align: center" v-else role="status"
-                            aria-live="polite" aria-atomic="true"
-                            :aria-label="`${$t('common.loading')} ${$t('collocation.gatheringTimeSeriesPeriod')}`">
-                            <p class="mb-1">{{ $t('collocation.gatheringTimeSeriesPeriod') }}...</p>
-                            <progress-spinner />
+                        <div style="margin-top: 5em; width: 100%; text-align: center" v-else>
+                            <p class="mb-1" aria-hidden="true">{{ $t('collocation.gatheringTimeSeriesPeriod') }}...</p>
+                            <progress-spinner :message="$t('collocation.gatheringTimeSeriesPeriod')" />
                         </div>
                     </div>
                 </div>

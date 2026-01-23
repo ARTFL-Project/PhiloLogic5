@@ -3,7 +3,8 @@
         <results-summary :description="results.description"></results-summary>
         <div class="row px-2 kwic-layout">
             <!-- Facets sidebar - appears first in DOM for mobile accessibility -->
-            <div role="region" class="col-12 col-md-4 col-xl-3 facets-column" :aria-label="$t('common.facetsRegion')" v-if="showFacets">
+            <div role="region" class="col-12 col-md-4 col-xl-3 facets-column" :aria-label="$t('common.facetsRegion')"
+                v-if="showFacets">
                 <facets></facets>
             </div>
 
@@ -22,12 +23,15 @@
                                 <div class="btn-group" v-for="(fields, index) in sortingFields" :key="index">
                                     <div class="dropdown">
                                         <button class="btn btn-light btn-sm dropdown-toggle sort-toggle"
-                                            :style="index == 0 ? 'border-left: 0 !important' : ''" :id="`kwicDrop${index}`"
-                                            data-bs-toggle="dropdown" aria-expanded="false"
+                                            :style="index == 0 ? 'border-left: 0 !important' : ''"
+                                            :id="`kwicDrop${index}`" data-bs-toggle="dropdown" aria-expanded="false"
                                             :aria-label="getSortingAriaLabel(index)">
                                             {{ sortingSelection[index] }}
                                         </button>
                                         <ul class="dropdown-menu" :aria-labelledby="`kwicDrop${index}`">
+                                            <li>
+                                                <span class="dropdown-header">{{ sortingLabels[index] }}</span>
+                                            </li>
                                             <li v-for="(selection, fieldIndex) in fields" :key="fieldIndex">
                                                 <button type="button" class="dropdown-item"
                                                     @click="updateSortingSelection(index, selection)"
@@ -227,6 +231,13 @@ export default {
             ];
             return sortingSelection;
         },
+        sortingLabels() {
+            return [
+                this.$t("kwic.firstLabel"),
+                this.$t("kwic.secondLabel"),
+                this.$t("kwic.thirdLabel")
+            ];
+        },
     },
     inject: ["$http"],
     provide() {
@@ -333,8 +344,8 @@ export default {
             this.results = { description: { end: 0 }, results: [] };
             this.searchParams = { ...this.formData };
             const hasSorting = this.first_kwic_sorting_option !== "" ||
-                             this.second_kwic_sorting_option !== "" ||
-                             this.third_kwic_sorting_option !== "";
+                this.second_kwic_sorting_option !== "" ||
+                this.third_kwic_sorting_option !== "";
             if (!hasSorting) {
                 this.searching = true;
                 this.$http
@@ -450,6 +461,18 @@ export default {
     border-top-left-radius: 0;
     border-bottom-right-radius: 0;
     border-top-right-radius: 0;
+}
+
+.dropdown-menu .dropdown-header {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    color: theme.$link-color;
+    padding: 0.25rem 1rem 0.4rem;
+    margin-top: -0.25rem;
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid rgba(theme.$button-color, 0.2);
 }
 
 #kwic-concordance {
@@ -673,7 +696,7 @@ export default {
         margin-bottom: 1rem;
     }
 
-    .kwic-layout > div[role="region"]:not(.facets-column) {
+    .kwic-layout>div[role="region"]:not(.facets-column) {
         order: 2;
     }
 
@@ -695,7 +718,7 @@ export default {
         order: 2;
     }
 
-    .kwic-layout > div[role="region"]:not(.facets-column) {
+    .kwic-layout>div[role="region"]:not(.facets-column) {
         order: 1;
     }
 

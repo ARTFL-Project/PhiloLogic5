@@ -24,10 +24,9 @@
                         <nav id="toc-report" class="text-content-area" role="navigation"
                             :aria-label="$t('toc.navigationLabel')">
                             <div id="toc-content" v-scroll="handleScroll" ref="tocContent" tabindex="0">
-                                <ul class="toc-tree" role="tree">
+                                <ul class="toc-tree">
                                     <li v-for="(element, elIndex) in processedTocElements.slice(0, displayLimit)"
-                                        :key="elIndex" :class="'toc-item toc-' + element.philo_type" role="treeitem"
-                                        :aria-level="element.level || 1">
+                                        :key="elIndex" :class="'toc-item toc-' + element.philo_type">
 
                                         <!-- Section content -->
                                         <div class="toc-content-wrapper">
@@ -35,46 +34,33 @@
                                                 aria-hidden="true">※</span>
                                             <span v-else :class="'bullet-point-' + element.philo_type"
                                                 aria-hidden="true"></span>
-                                            <router-link :to="element.href" class="toc-section" :aria-label="$t('toc.sectionLink', {
-                                                type: element.philo_type,
-                                                label: element.label
-                                            })">
+                                            <router-link :to="element.href" class="toc-section">
                                                 {{ element.label }}
                                             </router-link>
                                         </div>
 
                                         <!-- Child sections -->
-                                        <ul v-if="element.children && element.children.length > 0" class="toc-children"
-                                            role="group">
+                                        <ul v-if="element.children && element.children.length > 0" class="toc-children">
                                             <li v-for="(child, childIndex) in element.children" :key="childIndex"
-                                                :class="'toc-item toc-child toc-' + child.philo_type" role="treeitem"
-                                                :aria-level="child.level || 2">
+                                                :class="'toc-item toc-child toc-' + child.philo_type">
                                                 <div class="toc-content-wrapper">
                                                     <span :class="'bullet-point-' + child.philo_type"
                                                         aria-hidden="true"></span>
-                                                    <router-link :to="child.href" class="toc-section" :aria-label="$t('toc.sectionLink', {
-                                                        type: child.philo_type,
-                                                        label: child.label
-                                                    })">
+                                                    <router-link :to="child.href" class="toc-section">
                                                         {{ child.label }}
                                                     </router-link>
                                                 </div>
 
                                                 <!-- Grandchildren (div3 level) -->
                                                 <ul v-if="child.children && child.children.length > 0"
-                                                    class="toc-children" role="group">
+                                                    class="toc-children">
                                                     <li v-for="(grandchild, grandchildIndex) in child.children"
                                                         :key="grandchildIndex"
-                                                        :class="'toc-item toc-child toc-' + grandchild.philo_type"
-                                                        role="treeitem" :aria-level="grandchild.level || 3">
+                                                        :class="'toc-item toc-child toc-' + grandchild.philo_type">
                                                         <div class="toc-content-wrapper">
                                                             <span :class="'bullet-point-' + grandchild.philo_type"
                                                                 aria-hidden="true"></span>
-                                                            <router-link :to="grandchild.href" class="toc-section"
-                                                                :aria-label="$t('toc.sectionLink', {
-                                                                    type: grandchild.philo_type,
-                                                                    label: grandchild.label
-                                                                })">
+                                                            <router-link :to="grandchild.href" class="toc-section">
                                                                 {{ grandchild.label }}
                                                             </router-link>
                                                         </div>
