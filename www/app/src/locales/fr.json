@@ -81,6 +81,8 @@
         "resultsPerPage": "Nombre de résultats par page",
         "exactDate": "exact",
         "rangeDate": "intervalle",
+        "exactDateLabel": "{field} exact",
+        "rangeDateLabel": "Intervalle de {field}",
         "dateFrom": "de",
         "dateTo": "à",
         "dateRange": "Intervalle de temps",
@@ -269,8 +271,8 @@
     "aggregation": {
         "performance": "Pour des raisons de performance, seul les 100 premiers résultats seront affichés. Cliquer sur le lien ci-dessus pour voir tous les résultats.",
         "resultsRegion": "Résultats d'agrégation",
-        "expandBreakdown": "Développer les détails de la répartition",
-        "collapseBreakdown": "Réduire les détails de la répartition"
+        "expandBreakdown": "Développer les détails de la répartition pour {name}",
+        "collapseBreakdown": "Réduire les détails de la répartition pour {name}"
     },
     "landingPage": {
         "title": "Parcourir la Collection",

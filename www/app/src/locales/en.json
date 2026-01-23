@@ -80,6 +80,8 @@
         "resultsPerPage": "Results per page",
         "exactDate": "exact",
         "rangeDate": "range",
+        "exactDateLabel": "Exact {field}",
+        "rangeDateLabel": "{field} range",
         "dateFrom": "From",
         "dateTo": "To",
         "dateRange": "Date range",
@@ -269,8 +271,8 @@
     "aggregation": {
         "performance": "For performance reasons, only the first 1000 results are displayed. Click on the link above for full results.",
         "resultsRegion": "Aggregation results",
-        "expandBreakdown": "Expand breakdown details",
-        "collapseBreakdown": "Collapse breakdown details"
+        "expandBreakdown": "Expand breakdown details for {name}",
+        "collapseBreakdown": "Collapse breakdown details for {name}"
     },
     "landingPage": {
         "title": "Browse Collection",
