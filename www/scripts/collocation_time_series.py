@@ -3,7 +3,6 @@
 """Time series of collocations: each period is compared to the previous to get a sense of the shift between each period. """
 
 import os
-import pickle
 import sys
 from wsgiref.handlers import CGIHandler
 
@@ -23,6 +22,7 @@ try:
     from custom_functions import WSGIHandler
 except ImportError:
     from philologic.runtime import WSGIHandler
+from philologic.runtime.reports.collocation import safe_pickle_load
 
 
 def calculate_distinctive_collocates(current_period, prev_period, next_period, collocates_per_period):
@@ -51,7 +51,7 @@ def calculate_distinctive_collocates(current_period, prev_period, next_period, c
 
 
 def collocation_time_series(environ, start_response):
-    """Reads in a pickled file containing collocations for each year."""
+    """Reads in a pickle file containing collocations for each year."""
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
@@ -59,8 +59,7 @@ def collocation_time_series(environ, start_response):
     config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
     request = WSGIHandler(environ, config)
 
-    with open(request.file_path, "rb") as f:
-        collocates_per_year = pickle.load(f)
+    collocates_per_year = safe_pickle_load(request.file_path)
     # We create a dataframe where rows are years and columns are collocates.
     vectorizer = DictVectorizer(dtype=int, sparse=True)
     arrays = vectorizer.fit_transform(collocates_per_year.values())

@@ -2,6 +2,7 @@
 """Collocation results"""
 
 import hashlib
+import io
 import os
 import pickle
 import struct
@@ -13,12 +14,32 @@ from typing import Any
 
 import lmdb
 import msgspec
+import orjson
 
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_word_groups
 from philologic.runtime.sql_validation import validate_column, validate_object_level
 
 OBJECT_LEVEL = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5}
+
+
+class RestrictedUnpickler(pickle.Unpickler):
+    """Unpickler that only allows safe classes for collocation data."""
+
+    ALLOWED_CLASSES = {
+        ("collections", "Counter"),
+    }
+
+    def find_class(self, module, name):
+        if (module, name) in self.ALLOWED_CLASSES:
+            return super().find_class(module, name)
+        raise pickle.UnpicklingError(f"Forbidden class: {module}.{name}")
+
+
+def safe_pickle_load(file_path):
+    """Load a pickle file with restricted classes."""
+    with open(file_path, "rb") as f:
+        return RestrictedUnpickler(f).load()
 
 
 def collocation_results(request, config, current_collocates):
@@ -35,8 +56,7 @@ def collocation_results(request, config, current_collocates):
         if request.first == "true":  # make sure we don't start from a previous count
             collocate_map = {}
         elif os.path.exists(file_path):
-            with open(file_path, "rb") as f:
-                collocate_map = pickle.load(f)
+            collocate_map = safe_pickle_load(file_path)
         else:
             collocate_map = {}
         sql_cursor = db.dbh.cursor()

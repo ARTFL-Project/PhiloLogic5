@@ -228,18 +228,17 @@ class HitList(object):
                 break
             iter_position += 1
         c = self.dbh.dbh.cursor()
-        query = "SELECT SUM(word_count) FROM toms WHERE "
         ids = []
         for id in philo_ids:
-            ids.append(f'''philo_id="{' '.join(map(str, id))}"''')
+            ids.append(" ".join(map(str, id)))
             if len(ids) == 999:  # max expression tree in sqlite is 1000
-                clause = " OR ".join(ids)
-                c.execute(query + clause)
+                placeholders = " OR ".join("philo_id=?" for _ in ids)
+                c.execute(f"SELECT SUM(word_count) FROM toms WHERE {placeholders}", ids)
                 total_count += int(c.fetchone()[0])
                 ids = []
         if ids:
-            clause = " OR ".join(ids)
-            c.execute(query + clause)
+            placeholders = " OR ".join("philo_id=?" for _ in ids)
+            c.execute(f"SELECT SUM(word_count) FROM toms WHERE {placeholders}", ids)
             total_count += int(c.fetchone()[0])
         return total_count
 

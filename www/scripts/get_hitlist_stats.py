@@ -73,6 +73,7 @@ def get_total_count(environ, start_response):
 
     stats = []
     cursor = db.dbh.cursor()
+    BATCH_SIZE = 900  # SQLite limit is ~999 variables
     for pos, field_obj in enumerate(config["results_summary"]):
         if field_obj["field"] == "title":
             count = len(docs[pos])
@@ -85,27 +86,34 @@ def get_total_count(environ, start_response):
             field = validate_column(field_obj["field"], db)
             # Convert doc set to list for parameterized query
             doc_list = list(docs[pos])
-            placeholders = ", ".join("?" for _ in doc_list)
             # Strip quotes from philo_ids (they were added for the old string interpolation)
             doc_values = [d.strip("'") for d in doc_list]
 
-            if philo_type != "div":
-                philo_type = validate_philo_type(philo_type)
-                cursor.execute(
-                    f"SELECT COUNT(DISTINCT {field}) FROM toms WHERE philo_type=? AND philo_id IN ({placeholders})",
-                    (philo_type, *doc_values)
-                )
-            else:
-                cursor.execute(
-                    f"SELECT COUNT(DISTINCT {field}) FROM toms WHERE philo_type IN ('div1', 'div2', 'div3') AND philo_id IN ({placeholders})",
-                    doc_values
-                )
-            count = cursor.fetchone()[0]
-            cursor.execute(
-                f"SELECT COUNT(0) FROM (SELECT DISTINCT {field} FROM toms WHERE philo_id IN ({placeholders}) AND {field} IS NULL)",
-                doc_values
-            )
-            count += cursor.fetchone()[0]
+            # Collect distinct values across batches using a set
+            distinct_values = set()
+            null_count = 0
+            for i in range(0, len(doc_values), BATCH_SIZE):
+                batch = doc_values[i:i + BATCH_SIZE]
+                placeholders = ", ".join("?" for _ in batch)
+
+                if philo_type != "div":
+                    validated_philo_type = validate_philo_type(philo_type)
+                    cursor.execute(
+                        f"SELECT DISTINCT {field} FROM toms WHERE philo_type=? AND philo_id IN ({placeholders})",
+                        (validated_philo_type, *batch)
+                    )
+                else:
+                    cursor.execute(
+                        f"SELECT DISTINCT {field} FROM toms WHERE philo_type IN ('div1', 'div2', 'div3') AND philo_id IN ({placeholders})",
+                        batch
+                    )
+                for row in cursor:
+                    if row[0] is None:
+                        null_count = 1  # Count NULL as one distinct value
+                    else:
+                        distinct_values.add(row[0])
+
+            count = len(distinct_values) + null_count
         link_field = False
         for agg_config in config.aggregation_config:
             if agg_config["field"] == field_obj["field"]:

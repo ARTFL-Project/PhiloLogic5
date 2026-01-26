@@ -87,6 +87,7 @@ class PlainTextParser:
         bytes_read_in: int = 0
         # Begin by creating a document level object, just call it "text" for now.
         self.v.push("doc", "text", bytes_read_in)
+        self.v["doc"].attrib["philo_doc_id"] = str(self.v["doc"].id[0])
         for k, v in list(self.known_metadata.items()):
             # if the parser was created with known_metadata,
             # we can attach it to the newly created doc object here.

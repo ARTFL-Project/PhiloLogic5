@@ -47,32 +47,28 @@ def aggregation_by_field(request, config):
     # hits.finish()
     philo_ids = __expand_hits(hits, metadata_type)
     cursor = db.dbh.cursor()
-    # if metadata_type != "div":
-    distinct_philo_ids = tuple(" ".join(map(str, id)) for id in set(philo_ids))
-    # we use ORDER BY to force use of index on large queries
-    cursor.execute(
-        f"select {', '.join(metadata_fields_needed)} from toms where philo_{metadata_type}_id IN ({', '.join('?' for _ in range(len(distinct_philo_ids)))}) ORDER BY philo_{metadata_type}_id",
-        distinct_philo_ids,
-    )
-    # else:
-    #     sql_query = "select * from toms where "
-    #     sql_clauses = []
-    #     for pos, obj_type in enumerate(["div1", "div2", "div3"]):
-    #         distinct_philo_ids = tuple(" ".join(map(str, id)) for id in set(philo_ids[pos]))
-    #         sql_clauses.append(f"philo_{obj_type}_id IN ({', '.join('?' for _ in range(len(distinct_philo_ids)))})")
-    #     sql_query += " OR ".join(sql_clauses)
-    #     cursor.execute(sql_query)
+    distinct_philo_ids = list(" ".join(map(str, id)) for id in set(philo_ids))
 
+    # Batch queries to avoid SQLite's ~999 variable limit
+    BATCH_SIZE = 900
     metadata_dict = {}
-    for row in cursor:
-        if group_by == "title":
-            uniq_name = row[f"philo_{metadata_type}_id"]
-        else:
-            uniq_name = row[group_by]
-        metadata_dict[tuple(map(int, row[f"philo_{metadata_type}_id"].split()))] = {
-            **{field: row[field] or "" for field in metadata_fields_needed if row[field] or field == group_by},
-            "field_name": uniq_name,
-        }
+    fields_select = ', '.join(metadata_fields_needed)
+    for i in range(0, len(distinct_philo_ids), BATCH_SIZE):
+        batch = distinct_philo_ids[i:i + BATCH_SIZE]
+        placeholders = ', '.join('?' for _ in batch)
+        cursor.execute(
+            f"select {fields_select} from toms where philo_{metadata_type}_id IN ({placeholders}) ORDER BY philo_{metadata_type}_id",
+            batch,
+        )
+        for row in cursor:
+            if group_by == "title":
+                uniq_name = row[f"philo_{metadata_type}_id"]
+            else:
+                uniq_name = row[group_by]
+            metadata_dict[tuple(map(int, row[f"philo_{metadata_type}_id"].split()))] = {
+                **{field: row[field] or "" for field in metadata_fields_needed if row[field] or field == group_by},
+                "field_name": uniq_name,
+            }
 
     counts_by_field = {}
     break_up_field_name = field_obj["break_up_field"]

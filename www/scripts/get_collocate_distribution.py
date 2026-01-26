@@ -1,7 +1,6 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
-import pickle
 import sys
 from wsgiref.handlers import CGIHandler
 
@@ -18,6 +17,7 @@ try:
     from custom_functions import WSGIHandler
 except ImportError:
     from philologic.runtime import WSGIHandler
+from philologic.runtime.reports.collocation import safe_pickle_load
 
 
 def get_collocate_distribution(environ, start_response):
@@ -32,8 +32,7 @@ def get_collocate_distribution(environ, start_response):
         ],
     )
 
-    with open(request.file_path, "rb") as f:
-        collocations_per_field = pickle.load(f)
+    collocations_per_field = safe_pickle_load(request.file_path)
     collocates = sorted(collocations_per_field[request.field].items(), key=lambda x: x[1], reverse=True)
 
     yield orjson.dumps({"collocates": collocates})

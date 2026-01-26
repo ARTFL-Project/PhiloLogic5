@@ -3,7 +3,6 @@
 """Get similar collocate distributions"""
 
 import os
-import pickle
 import sys
 from wsgiref.handlers import CGIHandler
 
@@ -23,6 +22,7 @@ try:
     from custom_functions import WSGIHandler
 except ImportError:
     from philologic.runtime import WSGIHandler
+from philologic.runtime.reports.collocation import safe_pickle_load
 
 
 def get_similar_collocate_distributions(environ, start_response):
@@ -51,8 +51,7 @@ def get_similar_collocate_distributions(environ, start_response):
     post_data = orjson.loads(environ["wsgi.input"].read())
     reference_collocates = dict(post_data["collocates"])
 
-    with open(request.file_path, "rb") as f:
-        collocations_per_field = pickle.load(f)
+    collocations_per_field = safe_pickle_load(request.file_path)
     author_word_matrix = create_word_matrix(collocations_per_field, reference_collocates)
 
     first_row = author_word_matrix[0].reshape(1, -1)

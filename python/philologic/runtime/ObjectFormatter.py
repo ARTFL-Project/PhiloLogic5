@@ -750,7 +750,8 @@ def get_first_page(philo_id, config):
         approx_id = f"{philo_id[0]} 0 0 0 0 0 0 %"
         try:
             c.execute(
-                f"select * from pages where philo_id like '{approx_id}' and CAST(end_byte AS INT) >= {start_byte} limit 1"
+                "select * from pages where philo_id like ? and CAST(end_byte AS INT) >= ? limit 1",
+                (approx_id, start_byte),
             )
         except:
             return {"filename": "", "start_byte": ""}
