@@ -3,6 +3,7 @@
 # Default Python version
 PYTHON_VERSION="3.12"
 INSTALL_TRANSFORMERS=false
+NODE_MAJOR_VERSION="22"
 
 # Parse command line arguments
 while getopts "p:t" opt; do
@@ -36,6 +37,32 @@ if [ -d /var/lib/philologic5 ]; then
     echo "Deleting existing PhiloLogic5 installation..."
     sudo rm -rf /var/lib/philologic5
 fi
+
+# Install nvm and Node.js to a shared location
+echo -e "\n## INSTALLING NVM AND NODE.JS ##"
+export NVM_DIR=/var/lib/philologic5/nvm
+sudo mkdir -p "$NVM_DIR"
+sudo chown -R $USER:$USER "$NVM_DIR"
+
+# Install nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+
+# Source nvm and install Node.js (latest in the major version series)
+source "$NVM_DIR/nvm.sh"
+nvm install $NODE_MAJOR_VERSION
+nvm alias default $NODE_MAJOR_VERSION
+nvm use default
+
+# Verify node installation
+echo "Node.js version: $(node --version)"
+echo "npm version: $(npm --version)"
+
+# Create symlink to npm in a fixed location
+sudo mkdir -p /var/lib/philologic5/bin
+sudo ln -sf "$(which npm)" /var/lib/philologic5/bin/npm
+
+# Make nvm directory accessible to all users
+sudo chmod -R 755 "$NVM_DIR"
 
 # Create base directory with write permissions for current user
 sudo mkdir -p /var/lib/philologic5
@@ -86,8 +113,8 @@ deactivate
 cd ..
 
 # Install philoload5 script
-# Use absolute path to venv's Python to avoid PATH issues
-echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -m philologic.loadtime "$@"' > philoload5 && sudo mv philoload5 /usr/local/bin/
+echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -m philologic.loadtime "$@"' > philoload5
+sudo mv philoload5 /usr/local/bin/
 sudo chmod 775 /usr/local/bin/philoload5
 sudo mkdir -p /etc/philologic/
 sudo mkdir -p /var/lib/philologic5/web_app/

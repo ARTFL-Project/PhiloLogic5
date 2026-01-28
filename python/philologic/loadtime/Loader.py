@@ -1181,8 +1181,9 @@ class Loader:
         os.chdir(self.web_app_dir)
         with open(os.path.join(self.web_app_dir, "appConfig.json"), "w") as app_config:
             dump({"dbUrl": ""}, app_config)
+        npm = "/var/lib/philologic5/bin/npm"
         os.system(
-            f"cd {self.web_app_dir}; npm install > {self.web_app_dir}/web_app_build.log 2>&1 && npm run build >> {self.web_app_dir}/web_app_build.log 2>&1"
+            f"cd {self.web_app_dir}; {npm} install > {self.web_app_dir}/web_app_build.log 2>&1 && {npm} run build >> {self.web_app_dir}/web_app_build.log 2>&1"
         )
         print("done.")
 
