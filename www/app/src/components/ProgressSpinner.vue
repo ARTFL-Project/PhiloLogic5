@@ -1,9 +1,9 @@
 <template>
     <div class="spinner-container d-inline-block px-1">
-        <div class="spinner-border progress-spinner" role="status" aria-live="polite" aria-atomic="true"
-            :class="{ 'spinner-border-sm': sm, 'spinner-large': lg, 'spinner-xl': xl }"><span class="visually-hidden">{{
-                message || $t("common.loading") }}...</span>
+        <div class="spinner-border progress-spinner"
+            :class="{ 'spinner-border-sm': sm, 'spinner-large': lg, 'spinner-xl': xl }">
         </div>
+        <div role="status" aria-live="polite" aria-atomic="true" class="visually-hidden">{{ statusMessage }}</div>
         <div class="spinner-text" v-if="progress > 0" :class="{ 'spinner-text-large': lg }">
             {{ progress }}%
         </div>
@@ -15,6 +15,22 @@
 <script>
 export default {
     name: 'ProgressSpinner',
+    data() {
+        return {
+            statusMessage: '',
+            announceTimeout: null
+        }
+    },
+    mounted() {
+        this.announceTimeout = setTimeout(() => {
+            this.statusMessage = (this.message || this.$t("common.loading")) + '...';
+        }, 100);
+    },
+    beforeUnmount() {
+        if (this.announceTimeout) {
+            clearTimeout(this.announceTimeout);
+        }
+    },
     props: {
         progress: {
             default: 0
