@@ -1195,8 +1195,9 @@ class XMLParser:
         if self.open_para:
             self.close_para(end_byte)
         if self.open_div3 is True:
-            self.v["div3"].attrib["philo_div3_id"] = " ".join(str(i) for i in self.v["div3"].id[:4])
-            self.v.pull("div3", end_byte)
+            if "div3" in self.v:
+                self.v["div3"].attrib["philo_div3_id"] = " ".join(str(i) for i in self.v["div3"].id[:4])
+                self.v.pull("div3", end_byte)
             self.open_div3 = False
 
     def close_div2(self, end_byte):
@@ -1204,8 +1205,9 @@ class XMLParser:
         if self.open_div3:
             self.close_div3(end_byte)
         if self.open_div2 is True:
-            self.v["div2"].attrib["philo_div2_id"] = " ".join(str(i) for i in self.v["div2"].id[:3])
-            self.v.pull("div2", end_byte)
+            if "div2" in self.v:
+                self.v["div2"].attrib["philo_div2_id"] = " ".join(str(i) for i in self.v["div2"].id[:3])
+                self.v.pull("div2", end_byte)
             self.open_div2 = False
 
     def close_div1(self, end_byte):
@@ -1213,8 +1215,9 @@ class XMLParser:
         if self.open_div2:
             self.close_div2(end_byte)
         if self.open_div1 is True:
-            self.v["div1"].attrib["philo_div1_id"] = " ".join(str(i) for i in self.v["div1"].id[:2])
-            self.v.pull("div1", end_byte)
+            if "div1" in self.v:
+                self.v["div1"].attrib["philo_div1_id"] = " ".join(str(i) for i in self.v["div1"].id[:2])
+                self.v.pull("div1", end_byte)
             self.open_div1 = False
 
     def camel_case_to_snake_case(self, word):
