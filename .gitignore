@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+*.egg
+
+# Test artifacts
+tests/reports/
+.pytest_cache/
+.benchmarks/
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+*.local
+
+# Build artifacts
+*.so
+*.o

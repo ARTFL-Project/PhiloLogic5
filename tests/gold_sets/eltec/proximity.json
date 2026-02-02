@@ -1,0 +1,115 @@
+{
+  "metadata": {
+    "corpus": "eltec",
+    "query_type": "proximity",
+    "generated_date": "2026-02-02T10:23:41.835621",
+    "philologic_version": "5.1.0.1",
+    "description": "Gold set for proximity queries on eltec corpus"
+  },
+  "test_cases": [
+    {
+      "id": "prox_u_lovedeath",
+      "description": "Proximity unordered within 20 words",
+      "query": {
+        "qs": "love death",
+        "method": "proxy_unordered",
+        "method_arg": "20"
+      },
+      "expected": {
+        "total_hits": 97,
+        "first_10_philo_ids": [
+          [
+            1,
+            25,
+            1,
+            1,
+            18,
+            10,
+            0
+          ],
+          [
+            1,
+            36,
+            1,
+            1,
+            28,
+            8,
+            0
+          ],
+          [
+            1,
+            36,
+            1,
+            1,
+            28,
+            8,
+            0
+          ],
+          [
+            1,
+            44,
+            1,
+            1,
+            2,
+            2,
+            0
+          ],
+          [
+            3,
+            28,
+            1,
+            1,
+            9,
+            5,
+            80
+          ],
+          [
+            4,
+            4,
+            1,
+            6,
+            66,
+            1,
+            333
+          ],
+          [
+            5,
+            2,
+            64,
+            1,
+            21,
+            13,
+            194
+          ],
+          [
+            5,
+            2,
+            86,
+            1,
+            80,
+            2,
+            253
+          ],
+          [
+            5,
+            2,
+            115,
+            1,
+            82,
+            2,
+            349
+          ],
+          [
+            5,
+            3,
+            18,
+            1,
+            9,
+            2,
+            458
+          ]
+        ]
+      }
+    }
+  ]
+}
