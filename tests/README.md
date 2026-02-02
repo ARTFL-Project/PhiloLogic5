@@ -253,13 +253,6 @@ The `conftest.py` adds the local `python/` directory to `sys.path`, so changes a
 
 ## Troubleshooting
 
-### Tests fail with "No module named philologic"
-
-Install PhiloLogic:
-```bash
-cd python && pip install -e .
-```
-
 ### Cache seems stale
 
 Force rebuild:

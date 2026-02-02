@@ -13,6 +13,8 @@ RUN apt-get update && apt-get upgrade -y && \
 # Install PhiloLogic (nvm and Node.js are installed by install.sh)
 COPY . /PhiloLogic5
 WORKDIR /PhiloLogic5
+# Delete the tests directory to reduce image size
+RUN rm -rf tests
 RUN ./install.sh && a2enmod rewrite && a2enmod cgi && a2enmod brotli && a2enmod headers && mkdir -p /var/www/html/philologic
 
 # Configure global variables
