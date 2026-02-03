@@ -461,21 +461,20 @@ def get_cooccurrence_groups(
                 if break_out is True:
                     break
 
-                # Find matching rows
-                matching_indices = find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice)
-                matching_rows = philo_id_array[matching_indices]
+                # Find matching rows using bounds (faster than building index array)
+                match_left, match_right = find_matching_bounds(philo_id_array, philo_id_object, cooc_slice)
                 group_data[group_index] = philo_id_array
-                if matching_rows.shape[0] == 0:  # no match found
+                if match_left < 0:  # no match found
                     match = False
                     break
-                if matching_indices.shape[0] > 0:
-                    if matching_indices[-1] + 1 == philo_id_array.shape[0]:
-                        try:
-                            group_data[group_index] = next(philo_id_group)  # load the next chunk
-                        except StopIteration:
-                            break_out = True
-                    else:
-                        group_data[group_index] = philo_id_array[matching_indices[-1] + 1 :]  # slice off matching rows
+                matching_rows = philo_id_array[match_left:match_right]
+                if match_right == philo_id_array.shape[0]:
+                    try:
+                        group_data[group_index] = next(philo_id_group)  # load the next chunk
+                    except StopIteration:
+                        break_out = True
+                else:
+                    group_data[group_index] = philo_id_array[match_right:]  # slice off matching rows
 
                 results.append(matching_rows)  # We only keep the first instance of a hit in the first group
 
@@ -497,32 +496,54 @@ def compare_rows(row1, row2):
 
 
 @numba.jit(nopython=True, cache=True)
-def find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice):
-    matching_indices = []
-    low = 0
-    high = len(philo_id_array) - 1
+def find_matching_bounds(philo_id_array, philo_id_object, cooc_slice):
+    """Find the contiguous range of rows matching a sentence ID using binary search.
 
-    while low <= high:
+    Since arrays are sorted by sentence ID, all matching rows are contiguous.
+    Returns (start, end) bounds where array[start:end] contains all matches.
+    Returns (-1, -1) if no match is found.
+    """
+    n = len(philo_id_array)
+    if n == 0:
+        return -1, -1
+
+    # Binary search for left bound
+    low, high = 0, n
+    while low < high:
         mid = (low + high) // 2
-        current_row = philo_id_array[mid][:cooc_slice]
-
-        comparison = compare_rows(current_row, philo_id_object)
-
-        if comparison == 0:
-            # Match found, append index
-            matching_indices.append(mid)
-            # Roll back as long as consecutive matches exist
-            rollback = mid - 1
-            while rollback >= low and compare_rows(philo_id_array[rollback][:cooc_slice], philo_id_object) == 0:
-                matching_indices.append(rollback)
-                rollback -= 1
-            low = mid + 1  # Continue searching in the higher half
-        elif comparison < 0:
-            low = mid + 1  # Search in the higher half
+        cmp = compare_rows(philo_id_array[mid, :cooc_slice], philo_id_object)
+        if cmp < 0:  # mid < target
+            low = mid + 1
         else:
-            high = mid - 1  # Search in the lower half
-    matching_indices.sort()
-    return np.array(matching_indices)
+            high = mid
+    left = low
+
+    # Check if we found a match
+    if left >= n:
+        return -1, -1
+    if compare_rows(philo_id_array[left, :cooc_slice], philo_id_object) != 0:
+        return -1, -1
+
+    # Binary search for right bound
+    low, high = left, n
+    while low < high:
+        mid = (low + high) // 2
+        cmp = compare_rows(philo_id_object, philo_id_array[mid, :cooc_slice])
+        if cmp < 0:  # target < mid
+            high = mid
+        else:
+            low = mid + 1
+
+    return left, low
+
+
+@numba.jit(nopython=True, cache=True)
+def find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice):
+    """Legacy function - wraps find_matching_bounds for backward compatibility."""
+    left, right = find_matching_bounds(philo_id_array, philo_id_object, cooc_slice)
+    if left < 0:
+        return np.empty(0, dtype=np.int64)
+    return np.arange(left, right, dtype=np.int64)
 
 
 def merge_word_group(db_path: str, txn, words: list[str], overflow_words: set[str], chunk_size=None):
