@@ -13,11 +13,12 @@ Usage:
     python generate_gold_sets.py --corpus shakespeare --db-path /path/to/db/data
 
 This script runs a set of predefined queries against a PhiloLogic database
-and saves the expected results as JSON files for regression testing.
+and saves the hitlist binary files as gold references for regression testing.
 """
 
 import argparse
 import json
+import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -108,7 +109,15 @@ def find_corpus_db(corpus_name: str) -> Path:
     sys.exit(1)
 
 
-def generate_gold_set(db: DB, queries: list, corpus_name: str, query_type: str) -> dict:
+def clear_hitlists(db_path: Path):
+    """Clear the hitlists directory."""
+    hitlists_dir = db_path / "hitlists"
+    if hitlists_dir.exists():
+        shutil.rmtree(hitlists_dir)
+        hitlists_dir.mkdir()
+
+
+def generate_gold_set(db: DB, queries: list, corpus_name: str, query_type: str, output_dir: Path) -> dict:
     """Generate gold set from query definitions.
 
     Args:
@@ -116,23 +125,29 @@ def generate_gold_set(db: DB, queries: list, corpus_name: str, query_type: str) 
         queries: List of query definitions
         corpus_name: Name of the corpus
         query_type: Type of queries (single_term, phrase, etc.)
+        output_dir: Directory to store hitlist files
 
     Returns:
-        Gold set dictionary
+        Metadata dictionary for the gold set
     """
-    gold_set = {
-        "metadata": {
-            "corpus": corpus_name,
-            "query_type": query_type,
-            "generated_date": datetime.now().isoformat(),
-            "philologic_version": "5.1.0.1",
-            "description": f"Gold set for {query_type} queries on {corpus_name} corpus",
-        },
+    # Create directory for hitlist files
+    hitlist_dir = output_dir / query_type
+    hitlist_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata = {
+        "corpus": corpus_name,
+        "query_type": query_type,
+        "generated_date": datetime.now().isoformat(),
+        "philologic_version": "5.1.0.1",
+        "description": f"Gold set for {query_type} queries on {corpus_name} corpus",
         "test_cases": []
     }
 
     for query_def in queries:
         print(f"  Running query: {query_def['id']} - {query_def['qs']}")
+
+        # Clear hitlists before each query to get fresh results
+        clear_hitlists(Path(db.path))
 
         method_arg = query_def.get("method_arg", "")
 
@@ -143,13 +158,12 @@ def generate_gold_set(db: DB, queries: list, corpus_name: str, query_type: str) 
         )
         hits.finish()
 
-        # Collect first N philo_ids
-        first_hits = []
-        for i, hit in enumerate(hits):
-            if i >= 10:
-                break
-            first_hits.append(list(hit.philo_id))
+        # Copy the hitlist file to gold set directory
+        source_hitlist = Path(hits.filename)
+        dest_hitlist = hitlist_dir / f"{query_def['id']}.hitlist"
+        shutil.copy2(source_hitlist, dest_hitlist)
 
+        # Store metadata
         test_case = {
             "id": query_def["id"],
             "description": query_def.get("description", ""),
@@ -160,13 +174,14 @@ def generate_gold_set(db: DB, queries: list, corpus_name: str, query_type: str) 
             },
             "expected": {
                 "total_hits": len(hits),
-                "first_10_philo_ids": first_hits,
+                "hitlist_file": f"{query_type}/{query_def['id']}.hitlist",
+                "hitlist_size_bytes": dest_hitlist.stat().st_size,
             }
         }
-        gold_set["test_cases"].append(test_case)
-        print(f"    Found {len(hits)} hits")
+        metadata["test_cases"].append(test_case)
+        print(f"    Found {len(hits)} hits, saved {dest_hitlist.stat().st_size} bytes")
 
-    return gold_set
+    return metadata
 
 
 def generate_for_corpus(corpus_name: str, db_path: Path = None, output_dir: Path = None):
@@ -189,6 +204,9 @@ def generate_for_corpus(corpus_name: str, db_path: Path = None, output_dir: Path
     if output_dir is None:
         output_dir = REPO_ROOT / "tests" / "gold_sets" / corpus_name
 
+    # Clean up old gold sets
+    if output_dir.exists():
+        shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Connect to database
@@ -199,13 +217,16 @@ def generate_for_corpus(corpus_name: str, db_path: Path = None, output_dir: Path
     _, query_sets = CORPUS_MAP[corpus_name]
 
     # Generate gold sets for each query type
+    all_metadata = {}
     for query_type, queries in query_sets.items():
         print(f"\nGenerating gold set for {query_type}...")
-        gold_set = generate_gold_set(db, queries, corpus_name, query_type)
+        metadata = generate_gold_set(db, queries, corpus_name, query_type, output_dir)
+        all_metadata[query_type] = metadata
 
-        output_file = output_dir / f"{query_type}.json"
-        output_file.write_text(json.dumps(gold_set, indent=2))
-        print(f"  Saved to {output_file}")
+        # Save metadata JSON for this query type
+        metadata_file = output_dir / f"{query_type}.json"
+        metadata_file.write_text(json.dumps(metadata, indent=2))
+        print(f"  Metadata saved to {metadata_file}")
 
     print(f"\nGold sets generated successfully in {output_dir}")
 

@@ -25,7 +25,7 @@ BENCHMARK_OUTPUT = REPO_ROOT / ".benchmarks"
 
 def run_benchmarks():
     """Run benchmark tests and save results."""
-    print("Running benchmarks (10 rounds per test with cache clearing)...")
+    print("Running benchmarks on ELTeC corpus (10 rounds per test with cache clearing)...")
     result = subprocess.run(
         [
             sys.executable, "-m", "pytest",

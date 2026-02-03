@@ -1,11 +1,9 @@
 {
-  "metadata": {
-    "corpus": "eltec",
-    "query_type": "phrase",
-    "generated_date": "2026-02-02T10:23:41.263628",
-    "philologic_version": "5.1.0.1",
-    "description": "Gold set for phrase queries on eltec corpus"
-  },
+  "corpus": "eltec",
+  "query_type": "phrase",
+  "generated_date": "2026-02-03T14:17:31.174345",
+  "philologic_version": "5.1.0.1",
+  "description": "Gold set for phrase queries on eltec corpus",
   "test_cases": [
     {
       "id": "po_said",
@@ -17,98 +15,8 @@
       },
       "expected": {
         "total_hits": 7851,
-        "first_10_philo_ids": [
-          [
-            1,
-            6,
-            1,
-            1,
-            7,
-            1,
-            0
-          ],
-          [
-            1,
-            7,
-            1,
-            1,
-            22,
-            2,
-            0
-          ],
-          [
-            1,
-            8,
-            1,
-            1,
-            65,
-            3,
-            0
-          ],
-          [
-            1,
-            9,
-            1,
-            1,
-            44,
-            1,
-            0
-          ],
-          [
-            1,
-            10,
-            1,
-            1,
-            69,
-            1,
-            0
-          ],
-          [
-            1,
-            11,
-            1,
-            1,
-            3,
-            4,
-            0
-          ],
-          [
-            1,
-            13,
-            1,
-            1,
-            36,
-            3,
-            0
-          ],
-          [
-            1,
-            13,
-            1,
-            1,
-            36,
-            4,
-            0
-          ],
-          [
-            1,
-            13,
-            1,
-            1,
-            38,
-            1,
-            0
-          ],
-          [
-            1,
-            13,
-            1,
-            1,
-            38,
-            3,
-            0
-          ]
-        ]
+        "hitlist_file": "phrase/po_said.hitlist",
+        "hitlist_size_bytes": 345444
       }
     },
     {
@@ -121,98 +29,8 @@
       },
       "expected": {
         "total_hits": 1830,
-        "first_10_philo_ids": [
-          [
-            1,
-            3,
-            1,
-            1,
-            21,
-            5,
-            0
-          ],
-          [
-            1,
-            5,
-            1,
-            1,
-            53,
-            1,
-            0
-          ],
-          [
-            1,
-            6,
-            1,
-            1,
-            23,
-            1,
-            0
-          ],
-          [
-            1,
-            6,
-            1,
-            1,
-            38,
-            1,
-            0
-          ],
-          [
-            1,
-            7,
-            1,
-            1,
-            65,
-            2,
-            0
-          ],
-          [
-            1,
-            9,
-            1,
-            1,
-            5,
-            2,
-            0
-          ],
-          [
-            1,
-            19,
-            1,
-            1,
-            28,
-            1,
-            0
-          ],
-          [
-            2,
-            2,
-            2,
-            12,
-            24,
-            4,
-            134
-          ],
-          [
-            2,
-            2,
-            3,
-            2,
-            9,
-            4,
-            145
-          ],
-          [
-            2,
-            2,
-            3,
-            2,
-            28,
-            2,
-            160
-          ]
-        ]
+        "hitlist_file": "phrase/po_young.hitlist",
+        "hitlist_size_bytes": 80520
       }
     }
   ]

@@ -82,10 +82,10 @@ class TestQueryPerformance:
     """
 
     @pytest.fixture(scope="class")
-    def db(self, shakespeare_db_path):
-        """Database fixture for benchmarks."""
+    def db(self, eltec_db_path):
+        """Database fixture for benchmarks (uses larger ELTeC corpus)."""
         from philologic.runtime.DB import DB
-        return DB(str(shakespeare_db_path))
+        return DB(str(eltec_db_path))
 
     @pytest.fixture(scope="class")
     def baseline(self):
@@ -227,10 +227,10 @@ class TestIterationPerformance:
     """
 
     @pytest.fixture(scope="class")
-    def db(self, shakespeare_db_path):
-        """Database fixture."""
+    def db(self, eltec_db_path):
+        """Database fixture (uses larger ELTeC corpus)."""
         from philologic.runtime.DB import DB
-        return DB(str(shakespeare_db_path))
+        return DB(str(eltec_db_path))
 
     def test_iterate_first_100(self, db, benchmark):
         """Benchmark query + iterating over first 100 results."""
