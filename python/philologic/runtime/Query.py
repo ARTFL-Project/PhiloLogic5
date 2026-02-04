@@ -4,7 +4,6 @@ import hashlib
 import os
 import subprocess
 import sys
-from itertools import product
 from pathlib import Path
 
 # Set umask before importing numba to ensure cache files are world-writable
@@ -204,59 +203,209 @@ def _find_common_sentences_numpy(hits_list, cooc_slice=6):
     return result
 
 
-def _process_n_groups_python(hits_list, sizes_list, cooc_order, mapping_order,
-                              max_distance, exact_distance, n_groups):
-    """Process N word groups (general case) - Python implementation."""
-    results = []
-    n_sentences = len(sizes_list[0])
+@numba.jit(nopython=True, cache=True)
+def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sentences,
+                            cooc_order, mapping_order, max_distance, exact_distance):
+    """Process N word groups using Numba with odometer-style iteration.
 
-    # Track offsets into each group's hits
-    offsets = [0] * n_groups
+    Args:
+        all_hits: Concatenated hits array (total_hits x 9)
+        all_sizes: 2D array of sizes (n_groups x n_sentences)
+        group_offsets: Starting offset for each group in all_hits (n_groups,)
+        n_groups: Number of word groups
+        n_sentences: Number of sentences to process
+        cooc_order: Whether to enforce query order
+        mapping_order: Mapping from frequency order to query order
+        max_distance: Maximum word distance (0 = no limit)
+        exact_distance: If True, distance must equal max_distance
+
+    Returns:
+        Output array of valid hits
+    """
+    # Calculate output row size: 9 + 2*(n_groups-1)
+    out_cols = 9 + 2 * (n_groups - 1)
+
+    # Estimate max output size (will trim later)
+    max_output = 0
+    for sent_idx in range(n_sentences):
+        combo_count = 1
+        for g in range(n_groups):
+            combo_count *= all_sizes[g, sent_idx]
+        max_output += combo_count
+
+    if max_output == 0:
+        return np.empty((0, out_cols), dtype=np.uint32)
+
+    output = np.empty((max_output, out_cols), dtype=np.uint32)
+    out_idx = 0
+
+    # Track current position in each group's hits
+    group_pos = np.zeros(n_groups, dtype=np.int64)
+
+    # Arrays for current sentence processing
+    indices = np.zeros(n_groups, dtype=np.int64)
+    positions = np.zeros(n_groups, dtype=np.int64)
+    sorted_indices = np.zeros(n_groups, dtype=np.int64)
 
     for sent_idx in range(n_sentences):
-        # Get hits for this sentence from each group
-        sent_hits = []
+        # Get sizes for this sentence
+        sent_sizes = np.empty(n_groups, dtype=np.int64)
+        sent_starts = np.empty(n_groups, dtype=np.int64)
+        total_combos = 1
+
         for g in range(n_groups):
-            size = sizes_list[g][sent_idx]
-            sent_hits.append(hits_list[g][offsets[g]:offsets[g] + size])
-            offsets[g] += size
+            sent_sizes[g] = all_sizes[g, sent_idx]
+            sent_starts[g] = group_offsets[g] + group_pos[g]
+            total_combos *= sent_sizes[g]
+            group_pos[g] += sent_sizes[g]
 
-        # Generate all combinations
-        hit_cache = set()
-        for combo in product(*sent_hits):
-            # Get positions
+        if total_combos == 0:
+            continue
+
+        # Track seen outputs for deduplication within sentence
+        seen_start = out_idx
+
+        # Reset indices for odometer
+        for g in range(n_groups):
+            indices[g] = 0
+
+        # Iterate through all combinations
+        for _ in range(total_combos):
+            # Get positions for current combination
+            for g in range(n_groups):
+                hit_idx = sent_starts[g] + indices[g]
+                positions[g] = all_hits[hit_idx, 7]
+
+            valid = True
+
             if cooc_order:
-                raw_positions = [hit[7] for hit in combo]
-                mapped_positions = [p for _, p in sorted(zip(mapping_order, raw_positions))]
-                positions = sorted(mapped_positions)
-                if positions != mapped_positions:
-                    continue
-            else:
-                positions = sorted({hit[7] for hit in combo})
-                if len(positions) != n_groups:  # duplicate positions
-                    continue
+                # Map positions to query order and check if sorted
+                for g in range(n_groups):
+                    sorted_indices[mapping_order[g]] = positions[g]
 
-            # Check distance
-            if max_distance > 0:
-                span = positions[-1] - positions[0]
+                # Check if in ascending order
+                for g in range(n_groups - 1):
+                    if sorted_indices[g] >= sorted_indices[g + 1]:
+                        valid = False
+                        break
+            else:
+                # Unordered: just check for duplicate positions
+                for g in range(n_groups):
+                    for g2 in range(g + 1, n_groups):
+                        if positions[g] == positions[g2]:
+                            valid = False
+                            break
+                    if not valid:
+                        break
+
+            if valid and max_distance > 0:
+                # Find min and max position
+                min_pos = positions[0]
+                max_pos = positions[0]
+                for g in range(1, n_groups):
+                    if positions[g] < min_pos:
+                        min_pos = positions[g]
+                    if positions[g] > max_pos:
+                        max_pos = positions[g]
+
+                span = max_pos - min_pos
                 if exact_distance:
                     if span != max_distance:
-                        continue
+                        valid = False
                 else:
                     if span > max_distance:
-                        continue
+                        valid = False
 
-            # Build output (sorted by position)
-            sorted_combo = sorted(combo, key=lambda x: x[7])
-            output_bytes = sorted_combo[0].tobytes()
-            for g in range(1, n_groups):
-                output_bytes += sorted_combo[g][7:].tobytes()
+            if valid:
+                # Sort hits by position for output
+                # Simple insertion sort since n_groups is small
+                for g in range(n_groups):
+                    sorted_indices[g] = g
 
-            if output_bytes not in hit_cache:
-                hit_cache.add(output_bytes)
-                results.append(output_bytes)
+                for i in range(1, n_groups):
+                    key_pos = positions[sorted_indices[i]]
+                    key_idx = sorted_indices[i]
+                    j = i - 1
+                    while j >= 0 and positions[sorted_indices[j]] > key_pos:
+                        sorted_indices[j + 1] = sorted_indices[j]
+                        j -= 1
+                    sorted_indices[j + 1] = key_idx
 
-    return results
+                # Build output row
+                row = np.empty(out_cols, dtype=np.uint32)
+
+                # First word: all 9 columns
+                first_g = sorted_indices[0]
+                first_hit_idx = sent_starts[first_g] + indices[first_g]
+                for c in range(9):
+                    row[c] = all_hits[first_hit_idx, c]
+
+                # Remaining words: columns 7-8 only
+                col = 9
+                for g_idx in range(1, n_groups):
+                    g = sorted_indices[g_idx]
+                    hit_idx = sent_starts[g] + indices[g]
+                    row[col] = all_hits[hit_idx, 7]
+                    row[col + 1] = all_hits[hit_idx, 8]
+                    col += 2
+
+                # Check for duplicate within this sentence
+                is_dup = False
+                for k in range(seen_start, out_idx):
+                    match = True
+                    for m in range(out_cols):
+                        if output[k, m] != row[m]:
+                            match = False
+                            break
+                    if match:
+                        is_dup = True
+                        break
+
+                if not is_dup:
+                    output[out_idx] = row
+                    out_idx += 1
+
+            # Increment odometer
+            for g in range(n_groups - 1, -1, -1):
+                indices[g] += 1
+                if indices[g] < sent_sizes[g]:
+                    break
+                indices[g] = 0
+
+    return output[:out_idx]
+
+
+def _process_n_groups_python(hits_list, sizes_list, cooc_order, mapping_order,
+                              max_distance, exact_distance, n_groups):
+    """Process N word groups (general case) - calls Numba implementation.
+
+    Returns numpy array directly (not list of bytes) for efficient file writing.
+    """
+    n_sentences = len(sizes_list[0])
+
+    # Prepare data for Numba function
+    # Concatenate all hits into single array
+    total_hits = sum(len(h) for h in hits_list)
+    all_hits = np.empty((total_hits, 9), dtype=np.uint32)
+    group_offsets = np.empty(n_groups, dtype=np.int64)
+
+    offset = 0
+    for g in range(n_groups):
+        group_offsets[g] = offset
+        all_hits[offset:offset + len(hits_list[g])] = hits_list[g]
+        offset += len(hits_list[g])
+
+    # Convert sizes to 2D array
+    all_sizes = np.array(sizes_list, dtype=np.int64)
+
+    # Convert mapping_order to numpy array
+    mapping_order_arr = np.array(mapping_order, dtype=np.int64)
+
+    # Call Numba function - returns numpy array directly
+    return _process_n_groups_numba(
+        all_hits, all_sizes, group_offsets, n_groups, n_sentences,
+        cooc_order, mapping_order_arr, max_distance, exact_distance
+    )
 
 
 class WordData(msgspec.Struct):
@@ -609,13 +758,13 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                     hits_list = [data[0] for data in common_sent_data]
                     sizes_list = [data[1] for data in common_sent_data]
 
-                    results = _process_n_groups_python(
+                    result = _process_n_groups_python(
                         hits_list, sizes_list, cooc_order, mapping_order,
                         max_distance, exact_distance, n_groups
                     )
 
-                    for r in results:
-                        output_file.write(r)
+                    if len(result) > 0:
+                        output_file.write(result.tobytes())
 
     env.close()
 
