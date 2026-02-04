@@ -559,6 +559,16 @@ def query(
         if pid > 0:
             os._exit(0)
         else:
+            # Close inherited file descriptors to fully detach from CGI/Apache
+            # Without this, Apache may wait for stdout to close before completing the response
+            os.close(0)  # stdin
+            os.close(1)  # stdout
+            os.close(2)  # stderr
+            # Redirect to /dev/null to prevent errors from print statements
+            sys.stdin = open(os.devnull, 'r')
+            sys.stdout = open(os.devnull, 'w')
+            sys.stderr = open(os.devnull, 'w')
+
             with open(f"{filename}.terms", "w") as terms_file:
                 expand_query_not(
                     split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
