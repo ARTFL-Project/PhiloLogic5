@@ -375,12 +375,9 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
     return output[:out_idx]
 
 
-def _process_n_groups_python(hits_list, sizes_list, cooc_order, mapping_order,
-                              max_distance, exact_distance, n_groups):
-    """Process N word groups (general case) - calls Numba implementation.
-
-    Returns numpy array directly (not list of bytes) for efficient file writing.
-    """
+def _process_n_groups(hits_list, sizes_list, cooc_order, mapping_order,
+                       max_distance, exact_distance, n_groups):
+    """Process N word groups (general case) - prepares data for Numba kernel."""
     n_sentences = len(sizes_list[0])
 
     # Prepare data for Numba function
@@ -758,7 +755,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                     hits_list = [data[0] for data in common_sent_data]
                     sizes_list = [data[1] for data in common_sent_data]
 
-                    result = _process_n_groups_python(
+                    result = _process_n_groups(
                         hits_list, sizes_list, cooc_order, mapping_order,
                         max_distance, exact_distance, n_groups
                     )
