@@ -272,6 +272,7 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
                     continue
                 # we now need to check if the positions are within 1 word of each other
                 if positions[0] + len(word_groups) - 1 == positions[-1]:
+                    group_combination = sorted(group_combination, key=lambda x: x[7])  # normalize by text position
                     starting_id = group_combination[0].tobytes()
                     for group_num in range(1, len(word_groups)):
                         starting_id += group_combination[group_num][7:].tobytes()

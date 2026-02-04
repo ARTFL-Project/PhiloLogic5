@@ -1,7 +1,7 @@
 {
   "corpus": "shakespeare",
   "query_type": "single_term",
-  "generated_date": "2026-02-03T14:17:27.117232",
+  "generated_date": "2026-02-04T11:01:34.777331",
   "philologic_version": "5.1.0.1",
   "description": "Gold set for single_term queries on shakespeare corpus",
   "test_cases": [
