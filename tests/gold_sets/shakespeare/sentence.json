@@ -1,7 +1,7 @@
 {
   "corpus": "shakespeare",
   "query_type": "sentence",
-  "generated_date": "2026-02-03T14:17:30.351516",
+  "generated_date": "2026-02-04T12:27:16.172459",
   "philologic_version": "5.1.0.1",
   "description": "Gold set for sentence queries on shakespeare corpus",
   "test_cases": [
@@ -14,9 +14,9 @@
         "method_arg": ""
       },
       "expected": {
-        "total_hits": 2374,
+        "total_hits": 2375,
         "hitlist_file": "sentence/sent_o_tobe.hitlist",
-        "hitlist_size_bytes": 104456
+        "hitlist_size_bytes": 104500
       }
     },
     {

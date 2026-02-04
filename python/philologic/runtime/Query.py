@@ -35,6 +35,76 @@ numba.config.CACHE_DIR = cache_dir
 # =============================================================================
 
 
+@numba.jit(nopython=True, cache=True)
+def _merge_two_sorted_arrays(arr1, arr2):
+    """Merge two sorted hit arrays using two-way merge (O(n)).
+
+    Arrays must be sorted by (doc_id, byte_offset) where doc_id is column 0
+    and byte_offset is column 8.
+    """
+    n1, n2 = len(arr1), len(arr2)
+    result = np.empty((n1 + n2, 9), dtype=np.uint32)
+
+    i, j, k = 0, 0, 0
+    while i < n1 and j < n2:
+        # Compare (doc_id, byte_offset)
+        doc1, byte1 = arr1[i, 0], arr1[i, 8]
+        doc2, byte2 = arr2[j, 0], arr2[j, 8]
+
+        if doc1 < doc2 or (doc1 == doc2 and byte1 <= byte2):
+            result[k] = arr1[i]
+            i += 1
+        else:
+            result[k] = arr2[j]
+            j += 1
+        k += 1
+
+    # Copy remaining elements
+    while i < n1:
+        result[k] = arr1[i]
+        i += 1
+        k += 1
+    while j < n2:
+        result[k] = arr2[j]
+        j += 1
+        k += 1
+
+    return result
+
+
+def _kway_merge_sorted_arrays(arrays):
+    """K-way merge of sorted hit arrays using repeated two-way merges.
+
+    Uses divide-and-conquer approach: O(n log k) where n is total elements
+    and k is number of arrays. Much faster than O(n log n) full sort.
+    """
+    if len(arrays) == 0:
+        return np.empty((0, 9), dtype=np.uint32)
+    if len(arrays) == 1:
+        return np.ascontiguousarray(arrays[0])
+    if len(arrays) == 2:
+        return _merge_two_sorted_arrays(
+            np.ascontiguousarray(arrays[0]),
+            np.ascontiguousarray(arrays[1])
+        )
+
+    # Divide and conquer: merge pairs, then merge results
+    # This gives O(n log k) complexity
+    while len(arrays) > 1:
+        merged = []
+        for i in range(0, len(arrays), 2):
+            if i + 1 < len(arrays):
+                merged.append(_merge_two_sorted_arrays(
+                    np.ascontiguousarray(arrays[i]),
+                    np.ascontiguousarray(arrays[i + 1])
+                ))
+            else:
+                merged.append(np.ascontiguousarray(arrays[i]))
+        arrays = merged
+
+    return arrays[0]
+
+
 def _load_word_group_hits(db_path, txn, words, overflow_words):
     """Load and merge hits for a word group (handles OR within group).
 
@@ -71,11 +141,10 @@ def _load_word_group_hits(db_path, txn, words, overflow_words):
     if len(arrays) == 1:
         return arrays[0]
 
-    # For multiple words in OR group, we need to merge and sort
-    # This requires a copy, but OR groups are typically small
-    combined = np.concatenate(arrays)
-    sort_key = combined[:, 0].astype(np.uint64) << 32 | combined[:, 8]
-    return combined[np.argsort(sort_key)]
+    # Use k-way merge instead of concatenate+sort
+    # This is O(n log k) instead of O(n log n) where k is number of word variants
+    # and n is total hits. Since k is typically small (2-10), this is much faster.
+    return _kway_merge_sorted_arrays(arrays)
 
 
 def _find_doc_boundaries(hits):
@@ -126,16 +195,53 @@ def _find_sentence_boundaries(hits, cooc_slice=6):
     return unique_sents, starts
 
 
-def _find_common_sentences_numpy(hits_list, cooc_slice=6):
-    """Find common sentences across all word groups using numpy.
+@numba.jit(nopython=True, cache=True)
+def _intersect_sorted_rows(arr1, arr2, n_cols):
+    """O(n+m) intersection of two sorted 2D arrays by first n_cols columns.
 
-    Args:
-        hits_list: List of hit arrays, one per word group (all from same document)
-        cooc_slice: Number of columns defining sentence ID (6 for sent, 5 for para)
+    Returns indices into arr1 and arr2 where rows match.
+    Assumes both arrays are sorted and have unique rows (by first n_cols).
+    """
+    n1, n2 = len(arr1), len(arr2)
+    if n1 == 0 or n2 == 0:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
 
-    Returns:
-        List of (group_hits_for_common_sentences, sizes) for each word group,
-        or None if no common sentences
+    # Pre-allocate for worst case
+    max_matches = min(n1, n2)
+    idx1 = np.empty(max_matches, dtype=np.int64)
+    idx2 = np.empty(max_matches, dtype=np.int64)
+
+    i, j, k = 0, 0, 0
+    while i < n1 and j < n2:
+        # Compare rows lexicographically by first n_cols columns
+        cmp = 0
+        for c in range(n_cols):
+            if arr1[i, c] < arr2[j, c]:
+                cmp = -1
+                break
+            elif arr1[i, c] > arr2[j, c]:
+                cmp = 1
+                break
+
+        if cmp == 0:  # Equal
+            idx1[k] = i
+            idx2[k] = j
+            k += 1
+            i += 1
+            j += 1
+        elif cmp < 0:
+            i += 1
+        else:
+            j += 1
+
+    return idx1[:k], idx2[:k]
+
+
+def _find_common_sentences(hits_list, cooc_slice=6):
+    """Find common sentences using Numba-optimized sorted intersection.
+
+    Same interface as _find_common_sentences_numpy but uses O(n+m) merge
+    instead of O(n log n) intersect1d.
     """
     n_groups = len(hits_list)
 
@@ -145,36 +251,42 @@ def _find_common_sentences_numpy(hits_list, cooc_slice=6):
         unique_sents, starts = _find_sentence_boundaries(hits, cooc_slice)
         sent_info.append((unique_sents, starts, hits))
 
-    # Find common sentences using structured array view
-    dt = np.dtype((np.void, hits_list[0].dtype.itemsize * cooc_slice))
-
-    # Start with first group's sentences
-    common_sents = sent_info[0][0]
-    common_view = np.ascontiguousarray(common_sents).view(dt).ravel()
+    # Start with first group's sentences as the "common" set
+    common_sents = np.ascontiguousarray(sent_info[0][0])
+    group_indices = [None] * n_groups
+    group_indices[0] = np.arange(len(common_sents), dtype=np.int64)
 
     # Intersect with each subsequent group
-    group_indices = [None] * n_groups  # Will store indices into each group's unique_sents
+    for g in range(1, n_groups):
+        group_sents = np.ascontiguousarray(sent_info[g][0])
 
-    for g in range(n_groups):
-        group_sents = sent_info[g][0]
-        group_view = np.ascontiguousarray(group_sents).view(dt).ravel()
+        # Find intersection indices
+        idx_common, idx_group = _intersect_sorted_rows(common_sents, group_sents, cooc_slice)
 
-        if g == 0:
-            _, idx_common, idx_group = np.intersect1d(common_view, group_view, return_indices=True)
-            group_indices[0] = idx_group
-            # Update common to be the intersection
-            common_view = common_view[idx_common]
-        else:
-            _, idx_common, idx_group = np.intersect1d(common_view, group_view, return_indices=True)
-            # Update all previous group indices
-            for prev_g in range(g):
-                group_indices[prev_g] = group_indices[prev_g][idx_common]
-            group_indices[g] = idx_group
-            common_view = common_view[idx_common]
+        if len(idx_common) == 0:
+            return None
 
-    n_common = len(common_view)
+        # Update all previous group indices to map through the intersection
+        for prev_g in range(g):
+            group_indices[prev_g] = group_indices[prev_g][idx_common]
+        group_indices[g] = idx_group
+
+        # Narrow common_sents to the intersection
+        common_sents = common_sents[idx_common]
+
+    n_common = len(common_sents)
     if n_common == 0:
         return None
+
+    # Sort common sentences by void dtype order to match numpy intersect1d behavior
+    # This ensures consistent ordering with the old implementation
+    dt = np.dtype((np.void, common_sents.dtype.itemsize * cooc_slice))
+    common_view = np.ascontiguousarray(common_sents).view(dt).ravel()
+    sort_order = np.argsort(common_view)
+
+    # Apply sort order to all group indices
+    for g in range(n_groups):
+        group_indices[g] = group_indices[g][sort_order]
 
     # Collect hits for common sentences from each group
     result = []
@@ -725,7 +837,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                     continue
 
                 # Find common sentences within this document
-                common_sent_data = _find_common_sentences_numpy(doc_hits, cooc_slice)
+                common_sent_data = _find_common_sentences(doc_hits, cooc_slice)
                 if common_sent_data is None:
                     continue
 
