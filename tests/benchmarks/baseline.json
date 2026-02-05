@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "generated_date": "2026-02-03T22:06:19.957115",
+    "generated_date": "2026-02-04T21:00:20.912939",
     "machine_info": {
       "node": "anomander",
       "processor": "x86_64",
@@ -214,76 +214,76 @@
       }
     },
     "commit_info": {
-      "id": "3dfebe0f5db34a74d0ec6d84f0383427a55ac55e",
-      "time": "2026-02-03T14:33:12-06:00",
-      "author_time": "2026-02-03T14:33:12-06:00",
+      "id": "f4a77a738360f57a2e18ccab729c97f933a203b1",
+      "time": "2026-02-04T20:55:38-06:00",
+      "author_time": "2026-02-04T20:55:38-06:00",
       "dirty": true,
       "project": "PhiloLogic5",
-      "branch": "query-performance-optimization"
+      "branch": "main"
     }
   },
   "single_term_common_word": {
-    "median_seconds": 0.10887873847968876,
-    "mean_seconds": 0.10885039707645774,
-    "min_seconds": 0.10861919214949012,
-    "max_seconds": 0.10906213894486427,
-    "stddev_seconds": 0.00012750452211016027,
+    "median_seconds": 0.06345493881963193,
+    "mean_seconds": 0.06311569027602673,
+    "min_seconds": 0.05605757795274258,
+    "max_seconds": 0.07101665064692497,
+    "stddev_seconds": 0.005781851222586679,
     "rounds": 10
   },
   "single_term_rare_word": {
-    "median_seconds": 0.10970227397046983,
-    "mean_seconds": 0.11004463792778552,
-    "min_seconds": 0.10878259176388383,
-    "max_seconds": 0.11156189674511552,
-    "stddev_seconds": 0.001081786112750223,
+    "median_seconds": 0.03980995831079781,
+    "mean_seconds": 0.03940702979452908,
+    "min_seconds": 0.036122231744229794,
+    "max_seconds": 0.04059737967327237,
+    "stddev_seconds": 0.001367831819483878,
     "rounds": 10
   },
   "phrase_search": {
-    "median_seconds": 0.30963884480297565,
-    "mean_seconds": 0.3100838077720255,
-    "min_seconds": 0.30908441403880715,
-    "max_seconds": 0.311644050758332,
-    "stddev_seconds": 0.000962163408173832,
+    "median_seconds": 0.23980938456952572,
+    "mean_seconds": 0.2379899848718196,
+    "min_seconds": 0.22982882242649794,
+    "max_seconds": 0.24086904572322965,
+    "stddev_seconds": 0.0041866367763811144,
     "rounds": 10
   },
   "proximity_search": {
-    "median_seconds": 0.3112407985609025,
-    "mean_seconds": 0.31071097548119725,
-    "min_seconds": 0.3094307058490813,
-    "max_seconds": 0.3116484130732715,
-    "stddev_seconds": 0.0009303089264144073,
+    "median_seconds": 0.2398933474905789,
+    "mean_seconds": 0.2400807434692979,
+    "min_seconds": 0.23864687606692314,
+    "max_seconds": 0.24221122357994318,
+    "stddev_seconds": 0.001031770358363395,
     "rounds": 10
   },
   "sentence_search": {
-    "median_seconds": 0.4106013053096831,
-    "mean_seconds": 0.40578244915232065,
-    "min_seconds": 0.36048778984695673,
-    "max_seconds": 0.41193760419264436,
-    "stddev_seconds": 0.015935350807371112,
+    "median_seconds": 0.27959173591807485,
+    "mean_seconds": 0.2805814550723881,
+    "min_seconds": 0.27933615585789084,
+    "max_seconds": 0.2894877353683114,
+    "stddev_seconds": 0.003137218054590184,
     "rounds": 10
   },
   "or_search": {
-    "median_seconds": 0.11103008897043765,
-    "mean_seconds": 0.1107110720127821,
-    "min_seconds": 0.1093726260587573,
-    "max_seconds": 0.11179268965497613,
-    "stddev_seconds": 0.000931615579659342,
+    "median_seconds": 0.043677934911102057,
+    "mean_seconds": 0.04458296471275389,
+    "min_seconds": 0.03671028884127736,
+    "max_seconds": 0.05105964187532663,
+    "stddev_seconds": 0.005504267482404929,
     "rounds": 10
   },
   "iterate_first_100": {
-    "median_seconds": 0.11110999551601708,
-    "mean_seconds": 0.11139253182336688,
-    "min_seconds": 0.11000000406056643,
-    "max_seconds": 0.11339904880151153,
-    "stddev_seconds": 0.0009873771054068842,
+    "median_seconds": 0.06898686406202614,
+    "mean_seconds": 0.06947232447564602,
+    "min_seconds": 0.06844926299527287,
+    "max_seconds": 0.07373704062774777,
+    "stddev_seconds": 0.0015728759222480037,
     "rounds": 10
   },
   "random_access": {
-    "median_seconds": 0.10959508083760738,
-    "mean_seconds": 0.11471289326436818,
-    "min_seconds": 0.10938134184107184,
-    "max_seconds": 0.16035759123042226,
-    "stddev_seconds": 0.016039493088678795,
+    "median_seconds": 0.06716014235280454,
+    "mean_seconds": 0.0670555463526398,
+    "min_seconds": 0.06120689306408167,
+    "max_seconds": 0.07002685079351068,
+    "stddev_seconds": 0.0023464318941957725,
     "rounds": 10
   }
 }
