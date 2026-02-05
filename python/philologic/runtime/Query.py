@@ -4,9 +4,6 @@ import hashlib
 import os
 import subprocess
 import sys
-from collections import deque
-from itertools import product
-from operator import eq, le
 from pathlib import Path
 
 # Set umask before importing numba to ensure cache files are world-writable
@@ -32,7 +29,492 @@ if not os.access(cache_dir, os.W_OK):
 os.environ["NUMBA_CACHE_DIR"] = cache_dir
 numba.config.CACHE_DIR = cache_dir
 
-OBJECT_LEVEL = {"para": 5, "sent": 6}
+
+# =============================================================================
+# Document-level search helper functions
+# =============================================================================
+
+
+@numba.jit(nopython=True, cache=True)
+def _merge_two_sorted_arrays(arr1, arr2):
+    """Merge two sorted hit arrays using two-way merge (O(n)).
+
+    Arrays must be sorted by (doc_id, byte_offset) where doc_id is column 0
+    and byte_offset is column 8.
+    """
+    n1, n2 = len(arr1), len(arr2)
+    result = np.empty((n1 + n2, 9), dtype=np.uint32)
+
+    i, j, k = 0, 0, 0
+    while i < n1 and j < n2:
+        # Compare (doc_id, byte_offset)
+        doc1, byte1 = arr1[i, 0], arr1[i, 8]
+        doc2, byte2 = arr2[j, 0], arr2[j, 8]
+
+        if doc1 < doc2 or (doc1 == doc2 and byte1 <= byte2):
+            result[k] = arr1[i]
+            i += 1
+        else:
+            result[k] = arr2[j]
+            j += 1
+        k += 1
+
+    # Copy remaining elements
+    while i < n1:
+        result[k] = arr1[i]
+        i += 1
+        k += 1
+    while j < n2:
+        result[k] = arr2[j]
+        j += 1
+        k += 1
+
+    return result
+
+
+def _kway_merge_sorted_arrays(arrays):
+    """K-way merge of sorted hit arrays using repeated two-way merges.
+
+    Uses divide-and-conquer approach: O(n log k) where n is total elements
+    and k is number of arrays. Much faster than O(n log n) full sort.
+    """
+    if len(arrays) == 0:
+        return np.empty((0, 9), dtype=np.uint32)
+    if len(arrays) == 1:
+        return np.ascontiguousarray(arrays[0])
+    if len(arrays) == 2:
+        return _merge_two_sorted_arrays(
+            np.ascontiguousarray(arrays[0]),
+            np.ascontiguousarray(arrays[1])
+        )
+
+    # Divide and conquer: merge pairs, then merge results
+    # This gives O(n log k) complexity
+    while len(arrays) > 1:
+        merged = []
+        for i in range(0, len(arrays), 2):
+            if i + 1 < len(arrays):
+                merged.append(_merge_two_sorted_arrays(
+                    np.ascontiguousarray(arrays[i]),
+                    np.ascontiguousarray(arrays[i + 1])
+                ))
+            else:
+                merged.append(np.ascontiguousarray(arrays[i]))
+        arrays = merged
+
+    return arrays[0]
+
+
+def _load_word_group_hits(db_path, txn, words, overflow_words):
+    """Load and merge hits for a word group (handles OR within group).
+
+    Uses np.frombuffer to create views into LMDB buffers without copying.
+    IMPORTANT: The returned array is only valid while the transaction is open.
+
+    Args:
+        db_path: Path to the database
+        txn: LMDB transaction (must remain open while using returned array)
+        words: List of words in the group
+        overflow_words: Set of overflow words
+
+    Returns:
+        Numpy array view of hits, sorted by (doc_id, byte_offset)
+    """
+    arrays = []
+    for word in words:
+        if word not in overflow_words:
+            buffer = txn.get(word.encode("utf8"))
+            if buffer:
+                # Use frombuffer for zero-copy view into LMDB's mmap
+                arr = np.frombuffer(buffer, dtype=np.uint32).reshape(-1, 9)
+                arrays.append(arr)
+        else:
+            # Overflow words use memmap for zero-copy access
+            file_path = os.path.join(db_path, "overflow_words",
+                                     f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
+            arr = np.memmap(file_path, dtype=np.uint32, mode='r').reshape(-1, 9)
+            arrays.append(arr)
+
+    if not arrays:
+        return np.empty((0, 9), dtype=np.uint32)
+
+    if len(arrays) == 1:
+        return arrays[0]
+
+    # Use k-way merge instead of concatenate+sort
+    # This is O(n log k) instead of O(n log n) where k is number of word variants
+    # and n is total hits. Since k is typically small (2-10), this is much faster.
+    return _kway_merge_sorted_arrays(arrays)
+
+
+def _find_doc_boundaries(hits):
+    """Find start indices for each document in sorted hits array.
+
+    Returns: (unique_doc_ids, start_indices) where start_indices[i] is the
+    start index for unique_doc_ids[i], with an implicit end at len(hits).
+    """
+    if len(hits) == 0:
+        return np.array([], dtype=np.uint32), np.array([0], dtype=np.int64)
+
+    doc_ids = hits[:, 0]
+    # Find where doc_id changes
+    changes = np.where(doc_ids[1:] != doc_ids[:-1])[0] + 1
+    starts = np.concatenate([[0], changes])
+    unique_docs = doc_ids[starts]
+    # Add end index
+    starts = np.concatenate([starts, [len(hits)]])
+    return unique_docs, starts
+
+
+def _find_common_docs(doc_lists):
+    """Find documents that appear in all word groups."""
+    if not doc_lists:
+        return np.array([], dtype=np.uint32)
+
+    common = doc_lists[0]
+    for docs in doc_lists[1:]:
+        common = np.intersect1d(common, docs)
+    return common
+
+
+def _find_sentence_boundaries(hits, cooc_slice=6):
+    """Find sentence boundaries within a document's hits.
+
+    Returns: (unique_sentences, start_indices) similar to _find_doc_boundaries.
+    Sentence ID is the first `cooc_slice` columns.
+    """
+    if len(hits) == 0:
+        return np.empty((0, cooc_slice), dtype=np.uint32), np.array([0], dtype=np.int64)
+
+    sent_ids = hits[:, :cooc_slice]
+    # Find where sentence changes
+    changes = np.where(np.any(sent_ids[1:] != sent_ids[:-1], axis=1))[0] + 1
+    starts = np.concatenate([[0], changes])
+    unique_sents = sent_ids[starts]
+    starts = np.concatenate([starts, [len(hits)]])
+    return unique_sents, starts
+
+
+@numba.jit(nopython=True, cache=True)
+def _intersect_sorted_rows(arr1, arr2, n_cols):
+    """O(n+m) intersection of two sorted 2D arrays by first n_cols columns.
+
+    Returns indices into arr1 and arr2 where rows match.
+    Assumes both arrays are sorted and have unique rows (by first n_cols).
+    """
+    n1, n2 = len(arr1), len(arr2)
+    if n1 == 0 or n2 == 0:
+        return np.empty(0, dtype=np.int64), np.empty(0, dtype=np.int64)
+
+    # Pre-allocate for worst case
+    max_matches = min(n1, n2)
+    idx1 = np.empty(max_matches, dtype=np.int64)
+    idx2 = np.empty(max_matches, dtype=np.int64)
+
+    i, j, k = 0, 0, 0
+    while i < n1 and j < n2:
+        # Compare rows lexicographically by first n_cols columns
+        cmp = 0
+        for c in range(n_cols):
+            if arr1[i, c] < arr2[j, c]:
+                cmp = -1
+                break
+            elif arr1[i, c] > arr2[j, c]:
+                cmp = 1
+                break
+
+        if cmp == 0:  # Equal
+            idx1[k] = i
+            idx2[k] = j
+            k += 1
+            i += 1
+            j += 1
+        elif cmp < 0:
+            i += 1
+        else:
+            j += 1
+
+    return idx1[:k], idx2[:k]
+
+
+def _find_common_sentences(hits_list, cooc_slice=6):
+    """Find common sentences using Numba-optimized sorted intersection.
+
+    Same interface as _find_common_sentences_numpy but uses O(n+m) merge
+    instead of O(n log n) intersect1d.
+    """
+    n_groups = len(hits_list)
+
+    # Get sentence boundaries for each group
+    sent_info = []
+    for hits in hits_list:
+        unique_sents, starts = _find_sentence_boundaries(hits, cooc_slice)
+        sent_info.append((unique_sents, starts, hits))
+
+    # Start with first group's sentences as the "common" set
+    common_sents = np.ascontiguousarray(sent_info[0][0])
+    group_indices = [None] * n_groups
+    group_indices[0] = np.arange(len(common_sents), dtype=np.int64)
+
+    # Intersect with each subsequent group
+    for g in range(1, n_groups):
+        group_sents = np.ascontiguousarray(sent_info[g][0])
+
+        # Find intersection indices
+        idx_common, idx_group = _intersect_sorted_rows(common_sents, group_sents, cooc_slice)
+
+        if len(idx_common) == 0:
+            return None
+
+        # Update all previous group indices to map through the intersection
+        for prev_g in range(g):
+            group_indices[prev_g] = group_indices[prev_g][idx_common]
+        group_indices[g] = idx_group
+
+        # Narrow common_sents to the intersection
+        common_sents = common_sents[idx_common]
+
+    n_common = len(common_sents)
+    if n_common == 0:
+        return None
+
+    # Sort common sentences by void dtype order to match numpy intersect1d behavior
+    # This ensures consistent ordering with the old implementation
+    dt = np.dtype((np.void, common_sents.dtype.itemsize * cooc_slice))
+    common_view = np.ascontiguousarray(common_sents).view(dt).ravel()
+    sort_order = np.argsort(common_view)
+
+    # Apply sort order to all group indices
+    for g in range(n_groups):
+        group_indices[g] = group_indices[g][sort_order]
+
+    # Collect hits for common sentences from each group
+    result = []
+    for g in range(n_groups):
+        unique_sents, starts, hits = sent_info[g]
+        indices = group_indices[g]
+
+        # Get start/end for each common sentence
+        group_starts = starts[indices]
+        group_ends = starts[indices + 1]
+        counts = group_ends - group_starts
+
+        # Gather hits
+        total_hits = counts.sum()
+        if total_hits == 0:
+            result.append((np.empty((0, 9), dtype=np.uint32), np.array([], dtype=np.int32)))
+            continue
+
+        # Build gather indices
+        offsets = np.arange(total_hits) - np.repeat(np.concatenate([[0], np.cumsum(counts)[:-1]]), counts)
+        gather_idx = np.repeat(group_starts, counts) + offsets
+
+        gathered_hits = hits[gather_idx]
+        result.append((gathered_hits, counts.astype(np.int32)))
+
+    return result
+
+
+@numba.jit(nopython=True, cache=True)
+def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sentences,
+                            cooc_order, mapping_order, max_distance, exact_distance):
+    """Process N word groups using Numba with odometer-style iteration.
+
+    Args:
+        all_hits: Concatenated hits array (total_hits x 9)
+        all_sizes: 2D array of sizes (n_groups x n_sentences)
+        group_offsets: Starting offset for each group in all_hits (n_groups,)
+        n_groups: Number of word groups
+        n_sentences: Number of sentences to process
+        cooc_order: Whether to enforce query order
+        mapping_order: Mapping from frequency order to query order
+        max_distance: Maximum word distance (0 = no limit)
+        exact_distance: If True, distance must equal max_distance
+
+    Returns:
+        Output array of valid hits
+    """
+    # Calculate output row size: 9 + 2*(n_groups-1)
+    out_cols = 9 + 2 * (n_groups - 1)
+
+    # Estimate max output size (will trim later)
+    max_output = 0
+    for sent_idx in range(n_sentences):
+        combo_count = 1
+        for g in range(n_groups):
+            combo_count *= all_sizes[g, sent_idx]
+        max_output += combo_count
+
+    if max_output == 0:
+        return np.empty((0, out_cols), dtype=np.uint32)
+
+    output = np.empty((max_output, out_cols), dtype=np.uint32)
+    out_idx = 0
+
+    # Track current position in each group's hits
+    group_pos = np.zeros(n_groups, dtype=np.int64)
+
+    # Arrays for current sentence processing
+    indices = np.zeros(n_groups, dtype=np.int64)
+    positions = np.zeros(n_groups, dtype=np.int64)
+    sorted_indices = np.zeros(n_groups, dtype=np.int64)
+
+    for sent_idx in range(n_sentences):
+        # Get sizes for this sentence
+        sent_sizes = np.empty(n_groups, dtype=np.int64)
+        sent_starts = np.empty(n_groups, dtype=np.int64)
+        total_combos = 1
+
+        for g in range(n_groups):
+            sent_sizes[g] = all_sizes[g, sent_idx]
+            sent_starts[g] = group_offsets[g] + group_pos[g]
+            total_combos *= sent_sizes[g]
+            group_pos[g] += sent_sizes[g]
+
+        if total_combos == 0:
+            continue
+
+        # Track seen outputs for deduplication within sentence
+        seen_start = out_idx
+
+        # Reset indices for odometer
+        for g in range(n_groups):
+            indices[g] = 0
+
+        # Iterate through all combinations
+        for _ in range(total_combos):
+            # Get positions for current combination
+            for g in range(n_groups):
+                hit_idx = sent_starts[g] + indices[g]
+                positions[g] = all_hits[hit_idx, 7]
+
+            valid = True
+
+            if cooc_order:
+                # Map positions to query order and check if sorted
+                for g in range(n_groups):
+                    sorted_indices[mapping_order[g]] = positions[g]
+
+                # Check if in ascending order
+                for g in range(n_groups - 1):
+                    if sorted_indices[g] >= sorted_indices[g + 1]:
+                        valid = False
+                        break
+            else:
+                # Unordered: just check for duplicate positions
+                for g in range(n_groups):
+                    for g2 in range(g + 1, n_groups):
+                        if positions[g] == positions[g2]:
+                            valid = False
+                            break
+                    if not valid:
+                        break
+
+            if valid and max_distance > 0:
+                # Find min and max position
+                min_pos = positions[0]
+                max_pos = positions[0]
+                for g in range(1, n_groups):
+                    if positions[g] < min_pos:
+                        min_pos = positions[g]
+                    if positions[g] > max_pos:
+                        max_pos = positions[g]
+
+                span = max_pos - min_pos
+                if exact_distance:
+                    if span != max_distance:
+                        valid = False
+                else:
+                    if span > max_distance:
+                        valid = False
+
+            if valid:
+                # Sort hits by position for output
+                # Simple insertion sort since n_groups is small
+                for g in range(n_groups):
+                    sorted_indices[g] = g
+
+                for i in range(1, n_groups):
+                    key_pos = positions[sorted_indices[i]]
+                    key_idx = sorted_indices[i]
+                    j = i - 1
+                    while j >= 0 and positions[sorted_indices[j]] > key_pos:
+                        sorted_indices[j + 1] = sorted_indices[j]
+                        j -= 1
+                    sorted_indices[j + 1] = key_idx
+
+                # Build output row
+                row = np.empty(out_cols, dtype=np.uint32)
+
+                # First word: all 9 columns
+                first_g = sorted_indices[0]
+                first_hit_idx = sent_starts[first_g] + indices[first_g]
+                for c in range(9):
+                    row[c] = all_hits[first_hit_idx, c]
+
+                # Remaining words: columns 7-8 only
+                col = 9
+                for g_idx in range(1, n_groups):
+                    g = sorted_indices[g_idx]
+                    hit_idx = sent_starts[g] + indices[g]
+                    row[col] = all_hits[hit_idx, 7]
+                    row[col + 1] = all_hits[hit_idx, 8]
+                    col += 2
+
+                # Check for duplicate within this sentence
+                is_dup = False
+                for k in range(seen_start, out_idx):
+                    match = True
+                    for m in range(out_cols):
+                        if output[k, m] != row[m]:
+                            match = False
+                            break
+                    if match:
+                        is_dup = True
+                        break
+
+                if not is_dup:
+                    output[out_idx] = row
+                    out_idx += 1
+
+            # Increment odometer
+            for g in range(n_groups - 1, -1, -1):
+                indices[g] += 1
+                if indices[g] < sent_sizes[g]:
+                    break
+                indices[g] = 0
+
+    return output[:out_idx]
+
+
+def _process_n_groups(hits_list, sizes_list, cooc_order, mapping_order,
+                       max_distance, exact_distance, n_groups):
+    """Process N word groups (general case) - prepares data for Numba kernel."""
+    n_sentences = len(sizes_list[0])
+
+    # Prepare data for Numba function
+    # Concatenate all hits into single array
+    total_hits = sum(len(h) for h in hits_list)
+    all_hits = np.empty((total_hits, 9), dtype=np.uint32)
+    group_offsets = np.empty(n_groups, dtype=np.int64)
+
+    offset = 0
+    for g in range(n_groups):
+        group_offsets[g] = offset
+        all_hits[offset:offset + len(hits_list[g])] = hits_list[g]
+        offset += len(hits_list[g])
+
+    # Convert sizes to 2D array
+    all_sizes = np.array(sizes_list, dtype=np.int64)
+
+    # Convert mapping_order to numpy array
+    mapping_order_arr = np.array(mapping_order, dtype=np.int64)
+
+    # Call Numba function - returns numpy array directly
+    return _process_n_groups_numba(
+        all_hits, all_sizes, group_offsets, n_groups, n_sentences,
+        cooc_order, mapping_order_arr, max_distance, exact_distance
+    )
 
 
 class WordData(msgspec.Struct):
@@ -77,6 +559,16 @@ def query(
         if pid > 0:
             os._exit(0)
         else:
+            # Close inherited file descriptors to fully detach from CGI/Apache
+            # Without this, Apache may wait for stdout to close before completing the response
+            os.close(0)  # stdin
+            os.close(1)  # stdout
+            os.close(2)  # stderr
+            # Redirect to /dev/null to prevent errors from print statements
+            sys.stdin = open(os.devnull, 'r')
+            sys.stdout = open(os.devnull, 'w')
+            sys.stderr = open(os.devnull, 'w')
+
             with open(f"{filename}.terms", "w") as terms_file:
                 expand_query_not(
                     split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
@@ -258,105 +750,142 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
 def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
     """Phrase searches where words need to be in a specific order"""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
-    common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, overflow_words, corpus_file=corpus_file, cooc_order=True
-    )
-    mapping_order = next(common_object_ids)
-    with open(hitlist_filename, "wb") as output_file:
-        for philo_id_groups in common_object_ids:
-            for group_combination in product(*philo_id_groups):
-                raw_positions = [a[7] for a in group_combination]
-                mapped_raw_positions = [p for _, p in sorted(zip(mapping_order, raw_positions))]
-                positions = sorted(mapped_raw_positions)
-                if positions != mapped_raw_positions:  # are positions in sorted order?
-                    continue
-                # we now need to check if the positions are within 1 word of each other
-                if positions[0] + len(word_groups) - 1 == positions[-1]:
-                    group_combination = sorted(group_combination, key=lambda x: x[7])  # normalize by text position
-                    starting_id = group_combination[0].tobytes()
-                    for group_num in range(1, len(word_groups)):
-                        starting_id += group_combination[group_num][7:].tobytes()
-                    output_file.write(starting_id)
+
+    # For phrase search: positions must be consecutive (distance == n_groups - 1)
+    max_distance = len(word_groups) - 1
+    _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
+                               cooc_order=True, corpus_file=corpus_file,
+                               max_distance=max_distance, exact_distance=True)
 
 
 def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus_file=None):
     """Search for co-occurrences of multiple words within n words of each other in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
-    common_object_ids = get_cooccurrence_groups(
-        db_path, word_groups, overflow_words, corpus_file=corpus_file, cooc_order=cooc_order
-    )
-
-    if cooc_order is True:
-        mapping_order = next(common_object_ids)
 
     if len(word_groups) > 1 and n == 1:
         n = len(word_groups) - 1
 
-    if exact_distance is True:
-        comp = eq  # distance between words equals n
-    else:
-        comp = le  # distance between words is less than or equal to n
-    with open(hitlist_filename, "wb") as output_file:
-        for philo_id_groups in common_object_ids:
-            hit_cache = set()
-            for group_combination in product(*philo_id_groups):
-                if cooc_order is True:
-                    raw_positions = [a[7] for a in group_combination]
-                    mapped_raw_positions = [p for _, p in sorted(zip(mapping_order, raw_positions))]
-                    positions = sorted(mapped_raw_positions)
-                    if positions != mapped_raw_positions:  # are positions in sorted order?
-                        continue
-                else:
-                    positions: list[int] = sorted({philo_id[7:8][0] for philo_id in group_combination})
-                # we now need to check if the positions are within n words of each other
-                if len(positions) != len(word_groups):  # we had duplicate words
-                    continue
-                if comp(positions[-1] - positions[0], n):
-                    group_combination = sorted(group_combination, key=lambda x: x[-1])
-                    starting_id = group_combination[0].tobytes()
-                    for group_num in range(1, len(word_groups)):
-                        starting_id += group_combination[group_num][7:].tobytes()
-                    if starting_id not in hit_cache:
-                        hit_cache.add(starting_id)
-                        output_file.write(starting_id)
+    # Use document-level approach for all cases
+    _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
+                               cooc_order=cooc_order, corpus_file=corpus_file,
+                               max_distance=n, exact_distance=exact_distance)
 
 
 def search_within_text_object(db_path, hitlist_filename, overflow_words, level, cooc_order, corpus_file=None):
     """Search for co-occurrences of multiple words in the same sentence in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
-    common_object_ids = get_cooccurrence_groups(
-        db_path,
-        word_groups,
-        overflow_words,
-        level=level,
-        corpus_file=corpus_file,
-        cooc_order=cooc_order,
-    )
 
-    if cooc_order is True:
-        mapping_order = next(common_object_ids)
+    # Use document-level approach for all cases
+    _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
+                               cooc_order=cooc_order, corpus_file=corpus_file, level=level)
 
-    with open(hitlist_filename, "wb") as output_file:
-        for philo_id_groups in common_object_ids:
-            hit_cache = set()
-            for group_combination in product(*philo_id_groups):
-                if cooc_order is True:
-                    raw_positions = [a[7] for a in group_combination]
-                    mapped_raw_positions = [p for _, p in sorted(zip(mapping_order, raw_positions))]
-                    positions = sorted(mapped_raw_positions)
-                    if positions != mapped_raw_positions:  # are positions in sorted order?
-                        continue
-                else:
-                    positions: list[int] = sorted({philo_id[7] for philo_id in group_combination})
-                if len(set(positions)) != len(word_groups):  # we had duplicate words
+
+def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
+                                cooc_order, corpus_file, level=None, distance_check=None,
+                                max_distance=0, exact_distance=False):
+    """Document-level co-occurrence search using numpy optimization.
+
+    Processes documents one at a time for streaming results while using numpy
+    vectorized operations within each document for efficiency.
+
+    Uses zero-copy np.frombuffer views into LMDB's memory-mapped pages,
+    keeping memory usage minimal even for very large corpora.
+
+    Args:
+        db_path: Path to the database
+        hitlist_filename: Output hitlist file path
+        word_groups: List of word groups from the query
+        overflow_words: Set of overflow words
+        cooc_order: Whether to enforce query order
+        corpus_file: Optional corpus filter file
+        level: Text object level ("sent", "para") - only used for sentence/para search
+        distance_check: Deprecated, use max_distance/exact_distance instead
+        max_distance: Maximum word distance (0 = no limit, 1 = consecutive, n = within n words)
+        exact_distance: If True, distance must equal max_distance; if False, distance <= max_distance
+    """
+    cooc_slice = 6 if level in (None, "sent") else 5
+    n_groups = len(word_groups)
+    mapping_order = list(range(n_groups))
+
+    # Keep transaction open for the entire processing to use zero-copy views
+    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
+    with env.begin(buffers=True) as txn:
+        # Load word hits as views (no copy - uses LMDB's mmap)
+        all_hits = []
+        for group in word_groups:
+            hits = _load_word_group_hits(db_path, txn, group, overflow_words)
+            all_hits.append(hits)
+
+        # Apply corpus filter if provided (this creates copies for filtered results)
+        if corpus_file is not None:
+            all_hits = [filter_philo_ids(corpus_file, hits) for hits in all_hits]
+
+        # Find document boundaries for each group
+        doc_info = []
+        for hits in all_hits:
+            doc_ids, starts = _find_doc_boundaries(hits)
+            doc_info.append((doc_ids, starts, hits))
+
+        # Find common documents
+        doc_lists = [info[0] for info in doc_info]
+        common_docs = _find_common_docs(doc_lists)
+
+        with open(hitlist_filename, "wb") as output_file:
+            # Process each common document
+            for doc_id in common_docs:
+                # Extract hits for this document from each group
+                doc_hits = []
+                for doc_ids, starts, hits in doc_info:
+                    idx = np.searchsorted(doc_ids, doc_id)
+                    if idx < len(doc_ids) and doc_ids[idx] == doc_id:
+                        doc_hits.append(hits[starts[idx]:starts[idx + 1]])
+                    else:
+                        doc_hits.append(np.empty((0, 9), dtype=np.uint32))
+
+                # Skip if any group has no hits in this document
+                if any(len(h) == 0 for h in doc_hits):
                     continue
-                group_combination = sorted(group_combination, key=lambda x: x[-1])
-                starting_id = group_combination[0].tobytes()
-                for group_num in range(1, len(word_groups)):
-                    starting_id += group_combination[group_num][7:].tobytes()
-                if starting_id not in hit_cache:
-                    hit_cache.add(starting_id)
-                    output_file.write(starting_id)
+
+                # Find common sentences within this document
+                common_sent_data = _find_common_sentences(doc_hits, cooc_slice)
+                if common_sent_data is None:
+                    continue
+
+                # Process based on number of groups
+                if n_groups == 2:
+                    hits_w1, sizes_w1 = common_sent_data[0]
+                    hits_w2, sizes_w2 = common_sent_data[1]
+
+                    if len(sizes_w1) == 0:
+                        continue
+
+                    # For ordered search, first group should have earlier position
+                    first_earlier = cooc_order  # True if ordered, False if unordered
+
+                    # Convert sizes to 2D array for Numba function
+                    sizes = np.column_stack([sizes_w1, sizes_w2]).astype(np.int64)
+
+                    result = _process_two_groups_batch(
+                        hits_w1, hits_w2, sizes,
+                        first_earlier, cooc_order, max_distance, exact_distance
+                    )
+
+                    if len(result) > 0:
+                        output_file.write(result.tobytes())
+                else:
+                    # General N-group case
+                    hits_list = [data[0] for data in common_sent_data]
+                    sizes_list = [data[1] for data in common_sent_data]
+
+                    result = _process_n_groups(
+                        hits_list, sizes_list, cooc_order, mapping_order,
+                        max_distance, exact_distance, n_groups
+                    )
+
+                    if len(result) > 0:
+                        output_file.write(result.tobytes())
+
+    env.close()
 
 
 def get_word_groups(terms_file):
@@ -375,155 +904,117 @@ def get_word_groups(terms_file):
     return word_groups
 
 
-def get_cooccurrence_groups(
-    db_path, word_groups, overflow_words, level="sent", corpus_file=None, cooc_order=False
-):
-    cooc_slice = 6
-    if level == "para":
-        cooc_slice = 5
-    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
-    with env.begin(buffers=True) as txn:
-        # Determine which group has the smallest byte size
-        byte_size_per_group = []
-        for index, group in enumerate(word_groups):
-            byte_size = 0
-            for word in group:
-                if word not in overflow_words:
-                    byte_size += len(txn.get(word.encode("utf8")))
+@numba.jit(nopython=True, cache=True)
+def _process_two_groups_batch(all_w1, all_w2, batch_sizes, first_earlier, cooc_order,
+                                     max_distance, exact_distance):
+    """Process a batch of two-word-group co-occurrences using Numba.
+
+    Builds cartesian products, checks position constraints, and deduplicates hits.
+
+    Args:
+        all_w1: Concatenated word1 arrays from all sentences in batch (N x 9)
+        all_w2: Concatenated word2 arrays from all sentences in batch (M x 9)
+        batch_sizes: Array of (n1, n2) sizes for each sentence (S x 2)
+        first_earlier: Whether first group should appear earlier in text (for ordered search)
+        cooc_order: Whether to enforce ordering
+        max_distance: Maximum word distance (0 = no limit, 1 = consecutive, n = within n words)
+        exact_distance: If True, distance must equal max_distance; if False, distance <= max_distance
+
+    Returns:
+        Output array of shape (H, 11) with uint32 values for H valid hits
+    """
+    # Calculate total combinations for allocation
+    n_sentences = len(batch_sizes)
+    total = 0
+    for i in range(n_sentences):
+        total += batch_sizes[i, 0] * batch_sizes[i, 1]
+
+    if total == 0:
+        return np.empty((0, 11), dtype=np.uint32)
+
+    # Allocate max size output
+    output = np.empty((total, 11), dtype=np.uint32)
+    out_idx = 0
+
+    w1_offset = 0
+    w2_offset = 0
+
+    for sent_idx in range(n_sentences):
+        n1 = batch_sizes[sent_idx, 0]
+        n2 = batch_sizes[sent_idx, 1]
+
+        seen_start = out_idx  # For deduplication within sentence
+
+        for i in range(n1):
+            w1 = all_w1[w1_offset + i]
+            for j in range(n2):
+                w2 = all_w2[w2_offset + j]
+
+                pos1 = w1[7]
+                pos2 = w2[7]
+
+                # Check ordering constraint
+                if cooc_order:
+                    if first_earlier:
+                        if pos1 >= pos2:
+                            continue
+                    else:
+                        if pos1 <= pos2:
+                            continue
                 else:
-                    file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
-                    byte_size += os.stat(file_path).st_size
-            byte_size_per_group.append(byte_size)
-        # Perform an argsort on the list to get the indices of the groups sorted by byte size
-        sorted_indices = np.argsort(byte_size_per_group)
-        if cooc_order is True:
-            yield sorted_indices
+                    # Unordered: just need different positions
+                    if pos1 == pos2:
+                        continue
 
-        def one_word_generator(word):
-            yield get_word_array(txn, word, overflow_words, db_path)
+                # Check distance constraint
+                if max_distance > 0:
+                    if pos1 > pos2:
+                        dist = pos1 - pos2
+                    else:
+                        dist = pos2 - pos1
 
-        # Process each word group
-        first_group_data = np.array([])
-        group_generators = []
-        for index in sorted_indices:
-            words = word_groups[index]
-            if index == sorted_indices[0]:  # grab the entire first group
-                if len(words) == 1:
-                    first_group_data = get_word_array(txn, words[0], overflow_words, db_path)
+                    if exact_distance:
+                        if dist != max_distance:
+                            continue
+                    else:
+                        if dist > max_distance:
+                            continue
+
+                # Determine first/second by position for output
+                if pos1 < pos2:
+                    first = w1
+                    second = w2
                 else:
-                    first_group_data = np.concatenate([i for i in merge_word_group(db_path, txn, words, overflow_words)], dtype="u4")
-            else:
-                if len(words) == 1:
-                    group_generators.append(one_word_generator(words[0]))
-                else:
-                    group_generators.append(merge_word_group(db_path, txn, words, overflow_words, chunk_size=36 * 1000))
+                    first = w2
+                    second = w1
 
-        if corpus_file is not None:
-            first_group_data = filter_philo_ids(corpus_file, first_group_data)
+                # Build output row: first[0:9] + second[7:9]
+                row = np.empty(11, dtype=np.uint32)
+                for c in range(9):
+                    row[c] = first[c]
+                row[9] = second[7]
+                row[10] = second[8]
 
-        group_data = [None for _ in range(len(word_groups) - 1)]  # Start with None for each group
-        break_out = False
-        previous_row = None
-        match = True
-        for index in first_group_data:
-            philo_id_object = index[:cooc_slice]
-            if previous_row is not None and compare_rows(philo_id_object, previous_row) == 0:
-                if match is True:
-                    results[0] = index.reshape(-1, 9)  # replace the previous row with the current row
-                    yield results
-                continue
-            results = deque()
-            match = True
-            previous_row = philo_id_object
-            for group_index, philo_id_group in enumerate(group_generators):
-                if group_data[group_index] is None:
-                    philo_id_array = next(philo_id_group)  # load the first chunk
-                else:
-                    philo_id_array = group_data[group_index]
-
-                if philo_id_array.shape[0] == 0:  # type: ignore
-                    break_out = True
-                    break
-
-                # Is the first row greater than the current philo_id_object?
-                if compare_rows(philo_id_array[0, :cooc_slice], philo_id_object) == 1:
-                    match = False
-                    group_data[group_index] = philo_id_array
-                    break
-
-                # Is the last row less than the current philo_id_object?
-                while compare_rows(philo_id_array[-1, :cooc_slice], philo_id_object) == -1:
-                    try:
-                        philo_id_array = next(philo_id_group)  # load the next chunk
-                    except StopIteration:  # no more philo_ids in this group, we are done
-                        break_out = True
+                # Check for duplicate within this sentence (check all columns)
+                is_dup = False
+                for k in range(seen_start, out_idx):
+                    match = True
+                    for m in range(11):
+                        if output[k, m] != row[m]:
+                            match = False
+                            break
+                    if match:
+                        is_dup = True
                         break
 
-                if break_out is True:
-                    break
+                if not is_dup:
+                    output[out_idx] = row
+                    out_idx += 1
 
-                # Find matching rows
-                matching_indices = find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice)
-                matching_rows = philo_id_array[matching_indices]
-                group_data[group_index] = philo_id_array
-                if matching_rows.shape[0] == 0:  # no match found
-                    match = False
-                    break
-                if matching_indices.shape[0] > 0:
-                    if matching_indices[-1] + 1 == philo_id_array.shape[0]:
-                        try:
-                            group_data[group_index] = next(philo_id_group)  # load the next chunk
-                        except StopIteration:
-                            break_out = True
-                    else:
-                        group_data[group_index] = philo_id_array[matching_indices[-1] + 1 :]  # slice off matching rows
+        w1_offset += n1
+        w2_offset += n2
 
-                results.append(matching_rows)  # We only keep the first instance of a hit in the first group
-
-            if break_out is True:
-                break
-            elif match is True:
-                results.appendleft(index.reshape(-1, 9))  # We only keep the first instance of a hit in the first group
-                yield results
-
-    env.close()
-
-
-@numba.jit(nopython=True, cache=True)
-def compare_rows(row1, row2):
-    for i in range(len(row1)):
-        if row1[i] != row2[i]:
-            return 1 if row1[i] > row2[i] else -1
-    return 0
-
-
-@numba.jit(nopython=True, cache=True)
-def find_matching_indices_sorted(philo_id_array, philo_id_object, cooc_slice):
-    matching_indices = []
-    low = 0
-    high = len(philo_id_array) - 1
-
-    while low <= high:
-        mid = (low + high) // 2
-        current_row = philo_id_array[mid][:cooc_slice]
-
-        comparison = compare_rows(current_row, philo_id_object)
-
-        if comparison == 0:
-            # Match found, append index
-            matching_indices.append(mid)
-            # Roll back as long as consecutive matches exist
-            rollback = mid - 1
-            while rollback >= low and compare_rows(philo_id_array[rollback][:cooc_slice], philo_id_object) == 0:
-                matching_indices.append(rollback)
-                rollback -= 1
-            low = mid + 1  # Continue searching in the higher half
-        elif comparison < 0:
-            low = mid + 1  # Search in the higher half
-        else:
-            high = mid - 1  # Search in the lower half
-    matching_indices.sort()
-    return np.array(matching_indices)
+    return output[:out_idx]
 
 
 def merge_word_group(db_path: str, txn, words: list[str], overflow_words: set[str], chunk_size=None):
@@ -771,28 +1262,3 @@ if __name__ == "__main__":
     print("GROUPED:", grouped, file=sys.stderr)
     split = split_terms(grouped)
     print("parsed %d terms:" % len(split), split, file=sys.stderr)
-
-    env = lmdb.open(f"{path}/data/words.lmdb", readonly=True, readahead=False)
-    with env.begin(buffers=True) as txn:
-        raw_bytes = txn.get(terms[0].encode("utf8"))
-        # print(len(raw_bytes))
-        # hits = np.frombuffer(txn.get(terms[0].encode("utf8")), dtype="u4").reshape(-1, 9)
-
-
-
-    # class Fake_DB:
-    #     pass
-
-    # fake_db = Fake_DB()
-    # from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
-
-    # fake_db.path = path + "/data/"
-    # fake_db.locals = Config(fake_db.path + "/db.locals.py", DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
-    # fake_db.encoding = "utf-8"
-    # freq_file = path + "/data/frequencies/normalized_word_frequencies"
-    # # expand_query_not(split, freq_file, sys.stdout)
-    # hits = query(fake_db, " ".join(terms), query_debug=True, raw_results=True)
-    # hits.finish()
-    # print(len(hits))
-    # for hit in hits:
-    #     print(hit)

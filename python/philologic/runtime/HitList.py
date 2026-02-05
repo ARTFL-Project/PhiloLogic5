@@ -172,7 +172,7 @@ class HitList(object):
                 if self.done:
                     raise IndexError
                 else:
-                    time.sleep(0.05)
+                    time.sleep(0.01)
                     self.update()
             offset = self.hitsize * n
             self.fh.seek(offset)
@@ -194,7 +194,7 @@ class HitList(object):
     def finish(self):
         while not self.done:
             self.update()
-            time.sleep(0.05)
+            time.sleep(0.01)
 
     def readhit(self, n):
         # reads hitlist into buffer, unpacks
@@ -204,6 +204,7 @@ class HitList(object):
             if self.done:
                 raise IndexError
             else:
+                time.sleep(0.01)
                 self.update()
         if n != self.position:
             offset = self.hitsize * n
