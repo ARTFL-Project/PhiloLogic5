@@ -25,24 +25,59 @@ if [ "$INSTALL_TRANSFORMERS" = true ]; then
     echo "Transformers support will be installed (with CUDA)"
 fi
 
-# Install uv system-wide if not present
+# Get the directory where install.sh lives
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Wrapper to run commands with sudo only if available and needed
+run_privileged() {
+    if [ "$(id -u)" -eq 0 ]; then
+        # Already root, run directly
+        "$@"
+    elif command -v sudo &> /dev/null; then
+        # sudo exists, use it (will prompt for password if needed)
+        sudo "$@"
+    else
+        # No sudo available, try running directly
+        "$@"
+    fi
+}
+
+# Ensure USER is set (may be empty in containers)
+if [ -z "$USER" ]; then
+    USER=$(id -un 2>/dev/null || echo "$(id -u)")
+fi
+
+# Set uv cache to a writable location (/.cache may not be writable in containers)
+export UV_CACHE_DIR=/var/lib/philologic5/.uv-cache
+
+# Install uv if not present
 if ! command -v uv &> /dev/null
 then
-    echo "uv could not be found. Installing system-wide..."
-    curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
+    UV_LOCAL_DIR="$SCRIPT_DIR/.uv-bin"
+    mkdir -p "$UV_LOCAL_DIR"
+    echo "uv could not be found. Installing to $UV_LOCAL_DIR..."
+    curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR="$UV_LOCAL_DIR" sh
+    export PATH="$UV_LOCAL_DIR:$PATH"
 fi
 
 # Delete virtual environment if it already exists
 if [ -d /var/lib/philologic5 ]; then
     echo "Deleting existing PhiloLogic5 installation..."
-    sudo rm -rf /var/lib/philologic5
+    run_privileged rm -rf /var/lib/philologic5
 fi
+
+# Create base directory first so uv cache dir exists
+run_privileged mkdir -p /var/lib/philologic5
+run_privileged mkdir -p "$UV_CACHE_DIR"
+# Make writable by current user (use numeric UID to avoid passwd lookup)
+CURRENT_UID=$(id -u)
+CURRENT_GID=$(id -g)
+run_privileged chown -R "$CURRENT_UID:$CURRENT_GID" /var/lib/philologic5
 
 # Install nvm and Node.js to a shared location
 echo -e "\n## INSTALLING NVM AND NODE.JS ##"
 export NVM_DIR=/var/lib/philologic5/nvm
-sudo mkdir -p "$NVM_DIR"
-sudo chown -R $USER:$USER "$NVM_DIR"
+mkdir -p "$NVM_DIR"
 
 # Install nvm
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
@@ -58,21 +93,17 @@ echo "Node.js version: $(node --version)"
 echo "npm version: $(npm --version)"
 
 # Create symlink to npm in a fixed location
-sudo mkdir -p /var/lib/philologic5/bin
-sudo ln -sf "$(which npm)" /var/lib/philologic5/bin/npm
+mkdir -p /var/lib/philologic5/bin
+ln -sf "$(which npm)" /var/lib/philologic5/bin/npm
 
 # Make nvm directory accessible to all users
-sudo chmod -R 755 "$NVM_DIR"
-
-# Create base directory with write permissions for current user
-sudo mkdir -p /var/lib/philologic5
-sudo chown -R $USER:$USER /var/lib/philologic5
-sudo chmod -R 755 /var/lib/philologic5
+chmod -R 755 "$NVM_DIR"
+chmod -R 755 /var/lib/philologic5
 
 # Create Numba cache directory with full write permissions
 # The sticky bit (1777) ensures new files/dirs inherit group write permissions
-sudo mkdir -p /var/lib/philologic5/numba_cache
-sudo chmod -R 1777 /var/lib/philologic5/numba_cache
+mkdir -p /var/lib/philologic5/numba_cache
+chmod -R 1777 /var/lib/philologic5/numba_cache
 
 # Configure uv to install Python in /var/lib/philologic5/python
 # This location is accessible by all users
@@ -91,7 +122,7 @@ uv pip install build
 
 echo -e "\n## INSTALLING PYTHON LIBRARY ##"
 cd python
-rm -rf dist/
+rm -rf dist/ philologic.egg-info/
 python3 -m build --sdist
 
 # Get the actual package filename
@@ -112,34 +143,41 @@ deactivate
 
 cd ..
 
-# Install philoload5 script
-echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -m philologic.loadtime "$@"' > philoload5
-sudo mv philoload5 /usr/local/bin/
-sudo chmod 775 /usr/local/bin/philoload5
-sudo mkdir -p /etc/philologic/
-sudo mkdir -p /var/lib/philologic5/web_app/
-sudo rm -rf /var/lib/philologic5/web_app/*
+# Install philoload5 script to /var/lib/philologic5/bin/ (avoids needing /usr/local/bin write access)
+echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -m philologic.loadtime "$@"' > /var/lib/philologic5/bin/philoload5
+chmod 775 /var/lib/philologic5/bin/philoload5
+# Also try /usr/local/bin for backward compatibility (non-fatal if it fails)
+cp /var/lib/philologic5/bin/philoload5 /usr/local/bin/philoload5 2>/dev/null && chmod 775 /usr/local/bin/philoload5 2>/dev/null || true
+
+run_privileged mkdir -p /etc/philologic/
+mkdir -p /var/lib/philologic5/web_app/
+rm -rf /var/lib/philologic5/web_app/*
 
 if [ -d www/app/node_modules ]; then
-    sudo rm -rf www/app/node_modules
+    rm -rf www/app/node_modules
 fi
 
-sudo cp -R www/* /var/lib/philologic5/web_app/
-sudo cp www/.htaccess /var/lib/philologic5/web_app/
+cp -R www/* /var/lib/philologic5/web_app/
+cp www/.htaccess /var/lib/philologic5/web_app/
+
 
 if [ ! -f /etc/philologic/philologic5.cfg ]; then
     db_url="# Set the filesystem path to the root web directory for your PhiloLogic install.
     database_root = None
     # /var/www/html/philologic/ is conventional for linux,
     # /Library/WebServer/Documents/philologic for Mac OS.\n"
-    sudo echo -e "$db_url" | sed "s/^ *//g" | sudo tee /etc/philologic/philologic5.cfg > /dev/null
+    echo -e "$db_url" | sed "s/^ *//g" | run_privileged tee /etc/philologic/philologic5.cfg > /dev/null
 
     url_root="# Set the URL path to the same root directory for your philologic install.
     url_root = None
     # http://localhost/philologic/ is appropriate if you don't have a DNS hostname.\n"
-    sudo echo -e "$url_root" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
+    echo -e "$url_root" | sed "s/^ *//g" | run_privileged tee -a /etc/philologic/philologic5.cfg > /dev/null
 else
     echo -e "\n## WARNING ##"
     echo "/etc/philologic/philologic5.cfg already exists"
     echo "Please delete and rerun the install script to avoid incompatibilities\n"
 fi
+
+echo -e "\n## INSTALLATION COMPLETE ##"
+echo "philoload5 is available at: /var/lib/philologic5/bin/philoload5"
+echo "You may want to add /var/lib/philologic5/bin to your PATH"
