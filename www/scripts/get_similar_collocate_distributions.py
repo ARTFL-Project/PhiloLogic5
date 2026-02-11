@@ -3,7 +3,6 @@
 """Get similar collocate distributions"""
 
 import os
-import sys
 from wsgiref.handlers import CGIHandler
 
 import numpy as np
@@ -11,18 +10,10 @@ import orjson
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity
 
-sys.path.append("..")
-import custom_functions
-
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
+from philologic.runtime import WebConfig, WSGIHandler
 from philologic.runtime.reports.collocation import safe_pickle_load
+
+from custom_functions_loader import get_custom
 
 
 def get_similar_collocate_distributions(environ, start_response):
@@ -39,8 +30,11 @@ def get_similar_collocate_distributions(environ, start_response):
             ],
         )
         return [b""]  # Empty response body for OPTIONS
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    request = WSGIHandler(environ, config)
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    config = _WebConfig(db_path)
+    request = _WSGIHandler(environ, config)
     start_response(
         "200 OK",
         [

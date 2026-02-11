@@ -1,31 +1,21 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
-import sys
 from wsgiref.handlers import CGIHandler
 
 import orjson
+from philologic.runtime import collocation_results, WebConfig, WSGIHandler
 
-sys.path.append("..")
-import custom_functions
-
-try:
-    from custom_functions import collocation_results
-except ImportError:
-    from philologic.runtime import collocation_results
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
+from custom_functions_loader import get_custom
 
 
 def collocation(environ, start_response):
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("reports", ""))
-    request = WSGIHandler(environ, config)
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("reports", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    _collocation_results = get_custom(db_path, "collocation_results", collocation_results)
+    config = _WebConfig(db_path)
+    request = _WSGIHandler(environ, config)
     if environ["REQUEST_METHOD"] == "OPTIONS":
         # Handle preflight request
         start_response(
@@ -42,7 +32,7 @@ def collocation(environ, start_response):
     start_response("200 OK", headers)
     post_data = environ["wsgi.input"].read()
     current_collocates = orjson.loads(post_data)["current_collocates"]
-    collocation_object = collocation_results(request, config, current_collocates)
+    collocation_object = _collocation_results(request, config, current_collocates)
     yield orjson.dumps(collocation_object)
 
 

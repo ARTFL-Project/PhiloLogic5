@@ -1,29 +1,24 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
-import sqlite3
-import sys
 from wsgiref.handlers import CGIHandler
-
-sys.path.append("..")
-import custom_functions
-
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
 
 from philologic.Config import MakeDBConfig
 from philologic.runtime.DB import DB
 
+from philologic.runtime import WebConfig
 
-def get_web_config(_, start_response):
+from custom_functions_loader import get_custom
+
+
+def get_web_config(environ, start_response):
     """Retrieve Web Config data"""
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
-    db_path = os.path.abspath(os.path.dirname(__file__)).replace("scripts", "")
-    config = WebConfig(db_path)
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    config = _WebConfig(db_path)
     if config.valid_config is False:
         yield config.to_json()
     else:

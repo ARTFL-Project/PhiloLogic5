@@ -4,47 +4,23 @@
 import csv
 import io
 import os
-import sys
 from wsgiref.handlers import CGIHandler
 
 import regex as re
 from orjson import dumps
 
-sys.path.append("..")
-import custom_functions
+from philologic.runtime import (
+    WebConfig,
+    WSGIHandler,
+    bibliography_results,
+    concordance_results,
+    kwic_results,
+    collocation_results,
+    generate_time_series,
+    aggregation_by_field,
+)
 
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
-try:
-    from custom_functions import bibliography_results
-except ImportError:
-    from philologic.runtime import bibliography_results
-try:
-    from custom_functions import concordance_results
-except ImportError:
-    from philologic.runtime import concordance_results
-try:
-    from custom_functions import kwic_results
-except ImportError:
-    from philologic.runtime import kwic_results
-try:
-    from custom_functions import collocation_results
-except ImportError:
-    from philologic.runtime import collocation_results
-try:
-    from custom_functions import generate_time_series
-except ImportError:
-    from philologic.runtime import generate_time_series
-try:
-    from custom_functions import aggregation_by_field
-except ImportError:
-    from philologic.runtime import aggregation_by_field
+from custom_functions_loader import get_custom
 
 
 TAGS = re.compile(r"<[^>]+>")
@@ -53,13 +29,22 @@ SPACES = re.compile(r"\s{2,}")
 
 
 def export_results(environ, start_response):
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    request = WSGIHandler(environ, config)
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    _bibliography_results = get_custom(db_path, "bibliography_results", bibliography_results)
+    _concordance_results = get_custom(db_path, "concordance_results", concordance_results)
+    _kwic_results = get_custom(db_path, "kwic_results", kwic_results)
+    _collocation_results = get_custom(db_path, "collocation_results", collocation_results)
+    _generate_time_series = get_custom(db_path, "generate_time_series", generate_time_series)
+    _aggregation_by_field = get_custom(db_path, "aggregation_by_field", aggregation_by_field)
+    config = _WebConfig(db_path)
+    request = _WSGIHandler(environ, config)
     results = []
     if request.report == "bibliography":
-        results = bibliography_results(request, config)["results"]
+        results = _bibliography_results(request, config)["results"]
     if request.report == "concordance":
-        for hit in concordance_results(request, config)["results"]:
+        for hit in _concordance_results(request, config)["results"]:
             hit_to_save = {
                 "metadata_fields": {**hit["metadata_fields"], "philo_id": hit["philo_id"]},
                 "context": hit["context"],
@@ -68,7 +53,7 @@ def export_results(environ, start_response):
                 hit_to_save["context"] = filter_html(hit["context"])
             results.append(hit_to_save)
     elif request.report == "kwic":
-        for hit in kwic_results(request, config)["results"]:
+        for hit in _kwic_results(request, config)["results"]:
             hit_to_save = {
                 "metadata_fields": {**hit["metadata_fields"], "philo_id": hit["philo_id"]},
                 "context": hit["context"],
@@ -77,11 +62,11 @@ def export_results(environ, start_response):
                 hit_to_save["context"] = filter_html(hit["context"])
             results.append(hit_to_save)
     elif request.report == "collocation":
-        results_object = collocation_results(request, config)["collocates"]
+        results_object = _collocation_results(request, config)["collocates"]
     elif request.report == "time_series":
-        results_object = generate_time_series(request, config)["results"]
+        results_object = _generate_time_series(request, config)["results"]
     elif request.report == "aggregation":
-        results_object = aggregation_by_field(request, config)["results"]
+        results_object = _aggregation_by_field(request, config)["results"]
 
     if request.output_format == "json":
         status = "200 OK"

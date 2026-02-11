@@ -1,6 +1,7 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -551,73 +552,58 @@ def query(
     if not os.path.exists(filename):
         Path(filename).touch()
     frequency_file = db.path + "/frequencies/normalized_word_frequencies"
-    pid = os.fork()
-    if pid == 0:  # In child process
-        os.umask(0)
-        os.setsid()
-        pid = os.fork()  # double fork to detach completely from parent
-        if pid > 0:
-            os._exit(0)
-        else:
-            # Close inherited file descriptors to fully detach from CGI/Apache
-            # Without this, Apache may wait for stdout to close before completing the response
-            os.close(0)  # stdin
-            os.close(1)  # stdout
-            os.close(2)  # stderr
-            # Redirect to /dev/null to prevent errors from print statements
-            sys.stdin = open(os.devnull, 'r')
-            sys.stdout = open(os.devnull, 'w')
-            sys.stderr = open(os.devnull, 'w')
 
-            with open(f"{filename}.terms", "w") as terms_file:
-                expand_query_not(
-                    split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
-                )
-            method_arg = int(method_arg) if method_arg else 0
-            if method == "single_term":
-                # Search for one term
-                search_word(db.path, filename, db.locals.overflow_words, corpus_file=corpus_file)
-            elif method == "phrase_ordered":
-                # Phrase searching where words need to be in a specific order with no words in between
-                search_phrase(db.path, filename, db.locals.overflow_words, corpus_file=corpus_file)
-            elif method == "phrase_unordered":
-                # Phrase searching where words need to be in a specific order with possible words in between
-                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)
-            elif method == "proxy_ordered":
-                # Proximity searching with possible words in between
-                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, True, False, corpus_file=corpus_file)
-            elif method == "proxy_unordered":
-                # Proximity searching with possible words in between unordered
-                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)
-            elif method == "exact_cooc_ordered":
-                # Co-occurrence searching where words need to be within n words of each other
-                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, True, True, corpus_file=corpus_file)
-            elif method == "exact_cooc_unordered":
-                # Co-occurrence searching where words need to be within n words of each othera and can be unordered
-                search_within_word_span(db.path, filename, db.locals.overflow_words, method_arg or 1, False, True, corpus_file=corpus_file)
-            elif method == "sentence_ordered":  # no support for para search for now
-                # Co-occurrence searching where words need to be within an object irrespective of word order
-                search_within_text_object(db.path, filename, db.locals.overflow_words, object_level, True, corpus_file=corpus_file)
-            elif method == "sentence_unordered":
-                # Co-occurrence searching where words need to be within an object irrespective of word order
-                search_within_text_object(db.path, filename, db.locals.overflow_words, object_level, False, corpus_file=corpus_file)
-
-            with open(filename + ".done", "w") as flag:  # do something to mark query as finished
-                flag.write(" ".join(sys.argv) + "\n")
-                flag.flush()  # make sure the file is written to disk. Otherwise we get an infinite loop with 0 hits
-            os._exit(0)  # Exit child process
-    else:
-        hits = HitList.HitList(
-            filename,
-            words_per_hit,
-            db,
-            method=method,
-            sort_order=sort_order,
-            raw=raw_results,
-            raw_bytes=raw_bytes,
-            ascii_conversion=ascii_conversion,
+    # Write expanded query terms BEFORE spawning subprocess
+    # This was previously done in the forked child, but we need it done first
+    # so the subprocess can just run the search
+    with open(f"{filename}.terms", "w") as terms_file:
+        expand_query_not(
+            split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
         )
-        return hits
+
+    # Serialize overflow_words for passing to subprocess
+    overflow_words_json = json.dumps(list(db.locals.overflow_words))
+
+    # Prepare method_arg for the worker
+    worker_method_arg = str(method_arg) if method_arg else "0"
+
+    # Build subprocess arguments
+    worker_script = os.path.join(os.path.dirname(__file__), "_search_worker.py")
+    worker_args = [
+        sys.executable,
+        worker_script,
+        db.path,
+        filename,
+        method,
+        worker_method_arg,
+        overflow_words_json,
+        object_level or "sent",  # Pass object_level for sentence searches
+    ]
+    if corpus_file:
+        worker_args.append(corpus_file)
+
+    # Spawn search worker as detached subprocess
+    # This replaces the double-fork pattern and works with both CGI and WSGI
+    subprocess.Popen(
+        worker_args,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,  # Detach from parent process group (replaces os.setsid())
+    )
+
+    # Return HitList immediately - worker will populate the file
+    hits = HitList.HitList(
+        filename,
+        words_per_hit,
+        db,
+        method=method,
+        sort_order=sort_order,
+        raw=raw_results,
+        raw_bytes=raw_bytes,
+        ascii_conversion=ascii_conversion,
+    )
+    return hits
 
 
 def get_expanded_query(hitlist):

@@ -8,23 +8,18 @@ import regex as re
 from philologic.runtime.DB import DB
 from philologic.runtime.HitWrapper import ObjectWrapper
 
-sys.path.append("..")
-import custom_functions
+from philologic.runtime import WebConfig, WSGIHandler
 
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
+from custom_functions_loader import get_custom
 
 
-def resolve_cite_service(environ, start_response):
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+def resolve_cite(environ, start_response):
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    config = _WebConfig(db_path)
     db = DB(config.db_path + "/data/")
-    request = WSGIHandler(environ, config)
+    request = _WSGIHandler(environ, config)
     c = db.dbh.cursor()
     q = request.q
 
@@ -111,4 +106,4 @@ def nav_query(obj, db):
 
 
 if __name__ == "__main__":
-    CGIHandler().run(resolve_cite_service)
+    CGIHandler().run(resolve_cite)

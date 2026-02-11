@@ -138,6 +138,10 @@ else
     uv pip install "$PACKAGE_FILE" --quiet
 fi
 
+# Install Gunicorn WSGI server
+echo "Installing Gunicorn..."
+uv pip install gunicorn --quiet
+
 # Deactivate virtual environment
 deactivate
 
@@ -146,19 +150,20 @@ cd ..
 # Install philoload5 script to /var/lib/philologic5/bin/ (avoids needing /usr/local/bin write access)
 echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -m philologic.loadtime "$@"' > /var/lib/philologic5/bin/philoload5
 chmod 775 /var/lib/philologic5/bin/philoload5
-# Also try /usr/local/bin for backward compatibility (non-fatal if it fails)
-cp /var/lib/philologic5/bin/philoload5 /usr/local/bin/philoload5 2>/dev/null && chmod 775 /usr/local/bin/philoload5 2>/dev/null || true
+# Also try /usr/local/bin so it's on PATH by default (non-fatal if it fails)
+run_privileged cp /var/lib/philologic5/bin/philoload5 /usr/local/bin/philoload5 2>/dev/null && run_privileged chmod 775 /usr/local/bin/philoload5 2>/dev/null || true
 
 run_privileged mkdir -p /etc/philologic/
 mkdir -p /var/lib/philologic5/web_app/
 rm -rf /var/lib/philologic5/web_app/*
 
-if [ -d www/app/node_modules ]; then
-    rm -rf www/app/node_modules
+if [ -d app/node_modules ]; then
+    rm -rf app/node_modules
 fi
 
 cp -R www/* /var/lib/philologic5/web_app/
 cp www/.htaccess /var/lib/philologic5/web_app/
+cp -R app /var/lib/philologic5/web_app/
 
 
 if [ ! -f /etc/philologic/philologic5.cfg ]; then
@@ -178,6 +183,51 @@ else
     echo "Please delete and rerun the install script to avoid incompatibilities\n"
 fi
 
+# Install systemd service file for Gunicorn (non-fatal if no systemd)
+if [ -d /etc/systemd/system ]; then
+    run_privileged cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
+    run_privileged systemctl daemon-reload
+    if systemctl is-active --quiet philologic5-gunicorn 2>/dev/null; then
+        echo "Restarting philologic5-gunicorn service..."
+        run_privileged systemctl restart philologic5-gunicorn
+    fi
+    echo -e "\n## GUNICORN SERVICE INSTALLED ##"
+    echo "To enable and start the WSGI server:"
+    echo "  sudo systemctl enable philologic5-gunicorn"
+    echo "  sudo systemctl start philologic5-gunicorn"
+    echo ""
+    echo "Configure your web server as a reverse proxy to the Gunicorn socket."
+    echo "A single rule covers ALL databases under the PhiloLogic URL root."
+    echo ""
+    echo "=== Apache ==="
+    echo "  Requires: mod_proxy, mod_proxy_http"
+    echo "  sudo a2enmod proxy proxy_http"
+    echo ""
+    echo "  Add to your <VirtualHost> block:"
+    echo '    <Location "/philologic5">'
+    echo '        ProxyPass unix:/var/run/philologic/gunicorn.sock|http://localhost/philologic5'
+    echo '        ProxyPassReverse unix:/var/run/philologic/gunicorn.sock|http://localhost/philologic5'
+    echo '        ProxyTimeout 300'
+    echo '    </Location>'
+    echo ""
+    echo "=== Nginx ==="
+    echo "  location /philologic5/ {"
+    echo "      proxy_pass http://unix:/var/run/philologic/gunicorn.sock;"
+    echo "      proxy_set_header Host \$host;"
+    echo "      proxy_set_header X-Real-IP \$remote_addr;"
+    echo "      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
+    echo "      proxy_set_header X-Forwarded-Proto \$scheme;"
+    echo "      proxy_read_timeout 300s;"
+    echo "  }"
+    echo ""
+    echo "  Adjust the URL prefix (/philologic5) to match your url_root setting"
+    echo "  in /etc/philologic/philologic5.cfg"
+fi
+
 echo -e "\n## INSTALLATION COMPLETE ##"
-echo "philoload5 is available at: /var/lib/philologic5/bin/philoload5"
-echo "You may want to add /var/lib/philologic5/bin to your PATH"
+if [ -x /usr/local/bin/philoload5 ]; then
+    echo "philoload5 installed to /usr/local/bin/philoload5"
+else
+    echo "philoload5 is available at: /var/lib/philologic5/bin/philoload5"
+    echo "You may want to add /var/lib/philologic5/bin to your PATH"
+fi

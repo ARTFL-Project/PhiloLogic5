@@ -1,34 +1,24 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
-import sys
 from wsgiref.handlers import CGIHandler
 
 import orjson
+from philologic.runtime import bibliography_results, WebConfig, WSGIHandler
 
-sys.path.append("..")
-import custom_functions
-
-try:
-    from custom_functions import bibliography_results
-except ImportError:
-    from philologic.runtime import bibliography_results
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
+from custom_functions_loader import get_custom
 
 
 def bibliography(environ, start_response):
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("reports", ""))
-    request = WSGIHandler(environ, config)
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("reports", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    _bibliography_results = get_custom(db_path, "bibliography_results", bibliography_results)
+    config = _WebConfig(db_path)
+    request = _WSGIHandler(environ, config)
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response("200 OK", headers)
-    bibliography_object, _ = bibliography_results(request, config)
+    bibliography_object, _ = _bibliography_results(request, config)
     yield orjson.dumps(bibliography_object)
 
 

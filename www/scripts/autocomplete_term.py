@@ -2,35 +2,28 @@
 
 import os
 import subprocess
-import sys
 from wsgiref.handlers import CGIHandler
 
 import orjson
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import grep_exact, grep_word, grep_word_attributes, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
+from philologic.runtime import WebConfig, WSGIHandler
 
-sys.path.append("..")
-import custom_functions
-
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
+from custom_functions_loader import get_custom
 
 
-def term_list(environ, start_response):
+def autocomplete_term(environ, start_response):
     """Get term list"""
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    config = _WebConfig(db_path)
     db = DB(config.db_path + "/data/")
-    request = WSGIHandler(environ, config)
+    request = _WSGIHandler(environ, config)
     term = request.term
     if isinstance(term, list):
         term = term[-1]
@@ -101,4 +94,4 @@ def format_query(q, db, config):
 
 
 if __name__ == "__main__":
-    CGIHandler().run(term_list)
+    CGIHandler().run(autocomplete_term)

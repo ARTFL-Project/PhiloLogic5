@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 from wsgiref.handlers import CGIHandler
 
@@ -10,17 +9,9 @@ import orjson
 from philologic.runtime import kwic_hit_object, page_interval
 from philologic.runtime.DB import DB
 
-sys.path.append("..")
-import custom_functions
+from philologic.runtime import WebConfig, WSGIHandler
 
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
+from custom_functions_loader import get_custom
 
 
 def validate_cache_path(cache_path, db_path):
@@ -40,9 +31,12 @@ def get_sorted_kwic(environ, start_response):
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    config = _WebConfig(db_path)
     db = DB(config.db_path + "/data/")
-    request = WSGIHandler(environ, config)
+    request = _WSGIHandler(environ, config)
     sorted_hits = get_sorted_hits(request, config, db)
     yield orjson.dumps(sorted_hits)
 

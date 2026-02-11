@@ -2,7 +2,6 @@
 
 import os
 import subprocess
-import sys
 from wsgiref.handlers import CGIHandler
 
 import orjson
@@ -14,18 +13,9 @@ from philologic.runtime.MetadataQuery import metadata_pattern_search
 ## parse_query now resides in this script ##
 # from philologic.runtime.QuerySyntax import parse_query
 from unidecode import unidecode
+from philologic.runtime import WebConfig, WSGIHandler
 
-sys.path.append("..")
-import custom_functions
-
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
+from custom_functions_loader import get_custom
 
 environ = os.environ
 environ["PATH"] += ":/usr/local/bin/"
@@ -47,11 +37,14 @@ patterns = [
 accented_roman_chars = re.compile(r"[\u00c0-\u0174]")
 
 
-def metadata_list(environ, start_response):
+def autocomplete_metadata(environ, start_response):
     """Retrieve metadata list"""
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    config = _WebConfig(db_path)
     db = DB(config.db_path + "/data/")
-    request = WSGIHandler(environ, config)
+    request = _WSGIHandler(environ, config)
     metadata = request.term
     field = request.field
 
@@ -72,10 +65,10 @@ def metadata_list(environ, start_response):
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
-    yield autocomplete_metadata(metadata, field, db)
+    yield _autocomplete_metadata(metadata, field, db)
 
 
-def autocomplete_metadata(metadata, field, db):
+def _autocomplete_metadata(metadata, field, db):
     """Autocomplete metadata"""
     path = os.environ["SCRIPT_FILENAME"].replace("scripts/metadata_list.py", "")
     path += "data/frequencies/%s_frequencies" % field
@@ -215,4 +208,4 @@ def highlighter(words, token, ascii_conversion):
 
 
 if __name__ == "__main__":
-    CGIHandler().run(metadata_list)
+    CGIHandler().run(autocomplete_metadata)

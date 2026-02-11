@@ -1369,7 +1369,10 @@ def setup_db_dir(db_destination, force_delete=False):
             else:
                 sys.exit()
 
-    os.system(f"cp -R /var/lib/philologic5/web_app/* {db_destination}")
-    os.system(f"cp /var/lib/philologic5/web_app/.htaccess {db_destination}")
+    # Only copy files needed per-database. The central Gunicorn dispatcher
+    # handles reports, scripts, and routing for all databases.
+    web_app_src = "/var/lib/philologic5/web_app"
+    os.system(f"cp -R {web_app_src}/app {db_destination}/")
+    os.system(f"cp {web_app_src}/favicon.ico {db_destination}/")
     os.system("mkdir -p %s/custom_functions" % db_destination)
     os.system("touch %s/custom_functions/__init__.py" % db_destination)

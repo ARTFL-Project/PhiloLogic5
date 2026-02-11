@@ -1,7 +1,6 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
-import sys
 from wsgiref.handlers import CGIHandler
 
 import numpy as np
@@ -9,24 +8,16 @@ import orjson
 from philologic.runtime.DB import DB
 from philologic.runtime.sql_validation import validate_column, validate_philo_type
 
-sys.path.append("..")
-import custom_functions
+from philologic.runtime import WebConfig, WSGIHandler
 
-try:
-    from custom_functions import WebConfig
-except ImportError:
-    from philologic.runtime import WebConfig
-try:
-    from custom_functions import WSGIHandler
-except ImportError:
-    from philologic.runtime import WSGIHandler
+from custom_functions_loader import get_custom
 
 
 OBJECT_LEVEL = {"doc": 6, "div1": 5, "div2": 4, "div3": 3, "para": 2, "sent": 1}
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
 
-def get_total_count(environ, start_response):
+def get_hitlist_stats(environ, start_response):
     """Count hit occurences per metadata field"""
     status = "200 OK"
     headers = [
@@ -34,9 +25,12 @@ def get_total_count(environ, start_response):
         ("Access-Control-Allow-Origin", "*"),
     ]
     start_response(status, headers)
-    config = WebConfig(os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
+    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    config = _WebConfig(db_path)
     db = DB(config.db_path + "/data/")
-    request = WSGIHandler(environ, config)
+    request = _WSGIHandler(environ, config)
     if request.no_q:
         if request.no_metadata:
             hits = db.get_all(
@@ -137,4 +131,4 @@ def tuple_to_str(philo_id, obj_level):
 
 
 if __name__ == "__main__":
-    CGIHandler().run(get_total_count)
+    CGIHandler().run(get_hitlist_stats)

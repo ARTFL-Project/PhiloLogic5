@@ -11,7 +11,7 @@ PATH = os.path.abspath(os.path.dirname(__file__))
 
 def start_web_app(environ, start_response):
     """Return index.html to start web app"""
-    config = WebConfig(os.path.abspath(PATH))
+    config = WebConfig(environ.get("PHILOLOGIC_DBPATH", os.path.abspath(PATH)))
     headers = [("Content-type", "text/html; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     if not config.valid_config:  # This means we have an error in the webconfig file
         return build_misconfig_page(config.traceback, "webconfig.cfg")
