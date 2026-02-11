@@ -1,0 +1,21 @@
+[Unit]
+Description=PhiloLogic5 Gunicorn WSGI Server
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/lib/philologic5/web_app
+ExecStart=/var/lib/philologic5/philologic_env/bin/gunicorn \
+    --config /var/lib/philologic5/web_app/gunicorn.conf.py \
+    dispatcher:application
+ExecReload=/bin/kill -s HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# systemd creates /run/philologic/ on start, removes on stop
+RuntimeDirectory=philologic
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target
