@@ -44,12 +44,14 @@ fi
 # Delete virtual environment if it already exists
 if [ -d /var/lib/philologic5 ]; then
     echo "Deleting existing PhiloLogic5 installation..."
-    rm -rf /var/lib/philologic5
+    sudo rm -rf /var/lib/philologic5
 fi
 
 # Create base directory
-mkdir -p /var/lib/philologic5
-mkdir -p "$UV_CACHE_DIR"
+sudo mkdir -p /var/lib/philologic5
+sudo mkdir -p "$UV_CACHE_DIR"
+# Make writable by current user
+sudo chown -R "$(id -u):$(id -g)" /var/lib/philologic5
 
 # Install nvm and Node.js to a shared location
 echo -e "\n## INSTALLING NVM AND NODE.JS ##"
@@ -127,12 +129,12 @@ cd ..
 # Install philoload5 script
 echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -m philologic.loadtime "$@"' > /var/lib/philologic5/bin/philoload5
 chmod 775 /var/lib/philologic5/bin/philoload5
-cp /var/lib/philologic5/bin/philoload5 /usr/local/bin/philoload5
-chmod 775 /usr/local/bin/philoload5
+sudo cp /var/lib/philologic5/bin/philoload5 /usr/local/bin/philoload5
+sudo chmod 775 /usr/local/bin/philoload5
 
-mkdir -p /etc/philologic/
-mkdir -p /var/log/philologic5/
-chown www-data:www-data /var/log/philologic5/
+sudo mkdir -p /etc/philologic/
+sudo mkdir -p /var/log/philologic5/
+sudo chown www-data:www-data /var/log/philologic5/
 mkdir -p /var/lib/philologic5/web_app/
 rm -rf /var/lib/philologic5/web_app/*
 
@@ -150,12 +152,12 @@ if [ ! -f /etc/philologic/philologic5.cfg ]; then
     database_root = None
     # /var/www/html/philologic/ is conventional for linux,
     # /Library/WebServer/Documents/philologic for Mac OS.\n"
-    echo -e "$db_url" | sed "s/^ *//g" > /etc/philologic/philologic5.cfg
+    echo -e "$db_url" | sed "s/^ *//g" | sudo tee /etc/philologic/philologic5.cfg > /dev/null
 
     url_root="# Set the URL path to the same root directory for your philologic install.
     url_root = None
     # http://localhost/philologic/ is appropriate if you don't have a DNS hostname.\n"
-    echo -e "$url_root" | sed "s/^ *//g" >> /etc/philologic/philologic5.cfg
+    echo -e "$url_root" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 else
     echo -e "\n## WARNING ##"
     echo "/etc/philologic/philologic5.cfg already exists"
@@ -164,23 +166,23 @@ fi
 
 # Install systemd service file for Gunicorn (non-fatal if no systemd)
 if [ -d /etc/systemd/system ]; then
-    cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
-    systemctl daemon-reload
+    sudo cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
+    sudo systemctl daemon-reload
     if systemctl is-active --quiet philologic5-gunicorn 2>/dev/null; then
         echo "Restarting philologic5-gunicorn service..."
-        systemctl restart philologic5-gunicorn
+        sudo systemctl restart philologic5-gunicorn
     fi
     echo -e "\n## GUNICORN SERVICE INSTALLED ##"
     echo "To enable and start the WSGI server:"
-    echo "  systemctl enable philologic5-gunicorn"
-    echo "  systemctl start philologic5-gunicorn"
+    echo "  sudo systemctl enable philologic5-gunicorn"
+    echo "  sudo systemctl start philologic5-gunicorn"
     echo ""
     echo "Configure your web server as a reverse proxy to the Gunicorn socket."
     echo "A single rule covers ALL databases under the PhiloLogic URL root."
     echo ""
     echo "=== Apache ==="
     echo "  Requires: mod_proxy, mod_proxy_http"
-    echo "  a2enmod proxy proxy_http"
+    echo "  sudo a2enmod proxy proxy_http"
     echo ""
     echo "  Add to your <VirtualHost> block:"
     echo '    <Location "/philologic5">'
