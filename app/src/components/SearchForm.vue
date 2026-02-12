@@ -560,7 +560,7 @@ export default {
             metadataChoiceSelected: {},
             collocationOptions: [
                 { text: this.$t("searchForm.mostFrequentTerms"), value: "frequency" },
-                { text: this.$t("searchForm.stopwords"), value: "nofilter" },
+                { text: this.$t("searchForm.stopwords"), value: "stopwords" },
             ],
             selectedSortValues: "rowid",
             aggregationOptions: this.$philoConfig.aggregation_config.map((f) => ({
@@ -702,7 +702,7 @@ export default {
         }
         if (this.collocFilteringSelected.value == "") {
             if (this.$philoConfig.stopwords.length > 0) {
-                this.collocFilteringSelected = this.collocationOptions.find(option => option.value === "nofilter"); // Find stopwords
+                this.collocFilteringSelected = this.collocationOptions.find(option => option.value === "stopwords"); // Find stopwords
             } else {
                 this.collocFilteringSelected = this.collocationOptions.find(option => option.value === "frequency"); // Find frequency
             }
