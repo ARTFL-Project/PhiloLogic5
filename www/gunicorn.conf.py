@@ -13,11 +13,7 @@ import multiprocessing
 import os
 
 # Server socket
-# Use Unix socket for reverse proxy (Apache/Nginx)
 bind = "unix:/var/run/philologic/gunicorn.sock"
-
-# Alternatively, for direct access (development/testing):
-# bind = "127.0.0.1:8000"
 
 # Worker processes
 # Formula: (2 x CPU cores) + 1 is a good starting point
@@ -55,9 +51,9 @@ preload_app = True
 proc_name = "philologic5"
 
 # Logging
-# Use '-' for stdout/stderr (captured by systemd/supervisor)
-accesslog = "-"
-errorlog = "-"
+# Access logs handled by Apache/Nginx; errors to file for easy tailing
+accesslog = None
+errorlog = "/var/log/philologic5/gunicorn-error.log"
 loglevel = "info"
 
 # Security

@@ -28,26 +28,7 @@ fi
 # Get the directory where install.sh lives
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Wrapper to run commands with sudo only if available and needed
-run_privileged() {
-    if [ "$(id -u)" -eq 0 ]; then
-        # Already root, run directly
-        "$@"
-    elif command -v sudo &> /dev/null; then
-        # sudo exists, use it (will prompt for password if needed)
-        sudo "$@"
-    else
-        # No sudo available, try running directly
-        "$@"
-    fi
-}
-
-# Ensure USER is set (may be empty in containers)
-if [ -z "$USER" ]; then
-    USER=$(id -un 2>/dev/null || echo "$(id -u)")
-fi
-
-# Set uv cache to a writable location (/.cache may not be writable in containers)
+# Set uv cache to a writable location
 export UV_CACHE_DIR=/var/lib/philologic5/.uv-cache
 
 # Install uv if not present
@@ -63,16 +44,12 @@ fi
 # Delete virtual environment if it already exists
 if [ -d /var/lib/philologic5 ]; then
     echo "Deleting existing PhiloLogic5 installation..."
-    run_privileged rm -rf /var/lib/philologic5
+    rm -rf /var/lib/philologic5
 fi
 
-# Create base directory first so uv cache dir exists
-run_privileged mkdir -p /var/lib/philologic5
-run_privileged mkdir -p "$UV_CACHE_DIR"
-# Make writable by current user (use numeric UID to avoid passwd lookup)
-CURRENT_UID=$(id -u)
-CURRENT_GID=$(id -g)
-run_privileged chown -R "$CURRENT_UID:$CURRENT_GID" /var/lib/philologic5
+# Create base directory
+mkdir -p /var/lib/philologic5
+mkdir -p "$UV_CACHE_DIR"
 
 # Install nvm and Node.js to a shared location
 echo -e "\n## INSTALLING NVM AND NODE.JS ##"
@@ -147,13 +124,15 @@ deactivate
 
 cd ..
 
-# Install philoload5 script to /var/lib/philologic5/bin/ (avoids needing /usr/local/bin write access)
+# Install philoload5 script
 echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -m philologic.loadtime "$@"' > /var/lib/philologic5/bin/philoload5
 chmod 775 /var/lib/philologic5/bin/philoload5
-# Also try /usr/local/bin so it's on PATH by default (non-fatal if it fails)
-run_privileged cp /var/lib/philologic5/bin/philoload5 /usr/local/bin/philoload5 2>/dev/null && run_privileged chmod 775 /usr/local/bin/philoload5 2>/dev/null || true
+cp /var/lib/philologic5/bin/philoload5 /usr/local/bin/philoload5
+chmod 775 /usr/local/bin/philoload5
 
-run_privileged mkdir -p /etc/philologic/
+mkdir -p /etc/philologic/
+mkdir -p /var/log/philologic5/
+chown www-data:www-data /var/log/philologic5/
 mkdir -p /var/lib/philologic5/web_app/
 rm -rf /var/lib/philologic5/web_app/*
 
@@ -171,12 +150,12 @@ if [ ! -f /etc/philologic/philologic5.cfg ]; then
     database_root = None
     # /var/www/html/philologic/ is conventional for linux,
     # /Library/WebServer/Documents/philologic for Mac OS.\n"
-    echo -e "$db_url" | sed "s/^ *//g" | run_privileged tee /etc/philologic/philologic5.cfg > /dev/null
+    echo -e "$db_url" | sed "s/^ *//g" > /etc/philologic/philologic5.cfg
 
     url_root="# Set the URL path to the same root directory for your philologic install.
     url_root = None
     # http://localhost/philologic/ is appropriate if you don't have a DNS hostname.\n"
-    echo -e "$url_root" | sed "s/^ *//g" | run_privileged tee -a /etc/philologic/philologic5.cfg > /dev/null
+    echo -e "$url_root" | sed "s/^ *//g" >> /etc/philologic/philologic5.cfg
 else
     echo -e "\n## WARNING ##"
     echo "/etc/philologic/philologic5.cfg already exists"
@@ -185,23 +164,23 @@ fi
 
 # Install systemd service file for Gunicorn (non-fatal if no systemd)
 if [ -d /etc/systemd/system ]; then
-    run_privileged cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
-    run_privileged systemctl daemon-reload
+    cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
+    systemctl daemon-reload
     if systemctl is-active --quiet philologic5-gunicorn 2>/dev/null; then
         echo "Restarting philologic5-gunicorn service..."
-        run_privileged systemctl restart philologic5-gunicorn
+        systemctl restart philologic5-gunicorn
     fi
     echo -e "\n## GUNICORN SERVICE INSTALLED ##"
     echo "To enable and start the WSGI server:"
-    echo "  sudo systemctl enable philologic5-gunicorn"
-    echo "  sudo systemctl start philologic5-gunicorn"
+    echo "  systemctl enable philologic5-gunicorn"
+    echo "  systemctl start philologic5-gunicorn"
     echo ""
     echo "Configure your web server as a reverse proxy to the Gunicorn socket."
     echo "A single rule covers ALL databases under the PhiloLogic URL root."
     echo ""
     echo "=== Apache ==="
     echo "  Requires: mod_proxy, mod_proxy_http"
-    echo "  sudo a2enmod proxy proxy_http"
+    echo "  a2enmod proxy proxy_http"
     echo ""
     echo "  Add to your <VirtualHost> block:"
     echo '    <Location "/philologic5">'
@@ -225,9 +204,4 @@ if [ -d /etc/systemd/system ]; then
 fi
 
 echo -e "\n## INSTALLATION COMPLETE ##"
-if [ -x /usr/local/bin/philoload5 ]; then
-    echo "philoload5 installed to /usr/local/bin/philoload5"
-else
-    echo "philoload5 is available at: /var/lib/philologic5/bin/philoload5"
-    echo "You may want to add /var/lib/philologic5/bin to your PATH"
-fi
+echo "philoload5 installed to /usr/local/bin/philoload5"
