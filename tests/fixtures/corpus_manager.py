@@ -53,14 +53,14 @@ class CorpusConfig:
         hasher.update(self.name.encode())
         hasher.update(self.header.encode())
 
-        # Hash source files (names and mtimes)
+        # Hash source files (names and content)
         source_files = self.get_source_files()
         source_path = Path(self.source_dir)
         for f in sorted(source_files):
             file_path = source_path / f
             hasher.update(f.encode())
             if file_path.exists():
-                hasher.update(str(file_path.stat().st_mtime).encode())
+                hasher.update(file_path.read_bytes())
 
         # Hash load config if present
         if self.load_config and self.load_config.exists():

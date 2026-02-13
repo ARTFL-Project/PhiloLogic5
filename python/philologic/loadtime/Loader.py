@@ -134,7 +134,7 @@ class Loader:
     @classmethod
     def set_class_attributes(cls, loader_options):
         """Set initial class attributes and return Loader object"""
-        cls.post_filters = loader_options["post_filters"]
+        cls.post_filters = list(loader_options["post_filters"])
         cls.debug = loader_options["debug"]
         cls.words_to_index = loader_options["words_to_index"]
         cls.destination = loader_options["data_destination"]

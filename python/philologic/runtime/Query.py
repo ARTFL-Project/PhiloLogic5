@@ -1,10 +1,10 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import hashlib
-import json
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 # Set umask before importing numba to ensure cache files are world-writable
@@ -525,6 +525,38 @@ class WordData(msgspec.Struct):
     first_doc: int = 0
 
 
+def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowercase_index,
+                method, method_arg, overflow_words, object_level, corpus_file):
+    """Run search in a background thread. Always writes .done file, even on error."""
+    try:
+        with open(f"{filename}.terms", "w") as terms_file:
+            expand_query_not(split, frequency_file, terms_file, ascii_conversion, lowercase_index)
+
+        method_arg = int(method_arg) if method_arg else 0
+        if method == "single_term":
+            search_word(db_path, filename, overflow_words, corpus_file=corpus_file)
+        elif method == "phrase_ordered":
+            search_phrase(db_path, filename, overflow_words, corpus_file=corpus_file)
+        elif method == "phrase_unordered":
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)
+        elif method == "proxy_ordered":
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, True, False, corpus_file=corpus_file)
+        elif method == "proxy_unordered":
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)
+        elif method == "exact_cooc_ordered":
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, True, True, corpus_file=corpus_file)
+        elif method == "exact_cooc_unordered":
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, True, corpus_file=corpus_file)
+        elif method == "sentence_ordered":
+            search_within_text_object(db_path, filename, overflow_words, object_level, True, corpus_file=corpus_file)
+        elif method == "sentence_unordered":
+            search_within_text_object(db_path, filename, overflow_words, object_level, False, corpus_file=corpus_file)
+    finally:
+        with open(filename + ".done", "w") as flag:
+            flag.write(f"{method} search complete\n")
+            flag.flush()
+
+
 def query(
     db,
     terms,
@@ -553,46 +585,20 @@ def query(
         Path(filename).touch()
     frequency_file = db.path + "/frequencies/normalized_word_frequencies"
 
-    # Write expanded query terms BEFORE spawning subprocess
-    # This was previously done in the forked child, but we need it done first
-    # so the subprocess can just run the search
-    with open(f"{filename}.terms", "w") as terms_file:
-        expand_query_not(
-            split, frequency_file, terms_file, db.locals.ascii_conversion, db.locals["lowercase_index"]
-        )
-
-    # Serialize overflow_words for passing to subprocess
-    overflow_words_json = json.dumps(list(db.locals.overflow_words))
-
-    # Prepare method_arg for the worker
-    worker_method_arg = str(method_arg) if method_arg else "0"
-
-    # Build subprocess arguments
-    worker_script = os.path.join(os.path.dirname(__file__), "_search_worker.py")
-    worker_args = [
-        sys.executable,
-        worker_script,
-        db.path,
-        filename,
-        method,
-        worker_method_arg,
-        overflow_words_json,
-        object_level or "sent",  # Pass object_level for sentence searches
-    ]
-    if corpus_file:
-        worker_args.append(corpus_file)
-
-    # Spawn search worker as detached subprocess
-    # This replaces the double-fork pattern and works with both CGI and WSGI
-    subprocess.Popen(
-        worker_args,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,  # Detach from parent process group (replaces os.setsid())
+    # Run search in a background thread.
+    # numpy, numba, and LMDB all release the GIL, so the search runs
+    # concurrently with the main thread returning the HitList.
+    thread = threading.Thread(
+        target=_run_search,
+        args=(
+            db.path, filename, split, frequency_file,
+            db.locals.ascii_conversion, db.locals["lowercase_index"],
+            method, method_arg, db.locals.overflow_words, object_level, corpus_file,
+        ),
+        daemon=True,
     )
+    thread.start()
 
-    # Return HitList immediately - worker will populate the file
     hits = HitList.HitList(
         filename,
         words_per_hit,
