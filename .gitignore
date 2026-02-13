@@ -17,6 +17,8 @@ tests/reports/
 # Environment
 .env
 *.local
+.uv-cache/
+.uv-bin/
 
 # Build artifacts
 *.so

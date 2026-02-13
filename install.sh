@@ -28,8 +28,8 @@ fi
 # Get the directory where install.sh lives
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Set uv cache to a writable location
-export UV_CACHE_DIR=/var/lib/philologic5/.uv-cache
+# Set uv cache in the repo directory so it survives reinstalls
+export UV_CACHE_DIR="$SCRIPT_DIR/.uv-cache"
 
 # Install uv if not present
 if ! command -v uv &> /dev/null
@@ -49,7 +49,7 @@ fi
 
 # Create base directory
 sudo mkdir -p /var/lib/philologic5
-sudo mkdir -p "$UV_CACHE_DIR"
+mkdir -p "$UV_CACHE_DIR"
 # Make writable by current user
 sudo chown -R "$(id -u):$(id -g)" /var/lib/philologic5
 
@@ -110,7 +110,7 @@ PACKAGE_FILE=$(ls dist/*.tar.gz)
 if [ "$INSTALL_TRANSFORMERS" = true ]; then
     # Install with transformers extra - this uses the optional dependency from pyproject.toml
     echo "Installing with transformers support (CUDA enabled)..."
-    uv pip install "${PACKAGE_FILE}[transformers]" --quiet
+    uv pip install "${PACKAGE_FILE}[transformers]"
 else
     # Install without transformers
     echo "Installing without transformers support..."

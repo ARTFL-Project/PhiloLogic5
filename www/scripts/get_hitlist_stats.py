@@ -51,62 +51,104 @@ def get_hitlist_stats(environ, start_response):
         )
 
     hits.finish()
-    total_results = 0
-    docs = [set() for _ in range(len(config["results_summary"]))]
 
-    with open(hits.filename, "rb") as buffer:
-        current_hits = buffer.read(hits.length * 4 * 1000)  # read 1000 hits initially
-        while current_hits:
-            hits_array = np.frombuffer(current_hits, dtype="u4").reshape(-1, hits.length)
-            for pos, field in enumerate(config["results_summary"]):
-                obj_level = OBJ_DICT[field["object_level"]]
-                # Convert each hit to a tuple and add to the respective set
-                docs[pos].update(map(lambda hit: tuple_to_str(hit, obj_level), hits_array))
-            total_results += hits_array.shape[0]
-            current_hits = buffer.read(hits.length * 4 * 10000)
+    # Collect unique philo_ids per object level by streaming chunks.
+    # Exploits sorted hitlist order: only converts values at document boundaries.
+    CHUNK_SIZE = 100_000  # hits per chunk
+    obj_levels = {}
+    unique_ids_per_level = {}
+    prev_per_level = {}
+    for field_obj in config["results_summary"]:
+        obj_level = OBJ_DICT[field_obj["object_level"]]
+        obj_levels[field_obj["field"]] = obj_level
+        unique_ids_per_level.setdefault(obj_level, [])
+        prev_per_level.setdefault(obj_level, None)
+
+    total_results = 0
+    with open(hits.filename, "rb") as f:
+        while True:
+            chunk = f.read(hits.length * 4 * CHUNK_SIZE)
+            if not chunk:
+                break
+            arr = np.frombuffer(chunk, dtype="u4").reshape(-1, hits.length)
+            total_results += arr.shape[0]
+            for obj_level in unique_ids_per_level:
+                if obj_level == 1:
+                    col = arr[:, 0]
+                    prev = prev_per_level[obj_level]
+                    if prev is None or col[0] != prev:
+                        unique_ids_per_level[obj_level].append(int(col[0]))
+                    if len(col) > 1:
+                        mask = col[1:] != col[:-1]
+                        unique_ids_per_level[obj_level].extend(col[1:][mask].tolist())
+                    prev_per_level[obj_level] = col[-1]
+                else:
+                    cols = np.ascontiguousarray(arr[:, :obj_level])
+                    void_col = cols.view(np.dtype((np.void, obj_level * 4))).ravel()
+                    prev = prev_per_level[obj_level]
+                    if prev is None or void_col[0] != prev:
+                        unique_ids_per_level[obj_level].append(void_col[0])
+                    if len(void_col) > 1:
+                        mask = void_col[1:] != void_col[:-1]
+                        unique_ids_per_level[obj_level].extend(void_col[1:][mask].tolist())
+                    prev_per_level[obj_level] = void_col[-1]
+
+    # Convert lists to sets for dedup (handles chunk boundary duplicates)
+    for obj_level in unique_ids_per_level:
+        unique_ids_per_level[obj_level] = set(unique_ids_per_level[obj_level])
 
     stats = []
     cursor = db.dbh.cursor()
-    BATCH_SIZE = 900  # SQLite limit is ~999 variables
-    for pos, field_obj in enumerate(config["results_summary"]):
+    for field_obj in config["results_summary"]:
+        obj_level = obj_levels[field_obj["field"]]
+        id_set = unique_ids_per_level[obj_level]
+
         if field_obj["field"] == "title":
-            count = len(docs[pos])
+            count = len(id_set)
         else:
             try:
                 philo_type = db.locals["metadata_types"][field_obj["field"]]
             except KeyError:
                 continue
+
+            # Convert unique integer IDs to philo_id strings for SQL
+            if obj_level == 1:
+                doc_values = [(f"{doc_id} 0 0 0 0 0 0",) for doc_id in id_set]
+            else:
+                # For multi-column obj_levels, decode the void bytes back to ints
+                doc_values = []
+                for void_val in id_set:
+                    ids = np.frombuffer(void_val, dtype="u4")
+                    doc_values.append((tuple_to_str(ids, obj_level).strip("'"),))
+
             # Validate field name to prevent SQL injection
             field = validate_column(field_obj["field"], db)
-            # Convert doc set to list for parameterized query
-            doc_list = list(docs[pos])
-            # Strip quotes from philo_ids (they were added for the old string interpolation)
-            doc_values = [d.strip("'") for d in doc_list]
 
-            # Collect distinct values across batches using a set
+            # Use temp table + JOIN instead of batched IN queries
+            cursor.execute("CREATE TEMP TABLE _hit_ids (philo_id TEXT)")
+            cursor.executemany("INSERT INTO _hit_ids VALUES (?)", doc_values)
+            cursor.execute("CREATE INDEX _hit_idx ON _hit_ids(philo_id)")
+
+            if philo_type != "div":
+                validated_philo_type = validate_philo_type(philo_type)
+                cursor.execute(
+                    f"SELECT DISTINCT toms.{field} FROM toms INNER JOIN _hit_ids ON toms.philo_id = _hit_ids.philo_id WHERE toms.philo_type=?",
+                    (validated_philo_type,)
+                )
+            else:
+                cursor.execute(
+                    f"SELECT DISTINCT toms.{field} FROM toms INNER JOIN _hit_ids ON toms.philo_id = _hit_ids.philo_id WHERE toms.philo_type IN ('div1', 'div2', 'div3')"
+                )
+
             distinct_values = set()
             null_count = 0
-            for i in range(0, len(doc_values), BATCH_SIZE):
-                batch = doc_values[i:i + BATCH_SIZE]
-                placeholders = ", ".join("?" for _ in batch)
-
-                if philo_type != "div":
-                    validated_philo_type = validate_philo_type(philo_type)
-                    cursor.execute(
-                        f"SELECT DISTINCT {field} FROM toms WHERE philo_type=? AND philo_id IN ({placeholders})",
-                        (validated_philo_type, *batch)
-                    )
+            for row in cursor:
+                if row[0] is None:
+                    null_count = 1  # Count NULL as one distinct value
                 else:
-                    cursor.execute(
-                        f"SELECT DISTINCT {field} FROM toms WHERE philo_type IN ('div1', 'div2', 'div3') AND philo_id IN ({placeholders})",
-                        batch
-                    )
-                for row in cursor:
-                    if row[0] is None:
-                        null_count = 1  # Count NULL as one distinct value
-                    else:
-                        distinct_values.add(row[0])
+                    distinct_values.add(row[0])
 
+            cursor.execute("DROP TABLE _hit_ids")
             count = len(distinct_values) + null_count
         link_field = False
         for agg_config in config.aggregation_config:
