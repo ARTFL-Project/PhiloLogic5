@@ -219,6 +219,57 @@ class TestQueryPerformance:
 
 @pytest.mark.benchmark
 @pytest.mark.integration
+class TestMetadataFilteredPerformance:
+    """Performance benchmarks for metadata-filtered queries.
+
+    Measures the overhead of combining word search with metadata filtering
+    (the corpus_file code path through filter_philo_ids).
+    """
+
+    @pytest.fixture(scope="class")
+    def db(self, eltec_db_path):
+        """Database fixture for benchmarks (uses larger ELTeC corpus)."""
+        from philologic.runtime.DB import DB
+        return DB(str(eltec_db_path))
+
+    @pytest.fixture(scope="class")
+    def baseline(self):
+        """Load baseline performance data."""
+        return load_baseline()
+
+    def test_single_term_with_metadata(self, db, benchmark, baseline, request):
+        """Benchmark single term search filtered by author."""
+        def setup():
+            clear_hitlists(db.path)
+
+        def run():
+            hits = db.query("love", method="single_term", author=".*Dickens.*")
+            hits.finish()
+            return len(hits)
+
+        result = benchmark.pedantic(
+            run, setup=setup, rounds=BENCHMARK_ROUNDS, warmup_rounds=BENCHMARK_WARMUP_ROUNDS
+        )
+        assert result > 0, "Should find hits for 'love' in Dickens"
+
+    def test_phrase_with_metadata(self, db, benchmark, baseline, request):
+        """Benchmark phrase search filtered by author."""
+        def setup():
+            clear_hitlists(db.path)
+
+        def run():
+            hits = db.query('"he said"', method="phrase_ordered", author=".*Trollope.*")
+            hits.finish()
+            return len(hits)
+
+        result = benchmark.pedantic(
+            run, setup=setup, rounds=BENCHMARK_ROUNDS, warmup_rounds=BENCHMARK_WARMUP_ROUNDS
+        )
+        assert result > 0, "Should find hits for 'he said' in Trollope"
+
+
+@pytest.mark.benchmark
+@pytest.mark.integration
 class TestIterationPerformance:
     """Benchmarks for result iteration.
 

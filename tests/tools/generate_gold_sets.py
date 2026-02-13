@@ -59,6 +59,29 @@ SHAKESPEARE_QUERIES = {
         {"id": "sent_o_tobe", "qs": "to be", "method": "sentence_ordered", "description": "Sentence ordered 'to be'"},
         {"id": "sent_u_kingdeath", "qs": "king death", "method": "sentence_unordered", "description": "Sentence unordered"},
     ],
+    "metadata_filtered": [
+        # Doc-level metadata
+        {"id": "mf_st_love_macbeth", "qs": "love", "method": "single_term",
+         "metadata": {"title": ".*Macbeth.*"}, "description": "Single term 'love' filtered to Macbeth"},
+        {"id": "mf_phrase_mylord_hamlet", "qs": '"my lord"', "method": "phrase_ordered",
+         "metadata": {"title": ".*Hamlet.*"}, "description": "Phrase 'my lord' filtered to Hamlet"},
+        {"id": "mf_sent_kingdeath_henry", "qs": "king death", "method": "sentence_unordered",
+         "metadata": {"title": ".*Henry.*"}, "description": "Sentence 'king death' in Henry plays"},
+        # Div-level metadata (acts/scenes)
+        {"id": "mf_div_love_act1", "qs": "love", "method": "single_term",
+         "metadata": {"head": "ACT 1"}, "description": "Single term 'love' in Act 1 across all plays"},
+        {"id": "mf_div_phrase_mylord_scene", "qs": '"my lord"', "method": "phrase_ordered",
+         "metadata": {"type": "scene"}, "description": "Phrase 'my lord' in scenes only"},
+        {"id": "mf_div_king_act5", "qs": "king", "method": "single_term",
+         "metadata": {"head": "ACT 5"}, "description": "Single term 'king' in Act 5"},
+        # Para-level metadata (speaker)
+        {"id": "mf_para_love_hamlet", "qs": "love", "method": "single_term",
+         "metadata": {"who": ".*Hamlet_Ham.*"}, "description": "Single term 'love' in Hamlet's speeches"},
+        {"id": "mf_para_tobe_hamlet", "qs": '"to be"', "method": "phrase_ordered",
+         "metadata": {"who": ".*Hamlet_Ham.*"}, "description": "Phrase 'to be' in Hamlet's speeches"},
+        {"id": "mf_para_death_macbeth", "qs": "death", "method": "single_term",
+         "metadata": {"who": ".*Macbeth_Mac.*"}, "description": "Single term 'death' in Macbeth's speeches"},
+    ],
 }
 
 # Query definitions for ELTeC corpus
@@ -75,6 +98,12 @@ ELTEC_QUERIES = {
     ],
     "proximity": [
         {"id": "prox_u_lovedeath", "qs": "love death", "method": "proxy_unordered", "method_arg": "20", "description": "Proximity unordered within 20 words"},
+    ],
+    "metadata_filtered": [
+        {"id": "mf_st_love_dickens", "qs": "love", "method": "single_term",
+         "metadata": {"author": ".*Dickens.*"}, "description": "Single term 'love' filtered to Dickens"},
+        {"id": "mf_phrase_said_trollope", "qs": '"he said"', "method": "phrase_ordered",
+         "metadata": {"author": ".*Trollope.*"}, "description": "Phrase 'he said' filtered to Trollope"},
     ],
 }
 
@@ -150,11 +179,13 @@ def generate_gold_set(db: DB, queries: list, corpus_name: str, query_type: str, 
         clear_hitlists(Path(db.path))
 
         method_arg = query_def.get("method_arg", "")
+        query_metadata = query_def.get("metadata", {})
 
         hits = db.query(
             qs=query_def["qs"],
             method=query_def["method"],
             method_arg=method_arg,
+            **query_metadata,
         )
         hits.finish()
 
@@ -164,14 +195,17 @@ def generate_gold_set(db: DB, queries: list, corpus_name: str, query_type: str, 
         shutil.copy2(source_hitlist, dest_hitlist)
 
         # Store metadata
+        query_dict = {
+            "qs": query_def["qs"],
+            "method": query_def["method"],
+            "method_arg": method_arg,
+        }
+        if query_metadata:
+            query_dict["metadata"] = query_metadata
         test_case = {
             "id": query_def["id"],
             "description": query_def.get("description", ""),
-            "query": {
-                "qs": query_def["qs"],
-                "method": query_def["method"],
-                "method_arg": method_arg,
-            },
+            "query": query_dict,
             "expected": {
                 "total_hits": len(hits),
                 "hitlist_file": f"{query_type}/{query_def['id']}.hitlist",

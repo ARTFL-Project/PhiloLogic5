@@ -1,7 +1,7 @@
 {
   "corpus": "eltec",
   "query_type": "proximity",
-  "generated_date": "2026-02-12T19:54:05.216259",
+  "generated_date": "2026-02-12T22:45:37.533014",
   "philologic_version": "5.1.0.1",
   "description": "Gold set for proximity queries on eltec corpus",
   "test_cases": [

@@ -1,22 +1,22 @@
 {
   "metadata": {
-    "generated_date": "2026-02-12T18:44:16.187189",
+    "generated_date": "2026-02-12T22:47:00.656435",
     "machine_info": {
       "node": "anomander",
       "processor": "x86_64",
       "machine": "x86_64",
-      "python_compiler": "Clang 20.1.4 ",
+      "python_compiler": "GCC 13.3.0",
       "python_implementation": "CPython",
-      "python_implementation_version": "3.12.10",
-      "python_version": "3.12.10",
+      "python_implementation_version": "3.12.3",
+      "python_version": "3.12.3",
       "python_build": [
         "main",
-        "May 22 2025 01:59:14"
+        "Jan 22 2026 20:57:42"
       ],
       "release": "6.8.0-90-generic",
       "system": "Linux",
       "cpu": {
-        "python_version": "3.12.10.final.0 (64 bit)",
+        "python_version": "3.12.3.final.0 (64 bit)",
         "cpuinfo_version": [
           9,
           0,
@@ -29,14 +29,14 @@
         "arch_string_raw": "x86_64",
         "vendor_id_raw": "AuthenticAMD",
         "brand_raw": "AMD Ryzen Threadripper PRO 7975WX 32-Cores",
-        "hz_advertised_friendly": "4.7781 GHz",
-        "hz_actual_friendly": "4.7781 GHz",
+        "hz_advertised_friendly": "545.0000 MHz",
+        "hz_actual_friendly": "545.0000 MHz",
         "hz_advertised": [
-          4778077000,
+          545000000,
           0
         ],
         "hz_actual": [
-          4778077000,
+          545000000,
           0
         ],
         "stepping": 1,
@@ -214,76 +214,92 @@
       }
     },
     "commit_info": {
-      "id": "63ac694291ddb9d40b66906a405df5dd80fed9bb",
-      "time": "2026-02-12T18:41:01-06:00",
-      "author_time": "2026-02-12T18:41:01-06:00",
-      "dirty": false,
+      "id": "256a779138f06d83e2c92b08a1edd18e0364ddd7",
+      "time": "2026-02-12T21:18:31-06:00",
+      "author_time": "2026-02-12T21:18:31-06:00",
+      "dirty": true,
       "project": "PhiloLogic5",
       "branch": "main"
     }
   },
   "single_term_common_word": {
-    "median_seconds": 0.040792073821648955,
-    "mean_seconds": 0.04079263885505498,
-    "min_seconds": 0.04070419492200017,
-    "max_seconds": 0.040880093816667795,
-    "stddev_seconds": 5.740807013465253e-05,
+    "median_seconds": 0.04751219553872943,
+    "mean_seconds": 0.047588406363502145,
+    "min_seconds": 0.04069599183276296,
+    "max_seconds": 0.056654199957847595,
+    "stddev_seconds": 0.005389170799785784,
     "rounds": 10
   },
   "single_term_rare_word": {
-    "median_seconds": 0.02047721343114972,
-    "mean_seconds": 0.020501172030344607,
-    "min_seconds": 0.02037041075527668,
-    "max_seconds": 0.020778092090040445,
-    "stddev_seconds": 0.000127037050617747,
+    "median_seconds": 0.02055218257009983,
+    "mean_seconds": 0.020554329687729477,
+    "min_seconds": 0.02039924869313836,
+    "max_seconds": 0.020760700572282076,
+    "stddev_seconds": 0.00012703540760676936,
     "rounds": 10
   },
   "phrase_search": {
-    "median_seconds": 0.030706585850566626,
-    "mean_seconds": 0.03069924577139318,
-    "min_seconds": 0.030517222359776497,
-    "max_seconds": 0.03082370012998581,
-    "stddev_seconds": 9.000438282617392e-05,
+    "median_seconds": 0.020498811034485698,
+    "mean_seconds": 0.020519037172198294,
+    "min_seconds": 0.020402865018695593,
+    "max_seconds": 0.020665116142481565,
+    "stddev_seconds": 9.795293857398344e-05,
     "rounds": 10
   },
   "proximity_search": {
-    "median_seconds": 0.020772949792444706,
-    "mean_seconds": 0.022714353958144785,
-    "min_seconds": 0.02059853868559003,
-    "max_seconds": 0.030669984873384237,
-    "stddev_seconds": 0.004171338925504842,
+    "median_seconds": 0.020643556956201792,
+    "mean_seconds": 0.020655569294467567,
+    "min_seconds": 0.02046481892466545,
+    "max_seconds": 0.0209368709474802,
+    "stddev_seconds": 0.00016268162193775393,
     "rounds": 10
   },
   "sentence_search": {
-    "median_seconds": 0.061586431693285704,
-    "mean_seconds": 0.06210763081908226,
-    "min_seconds": 0.0508503052406013,
-    "max_seconds": 0.07529662922024727,
-    "stddev_seconds": 0.006810904974360652,
+    "median_seconds": 0.05169898830354214,
+    "mean_seconds": 0.05070701111108065,
+    "min_seconds": 0.041010279674082994,
+    "max_seconds": 0.05755911208689213,
+    "stddev_seconds": 0.006059415175393604,
     "rounds": 10
   },
   "or_search": {
-    "median_seconds": 0.020686653442680836,
-    "mean_seconds": 0.020728542096912862,
-    "min_seconds": 0.020589054096490145,
-    "max_seconds": 0.020973700564354658,
-    "stddev_seconds": 0.00013758794499606753,
+    "median_seconds": 0.020847297506406903,
+    "mean_seconds": 0.020848264498636127,
+    "min_seconds": 0.020645365118980408,
+    "max_seconds": 0.021198740229010582,
+    "stddev_seconds": 0.00015169672945443318,
+    "rounds": 10
+  },
+  "single_term_with_metadata": {
+    "median_seconds": 0.023819596972316504,
+    "mean_seconds": 0.023854431230574846,
+    "min_seconds": 0.023287559393793344,
+    "max_seconds": 0.024305975064635277,
+    "stddev_seconds": 0.0003298556089983139,
+    "rounds": 10
+  },
+  "phrase_with_metadata": {
+    "median_seconds": 0.023751417407765985,
+    "mean_seconds": 0.02390572251752019,
+    "min_seconds": 0.023469618055969477,
+    "max_seconds": 0.0250560799613595,
+    "stddev_seconds": 0.00047523729793940973,
     "rounds": 10
   },
   "iterate_first_100": {
-    "median_seconds": 0.04303645552136004,
-    "mean_seconds": 0.04305352163501084,
-    "min_seconds": 0.042461927980184555,
-    "max_seconds": 0.04355046059936285,
-    "stddev_seconds": 0.0003943386964717918,
+    "median_seconds": 0.048629245487973094,
+    "mean_seconds": 0.048940681479871274,
+    "min_seconds": 0.042838233057409525,
+    "max_seconds": 0.05657570995390415,
+    "stddev_seconds": 0.004195223593852399,
     "rounds": 10
   },
   "random_access": {
-    "median_seconds": 0.04132835799828172,
-    "mean_seconds": 0.04129989976063371,
-    "min_seconds": 0.04097837395966053,
-    "max_seconds": 0.04154539993032813,
-    "stddev_seconds": 0.00017499092956411587,
+    "median_seconds": 0.0415576274972409,
+    "mean_seconds": 0.04752996219322085,
+    "min_seconds": 0.04118461813777685,
+    "max_seconds": 0.07180244103074074,
+    "stddev_seconds": 0.010624031415172815,
     "rounds": 10
   }
 }

@@ -161,7 +161,7 @@ class TestShakespeareGoldSets:
         if not available:
             pytest.skip("No Shakespeare gold sets found. Run generate_gold_sets.py first.")
 
-    @pytest.mark.parametrize("query_type", ["single_term", "phrase", "proximity", "sentence"])
+    @pytest.mark.parametrize("query_type", ["single_term", "phrase", "proximity", "sentence", "metadata_filtered"])
     def test_gold_set_validation(self, db, query_type):
         """Validate query results against gold set by comparing hitlist files."""
         metadata = load_gold_set_metadata("shakespeare", query_type)
@@ -184,6 +184,7 @@ class TestShakespeareGoldSets:
                 qs=query["qs"],
                 method=query["method"],
                 method_arg=query.get("method_arg", ""),
+                **query.get("metadata", {}),
             )
             hits.finish()
 
@@ -227,7 +228,7 @@ class TestELTeCGoldSets:
         if not available:
             pytest.skip("No ELTeC gold sets found. Run generate_gold_sets.py first.")
 
-    @pytest.mark.parametrize("query_type", ["single_term", "phrase", "proximity"])
+    @pytest.mark.parametrize("query_type", ["single_term", "phrase", "proximity", "metadata_filtered"])
     def test_gold_set_validation(self, db, query_type):
         """Validate query results against gold set by comparing hitlist files."""
         metadata = load_gold_set_metadata("eltec", query_type)
@@ -250,6 +251,7 @@ class TestELTeCGoldSets:
                 qs=query["qs"],
                 method=query["method"],
                 method_arg=query.get("method_arg", ""),
+                **query.get("metadata", {}),
             )
             hits.finish()
 

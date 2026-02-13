@@ -1,7 +1,7 @@
 {
   "corpus": "eltec",
   "query_type": "phrase",
-  "generated_date": "2026-02-12T19:54:05.160298",
+  "generated_date": "2026-02-12T22:45:37.478167",
   "philologic_version": "5.1.0.1",
   "description": "Gold set for phrase queries on eltec corpus",
   "test_cases": [
