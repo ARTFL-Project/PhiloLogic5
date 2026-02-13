@@ -11,7 +11,6 @@ from pathlib import Path
 os.umask(0o000)
 
 import lmdb
-import msgspec
 import numba
 import numpy as np
 import regex as re
@@ -848,13 +847,6 @@ def _cooc_match_doc_two_groups(w1_hits, w2_hits, cooc_slice,
     return output[:out_idx]
 
 
-class WordData(msgspec.Struct):
-    full_array: np.ndarray = None
-    array: np.ndarray = None
-    start: int = 0
-    first_doc: int = 0
-
-
 def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowercase_index,
                 method, method_arg, overflow_words, object_level, corpus_file):
     """Run search in a background thread. Always writes .done file, even on error."""
@@ -916,8 +908,6 @@ def query(
     frequency_file = db.path + "/frequencies/normalized_word_frequencies"
 
     # Run search in a background thread.
-    # numpy, numba, and LMDB all release the GIL, so the search runs
-    # concurrently with the main thread returning the HitList.
     thread = threading.Thread(
         target=_run_search,
         args=(
@@ -1057,15 +1047,10 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
                 output_file.write(filtered_philo_ids.tobytes())
     else:
         with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
-            for philo_ids in merge_word_group(db_path, txn, words, overflow_words):
-                if corpus_file is None:
-                    output_file.write(philo_ids.tobytes())
-                else:
-                    filtered_philo_ids = filter_philo_ids(
-                        corpus_file,
-                        philo_ids,
-                    )
-                    output_file.write(filtered_philo_ids.tobytes())
+            merged = _load_word_group_hits(db_path, txn, words, overflow_words)
+            if corpus_file is not None:
+                merged = filter_philo_ids(corpus_file, merged)
+            output_file.write(merged.tobytes())
     env.close()
 
 
@@ -1312,108 +1297,6 @@ def get_word_groups(terms_file):
         if word_group:
             word_groups.append(word_group)
     return word_groups
-
-
-def merge_word_group(db_path: str, txn, words: list[str], overflow_words: set[str], chunk_size=None):
-    # Initialize data structures for each word
-    word_data = {}
-    if chunk_size is None:
-        chunk_size = 10000  # 10000 hits: happy median between performance and memory usage, potentially reevaluate.
-
-    # Load initial chunks
-    for word in words:
-        if word not in overflow_words:
-            buffer = txn.get(word.encode("utf8"))
-            array = np.frombuffer(buffer[:3600], dtype="u4").reshape(-1, 9)
-            first_doc = array[0, 0]
-            word_data[word] = WordData(full_array=np.frombuffer(buffer, dtype="u4").reshape(-1, 9), array=array, start=0, first_doc=first_doc)
-        else:
-            file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
-            mmap_array = np.memmap(file_path, dtype="u4", mode='r').reshape(-1, 9)
-            array = mmap_array[:100] # 100 36 byte rows
-            first_doc = array[0, 0]
-            word_data[word] = WordData(full_array=mmap_array, array=array, start=0, first_doc=first_doc)
-
-    def build_first_last_rows():
-        first_finishing_doc = np.iinfo(np.uint32).max
-        first_finishing_byte = np.iinfo(np.uint32).max
-        result = []
-
-        for word, data in word_data.items():
-            if data.first_doc > first_finishing_doc or (
-                data.first_doc == first_finishing_doc and data.array[0, -1] > first_finishing_byte
-            ):  # row starts after finishing row
-                continue
-            if data.array[-1, 0] < first_finishing_doc or (
-                data.array[-1, 0] == first_finishing_doc and data.array[-1, -1] < first_finishing_byte
-            ):  # row ends before finishing row
-                first_finishing_doc = data.array[-1, 0]
-                first_finishing_byte = data.array[-1, -1]
-                first_word = word
-            result.append((word, data.array[0, ::8], data.array[-1, ::8]))
-
-        return result, np.array([first_finishing_doc, first_finishing_byte], dtype="u4"), first_word
-
-    # Merge sort and write loop
-    while word_data:
-        # Determine which words start before the first finishing word ends
-        # Save index of first row that exceeds the first finishing word
-        words_first_last_row, first_finishing_row, first_word_to_finish = build_first_last_rows()
-
-        words_to_keep = []
-        for other_word, other_first_row, _ in words_first_last_row:
-            if other_word == first_word_to_finish:
-                words_to_keep.append((other_word, None))
-                continue
-            elif other_first_row[0] > first_finishing_row[0] or (
-                other_first_row[0] == first_finishing_row[0] and other_first_row[1] > first_finishing_row[1]
-            ):  # dismiss words that start before the first finishing word ends
-                continue
-            else:
-                first_exceeding_index = np.searchsorted(
-                    word_data[other_word].array[:, 0], first_finishing_row[0], side="right"
-                )
-                if first_exceeding_index < word_data[other_word].array.shape[0]:
-                    remaining_array = word_data[other_word].array[:first_exceeding_index]
-                else:
-                    remaining_array = word_data[other_word].array
-                if np.all(remaining_array[:, 0] < first_finishing_row[0]):  # all doc_ids are less than finishing doc id
-                    words_to_keep.append((other_word, remaining_array.shape[0]))
-                    continue
-                # Are there equal doc_ids? If so, we need to break the tie by comparing byte offsets
-                equal_doc_rows = np.where(remaining_array[:, 0] == first_finishing_row[0])
-                last_equal_index = equal_doc_rows[0][-1] + 1  # +1 to include the last equal row
-                remaining_array = word_data[other_word].array[:last_equal_index]
-                exceeding_rows_mask = (remaining_array[:, 0] == first_finishing_row[0]) & (
-                    remaining_array[:, -1] > first_finishing_row[1]
-                )
-                potential_exceeding_indices = np.where(exceeding_rows_mask)
-                if potential_exceeding_indices[0].size != 0:
-                    first_exceeding_index = potential_exceeding_indices[0][0]
-                    words_to_keep.append((other_word, first_exceeding_index))
-                else:
-                    words_to_keep.append((other_word, last_equal_index))
-
-        # Merge sort partial philo_id arrays
-        combined_arrays = np.concatenate(
-            [word_data[word].array[:index] for word, index in words_to_keep],
-            dtype="u4",
-        )
-        # Sort by doc id and byte offset, 3x faster than np.lexsort((combined_arrays[:, -1], combined_arrays[:, 0]))
-        composite_key = combined_arrays[:, 0].astype(np.uint64) << 32 | combined_arrays[:, -1]
-        yield combined_arrays[np.argsort(composite_key, kind="stable")]
-
-        # Load next chunks for all words based on the indices we saved
-        for word, index in words_to_keep:
-            if index is None:
-                index = word_data[word].array.shape[0]  # no need to slice, we have the full array
-            word_data[word].start += index
-            end = word_data[word].start + chunk_size
-            word_data[word].array = word_data[word].full_array[word_data[word].start:end]
-            if word_data[word].array.size > 0:
-                word_data[word].first_doc = word_data[word].array[0, 0]
-            else:
-                del word_data[word]
 
 
 def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True):
