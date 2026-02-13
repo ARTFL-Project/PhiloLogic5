@@ -995,31 +995,78 @@ def __filter_philo_ids_on_void(corpus_philo_ids, philo_ids):
 
 
 def filter_philo_ids(corpus_file, philo_ids) -> np.ndarray:
-    """Filter philo_ids based on corpus metadata."""
+    """Filter philo_ids to only include hits matching corpus metadata.
+
+    Both arrays are sorted by doc_id (column 0). We use bisect binary search
+    directly on the strided column view — O(m·log n) with no contiguous copy,
+    avoiding numpy searchsorted's implicit copy of the full column.
+    """
+    if len(philo_ids) == 0:
+        return philo_ids
     with open(corpus_file, "rb") as corpus:
         buffer = corpus.read()
         corpus_philo_ids = np.frombuffer(buffer, dtype="u4").reshape(-1, 7)
-    corpus_padded = np.pad(corpus_philo_ids, ((0, 0), (0, 1)), 'constant', constant_values=0)
+    if len(corpus_philo_ids) == 0:
+        return np.empty((0, philo_ids.shape[1]), dtype=philo_ids.dtype)
+
+    from bisect import bisect_left, bisect_right
+
+    # Narrow philo_ids to the doc range covered by the corpus.
+    # bisect on the strided view avoids numpy's O(n) contiguous copy.
+    doc_col = philo_ids[:, 0]
+    first_doc = int(corpus_philo_ids[0, 0])
+    last_doc = int(corpus_philo_ids[-1, 0])
+    lo = bisect_left(doc_col, first_doc)
+    hi = bisect_right(doc_col, last_doc)
+    philo_ids = philo_ids[lo:hi]
+    if len(philo_ids) == 0:
+        return philo_ids
+
+    # Determine corpus object level (number of non-zero columns per row).
+    corpus_padded = np.pad(corpus_philo_ids, ((0, 0), (0, 1)), "constant", constant_values=0)
     actual_corpus_lengths = np.argmax(corpus_padded == 0, axis=1)
-    if np.all(actual_corpus_lengths == actual_corpus_lengths[0]): # check if all rows have the same length
-        object_level = actual_corpus_lengths[0]
-        matching_indices = __filter_philo_ids_on_void(corpus_philo_ids[:, :object_level], philo_ids[:, :object_level])
-        return philo_ids[matching_indices]
+    uniform = np.all(actual_corpus_lengths == actual_corpus_lengths[0])
+    object_level = int(actual_corpus_lengths[0]) if uniform else None
+
+    # Collect hits for each corpus doc via bisect on the narrowed strided view.
+    doc_col = philo_ids[:, 0]
+    empty = np.empty((0, philo_ids.shape[1]), dtype=philo_ids.dtype)
+
+    if object_level == 1:
+        # Doc-level corpus: bisect gives exact matches, no further filtering.
+        slices = []
+        for doc_id in corpus_philo_ids[:, 0]:
+            d = int(doc_id)
+            s = bisect_left(doc_col, d)
+            e = bisect_right(doc_col, d)
+            if e > s:
+                slices.append(philo_ids[s:e])
+        return np.concatenate(slices) if slices else empty
+
+    # Multi-level or mixed-level corpus: narrow by doc_id first, then use
+    # np.isin on the reduced array for precise multi-column matching.
+    corpus_unique_docs = np.unique(corpus_philo_ids[:, 0])
+    slices = []
+    for doc_id in corpus_unique_docs:
+        d = int(doc_id)
+        s = bisect_left(doc_col, d)
+        e = bisect_right(doc_col, d)
+        if e > s:
+            slices.append(philo_ids[s:e])
+    if not slices:
+        return empty
+    philo_ids = np.concatenate(slices)
+
+    if uniform:
+        matching = __filter_philo_ids_on_void(corpus_philo_ids[:, :object_level], philo_ids[:, :object_level])
+        return philo_ids[matching]
     else:
-        unique_lengths = np.unique(actual_corpus_lengths) # get unique lengths
-        num_philo_rows = philo_ids.shape[0]
-        overall_match_mask = np.zeros(num_philo_rows, dtype=bool)
-
+        unique_lengths = np.unique(actual_corpus_lengths)
+        overall_mask = np.zeros(len(philo_ids), dtype=bool)
         for current_len in unique_lengths:
-            # Create a mask for the corpus_philo_ids that match the current length
-            corpus_rows_for_this_len_mask = (actual_corpus_lengths == current_len)
-
-            # Extract these actual corpus prefixes (all are of length current_len)
-            relevant_corpus_prefixes = corpus_philo_ids[corpus_rows_for_this_len_mask, :current_len]
-            philo_ids_prefixes = philo_ids[:, :current_len]
-            current_matching_indices = __filter_philo_ids_on_void(relevant_corpus_prefixes, philo_ids_prefixes)
-            overall_match_mask |= current_matching_indices
-        return philo_ids[overall_match_mask]
+            relevant = corpus_philo_ids[actual_corpus_lengths == current_len, :current_len]
+            overall_mask |= __filter_philo_ids_on_void(relevant, philo_ids[:, :current_len])
+        return philo_ids[overall_mask]
 
 
 def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
