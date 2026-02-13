@@ -1,7 +1,7 @@
 {
   "corpus": "eltec",
   "query_type": "single_term",
-  "generated_date": "2026-02-04T20:59:31.983684",
+  "generated_date": "2026-02-12T19:54:05.042905",
   "philologic_version": "5.1.0.1",
   "description": "Gold set for single_term queries on eltec corpus",
   "test_cases": [

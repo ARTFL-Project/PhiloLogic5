@@ -76,8 +76,8 @@ def _merge_two_sorted_arrays(arr1, arr2):
 def _kway_merge_sorted_arrays(arrays):
     """K-way merge of sorted hit arrays using repeated two-way merges.
 
-    Uses divide-and-conquer approach: O(n log k) where n is total elements
-    and k is number of arrays. Much faster than O(n log n) full sort.
+    Sorts arrays by size so small arrays merge first, ensuring the largest
+    array is only touched once in the final merge step.
     """
     if len(arrays) == 0:
         return np.empty((0, 9), dtype=np.uint32)
@@ -89,8 +89,10 @@ def _kway_merge_sorted_arrays(arrays):
             np.ascontiguousarray(arrays[1])
         )
 
-    # Divide and conquer: merge pairs, then merge results
-    # This gives O(n log k) complexity
+    # Sort by size so small arrays merge first. The largest array
+    # is only touched once in the final merge.
+    arrays = sorted(arrays, key=len)
+
     while len(arrays) > 1:
         merged = []
         for i in range(0, len(arrays), 2):
@@ -100,7 +102,7 @@ def _kway_merge_sorted_arrays(arrays):
                     np.ascontiguousarray(arrays[i + 1])
                 ))
             else:
-                merged.append(np.ascontiguousarray(arrays[i]))
+                merged.append(arrays[i])
         arrays = merged
 
     return arrays[0]
@@ -165,17 +167,6 @@ def _find_doc_boundaries(hits):
     # Add end index
     starts = np.concatenate([starts, [len(hits)]])
     return unique_docs, starts
-
-
-def _find_common_docs(doc_lists):
-    """Find documents that appear in all word groups."""
-    if not doc_lists:
-        return np.array([], dtype=np.uint32)
-
-    common = doc_lists[0]
-    for docs in doc_lists[1:]:
-        common = np.intersect1d(common, docs)
-    return common
 
 
 def _find_sentence_boundaries(hits, cooc_slice=6):
@@ -279,8 +270,7 @@ def _find_common_sentences(hits_list, cooc_slice=6):
     if n_common == 0:
         return None
 
-    # Sort common sentences by void dtype order to match numpy intersect1d behavior
-    # This ensures consistent ordering with the old implementation
+    # Sort common sentences by void dtype order for deterministic output
     dt = np.dtype((np.void, common_sents.dtype.itemsize * cooc_slice))
     common_view = np.ascontiguousarray(common_sents).view(dt).ravel()
     sort_order = np.argsort(common_view)
@@ -518,6 +508,346 @@ def _process_n_groups(hits_list, sizes_list, cooc_order, mapping_order,
     )
 
 
+@numba.jit(nopython=True, cache=True)
+def _phrase_match_doc(rare_hits, all_doc_hits, group_offsets, group_sizes,
+                      n_groups, rare_group_idx, out_cols):
+    """Match phrase hits within a single document using binary search.
+
+    For each hit from the rarest word group, computes the expected positions
+    for all other groups (consecutive word positions within the same sentence)
+    and binary-searches for them.
+
+    Args:
+        rare_hits: Rare group's hits in this doc (R x 9, uint32)
+        all_doc_hits: Concatenated hits for ALL groups in this doc (T x 9, uint32)
+        group_offsets: Start offset of each group in all_doc_hits
+        group_sizes: Number of hits for each group in all_doc_hits
+        n_groups: Total number of word groups
+        rare_group_idx: Which group index is the rare word
+        out_cols: Output columns per match (9 + 2 * (n_groups - 1))
+
+    Returns:
+        Numpy array of matched phrase hits (M x out_cols, uint32)
+    """
+    n_rare = len(rare_hits)
+    if n_rare == 0:
+        return np.empty((0, out_cols), dtype=np.uint32)
+
+    # Pre-allocate output (generous estimate, will truncate)
+    max_out = n_rare
+    output = np.empty((max_out, out_cols), dtype=np.uint32)
+    out_idx = 0
+
+    # Previous output row for dedup
+    prev_row = np.zeros(out_cols, dtype=np.uint32)
+    have_prev = False
+
+    for r in range(n_rare):
+        rare_sent = rare_hits[r, :6]  # sentence ID (cols 0-5)
+        rare_pos = rare_hits[r, 7]    # word position within sentence
+
+        # Compute word0_pos: the position of the first word in the phrase
+        # rare word is at group rare_group_idx, so word0 is at rare_pos - rare_group_idx
+        if rare_pos < rare_group_idx:
+            continue  # Can't form phrase - would need negative position
+
+        word0_pos = rare_pos - rare_group_idx
+
+        # Check all groups
+        all_found = True
+        # We'll store matched hit indices for building output
+        matched_indices = np.empty(n_groups, dtype=np.int64)
+
+        for g in range(n_groups):
+            if g == rare_group_idx:
+                # We already have this hit - store the index in all_doc_hits
+                # The rare hits are at group_offsets[rare_group_idx] + rare_idx_within_group
+                # But we need the index in all_doc_hits. Since rare_hits is a slice,
+                # map r back to all_doc_hits index
+                matched_indices[g] = group_offsets[rare_group_idx] + r
+                continue
+
+            target_pos = word0_pos + g
+
+            # Binary search in group g's slice for (sent_id, position)
+            g_start = group_offsets[g]
+            g_size = group_sizes[g]
+
+            lo = 0
+            hi = g_size - 1
+            found = False
+
+            while lo <= hi:
+                mid = (lo + hi) // 2
+
+                # Compare sentence ID first (cols 0-5)
+                row_idx = g_start + mid
+                cmp = 0
+                for c in range(6):
+                    if all_doc_hits[row_idx, c] < rare_sent[c]:
+                        cmp = -1
+                        break
+                    elif all_doc_hits[row_idx, c] > rare_sent[c]:
+                        cmp = 1
+                        break
+
+                if cmp == 0:
+                    # Same sentence, compare position (col 7)
+                    if all_doc_hits[row_idx, 7] < target_pos:
+                        cmp = -1
+                    elif all_doc_hits[row_idx, 7] > target_pos:
+                        cmp = 1
+
+                if cmp == 0:
+                    found = True
+                    matched_indices[g] = row_idx
+                    break
+                elif cmp < 0:
+                    lo = mid + 1
+                else:
+                    hi = mid - 1
+
+            if not found:
+                all_found = False
+                break
+
+        if not all_found:
+            continue
+
+        # Build output row: group 0's full 9 cols,
+        # then for groups 1..n-1: (position, byte_offset)
+        # Group 0 is at matched_indices[0]
+        g0_idx = matched_indices[0]
+        row = np.empty(out_cols, dtype=np.uint32)
+
+        # First 9 cols from group 0 (all columns from hit array)
+        for c in range(9):
+            row[c] = all_doc_hits[g0_idx, c]
+
+        # For each additional group: position, byte_offset
+        col = 9
+        for g in range(1, n_groups):
+            g_idx = matched_indices[g]
+            row[col] = all_doc_hits[g_idx, 7]      # word position
+            row[col + 1] = all_doc_hits[g_idx, 8]   # byte_offset
+            col += 2
+
+        # Simple dedup: skip if identical to previous output row
+        if have_prev:
+            is_dup = True
+            for c in range(out_cols):
+                if row[c] != prev_row[c]:
+                    is_dup = False
+                    break
+            if is_dup:
+                continue
+
+        # Grow output if needed
+        if out_idx >= max_out:
+            max_out *= 2
+            new_output = np.empty((max_out, out_cols), dtype=np.uint32)
+            for i in range(out_idx):
+                for c2 in range(out_cols):
+                    new_output[i, c2] = output[i, c2]
+            output = new_output
+
+        for c in range(out_cols):
+            output[out_idx, c] = row[c]
+            prev_row[c] = row[c]
+        have_prev = True
+        out_idx += 1
+
+    return output[:out_idx]
+
+
+@numba.jit(nopython=True, cache=True)
+def _cooc_match_doc_two_groups(w1_hits, w2_hits, cooc_slice,
+                                cooc_order, max_distance, exact_distance):
+    """Find co-occurring pairs of two word groups within the same text object in one document.
+
+    Computes sentence boundaries for the smaller group, then binary-searches
+    the larger group for matching sentence ranges.
+
+    Args:
+        w1_hits: Group 0's hits for this document (N1 x 9, sorted by byte_offset)
+        w2_hits: Group 1's hits for this document (N2 x 9, sorted by byte_offset)
+        cooc_slice: Number of columns defining the text object (6=sent, 5=para)
+        cooc_order: Whether group 0 must precede group 1
+        max_distance: Max word distance (0=no limit)
+        exact_distance: If True, distance must equal max_distance
+
+    Returns:
+        Output array (M x 11, uint32) of valid co-occurrence pairs
+    """
+    n1 = len(w1_hits)
+    n2 = len(w2_hits)
+
+    if n1 == 0 or n2 == 0:
+        return np.empty((0, 11), dtype=np.uint32)
+
+    # Determine which group to scan for sentences (smaller) vs binary search (larger)
+    if n1 <= n2:
+        scan_hits = w1_hits
+        search_hits = w2_hits
+        scan_is_w1 = True
+    else:
+        scan_hits = w2_hits
+        search_hits = w1_hits
+        scan_is_w1 = False
+
+    n_scan = len(scan_hits)
+    n_search = len(search_hits)
+
+    # Pre-allocate output (will grow if needed)
+    max_out = n_scan * 4
+    if max_out < 64:
+        max_out = 64
+    output = np.empty((max_out, 11), dtype=np.uint32)
+    out_idx = 0
+
+    # Process each unique sentence in scan_hits
+    s = 0
+    while s < n_scan:
+        # Current sentence ID
+        sent = scan_hits[s, :cooc_slice]
+
+        # Find end of this sentence in scan_hits
+        s_end = s + 1
+        while s_end < n_scan:
+            same = True
+            for c in range(cooc_slice):
+                if scan_hits[s_end, c] != sent[c]:
+                    same = False
+                    break
+            if not same:
+                break
+            s_end += 1
+
+        # Binary search for lower bound of this sentence in search_hits
+        lo = 0
+        hi = n_search
+        while lo < hi:
+            mid = (lo + hi) // 2
+            cmp = 0
+            for c in range(cooc_slice):
+                if search_hits[mid, c] < sent[c]:
+                    cmp = -1
+                    break
+                elif search_hits[mid, c] > sent[c]:
+                    cmp = 1
+                    break
+            if cmp < 0:
+                lo = mid + 1
+            else:
+                hi = mid
+        search_start = lo
+
+        # Binary search for upper bound
+        lo2 = search_start
+        hi2 = n_search
+        while lo2 < hi2:
+            mid = (lo2 + hi2) // 2
+            cmp = 0
+            for c in range(cooc_slice):
+                if search_hits[mid, c] < sent[c]:
+                    cmp = -1
+                    break
+                elif search_hits[mid, c] > sent[c]:
+                    cmp = 1
+                    break
+            if cmp <= 0:
+                lo2 = mid + 1
+            else:
+                hi2 = mid
+        search_end = lo2
+
+        # Produce all valid pairs from this sentence
+        if search_start < search_end:
+            sent_output_start = out_idx
+
+            for si in range(s, s_end):
+                for sj in range(search_start, search_end):
+                    # Map back to w1/w2
+                    if scan_is_w1:
+                        pos1 = scan_hits[si, 7]
+                        pos2 = search_hits[sj, 7]
+                    else:
+                        pos1 = search_hits[sj, 7]
+                        pos2 = scan_hits[si, 7]
+
+                    # Check ordering constraint
+                    if cooc_order:
+                        if pos1 >= pos2:
+                            continue
+                    else:
+                        if pos1 == pos2:
+                            continue
+
+                    # Check distance constraint
+                    if max_distance > 0:
+                        if pos1 > pos2:
+                            dist = pos1 - pos2
+                        else:
+                            dist = pos2 - pos1
+                        if exact_distance:
+                            if dist != max_distance:
+                                continue
+                        else:
+                            if dist > max_distance:
+                                continue
+
+                    # Build output row: earlier by position first
+                    if scan_is_w1:
+                        if pos1 < pos2:
+                            first_hit = scan_hits[si]
+                            second_hit = search_hits[sj]
+                        else:
+                            first_hit = search_hits[sj]
+                            second_hit = scan_hits[si]
+                    else:
+                        if pos1 < pos2:
+                            first_hit = search_hits[sj]
+                            second_hit = scan_hits[si]
+                        else:
+                            first_hit = scan_hits[si]
+                            second_hit = search_hits[sj]
+
+                    # Check for duplicate within this sentence
+                    is_dup = False
+                    for k in range(sent_output_start, out_idx):
+                        match = True
+                        for c in range(9):
+                            if output[k, c] != first_hit[c]:
+                                match = False
+                                break
+                        if match:
+                            if output[k, 9] == second_hit[7] and output[k, 10] == second_hit[8]:
+                                is_dup = True
+                                break
+                        # Already not matching, continue
+                    if is_dup:
+                        continue
+
+                    # Grow output if needed
+                    if out_idx >= max_out:
+                        max_out *= 2
+                        new_output = np.empty((max_out, 11), dtype=np.uint32)
+                        for i in range(out_idx):
+                            for c2 in range(11):
+                                new_output[i, c2] = output[i, c2]
+                        output = new_output
+
+                    for c in range(9):
+                        output[out_idx, c] = first_hit[c]
+                    output[out_idx, 9] = second_hit[7]
+                    output[out_idx, 10] = second_hit[8]
+                    out_idx += 1
+
+        s = s_end
+
+    return output[:out_idx]
+
+
 class WordData(msgspec.Struct):
     full_array: np.ndarray = None
     array: np.ndarray = None
@@ -740,14 +1070,104 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
 
 
 def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
-    """Phrase searches where words need to be in a specific order"""
-    word_groups = get_word_groups(f"{hitlist_filename}.terms")
+    """Phrase searches where words need to be in a specific order.
 
-    # For phrase search: positions must be consecutive (distance == n_groups - 1)
-    max_distance = len(word_groups) - 1
-    _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
-                               cooc_order=True, corpus_file=corpus_file,
-                               max_distance=max_distance, exact_distance=True)
+    Scans only the rarest word group for document boundaries, then uses
+    binary search within each document to find consecutive word positions
+    forming the phrase.
+    """
+    word_groups = get_word_groups(f"{hitlist_filename}.terms")
+    n_groups = len(word_groups)
+
+    # Single word: delegate to search_word
+    if n_groups <= 1:
+        search_word(db_path, hitlist_filename, overflow_words, corpus_file=corpus_file)
+        return
+
+    out_cols = 9 + 2 * (n_groups - 1)
+
+    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
+    with env.begin(buffers=True) as txn:
+        # Load all word group hits (zero-copy from LMDB)
+        all_hits = []
+        for group in word_groups:
+            hits = _load_word_group_hits(db_path, txn, group, overflow_words)
+            all_hits.append(hits)
+
+        # Apply corpus filter if provided
+        if corpus_file is not None:
+            all_hits = [filter_philo_ids(corpus_file, hits) for hits in all_hits]
+
+        # Early return if any group has 0 hits
+        if any(len(h) == 0 for h in all_hits):
+            env.close()
+            return
+
+        # Find the rarest word group (smallest hit count)
+        sizes = [len(h) for h in all_hits]
+        rare_group_idx = int(np.argmin(np.array(sizes)))
+
+        # Scan only the rare word for document boundaries
+        rare_docs, rare_starts = _find_doc_boundaries(all_hits[rare_group_idx])
+
+        # Bulk searchsorted for other groups: find per-document ranges
+        lefts = {}
+        rights = {}
+        for g in range(n_groups):
+            if g == rare_group_idx:
+                continue
+            g_doc_ids = all_hits[g][:, 0]
+            lefts[g] = np.searchsorted(g_doc_ids, rare_docs, side='left')
+            rights[g] = np.searchsorted(g_doc_ids, rare_docs, side='right')
+
+        with open(hitlist_filename, "wb") as output_file:
+            for d_idx in range(len(rare_docs)):
+                # Get rare group's hits for this document
+                rare_doc_hits = all_hits[rare_group_idx][rare_starts[d_idx]:rare_starts[d_idx + 1]]
+
+                # Get other groups' hits for this document, check if any are empty
+                skip_doc = False
+                group_doc_slices = [None] * n_groups
+                group_doc_slices[rare_group_idx] = rare_doc_hits
+
+                for g in range(n_groups):
+                    if g == rare_group_idx:
+                        continue
+                    g_left = lefts[g][d_idx]
+                    g_right = rights[g][d_idx]
+                    if g_left >= g_right:
+                        skip_doc = True
+                        break
+                    group_doc_slices[g] = all_hits[g][g_left:g_right]
+
+                if skip_doc:
+                    continue
+
+                # Concatenate all groups' doc hits into a single array for the Numba kernel
+                total_doc_hits = sum(len(s) for s in group_doc_slices)
+                all_doc_hits = np.empty((total_doc_hits, 9), dtype=np.uint32)
+                group_offsets = np.empty(n_groups, dtype=np.int64)
+                group_sizes_arr = np.empty(n_groups, dtype=np.int64)
+
+                offset = 0
+                for g in range(n_groups):
+                    group_offsets[g] = offset
+                    group_sizes_arr[g] = len(group_doc_slices[g])
+                    all_doc_hits[offset:offset + group_sizes_arr[g]] = group_doc_slices[g]
+                    offset += group_sizes_arr[g]
+
+                # Call Numba kernel - rare_hits within all_doc_hits starts at group_offsets[rare_group_idx]
+                rare_in_concat = all_doc_hits[group_offsets[rare_group_idx]:
+                                              group_offsets[rare_group_idx] + group_sizes_arr[rare_group_idx]]
+                result = _phrase_match_doc(
+                    rare_in_concat, all_doc_hits, group_offsets, group_sizes_arr,
+                    n_groups, rare_group_idx, out_cols
+                )
+
+                if len(result) > 0:
+                    output_file.write(result.tobytes())
+
+    env.close()
 
 
 def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus_file=None):
@@ -812,60 +1232,58 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
         if corpus_file is not None:
             all_hits = [filter_philo_ids(corpus_file, hits) for hits in all_hits]
 
-        # Find document boundaries for each group
-        doc_info = []
-        for hits in all_hits:
-            doc_ids, starts = _find_doc_boundaries(hits)
-            doc_info.append((doc_ids, starts, hits))
+        # Scan only the rarest group for doc boundaries, use bulk searchsorted for others
+        sizes = [len(h) for h in all_hits]
+        rare_idx = int(np.argmin(np.array(sizes)))
+        rare_docs, rare_starts = _find_doc_boundaries(all_hits[rare_idx])
 
-        # Find common documents
-        doc_lists = [info[0] for info in doc_info]
-        common_docs = _find_common_docs(doc_lists)
+        # Pre-compute per-document ranges for all non-rare groups
+        other_lefts = {}
+        other_rights = {}
+        for g in range(n_groups):
+            if g == rare_idx:
+                continue
+            g_doc_ids = all_hits[g][:, 0]
+            other_lefts[g] = np.searchsorted(g_doc_ids, rare_docs, side='left')
+            other_rights[g] = np.searchsorted(g_doc_ids, rare_docs, side='right')
 
         with open(hitlist_filename, "wb") as output_file:
-            # Process each common document
-            for doc_id in common_docs:
+            for d_idx in range(len(rare_docs)):
                 # Extract hits for this document from each group
-                doc_hits = []
-                for doc_ids, starts, hits in doc_info:
-                    idx = np.searchsorted(doc_ids, doc_id)
-                    if idx < len(doc_ids) and doc_ids[idx] == doc_id:
-                        doc_hits.append(hits[starts[idx]:starts[idx + 1]])
-                    else:
-                        doc_hits.append(np.empty((0, 9), dtype=np.uint32))
+                empty = np.empty((0, 9), dtype=np.uint32)
+                doc_hits = [empty] * n_groups
+                doc_hits[rare_idx] = all_hits[rare_idx][rare_starts[d_idx]:rare_starts[d_idx + 1]]
 
-                # Skip if any group has no hits in this document
-                if any(len(h) == 0 for h in doc_hits):
-                    continue
+                skip_doc = False
+                for g in range(n_groups):
+                    if g == rare_idx:
+                        continue
+                    left = other_lefts[g][d_idx]
+                    right = other_rights[g][d_idx]
+                    if left >= right:
+                        skip_doc = True
+                        break
+                    doc_hits[g] = all_hits[g][left:right]
 
-                # Find common sentences within this document
-                common_sent_data = _find_common_sentences(doc_hits, cooc_slice)
-                if common_sent_data is None:
+                if skip_doc:
                     continue
 
                 # Process based on number of groups
                 if n_groups == 2:
-                    hits_w1, sizes_w1 = common_sent_data[0]
-                    hits_w2, sizes_w2 = common_sent_data[1]
-
-                    if len(sizes_w1) == 0:
-                        continue
-
-                    # For ordered search, first group should have earlier position
-                    first_earlier = cooc_order  # True if ordered, False if unordered
-
-                    # Convert sizes to 2D array for Numba function
-                    sizes = np.column_stack([sizes_w1, sizes_w2]).astype(np.int64)
-
-                    result = _process_two_groups_batch(
-                        hits_w1, hits_w2, sizes,
-                        first_earlier, cooc_order, max_distance, exact_distance
+                    # Optimized 2-group: binary search sentences directly
+                    result = _cooc_match_doc_two_groups(
+                        doc_hits[0], doc_hits[1], cooc_slice,
+                        cooc_order, max_distance, exact_distance
                     )
 
                     if len(result) > 0:
                         output_file.write(result.tobytes())
                 else:
-                    # General N-group case
+                    # General N-group case: use sentence intersection pipeline
+                    common_sent_data = _find_common_sentences(doc_hits, cooc_slice)
+                    if common_sent_data is None:
+                        continue
+
                     hits_list = [data[0] for data in common_sent_data]
                     sizes_list = [data[1] for data in common_sent_data]
 
@@ -894,119 +1312,6 @@ def get_word_groups(terms_file):
         if word_group:
             word_groups.append(word_group)
     return word_groups
-
-
-@numba.jit(nopython=True, cache=True)
-def _process_two_groups_batch(all_w1, all_w2, batch_sizes, first_earlier, cooc_order,
-                                     max_distance, exact_distance):
-    """Process a batch of two-word-group co-occurrences using Numba.
-
-    Builds cartesian products, checks position constraints, and deduplicates hits.
-
-    Args:
-        all_w1: Concatenated word1 arrays from all sentences in batch (N x 9)
-        all_w2: Concatenated word2 arrays from all sentences in batch (M x 9)
-        batch_sizes: Array of (n1, n2) sizes for each sentence (S x 2)
-        first_earlier: Whether first group should appear earlier in text (for ordered search)
-        cooc_order: Whether to enforce ordering
-        max_distance: Maximum word distance (0 = no limit, 1 = consecutive, n = within n words)
-        exact_distance: If True, distance must equal max_distance; if False, distance <= max_distance
-
-    Returns:
-        Output array of shape (H, 11) with uint32 values for H valid hits
-    """
-    # Calculate total combinations for allocation
-    n_sentences = len(batch_sizes)
-    total = 0
-    for i in range(n_sentences):
-        total += batch_sizes[i, 0] * batch_sizes[i, 1]
-
-    if total == 0:
-        return np.empty((0, 11), dtype=np.uint32)
-
-    # Allocate max size output
-    output = np.empty((total, 11), dtype=np.uint32)
-    out_idx = 0
-
-    w1_offset = 0
-    w2_offset = 0
-
-    for sent_idx in range(n_sentences):
-        n1 = batch_sizes[sent_idx, 0]
-        n2 = batch_sizes[sent_idx, 1]
-
-        seen_start = out_idx  # For deduplication within sentence
-
-        for i in range(n1):
-            w1 = all_w1[w1_offset + i]
-            for j in range(n2):
-                w2 = all_w2[w2_offset + j]
-
-                pos1 = w1[7]
-                pos2 = w2[7]
-
-                # Check ordering constraint
-                if cooc_order:
-                    if first_earlier:
-                        if pos1 >= pos2:
-                            continue
-                    else:
-                        if pos1 <= pos2:
-                            continue
-                else:
-                    # Unordered: just need different positions
-                    if pos1 == pos2:
-                        continue
-
-                # Check distance constraint
-                if max_distance > 0:
-                    if pos1 > pos2:
-                        dist = pos1 - pos2
-                    else:
-                        dist = pos2 - pos1
-
-                    if exact_distance:
-                        if dist != max_distance:
-                            continue
-                    else:
-                        if dist > max_distance:
-                            continue
-
-                # Determine first/second by position for output
-                if pos1 < pos2:
-                    first = w1
-                    second = w2
-                else:
-                    first = w2
-                    second = w1
-
-                # Build output row: first[0:9] + second[7:9]
-                row = np.empty(11, dtype=np.uint32)
-                for c in range(9):
-                    row[c] = first[c]
-                row[9] = second[7]
-                row[10] = second[8]
-
-                # Check for duplicate within this sentence (check all columns)
-                is_dup = False
-                for k in range(seen_start, out_idx):
-                    match = True
-                    for m in range(11):
-                        if output[k, m] != row[m]:
-                            match = False
-                            break
-                    if match:
-                        is_dup = True
-                        break
-
-                if not is_dup:
-                    output[out_idx] = row
-                    out_idx += 1
-
-        w1_offset += n1
-        w2_offset += n2
-
-    return output[:out_idx]
 
 
 def merge_word_group(db_path: str, txn, words: list[str], overflow_words: set[str], chunk_size=None):

@@ -1,7 +1,7 @@
 {
   "corpus": "shakespeare",
   "query_type": "proximity",
-  "generated_date": "2026-02-04T20:59:31.381365",
+  "generated_date": "2026-02-12T19:54:04.934035",
   "philologic_version": "5.1.0.1",
   "description": "Gold set for proximity queries on shakespeare corpus",
   "test_cases": [
