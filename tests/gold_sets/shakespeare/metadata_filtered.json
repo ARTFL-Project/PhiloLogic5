@@ -1,0 +1,162 @@
+{
+  "corpus": "shakespeare",
+  "query_type": "metadata_filtered",
+  "generated_date": "2026-02-12T22:54:19.922588",
+  "philologic_version": "5.1.0.1",
+  "description": "Gold set for metadata_filtered queries on shakespeare corpus",
+  "test_cases": [
+    {
+      "id": "mf_st_love_macbeth",
+      "description": "Single term 'love' filtered to Macbeth",
+      "query": {
+        "qs": "love",
+        "method": "single_term",
+        "method_arg": "",
+        "metadata": {
+          "title": ".*Macbeth.*"
+        }
+      },
+      "expected": {
+        "total_hits": 19,
+        "hitlist_file": "metadata_filtered/mf_st_love_macbeth.hitlist",
+        "hitlist_size_bytes": 684
+      }
+    },
+    {
+      "id": "mf_phrase_mylord_hamlet",
+      "description": "Phrase 'my lord' filtered to Hamlet",
+      "query": {
+        "qs": "\"my lord\"",
+        "method": "phrase_ordered",
+        "method_arg": "",
+        "metadata": {
+          "title": ".*Hamlet.*"
+        }
+      },
+      "expected": {
+        "total_hits": 179,
+        "hitlist_file": "metadata_filtered/mf_phrase_mylord_hamlet.hitlist",
+        "hitlist_size_bytes": 7876
+      }
+    },
+    {
+      "id": "mf_sent_kingdeath_henry",
+      "description": "Sentence 'king death' in Henry plays",
+      "query": {
+        "qs": "king death",
+        "method": "sentence_unordered",
+        "method_arg": "",
+        "metadata": {
+          "title": ".*Henry.*"
+        }
+      },
+      "expected": {
+        "total_hits": 27,
+        "hitlist_file": "metadata_filtered/mf_sent_kingdeath_henry.hitlist",
+        "hitlist_size_bytes": 1188
+      }
+    },
+    {
+      "id": "mf_div_love_act1",
+      "description": "Single term 'love' in Act 1 across all plays",
+      "query": {
+        "qs": "love",
+        "method": "single_term",
+        "method_arg": "",
+        "metadata": {
+          "head": "ACT 1"
+        }
+      },
+      "expected": {
+        "total_hits": 435,
+        "hitlist_file": "metadata_filtered/mf_div_love_act1.hitlist",
+        "hitlist_size_bytes": 15660
+      }
+    },
+    {
+      "id": "mf_div_phrase_mylord_scene",
+      "description": "Phrase 'my lord' in scenes only",
+      "query": {
+        "qs": "\"my lord\"",
+        "method": "phrase_ordered",
+        "method_arg": "",
+        "metadata": {
+          "type": "scene"
+        }
+      },
+      "expected": {
+        "total_hits": 1690,
+        "hitlist_file": "metadata_filtered/mf_div_phrase_mylord_scene.hitlist",
+        "hitlist_size_bytes": 74360
+      }
+    },
+    {
+      "id": "mf_div_king_act5",
+      "description": "Single term 'king' in Act 5",
+      "query": {
+        "qs": "king",
+        "method": "single_term",
+        "method_arg": "",
+        "metadata": {
+          "head": "ACT 5"
+        }
+      },
+      "expected": {
+        "total_hits": 658,
+        "hitlist_file": "metadata_filtered/mf_div_king_act5.hitlist",
+        "hitlist_size_bytes": 23688
+      }
+    },
+    {
+      "id": "mf_para_love_hamlet",
+      "description": "Single term 'love' in Hamlet's speeches",
+      "query": {
+        "qs": "love",
+        "method": "single_term",
+        "method_arg": "",
+        "metadata": {
+          "who": ".*Hamlet_Ham.*"
+        }
+      },
+      "expected": {
+        "total_hits": 18,
+        "hitlist_file": "metadata_filtered/mf_para_love_hamlet.hitlist",
+        "hitlist_size_bytes": 648
+      }
+    },
+    {
+      "id": "mf_para_tobe_hamlet",
+      "description": "Phrase 'to be' in Hamlet's speeches",
+      "query": {
+        "qs": "\"to be\"",
+        "method": "phrase_ordered",
+        "method_arg": "",
+        "metadata": {
+          "who": ".*Hamlet_Ham.*"
+        }
+      },
+      "expected": {
+        "total_hits": 17,
+        "hitlist_file": "metadata_filtered/mf_para_tobe_hamlet.hitlist",
+        "hitlist_size_bytes": 748
+      }
+    },
+    {
+      "id": "mf_para_death_macbeth",
+      "description": "Single term 'death' in Macbeth's speeches",
+      "query": {
+        "qs": "death",
+        "method": "single_term",
+        "method_arg": "",
+        "metadata": {
+          "who": ".*Macbeth_Mac.*"
+        }
+      },
+      "expected": {
+        "total_hits": 9,
+        "hitlist_file": "metadata_filtered/mf_para_death_macbeth.hitlist",
+        "hitlist_size_bytes": 324
+      }
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "corpus": "eltec",
+  "query_type": "metadata_filtered",
+  "generated_date": "2026-02-12T22:45:37.554565",
+  "philologic_version": "5.1.0.1",
+  "description": "Gold set for metadata_filtered queries on eltec corpus",
+  "test_cases": [
+    {
+      "id": "mf_st_love_dickens",
+      "description": "Single term 'love' filtered to Dickens",
+      "query": {
+        "qs": "love",
+        "method": "single_term",
+        "method_arg": "",
+        "metadata": {
+          "author": ".*Dickens.*"
+        }
+      },
+      "expected": {
+        "total_hits": 388,
+        "hitlist_file": "metadata_filtered/mf_st_love_dickens.hitlist",
+        "hitlist_size_bytes": 13968
+      }
+    },
+    {
+      "id": "mf_phrase_said_trollope",
+      "description": "Phrase 'he said' filtered to Trollope",
+      "query": {
+        "qs": "\"he said\"",
+        "method": "phrase_ordered",
+        "method_arg": "",
+        "metadata": {
+          "author": ".*Trollope.*"
+        }
+      },
+      "expected": {
+        "total_hits": 333,
+        "hitlist_file": "metadata_filtered/mf_phrase_said_trollope.hitlist",
+        "hitlist_size_bytes": 14652
+      }
+    }
+  ]
+}
