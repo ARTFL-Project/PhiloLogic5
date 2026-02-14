@@ -41,6 +41,14 @@ then
     export PATH="$UV_LOCAL_DIR:$PATH"
 fi
 
+# Preserve user-customized gunicorn.conf.py across reinstall
+GUNICORN_CONF="/var/lib/philologic5/web_app/gunicorn.conf.py"
+GUNICORN_BACKUP=""
+if [ -f "$GUNICORN_CONF" ]; then
+    GUNICORN_BACKUP=$(mktemp)
+    cp "$GUNICORN_CONF" "$GUNICORN_BACKUP"
+fi
+
 # Delete virtual environment if it already exists
 if [ -d /var/lib/philologic5 ]; then
     echo "Deleting existing PhiloLogic5 installation..."
@@ -145,6 +153,13 @@ fi
 cp -R www/* /var/lib/philologic5/web_app/
 cp www/.htaccess /var/lib/philologic5/web_app/
 cp -R app /var/lib/philologic5/web_app/
+
+# Restore user-customized gunicorn.conf.py if one existed
+if [ -n "$GUNICORN_BACKUP" ]; then
+    cp "$GUNICORN_BACKUP" "$GUNICORN_CONF"
+    rm "$GUNICORN_BACKUP"
+    echo "Restored custom gunicorn.conf.py"
+fi
 
 
 if [ ! -f /etc/philologic/philologic5.cfg ]; then
