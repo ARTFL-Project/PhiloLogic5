@@ -16,6 +16,59 @@ from .sql_validation import validate_column, validate_philo_type, validate_sort_
 os.environ["PATH"] += ":/usr/local/bin/"
 
 
+_OBJ_PREFIX_LEN = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6}
+
+
+def bulk_load_metadata(db, fields, extra_columns=None):
+    """Bulk-load metadata fields from toms into dicts keyed by philo_id prefix.
+
+    Groups fields by object level and runs one SQL query per level.
+    Fields must be pre-validated via validate_column() if they come from user input.
+
+    Returns {field_name: (prefix_len, {philo_id_prefix_tuple: value})}
+    When extra_columns is provided, values become tuples: (value, extra1, extra2, ...)
+    """
+    metadata_types = db.locals.metadata_types
+    caches = {}
+    by_level = {}
+    for field in fields:
+        obj_type = metadata_types.get(field, "doc")
+        by_level.setdefault(obj_type, []).append(field)
+
+    cursor = db.dbh.cursor()
+    for obj_type, obj_fields in by_level.items():
+        if obj_type == "div":
+            philo_types = ("div1", "div2", "div3")
+            prefix_len = 4
+        else:
+            philo_types = (obj_type,)
+            prefix_len = _OBJ_PREFIX_LEN.get(obj_type, 1)
+
+        cols = ", ".join(obj_fields)
+        if extra_columns:
+            cols += ", " + ", ".join(extra_columns)
+        placeholders = ", ".join("?" for _ in philo_types)
+        cursor.execute(
+            f"SELECT philo_id, {cols} FROM toms WHERE philo_type IN ({placeholders})",
+            philo_types,
+        )
+        n_fields = len(obj_fields)
+        for row in cursor:
+            philo_id_str = row[0]
+            parts = philo_id_str.split()
+            prefix = tuple(int(x) for x in parts[:prefix_len])
+            for i, field in enumerate(obj_fields):
+                val = row[i + 1] or ""
+                if extra_columns:
+                    extras = tuple(row[n_fields + 1 + j] for j in range(len(extra_columns)))
+                    val = (val,) + extras
+                if field not in caches:
+                    caches[field] = (prefix_len, {})
+                caches[field][1][prefix] = val
+
+    return caches
+
+
 def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, ascii_conversion=True):
     """Prepare and execute SQL metadata query."""
     if db.locals["debug"]:

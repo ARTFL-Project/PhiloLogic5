@@ -5,8 +5,7 @@ from wsgiref.handlers import CGIHandler
 
 import numpy as np
 import orjson
-import pandas as pd
-from scipy import stats
+from philologic.runtime.reports.collocation import fightin_words_zscores, safe_pickle_load
 
 
 def comparative_collocations(environ, start_response):
@@ -17,19 +16,19 @@ def comparative_collocations(environ, start_response):
             "200 OK",
             [
                 ("Content-Type", "text/plain"),
-                ("Access-Control-Allow-Origin", environ["HTTP_ORIGIN"]),  # Replace with your client domain
+                ("Access-Control-Allow-Origin", environ["HTTP_ORIGIN"]),
                 ("Access-Control-Allow-Methods", "POST, OPTIONS"),
-                ("Access-Control-Allow-Headers", "Content-Type"),  # Adjust if needed for your headers
+                ("Access-Control-Allow-Headers", "Content-Type"),
             ],
         )
-        return [b""]  # Empty response body for OPTIONS
+        return [b""]
     status = "200 OK"
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response(status, headers)
 
     post_data = orjson.loads(environ["wsgi.input"].read())
-    all_collocates = post_data["all_collocates"]
-    other_collocates = post_data["other_collocates"]
+    all_collocates = safe_pickle_load(post_data["primary_file_path"])
+    other_collocates = safe_pickle_load(post_data["other_file_path"])
     whole_corpus = post_data["whole_corpus"]
 
     top_relative_proportions, low_relative_proportions = get_relative_proportions(
@@ -45,59 +44,32 @@ def comparative_collocations(environ, start_response):
 
 
 def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
-    # Create DataFrames
-    df_sub = pd.DataFrame.from_dict(dict(all_collocates), orient="index", columns=["sub_corpus_count"])
-    df_other = pd.DataFrame.from_dict(dict(other_collocates), orient="index", columns=["other_corpus_count"])
+    """Compare two Counter dicts using Fightin' Words z-scores."""
+    # Collect the full vocabulary and build aligned count arrays
+    words = sorted(set(all_collocates) | set(other_collocates))
+    y_sub = np.array([all_collocates.get(w, 0) for w in words], dtype=np.float64)
+    y_other = np.array([other_collocates.get(w, 0) for w in words], dtype=np.float64)
 
-    # Outer Join (Preserves all collocates)
-    df_combined = df_sub.join(df_other, how="outer").infer_objects(copy=False).fillna(0)
-    # Adjust counts if comparing against the whole corpus
+    # When comparing against the whole corpus, subtract the sub-corpus counts
     if whole_corpus:
-        df_combined["other_corpus_count"] = df_combined["other_corpus_count"] - df_combined["sub_corpus_count"]
-        df_combined.loc[df_combined["other_corpus_count"] == 0, "other_corpus_count"] = 1  # Avoid division by zero
+        y_other = np.maximum(y_other - y_sub, 0.0)
 
-    # Median Absolute Deviation filtering
-    df_combined["total_freq"] = df_combined["sub_corpus_count"] + df_combined["other_corpus_count"]  # Total frequency
-    median = np.median(df_combined["total_freq"])  # Median frequency
-    mad = np.median(np.abs(df_combined["total_freq"] - median))  # Median Absolute Deviation
-    lower_bound = max(1, median * mad)  # ensure lower bound is at least 1
-    df_combined = df_combined[df_combined["total_freq"] > lower_bound]  # Filter out low frequency collocates
+    zscores = fightin_words_zscores(y_sub, y_other)
 
-    # Calculate Proportions
-    df_combined["sub_corpus_proportion"] = (
-        np.log(df_combined["sub_corpus_count"] + 1) / df_combined["sub_corpus_count"].sum()
-    )
-    df_combined["other_corpus_proportion"] = (
-        np.log(df_combined["other_corpus_count"] + 1) / df_combined["other_corpus_count"].sum()
-    )
+    # Split into over- and under-represented, sorted by magnitude
+    order = np.argsort(zscores)[::-1]
 
-    # Calculate Z-scores for each corpus
-    all_proportions = pd.concat([df_combined["sub_corpus_proportion"], df_combined["other_corpus_proportion"]])
-    mean_proportion = all_proportions.mean()
-    std_proportion = all_proportions.std()
-    df_combined["sub_corpus_zscore"] = (df_combined["sub_corpus_proportion"] - mean_proportion) / std_proportion
-    df_combined["other_corpus_zscore"] = (df_combined["other_corpus_proportion"] - mean_proportion) / std_proportion
+    top = []
+    bottom = []
+    for idx in order:
+        z = round(float(zscores[idx]), 4)
+        if z > 0:
+            top.append((words[idx], z))
+        else:
+            bottom.append((words[idx], abs(z)))
+    bottom.reverse()
 
-    # Over-representation score
-    df_combined["over_representation_score"] = df_combined["sub_corpus_zscore"] - df_combined["other_corpus_zscore"]
-
-    top_relative_proportions = [
-        (word, value)
-        for word, value in df_combined[df_combined["over_representation_score"] > 0]["over_representation_score"]
-        .sort_values(ascending=False)
-        .head(100)
-        .items()
-    ]
-
-    bottom_relative_proportions = [
-        (word, abs(value))
-        for word, value in df_combined[df_combined["over_representation_score"] < 0]["over_representation_score"]
-        .sort_values()
-        .head(100)
-        .items()
-    ]
-
-    return top_relative_proportions, bottom_relative_proportions
+    return top[:100], bottom[:100]
 
 
 if __name__ == "__main__":

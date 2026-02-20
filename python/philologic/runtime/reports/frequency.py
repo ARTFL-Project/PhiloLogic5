@@ -5,6 +5,7 @@ import numpy as np
 from urllib.parse import quote_plus
 
 from philologic.runtime.DB import DB
+from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.link import make_absolute_query_link
 from philologic.runtime.sql_validation import validate_column
 
@@ -39,51 +40,28 @@ def frequency_results(request, config, sorted_results=False):
     metadata_type = db.locals["metadata_types"][frequency_field]
     has_metadata_filter = any(v for v in request.metadata.values())
 
-    # Build metadata_dict and word_counts in a single table scan when no metadata
-    # filters are active. With filters, word_counts need a filtered query.
-    cursor = db.dbh.cursor()
+    # Build metadata_dict and word_counts via bulk_load_metadata.
+    # When no metadata filters are active, load word_count in the same scan.
+    # With filters, word_counts need a separate filtered query.
     metadata_dict = {}
     word_counts_by_field_name = {}
-    if metadata_type != "div":
-        if not has_metadata_filter and not biblio_search:
-            cursor.execute(
-                f"SELECT philo_id, {frequency_field}, word_count FROM toms WHERE philo_type=? AND {frequency_field} IS NOT NULL",
-                (metadata_type,),
-            )
-            for philo_id, field_name, word_count in cursor:
-                philo_id = tuple(map(int, philo_id[: philo_id.index(" 0")].split()))
-                metadata_dict[philo_id] = field_name
-                key = f"{field_name}"
-                wc = int(word_count) if word_count else 0
-                if key in word_counts_by_field_name:
-                    word_counts_by_field_name[key] += wc
-                else:
-                    word_counts_by_field_name[key] = wc
-        else:
-            cursor.execute(
-                f"SELECT philo_id, {frequency_field} FROM toms WHERE philo_type=? AND {frequency_field} IS NOT NULL",
-                (metadata_type,),
-            )
-            for philo_id, field_name in cursor:
-                philo_id = tuple(map(int, philo_id[: philo_id.index(" 0")].split()))
-                metadata_dict[philo_id] = field_name
+    load_word_count = (metadata_type == "div") or (not has_metadata_filter and not biblio_search)
+    if load_word_count:
+        _, cache = bulk_load_metadata(db, [frequency_field], extra_columns=["word_count"])[frequency_field]
+        for prefix, (field_name, word_count) in cache.items():
+            if not field_name:
+                continue
+            metadata_dict[prefix] = field_name
             if not biblio_search:
-                word_counts_by_field_name = db.query(get_word_count_field=frequency_field, **request.metadata)
+                wc = int(word_count) if word_count else 0
+                word_counts_by_field_name[f"{field_name}"] = word_counts_by_field_name.get(f"{field_name}", 0) + wc
     else:
-        cursor.execute(
-            f"SELECT philo_id, {frequency_field}, word_count FROM toms WHERE philo_type IN (?, ?, ?) AND {frequency_field} IS NOT NULL",
-            ("div1", "div2", "div3"),
-        )
-        for philo_id, field_name, word_count in cursor:
-            philo_id = tuple(map(int, philo_id[: philo_id.index(" 0")].split()))
-            metadata_dict[philo_id] = field_name
-            if not biblio_search:
-                key = f"{field_name}"
-                wc = int(word_count) if word_count else 0
-                if key in word_counts_by_field_name:
-                    word_counts_by_field_name[key] += wc
-                else:
-                    word_counts_by_field_name[key] = wc
+        _, cache = bulk_load_metadata(db, [frequency_field])[frequency_field]
+        for prefix, field_name in cache.items():
+            if field_name:
+                metadata_dict[prefix] = field_name
+        if not biblio_search:
+            word_counts_by_field_name = db.query(get_word_count_field=frequency_field, **request.metadata)
 
     base_url = make_absolute_query_link(
         config,

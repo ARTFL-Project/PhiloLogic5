@@ -27,7 +27,7 @@ from orjson import loads
 from tqdm import tqdm
 
 from philologic.Config import MakeDBConfig, MakeWebConfig
-from philologic.loadtime.PostFilters import make_sentences_database, make_sql_table
+from philologic.loadtime.PostFilters import make_collocation_database, make_sql_table
 from philologic.utils import (
     convert_entities,
     count_lines,
@@ -1097,8 +1097,9 @@ class Loader:
                     _, _, _, attributes = line.split("\t", 3)
                     word_attributes.update(loads(attributes).keys())
         cls.word_attributes = list(word_attributes.difference(attributes_to_skip))
-        db_destination = os.path.join(cls.destination, "sentences.lmdb")
-        make_sentences_database(cls, db_destination)
+
+        colloc_destination = os.path.join(cls.destination, "collocations")
+        make_collocation_database(cls, colloc_destination)
 
         if extra_filters:
             print("Running the following additional filters:")
@@ -1166,10 +1167,9 @@ class Loader:
                                 print(stored_string, file=freq_file)
                                 word_attributes.add(stored_string)
 
-        # Make data directory inaccessible from the outside
-        fh = open(self.destination + "/.htaccess", "w")
-        fh.write("deny from all")
-        fh.close()
+        # Note: data/.htaccess ("deny from all") is no longer needed.
+        # Under gunicorn, Apache/Nginx only proxies requests — it never
+        # serves files from the database directory directly.
 
         self.write_db_config()
         if self.predefined_web_config is False:

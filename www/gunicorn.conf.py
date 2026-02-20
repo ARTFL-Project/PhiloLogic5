@@ -66,6 +66,10 @@ limit_request_field_size = 8190
 # user = "www-data"
 # group = "www-data"
 
+# Numba JIT thread count for parallel collocation kernels
+# Defaults to CPU count if unset; cap to avoid contention with gunicorn workers
+os.environ.setdefault("NUMBA_NUM_THREADS", "2")
+
 # Working directory
 # For central dispatcher mode, this should be /var/lib/philologic5/web_app/
 # For per-database mode, this is the database's www/ directory

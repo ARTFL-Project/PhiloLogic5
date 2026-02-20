@@ -24,6 +24,7 @@ from random import randint
 
 import reports
 import scripts
+from philologic.runtime.HitWrapper import SHARED_CACHE
 from webApp import start_web_app
 
 # Read central config to find the database root directory.
@@ -69,7 +70,6 @@ ALLOWED_SCRIPTS = {
     "get_hitlist_stats",
     "get_landing_page_content",
     "get_more_context",
-    "get_neighboring_words",
     "get_notes",
     "get_query_terms",
     "get_similar_collocate_distributions",
@@ -160,6 +160,7 @@ def _serve_static(db_path, relative_path, environ, start_response):
 
 def philo_dispatcher(environ, start_response):
     """Central WSGI dispatcher for all PhiloLogic5 databases."""
+    SHARED_CACHE.clear()
     db_path = _get_database_path(environ)
     if db_path is None:
         start_response("404 Not Found", [("Content-type", "text/plain")])

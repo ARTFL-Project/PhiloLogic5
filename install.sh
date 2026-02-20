@@ -151,7 +151,6 @@ if [ -d app/node_modules ]; then
 fi
 
 cp -R www/* /var/lib/philologic5/web_app/
-cp www/.htaccess /var/lib/philologic5/web_app/
 cp -R app /var/lib/philologic5/web_app/
 
 # Restore user-customized gunicorn.conf.py if one existed
@@ -200,10 +199,12 @@ if [ -d /etc/systemd/system ]; then
     echo "  sudo a2enmod proxy proxy_http"
     echo ""
     echo "  Add to your <VirtualHost> block:"
+    echo '    ProxyTimeout 300'
     echo '    <Location "/philologic5">'
-    echo '        ProxyPass unix:/var/run/philologic/gunicorn.sock|http://localhost/philologic5'
+    echo '        ProxyPass unix:/var/run/philologic/gunicorn.sock|http://localhost/philologic5 flushpackets=on'
     echo '        ProxyPassReverse unix:/var/run/philologic/gunicorn.sock|http://localhost/philologic5'
-    echo '        ProxyTimeout 300'
+    echo '        SetEnv no-gzip 1'
+    echo '        SetEnv force-no-buffering 1'
     echo '    </Location>'
     echo ""
     echo "=== Nginx ==="
@@ -214,6 +215,7 @@ if [ -d /etc/systemd/system ]; then
     echo "      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
     echo "      proxy_set_header X-Forwarded-Proto \$scheme;"
     echo "      proxy_read_timeout 300s;"
+    echo "      proxy_buffering off;"
     echo "  }"
     echo ""
     echo "  Adjust the URL prefix (/philologic5) to match your url_root setting"

@@ -30,9 +30,7 @@ def collocation(environ, start_response):
         return [b""]  # Empty response body for OPTIONS
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response("200 OK", headers)
-    post_data = environ["wsgi.input"].read()
-    current_collocates = orjson.loads(post_data)["current_collocates"]
-    collocation_object = _collocation_results(request, config, current_collocates)
+    collocation_object = _collocation_results(request, config)
     yield orjson.dumps(collocation_object)
 
 

@@ -1,6 +1,7 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 """Configuration module"""
 
+import copy
 import os
 import sys
 
@@ -831,7 +832,7 @@ class Config:
         self.db_path = os.path.dirname(os.path.dirname(self.filename))
         self.defaults = defaults
         self.header = header
-        self.data = {key: value["value"] for key, value in self.defaults.items()}
+        self.data = {key: copy.deepcopy(value["value"]) for key, value in self.defaults.items()}
         if self.filename and os.path.exists(self.filename):
             exec(compile(open(self.filename, "rb").read(), self.filename, "exec"), globals(), self.data)
             self.valid_config = True

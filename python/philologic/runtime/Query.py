@@ -5,10 +5,8 @@ import os
 import subprocess
 import sys
 import threading
+from bisect import bisect_left, bisect_right
 from pathlib import Path
-
-# Set umask before importing numba to ensure cache files are world-writable
-os.umask(0o000)
 
 import lmdb
 import numba
@@ -1009,7 +1007,6 @@ def filter_philo_ids(corpus_file, philo_ids) -> np.ndarray:
     if len(corpus_philo_ids) == 0:
         return np.empty((0, philo_ids.shape[1]), dtype=philo_ids.dtype)
 
-    from bisect import bisect_left, bisect_right
 
     # Narrow philo_ids to the doc range covered by the corpus.
     # bisect on the strided view avoids numpy's O(n) contiguous copy.

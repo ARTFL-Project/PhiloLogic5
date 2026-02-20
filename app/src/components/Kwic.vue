@@ -253,7 +253,6 @@ export default {
             sortedResults: [],
             loading: false,
             runningTotal: 0,
-            cachePath: "",
         };
     },
     created() {
@@ -261,9 +260,17 @@ export default {
         this.currentReport = "kwic";
         this.fetchResults();
     },
+    beforeUnmount() {
+        if (this._abortController) {
+            this._abortController.abort();
+        }
+    },
     watch: {
         urlUpdate(newUrl, oldUrl) {
             if (!this.isOnlyFacetChange(newUrl, oldUrl)) {
+                if (this._abortController) {
+                    this._abortController.abort();
+                }
                 this.fetchResults();
             }
         },
@@ -369,54 +376,74 @@ export default {
                     this.formData.start = "0";
                     this.formData.end = this.formData.results_per_page;
                 }
-                this.searching = true;
-                this.runningTotal = 0;
-                this.recursiveLookup(0);
+                this.fetchSortedResults();
             }
         },
-        recursiveLookup(hitsDone) {
-            this.$http
-                .get(`${this.$dbUrl}/scripts/get_neighboring_words.py`, {
-                    params: {
-                        ...this.paramsFilter({ ...this.formData }),
-                        hits_done: hitsDone,
-                        max_time: 5,
-                    },
-                })
-                .then((response) => {
-                    this.searching = false;
-                    hitsDone = response.data.hits_done;
-                    this.runningTotal = hitsDone;
-                    this.cachePath = response.data.cache_path;
-                    if (hitsDone < this.resultsLength) {
-                        this.recursiveLookup(hitsDone);
-                    } else {
-                        this.getKwicResults(hitsDone);
+        async fetchSortedResults() {
+            this.searching = true;
+            this.runningTotal = 0;
+
+            const params = new URLSearchParams(this.paramsFilter({ ...this.formData }));
+            const url = `${this.$dbUrl}/scripts/get_sorted_kwic.py?${params}`;
+
+            if (this._abortController) {
+                this._abortController.abort();
+            }
+            this._abortController = new AbortController();
+
+            try {
+                const response = await fetch(url, {
+                    signal: this._abortController.signal,
+                });
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+                    buffer = lines.pop();
+
+                    for (const line of lines) {
+                        if (!line.trim()) continue;
+                        const data = JSON.parse(line);
+                        if (data.progress) {
+                            this.runningTotal = data.progress.hits_done;
+                            this.resultsLength = data.progress.total;
+                        } else {
+                            this.results = data;
+                            this.resultsLength = data.results_length;
+                            this.runningTotal = data.results_length;
+                        }
                     }
-                });
-        },
-        getKwicResults(hitsDone) {
-            let start = parseInt(this.formData.start);
-            let end = 0;
-            if (this.formData.results_per_page === "") {
-                end = start + 25;
-            } else {
-                end = start + parseInt(this.formData.results_per_page);
+                }
+
+                // Process any remaining buffer content
+                if (buffer.trim()) {
+                    const data = JSON.parse(buffer);
+                    if (data.progress) {
+                        this.runningTotal = data.progress.hits_done;
+                        this.resultsLength = data.progress.total;
+                    } else {
+                        this.results = data;
+                        this.resultsLength = data.results_length;
+                        this.runningTotal = data.results_length;
+                    }
+                }
+            } catch (e) {
+                if (e.name === "AbortError") return;
+                this.debug(this, e);
+            } finally {
+                this.searching = false;
+                this._abortController = null;
             }
-            this.$http
-                .get(`${this.$dbUrl}/scripts/get_sorted_kwic.py`, {
-                    params: {
-                        hits_done: hitsDone,
-                        ...this.paramsFilter({ ...this.formData }),
-                        start: start,
-                        end: end,
-                        cache_path: this.cachePath,
-                    },
-                })
-                .then((response) => {
-                    this.results = response.data;
-                    this.searching = false;
-                });
         },
         initializePos(index) {
             let start = this.results.description.start;

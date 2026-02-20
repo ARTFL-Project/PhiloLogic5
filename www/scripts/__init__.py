@@ -14,7 +14,6 @@ from .get_header import get_header
 from .get_hitlist_stats import get_hitlist_stats
 from .get_landing_page_content import get_landing_page_content
 from .get_more_context import get_more_context
-from .get_neighboring_words import get_neighboring_words
 from .get_notes import get_notes
 from .get_query_terms import get_query_terms
 from .get_similar_collocate_distributions import get_similar_collocate_distributions

@@ -184,7 +184,7 @@
                         </div>
                     </div>
                     <button type="button" class="btn btn-secondary" style="width: fit-content"
-                        @click="getOtherCollocates({}, 0)">{{
+                        @click="getOtherCollocates()">{{
                             $t('collocation.runComparison') }}
                     </button>
                 </div>
@@ -202,8 +202,7 @@
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="similarity-field-select">
                             <li v-for="field in fieldsToCompare" :key="field.value">
-                                <button type="button" class="dropdown-item"
-                                    @click="similarCollocDistributions(field, 0)">
+                                <button type="button" class="dropdown-item" @click="similarCollocDistributions(field)">
                                     {{ field.label }}
                                 </button>
                             </li>
@@ -216,7 +215,8 @@
                     :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
 
                 <div class="mt-2" style="display: flex; align-items: center;" v-if="similarSearching">
-                    <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert" aria-live="polite" aria-atomic="true">
+                    <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert"
+                        aria-live="polite" aria-atomic="true">
                         {{ similarSearchProgress }}...
                     </div>
                     <progress-spinner class="px-2" :progress="progressPercent" />
@@ -235,7 +235,7 @@
                     <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years") }}</span>
                 </div>
                 <button type="button" class="btn btn-secondary mt-2" style="width: fit-content"
-                    @click="getCollocatesOverTime(0, true)">{{ $t('collocation.searchEvolution') }}</button>
+                    @click="getCollocatesOverTime()">{{ $t('collocation.searchEvolution') }}</button>
             </div>
 
             <!-- Results below -->
@@ -313,7 +313,8 @@
                                 </div>
                                 <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                                     :aria-label="$t('collocation.comparisonCorpusResults')">
-                                    <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
+                                    <div class="d-flex justify-content-center position-relative"
+                                        v-if="compareSearching">
                                         <progress-spinner :progress="progressPercent" :lg="true" />
                                     </div>
                                     <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates"
@@ -330,7 +331,8 @@
                                 </div>
                                 <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                                     :aria-label="$t('collocation.underRepresentedResults')">
-                                    <div class="d-flex justify-content-center position-relative" v-if="compareSearching">
+                                    <div class="d-flex justify-content-center position-relative"
+                                        v-if="compareSearching">
                                         <progress-spinner :progress="progressPercent" :lg="true" />
                                     </div>
                                     <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
@@ -342,62 +344,41 @@
                 </div>
             </div>
             <div v-if="collocMethod == 'similar'" class="mx-2" style="margin-bottom: 6rem;">
-                <div class="card" v-if="mostSimilarDistributions.length > 0" role="region"
+                <div class="card" v-if="similarDistributions.length > 0" role="region"
                     :aria-label="$t('collocation.similarUsageResults')">
                     <h2 class="visually-hidden">{{ $t('collocation.similarUsageResults') }}</h2>
-                    <div class="row">
-                        <div class="col-6 pe-0">
-                            <h3 class="sim-dist">
-                                {{ $t("collocation.topSimilarUses") }}
-                            </h3>
-                            <ul class="list-group list-group-flush mt-3" :aria-label="$t('collocation.topSimilarUses')">
-                                <li v-for="(metadataValue, index) in mostSimilarDistributions" :key="metadataValue">
-                                    <button type="button"
-                                        class="list-group-item position-relative w-100 text-start border-0"
-                                        style="text-align: justify" @click="similarToComparative(metadataValue[0])"
-                                        @keydown.enter="similarToComparative(metadataValue[0])"
-                                        @keydown.space.prevent="similarToComparative(metadataValue[0])"
-                                        :aria-label="`${$t('collocation.compareTo')} ${metadataValue[0]}, ${$t('collocation.count')}: ${metadataValue[1]}`">
-                                        {{ metadataValue[0] }}
-                                        <span class="badge text-bg-secondary position-absolute" style="right: 1rem"
-                                            aria-hidden="true">
-                                            {{ metadataValue[1] }}
-                                        </span>
-                                    </button>
-                                    <hr v-if="index < mostSimilarDistributions.length - 1" class="my-0"
-                                        style="opacity: 1; border-color: rgba(0, 0, 0, 0.125);" aria-hidden="true">
-                                </li>
-                            </ul>
-                        </div>
-                        <div class="col-6 ps-0" style="border-left: solid 1px rgba(0, 0, 0, 0.176)">
-                            <h3 class="sim-dist">
-                                {{ $t("collocation.topDissimilarUses") }}
-                            </h3>
-                            <ul class="list-group list-group-flush mt-3"
-                                :aria-label="$t('collocation.topDissimilarUses')">
-                                <li v-for="(metadataValue, index) in mostDissimilarDistributions" :key="metadataValue">
-                                    <button type="button"
-                                        class="list-group-item position-relative w-100 text-start border-0"
-                                        style="text-align: justify" @click="similarToComparative(metadataValue[0])"
-                                        @keydown.enter="similarToComparative(metadataValue[0])"
-                                        @keydown.space.prevent="similarToComparative(metadataValue[0])"
-                                        :aria-label="`${$t('collocation.compareTo')} ${metadataValue[0]}, ${$t('collocation.count')}: ${metadataValue[1]}`">
-                                        {{ metadataValue[0] }}
-                                        <span class="badge text-bg-secondary position-absolute" style="right: 1rem"
-                                            aria-hidden="true">
-                                            {{ metadataValue[1] }}
-                                        </span>
-                                    </button>
-                                    <hr v-if="index < mostSimilarDistributions.length - 1" class="my-0"
-                                        style="opacity: 1; border-color: rgba(0, 0, 0, 0.125);" aria-hidden="true">
-                                </li>
-                            </ul>
-                        </div>
-                    </div>
+                    <h3 class="sim-dist">
+                        {{ $t("collocation.similarUsagePattern") }}
+                    </h3>
+                    <ul class="list-group list-group-flush" :aria-label="$t('collocation.similarUsagePattern')">
+                        <li v-for="(item, index) in similarDistributions" :key="item[0]">
+                            <button type="button"
+                                class="list-group-item position-relative w-100 text-start border-0 pb-1"
+                                style="text-align: justify" @click="similarToComparative(item[0])"
+                                @keydown.enter="similarToComparative(item[0])"
+                                @keydown.space.prevent="similarToComparative(item[0])"
+                                :aria-label="`${$t('collocation.compareTo')} ${item[0]}, ${$t('collocation.count')}: ${item[1]}${item[2] && item[2].length > 0 ? ', ' + $t('collocation.sharedCollocates') + ': ' + item[2].join(', ') : ''}`">
+                                <span class="sim-metadata">{{ item[0] }}</span>
+                                <span class="badge text-bg-secondary position-absolute" style="right: 1rem; top: 0.5rem"
+                                    aria-hidden="true">
+                                    {{ item[1] }}
+                                </span>
+                                <br v-if="item[2] && item[2].length > 0">
+                                <small v-if="item[2] && item[2].length > 0"
+                                    style="font-size: 0.9em; color: #495057; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100% - 4rem)"
+                                    aria-hidden="true">
+                                    <strong>{{ $t("collocation.sharedCollocates") }}:</strong> {{ item[2].join(', ') }}
+                                </small>
+                            </button>
+                            <hr v-if="index < similarDistributions.length - 1" class="my-0"
+                                style="opacity: 1; border-color: rgba(0, 0, 0, 0.125);" aria-hidden="true">
+                        </li>
+                    </ul>
                 </div>
             </div>
             <div v-if="collocMethod == 'timeSeries'" class="mx-2 my-3">
-                <div v-if="searching" role="status" aria-live="polite" aria-atomic="true" :aria-label="$t('common.loading')">
+                <div v-if="searching" role="status" aria-live="polite" aria-atomic="true"
+                    :aria-label="$t('common.loading')">
                     {{ $t('collocation.similarCollocGatheringMessage') }}...
                 </div>
                 <div v-if="collocationTimePeriods.length > 0" class="row" role="region"
@@ -506,9 +487,8 @@ export default {
             filterList: [],
             searchParams: {},
             biblio: {},
-            moreResults: false,
             sortedList: [],
-            collocateCounts: [],
+            collocatesFilePath: "",
             showFilteredWords: false,
             runningTotal: 0,
             collocCloudWords: [],
@@ -532,8 +512,7 @@ export default {
             comparativeSearchStarted: false,
             otherDone: false,
             fieldValuesToCompare: [],
-            mostSimilarDistributions: [],
-            mostDissimilarDistributions: [],
+            similarDistributions: [],
             cachedDistributions: "",
             similarFieldSelected: "",
             similarSearchProgress: "",
@@ -562,7 +541,7 @@ export default {
             case "timeSeries":
                 this.toggleTimeSeries(false);
                 this.timeSeriesInterval = this.$route.query.time_series_interval || 10;
-                this.getCollocatesOverTime(0, true);
+                this.getCollocatesOverTime();
                 break;
             case "compare":
                 this.toggleCompare(false);
@@ -606,11 +585,10 @@ export default {
             this.underRepresented = [];
             this.other_corpus_metadata = {};
             this.comparativeSearchStarted = false
-            this.mostSimilarDistributions = []
-            this.mostDissimilarDistributions = []
+            this.similarDistributions = []
             this.collocationTimePeriods = []
             this.similarFieldSelected = ""
-            this.updateCollocation({}, 0);
+            this.updateCollocation();
         },
         buildMetadata(metadata) {
             this.metadataDisplay = metadata.display;
@@ -621,48 +599,26 @@ export default {
                 this.dateRange[metadata] = { start: "", end: "" };
             }
         },
-        updateCollocation(fullResults, start) {
+        updateCollocation() {
             if (this.isInvalidCollocationQuery) {
                 this.searching = false;
                 return;
             }
-            let params = {
-                ...this.formData,
-                start: start.toString(),
-                max_time: 2
-            };
             this.$http
-                .post(`${this.$dbUrl}/reports/collocation.py`, {
-                    current_collocates: fullResults,
-                },
+                .post(`${this.$dbUrl}/reports/collocation.py`, {},
                     {
-                        params: this.paramsFilter(params),
+                        params: this.paramsFilter(this.formData),
                     })
                 .then((response) => {
                     this.resultsLength = response.data.results_length;
-                    this.moreResults = response.data.more_results;
-                    this.runningTotal = response.data.hits_done;
-                    this.filterList = response.data.filter_list
-                    start = response.data.hits_done;
+                    this.runningTotal = response.data.results_length;
+                    this.filterList = response.data.filter_list;
+                    this.collocatesFilePath = response.data.file_path;
                     this.searching = false;
                     if (this.resultsLength) {
-                        if (this.moreResults) {
-                            this.sortedList = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
-                            this.updateCollocation(response.data.collocates, start);
-                        }
-                        else {
-                            this.collocateCounts = response.data.collocates;
-                            this.sortedList = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
-                            this.done = true;
-
-                            // After base collocation results are loaded
-                            this.checkCollocationMethod();
-                        }
+                        this.sortedList = this.extractSurfaceFromCollocate(response.data.collocates);
+                        this.checkCollocationMethod();
                     }
-                    else {
-                        this.fetchComplete = true; // Mark fetch as complete even with no results
-                    }
-
                 })
                 .catch((error) => {
                     this.searching = false;
@@ -679,7 +635,7 @@ export default {
                     break;
                 case 'timeSeries':
                     this.toggleTimeSeries(updateUrl);
-                    this.getCollocatesOverTime(0, true)
+                    this.getCollocatesOverTime()
                     break;
                 default:
                     this.getFrequency(updateUrl);
@@ -700,10 +656,10 @@ export default {
                     break;
                 case "similar":
                     this.toggleSimilar(false);
-                    this.similarCollocDistributions({ value: this.$route.query.similarity_by }, 0);
+                    this.similarCollocDistributions({ value: this.$route.query.similarity_by });
                     break;
                 case "compare":
-                    this.getOtherCollocates({}, 0);;
+                    this.getOtherCollocates();
                     break;
             }
         },
@@ -851,26 +807,16 @@ export default {
                 }
             }
         },
-        getOtherCollocates(fullResults, start) {
-            // Hide the metadata form immediately when comparison starts
-            if (Object.keys(fullResults).length === 0) {
-                let collapseElement = document.getElementById('other-corpus-metadata')
-                if (collapseElement != null) {
-                    Collapse.getInstance(collapseElement).hide()
-                    this.filterMetadataOpen = false
-                }
+        getOtherCollocates() {
+            // Hide the metadata form
+            let collapseElement = document.getElementById('other-corpus-metadata')
+            if (collapseElement != null) {
+                Collapse.getInstance(collapseElement).hide()
+                this.filterMetadataOpen = false
             }
-
-            if (Object.keys(this.comparedMetadataValues).length === 0) {
-                this.wholeCorpus = true
-            } else {
-                this.wholeCorpus = false
-            }
-            if (Object.keys(fullResults).length === 0) {
-                this.progressPercent = 0
-            }
+            this.wholeCorpus = Object.keys(this.comparedMetadataValues).length === 0;
             this.collocMethod = 'compare';
-            this.updateCollocationUrl(); // Update URL when running compare search
+            this.updateCollocationUrl();
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             let params = {
                 q: this.formData.q,
@@ -880,117 +826,85 @@ export default {
                 q_attribute: this.formData.q_attribute || "",
                 q_attribute_value: this.formData.q_attribute_value || "",
                 ...this.comparedMetadataValues,
-                start: start.toString(),
             };
             this.comparativeSearchStarted = true;
-            this.compareSearching = true
+            this.compareSearching = true;
             this.otherCollocates = [];
             this.$http
-                .post(`${this.$dbUrl}/reports/collocation.py`, {
-                    current_collocates: fullResults,
-                },
+                .post(`${this.$dbUrl}/reports/collocation.py`, {},
                     {
                         params: this.paramsFilter(params),
                     })
                 .then((response) => {
-                    let resultsLength = response.data.results_length;
-                    let moreResults = response.data.more_results;
-                    let start = response.data.hits_done;
-                    if (resultsLength) {
-                        if (moreResults) {
-                            this.progressPercent = Math.trunc((start / resultsLength) * 100)
-                            this.getOtherCollocates(response.data.collocates, start);
-                            console.log(this.progressPercent)
-                        }
-                        else {
-                            this.compareSearching = false;
-                            this.otherCollocates = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
-                            this.comparativeCollocations(response.data.collocates)
-                        }
+                    this.compareSearching = false;
+                    if (response.data.results_length) {
+                        this.otherCollocates = this.extractSurfaceFromCollocate(response.data.collocates);
+                        this.comparativeCollocations(response.data.file_path);
                     }
-
                 })
                 .catch((error) => {
-                    this.searching = false;
+                    this.compareSearching = false;
                     this.debug(this, error);
                 });
         },
-        comparativeCollocations(otherCollocates) {
+        comparativeCollocations(otherFilePath) {
             this.comparativeSearchStarted = true;
             this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             this.otherBiblio = this.buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
             this.overRepresented = [];
             this.underRepresented = [];
             this.$http.post(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
-                all_collocates: this.collocateCounts,
-                other_collocates: otherCollocates,
+                primary_file_path: this.collocatesFilePath,
+                other_file_path: otherFilePath,
                 whole_corpus: this.wholeCorpus,
             }).then((response) => {
                 this.overRepresented = this.extractSurfaceFromCollocate(response.data.top);
                 this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
                 this.relativeFrequencies = { top: this.overRepresented, bottom: this.underRepresented };
-
             }).catch((error) => {
                 this.debug(this, error);
             });
         },
-        similarCollocDistributions(field, start, first) {
-            this.similarFieldSelected = field.value // Store the field value for URL
-            this.similarSearching = true
-            this.similarSearchProgress = this.$t("collocation.similarCollocGatheringMessage")
-            this.mostSimilarDistributions = []
-            if (typeof first === 'undefined') {
-                first = true
-                this.progressPercent = 0
-                this.collocMethod = 'similar';
-                this.updateCollocationUrl(); // Update URL when running similar usage search
-            }
-            else {
-                first = false
-            }
+        similarCollocDistributions(field) {
+            this.similarFieldSelected = field.value;
+            this.similarSearching = true;
+            this.similarSearchProgress = this.$t("collocation.similarCollocGatheringMessage");
+            this.similarDistributions = [];
+            this.collocMethod = 'similar';
+            this.updateCollocationUrl();
             this.$http
-                .post(`${this.$dbUrl}/reports/collocation.py`, {
-                    current_collocates: [],
-                }, {
+                .post(`${this.$dbUrl}/reports/collocation.py`, {}, {
                     params: {
-                        q: this.formData.q, start: start.toString(),
+                        q: this.formData.q,
                         colloc_filter_choice: this.formData.colloc_filter_choice,
                         colloc_within: this.formData.colloc_within,
                         filter_frequency: this.formData.filter_frequency,
                         map_field: field.value,
                         q_attribute: this.formData.q_attribute || "",
                         q_attribute_value: this.formData.q_attribute_value || "",
-                        first: first,
-                        max_time: 2
                     }
                 }).then((response) => {
-                    if (response.data.more_results) {
-                        this.progressPercent = Math.trunc((response.data.hits_done / response.data.results_length) * 100)
-                        this.similarCollocDistributions(field, response.data.hits_done, first);
-                    } else {
-                        this.getMostSimilarCollocDistribution(response.data.file_path);
-                    }
+                    this.getMostSimilarCollocDistribution(response.data.file_path);
                 }).catch((error) => {
+                    this.similarSearching = false;
                     this.debug(this, error);
                 });
-
         },
         getMostSimilarCollocDistribution(filePath) {
-            this.progressPercent = 0
             this.similarSearchProgress = this.$t("collocation.similarCollocCompareMessage")
             this.$http.post(`${this.$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
-                collocates: this.collocateCounts,
+                primary_file_path: this.collocatesFilePath,
             },
                 {
                     params: {
                         file_path: filePath,
                     }
                 }).then((response) => {
-                    this.mostSimilarDistributions = response.data.most_similar_distributions
-                    this.mostDissimilarDistributions = response.data.most_dissimilar_distributions
+                    this.similarDistributions = response.data.similar
                     this.cachedDistributions = filePath
                     this.similarSearching = false
                 }).catch((error) => {
+                    this.similarSearching = false;
                     this.debug(this, error);
                 });
         },
@@ -1003,64 +917,50 @@ export default {
             }).then((response) => {
                 this.comparedMetadataValues[this.similarFieldSelected] = field
                 this.collocMethod = "compare";
-                this.otherCollocates = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
+                this.otherCollocates = this.extractSurfaceFromCollocate(response.data.collocates);
                 this.wholeCorpus = false
-                this.comparativeCollocations(response.data.collocates)
+                this.comparativeCollocations(response.data.file_path)
             }).catch((error) => {
                 this.debug(this, error);
             });
         },
-        getCollocatesOverTime(start, first) {
-            this.collocationTimePeriods = []
-            this.searching = true
-            if (first) {
-                this.collocMethod = 'timeSeries';
-                this.updateCollocationUrl(); // Update URL when running time series search
-            }
-            const interval = parseInt(this.timeSeriesInterval)
+        getCollocatesOverTime() {
+            this.collocationTimePeriods = [];
+            this.searching = true;
+            this.collocMethod = 'timeSeries';
+            this.updateCollocationUrl();
+            const interval = parseInt(this.timeSeriesInterval);
             let params = {
-                ...this.formData,
-                max_time: 2,
+                ...this.paramsFilter(this.formData),
                 time_series_interval: interval,
                 map_field: "year",
-                start: start.toString(),
-                first: first
-            }
+            };
 
-            // Handle year range modifications
+            // Handle year range: expand by one interval on each side for context
             if (this.formData.year) {
-                const yearParts = this.formData.year.split('-')
+                const yearParts = this.formData.year.split('-');
                 if (yearParts.length === 2) {
-                    const [startYear, endYear] = yearParts
+                    const [startYear, endYear] = yearParts;
                     if (startYear && endYear) {
-                        // Both start and end years provided
-                        params.year = `${parseInt(startYear) - interval}-${parseInt(endYear) + interval}`
+                        params.year = `${parseInt(startYear) - interval}-${parseInt(endYear) + interval}`;
                     } else if (startYear) {
-                        // Only start year provided
-                        params.year = `${parseInt(startYear) - interval}-`
+                        params.year = `${parseInt(startYear) - interval}-`;
                     } else if (endYear) {
-                        // Only end year provided
-                        params.year = `-${parseInt(endYear) + interval}`
+                        params.year = `-${parseInt(endYear) + interval}`;
                     }
                 } else if (yearParts[0]) {
-                    // Single year
-                    const year = parseInt(yearParts[0])
-                    params.year = `${year - interval}-${year + interval}`
+                    const year = parseInt(yearParts[0]);
+                    params.year = `${year - interval}-${year + interval}`;
                 }
             }
 
-            this.$http.post(`${this.$dbUrl}/reports/collocation.py`, {
-                current_collocates: []
-            }, {
+            this.$http.post(`${this.$dbUrl}/reports/collocation.py`, {}, {
                 params: params
             }).then((response) => {
-                if (response.data.more_results) {
-                    this.getCollocatesOverTime(response.data.hits_done, false);
-                } else {
-                    this.searching = false
-                    this.collocationTimeSeries(response.data.file_path, 0)
-                }
+                this.searching = false;
+                this.collocationTimeSeries(response.data.file_path, 0);
             }).catch((error) => {
+                this.searching = false;
                 this.debug(this, error);
             });
         },
@@ -1296,6 +1196,19 @@ input:focus::placeholder {
     color: #fff;
     background-color: theme.$link-color;
     padding: 0.5rem;
+    margin-bottom: 0;
+}
+
+.sim-metadata {
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: calc(100% - 4rem);
+    vertical-align: bottom;
+    padding-bottom: 0.15rem;
+    color: theme.$link-color;
+    font-weight: 500;
 }
 
 .colloc-cloud-title {
