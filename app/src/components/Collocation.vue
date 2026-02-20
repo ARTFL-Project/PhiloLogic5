@@ -73,115 +73,40 @@
                     <div class="alert alert-info p-1" style="width: fit-content" role="alert">
                         {{ $t('collocation.emptySearch') }}</div>
                     <div class="row">
-                        <div class="input-group pb-2" v-for="localField in metadataDisplay" :key="localField.value">
-                            <div class="input-group pb-2" :id="localField.value + '-group'"
-                                v-if="metadataInputStyle[localField.value] == 'text'">
-                                <label class="btn btn-outline-secondary" :for="localField.value + '-input-filter'">
-                                    {{ localField.label }}
+                        <MetadataFields
+                            :fields="metadataDisplay" :input-styles="metadataInputStyle"
+                            :choice-values="metadataChoiceValues" :model-value="comparedMetadataValues"
+                            :checked-values="metadataChoiceChecked" :selected-values="metadataChoiceSelected"
+                            :date-type="dateType" :date-range="dateRange">
+                            <template #text-input="{ field }">
+                                <label class="btn btn-outline-secondary"
+                                    :for="field.value + '-input-filter'">
+                                    {{ field.label }}
                                 </label>
-                                <input type="text" class="form-control" :id="localField.value + '-input-filter'"
-                                    :name="localField.value" :placeholder="localField.example"
-                                    v-model="comparedMetadataValues[localField.value]"
-                                    :aria-label="`${$t('collocation.filterBy')} ${localField.label}`" v-if="metadataInputStyle[localField.value] == 'text' &&
-                                        metadataInputStyle[localField.value] != 'date'" />
-                            </div>
-
-                            <div class="input-group pb-2" :id="localField.value + '-group'"
-                                v-if="metadataInputStyle[localField.value] == 'checkbox'">
-                                <span class="btn btn-outline-secondary me-2"
-                                    style="border-top-right-radius: 0; border-bottom-right-radius: 0">
-                                    {{ localField.label }}
-                                </span>
-                                <div class="d-inline-block">
-                                    <div class="form-check d-inline-block ms-3" style="padding-top: 0.35rem"
-                                        :id="localField.value" :options="metadataChoiceValues[localField.value]"
-                                        v-for="metadataChoice in metadataChoiceValues[localField.value]"
-                                        :key="metadataChoice.value" v-once>
-                                        <input class="form-check-input" type="checkbox" :id="metadataChoice.value"
-                                            v-model="metadataChoiceChecked[metadataChoice.value]"
-                                            :aria-label="`${$t('collocation.filterBy')} ${localField.label}: ${metadataChoice.text}`" />
-                                        <label class="form-check-label" :for="metadataChoice.value">
-                                            {{ metadataChoice.text }}
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <!-- Dropdown fields -->
-                            <div class="input-group pb-2" :id="localField.value + '-group'"
-                                v-if="metadataInputStyle[localField.value] == 'dropdown'">
-                                <button type="button" class="btn btn-outline-secondary" tabindex="-1"
-                                    :id="localField.value + '-label'">
-                                    {{ localField.label }}
-                                </button>
-                                <select class="form-select" :id="localField.value + '-select'"
-                                    v-model="metadataChoiceSelected[localField.value]"
-                                    :aria-labelledby="localField.value + '-label'">
-                                    <option v-for="innerValue in metadataChoiceValues[localField.value]"
-                                        :key="innerValue.value" :value="innerValue.value">
-                                        {{ innerValue.text }}
-                                    </option>
-                                </select>
-                            </div>
-
-                            <div class="input-group pb-2" :id="localField.value + '-group'"
-                                v-if="['date', 'int'].includes(metadataInputStyle[localField.value])">
-                                <span class="btn btn-outline-secondary"
-                                    style="border-top-right-radius: 0; border-bottom-right-radius: 0">
-                                    {{ localField.label }}
-                                </span>
-                                <div class="btn-group" role="group">
-                                    <button class="btn btn-secondary dropdown-toggle"
-                                        style="border-top-left-radius: 0; border-bottom-left-radius: 0" type="button"
-                                        :id="localField.value + '-selector'" data-bs-toggle="dropdown"
-                                        aria-expanded="false"
-                                        :aria-label="`${$t('collocation.selectDateType')} ${localField.label}`">
-                                        {{ $t(`searchForm.${dateType[localField.value]}Date`) }}
-                                    </button>
-                                    <ul class="dropdown-menu" :aria-labelledby="localField.value + '-selector'">
-                                        <li>
-                                            <button type="button" class="dropdown-item"
-                                                @click="dateTypeToggle(localField.value, 'exact')">
-                                                {{ $t("searchForm.exactDate") }}
-                                            </button>
-                                        </li>
-                                        <li>
-                                            <button type="button" class="dropdown-item"
-                                                @click="dateTypeToggle(localField.value, 'range')">
-                                                {{ $t("searchForm.rangeDate") }}
-                                            </button>
-                                        </li>
-                                    </ul>
-                                </div>
-                                <input type="text" class="form-control" :id="localField.value + '-input-filter'"
-                                    :name="localField.value" :placeholder="localField.example"
-                                    v-model="comparedMetadataValues[localField.value]"
-                                    :aria-label="`${$t('collocation.filterBy')} ${localField.label}`"
-                                    v-if="dateType[localField.value] == 'exact'" />
-                                <span class="d-inline-block" v-if="dateType[localField.value] == 'range'">
-                                    <div class="input-group ms-3">
-                                        <label class="btn btn-outline-secondary"
-                                            :for="localField.value + '-start-input-filter'">
-                                            {{ $t("searchForm.dateFrom") }}
-                                        </label>
-                                        <input type="text" class="form-control date-range"
-                                            :id="localField.value + '-start-input-filter'"
-                                            :name="localField.value + '-start'" :placeholder="localField.example"
-                                            v-model="dateRange[localField.value].start"
-                                            :aria-label="`${$t('searchForm.dateFrom')} ${localField.label}`" />
-                                        <label class="btn btn-outline-secondary ms-3"
-                                            :for="localField.value + '-end-input-filter'">
-                                            {{ $t("searchForm.dateTo") }}
-                                        </label>
-                                        <input type="text" class="form-control date-range"
-                                            :id="localField.value + '-end-input-filter'"
-                                            :name="localField.value + '-end'" :placeholder="localField.example"
-                                            v-model="dateRange[localField.value].end"
-                                            :aria-label="`${$t('searchForm.dateTo')} ${localField.label}`" />
-                                    </div>
-                                </span>
-                            </div>
-                        </div>
+                                <input type="text" class="form-control"
+                                    :id="field.value + '-input-filter'"
+                                    :name="field.value" :placeholder="field.example"
+                                    v-model="comparedMetadataValues[field.value]"
+                                    @input="autocompleteOnChange(field.value)"
+                                    @keydown.down="onArrowDown(field.value)"
+                                    @keydown.up="onArrowUp(field.value)"
+                                    @keyup.enter="onEnter(field.value)"
+                                    @keyup.escape="clearAutoCompletePopup"
+                                    autocomplete="off"
+                                    :aria-label="`${$t('collocation.filterBy')} ${field.label}`" />
+                                <ul :id="'autocomplete-' + field.value"
+                                    class="autocomplete-results shadow"
+                                    :style="autoCompletePosition(field.value)"
+                                    v-if="autoCompleteResults[field.value].length > 0">
+                                    <li tabindex="-1"
+                                        v-for="(result, i) in autoCompleteResults[field.value]"
+                                        :key="result" @click="setMetadataResult(result, field.value)"
+                                        class="autocomplete-result"
+                                        :class="{ 'is-active': i === arrowCounters[field.value] }"
+                                        v-html="result"></li>
+                                </ul>
+                            </template>
+                        </MetadataFields>
                     </div>
                     <button type="button" class="btn btn-secondary" style="width: fit-content"
                         @click="getOtherCollocates()">{{
@@ -429,10 +354,14 @@
 </template>
 
 <script>
+import { inject, reactive } from "vue";
+import { useRoute } from "vue-router";
 import { Collapse } from "bootstrap";
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import { useAutocomplete } from "../composables/useAutocomplete";
 import BibliographyCriteria from "./BibliographyCriteria";
+import MetadataFields from "./MetadataFields.vue";
 import ProgressSpinner from "./ProgressSpinner";
 import ResultsSummary from "./ResultsSummary";
 import WordCloud from "./WordCloud.vue";
@@ -440,7 +369,36 @@ import WordCloud from "./WordCloud.vue";
 export default {
     name: "collocation-report",
     components: {
-        ResultsSummary, WordCloud, BibliographyCriteria, ProgressSpinner
+        ResultsSummary, WordCloud, BibliographyCriteria, ProgressSpinner, MetadataFields
+    },
+    setup() {
+        const $http = inject("$http");
+        const $dbUrl = inject("$dbUrl");
+        const $philoConfig = inject("$philoConfig");
+        const route = useRoute();
+
+        const comparedMetadataValues = reactive({});
+
+        const autocomplete = useAutocomplete({
+            http: $http,
+            dbUrl: $dbUrl,
+            philoConfig: $philoConfig,
+            metadataValues: comparedMetadataValues,
+            route,
+        });
+
+        return {
+            comparedMetadataValues,
+            autoCompleteResults: autocomplete.autoCompleteResults,
+            arrowCounters: autocomplete.arrowCounters,
+            autoCompletePosition: autocomplete.autoCompletePosition,
+            onArrowDown: autocomplete.onArrowDown,
+            onArrowUp: autocomplete.onArrowUp,
+            onEnter: autocomplete.onEnter,
+            autocompleteOnChange: autocomplete.onChange,
+            setMetadataResult: autocomplete.setMetadataResult,
+            clearAutoCompletePopup: autocomplete.clearAutoCompletePopup,
+        };
     },
     computed: {
         ...mapWritableState(useMainStore, [
@@ -500,10 +458,10 @@ export default {
             metadataDisplay: [],
             metadataInputStyle: [],
             metadataChoiceValues: [],
-            comparedMetadataValues: {},
             metadataChoiceChecked: {},
-            dateRange: {},
+            metadataChoiceSelected: {},
             dateType: {},
+            dateRange: {},
             otherCollocates: [],
             otherBiblio: {},
             comparedTo: "wholeCorpus",
@@ -549,6 +507,13 @@ export default {
                 this.fetchResults();
                 break;
         }
+    },
+    mounted() {
+        this.$nextTick(() => {
+            document.addEventListener("click", () => {
+                this.clearAutoCompletePopup();
+            });
+        });
     },
     watch: {
         $route(newUrl, oldUrl) {
@@ -707,11 +672,6 @@ export default {
                 })
             );
         },
-        dateTypeToggle(metadata, dateType) {
-            this.dateRange[metadata] = { start: "", end: "" };
-            this.comparedMetadataValues[metadata] = "";
-            this.dateType[metadata] = dateType;
-        },
         getFrequency(updateUrl = false) {
             this.collocMethod = "frequency";
             if (updateUrl) {
@@ -796,8 +756,10 @@ export default {
         restoreComparedMetadataFromUrl() {
             const urlParams = this.$route.query;
 
-            // Clear existing values
-            this.comparedMetadataValues = {};
+            // Clear existing values in-place to preserve reactive reference
+            for (const key of Object.keys(this.comparedMetadataValues)) {
+                delete this.comparedMetadataValues[key];
+            }
 
             // Process compare_ prefixed parameters
             for (const [key, value] of Object.entries(urlParams)) {
@@ -1284,5 +1246,35 @@ input:focus::placeholder {
 
 :deep(.progress-bar) {
     background-color: theme.$link-color !important;
+}
+
+.autocomplete-results {
+    padding: 0;
+    margin: 3px 0 0 15px;
+    border: 1px solid #eeeeee;
+    border-top-width: 0px;
+    max-height: 216px;
+    overflow-y: scroll;
+    width: 267px;
+    position: absolute;
+    left: 0;
+    background-color: #fff;
+    z-index: 100;
+    top: 34px;
+    font-size: 1.2rem;
+}
+
+.autocomplete-result {
+    list-style: none;
+    text-align: left;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-size: 1.2rem;
+}
+
+.autocomplete-result:hover,
+.is-active {
+    background-color: #ddd;
+    color: black;
 }
 </style>

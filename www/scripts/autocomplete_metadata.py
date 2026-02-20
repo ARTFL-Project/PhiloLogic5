@@ -70,9 +70,6 @@ def autocomplete_metadata(environ, start_response):
 
 def _autocomplete_metadata(metadata, field, db):
     """Autocomplete metadata"""
-    path = os.environ["SCRIPT_FILENAME"].replace("scripts/metadata_list.py", "")
-    path += "data/frequencies/%s_frequencies" % field
-
     words = format_query(metadata, field, db)[:100]
     return orjson.dumps(words)
 

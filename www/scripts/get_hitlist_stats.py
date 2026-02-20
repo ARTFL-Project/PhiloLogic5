@@ -87,7 +87,7 @@ def get_hitlist_stats(environ, start_response):
                     void_col = cols.view(np.dtype((np.void, obj_level * 4))).ravel()
                     prev = prev_per_level[obj_level]
                     if prev is None or void_col[0] != prev:
-                        unique_ids_per_level[obj_level].append(void_col[0])
+                        unique_ids_per_level[obj_level].append(void_col[0].tobytes())
                     if len(void_col) > 1:
                         mask = void_col[1:] != void_col[:-1]
                         unique_ids_per_level[obj_level].extend(void_col[1:][mask].tolist())
