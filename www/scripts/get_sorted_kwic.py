@@ -9,13 +9,10 @@ from wsgiref.handlers import CGIHandler
 import numba
 import numpy as np
 import orjson
-from philologic.runtime import kwic_hit_object, page_interval
+from custom_functions_loader import get_custom
+from philologic.runtime import WebConfig, WSGIHandler, kwic_hit_object, page_interval
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
-
-from philologic.runtime import WebConfig, WSGIHandler
-
-from custom_functions_loader import get_custom
 
 # Module-level cache for gunicorn persistent workers
 _KWIC_CACHE = {}
@@ -31,11 +28,6 @@ _FIELD_TO_COLS = {
     "right": _COL_RIGHT,
     "q": _COL_QUERY,
 }
-
-
-# ---------------------------------------------------------------------------
-# Numba JIT kernel
-# ---------------------------------------------------------------------------
 
 @numba.njit(cache=True)
 def _nb_build_ranks(
@@ -111,11 +103,6 @@ def _nb_build_ranks(
         index += 1
     return ri, index
 
-
-# ---------------------------------------------------------------------------
-# Array loading with module-level cache
-# ---------------------------------------------------------------------------
-
 def _get_kwic_arrays(colloc_dir, ascii_conversion):
     """Load and cache all arrays needed for vectorized KWIC sorting."""
     cache_key = colloc_dir
@@ -174,10 +161,6 @@ def _get_kwic_arrays(colloc_dir, ascii_conversion):
     return _KWIC_CACHE[cache_key]
 
 
-# ---------------------------------------------------------------------------
-# Cache path computation
-# ---------------------------------------------------------------------------
-
 def _get_cache_path(request, db):
     """Compute deterministic cache path from query parameters."""
     h = hashlib.sha1()
@@ -192,9 +175,6 @@ def _get_cache_path(request, db):
     return os.path.join(db.path, "hitlists", f"{h.hexdigest()}.kwic")
 
 
-# ---------------------------------------------------------------------------
-# Numpy composite sort
-# ---------------------------------------------------------------------------
 
 def _numpy_sort(bin_path, request, metadata_fields=None):
     """Sort binary rank records using numpy composite key. Returns sorted hit indices."""
@@ -228,10 +208,6 @@ def _numpy_sort(bin_path, request, metadata_fields=None):
     sorted_idx = np.argsort(composite_key, kind="stable")
     return hit_indices[sorted_idx]
 
-
-# ---------------------------------------------------------------------------
-# Data collection — vectorized path
-# ---------------------------------------------------------------------------
 
 def _collect_vectorized(hits, bin_path, colloc_dir, db):
     """Vectorized data collection with streaming progress. Generator yields NDJSON lines."""
@@ -314,10 +290,6 @@ def _collect_vectorized(hits, bin_path, colloc_dir, db):
         if not raw:
             time.sleep(0.05)
 
-
-# ---------------------------------------------------------------------------
-# Data collection — metadata sort (uses collocations/ arrays for word context)
-# ---------------------------------------------------------------------------
 
 def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
     """Metadata sort collection producing binary records with word + metadata ranks. Yields NDJSON."""
@@ -417,9 +389,6 @@ def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
     yield orjson.dumps({"progress": {"hits_done": index, "total": len(hits)}}) + b"\n"
 
 
-# ---------------------------------------------------------------------------
-# Sort phase
-# ---------------------------------------------------------------------------
 
 def _sort_cache(bin_path, sorted_path, request, metadata_fields=None):
     """Sort collected binary cache and write .sorted file."""
@@ -431,10 +400,6 @@ def _sort_cache(bin_path, sorted_path, request, metadata_fields=None):
         # No data collected (zero results) — write empty sentinel
         np.array([], dtype=np.uint32).tofile(sorted_path)
 
-
-# ---------------------------------------------------------------------------
-# Pagination
-# ---------------------------------------------------------------------------
 
 def _paginate(sorted_path, hits, request, config, db):
     """Read .sorted file and return paginated KWIC result dict."""
@@ -456,11 +421,6 @@ def _paginate(sorted_path, hits, request, config, db):
     kwic_object["results_length"] = len(hits)
     kwic_object["query_done"] = hits.done
     return kwic_object
-
-
-# ---------------------------------------------------------------------------
-# WSGI entry point — streaming NDJSON
-# ---------------------------------------------------------------------------
 
 def get_sorted_kwic(environ, start_response):
     """Streaming sorted KWIC: collect sort data, sort, paginate — all over one connection."""

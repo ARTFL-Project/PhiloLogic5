@@ -2,19 +2,23 @@
 
 
 import array
+import hashlib
 import os
 import sqlite3
+import struct as _struct
 import time
 
 import lz4.frame
 import multiprocess as mp
 import numpy as np
 import pandas as pd
+import regex as re
 from orjson import loads
-from philologic.utils import count_lines
 from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 from unidecode import unidecode
+
+from philologic.utils import count_lines
 
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
@@ -223,8 +227,6 @@ def make_collocation_database(loader_obj, db_destination):
     np.save(os.path.join(db_destination, "vocab.npy"), vocab_reverse)
 
     # Save vocab hashes (deterministic md5-based) for fast numba filter scanning
-    import hashlib
-    import struct as _struct
     vocab_hashes = np.empty(len(vocab), dtype=np.uint64)
     for token, idx in vocab.items():
         vocab_hashes[idx] = _struct.unpack("<Q", hashlib.md5(token.encode("utf-8")).digest()[:8])[0]
@@ -247,7 +249,6 @@ def make_collocation_database(loader_obj, db_destination):
         f.write(vocab_data)
 
     # Save precomputed has-number flag per vocab entry (replaces per-word regex at query time)
-    import regex as re
     _NUMBER = re.compile(r"\d")
     vocab_has_number = np.array(
         [bool(_NUMBER.search(vocab_reverse[i])) for i in range(len(vocab_reverse))],
