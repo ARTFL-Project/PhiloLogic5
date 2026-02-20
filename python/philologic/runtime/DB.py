@@ -40,6 +40,7 @@ class DB:
         self.dbh = sqlite3.connect(self.path + "/toms.db", self.width)
         self.dbh.text_factory = str
         self.dbh.row_factory = sqlite3.Row
+        self._row_cache = {}
 
     def __getitem__(self, item):
         if self.width != 9:  # verify this isn't a page id
@@ -52,9 +53,23 @@ class DB:
     def get_id_lowlevel(self, item):
         """Retrieve text object metadata"""
         hit_s = hit_to_string(item, self.width)
+        if hit_s in self._row_cache:
+            return self._row_cache[hit_s]
         c = self.dbh.cursor()
         c.execute("SELECT * FROM toms WHERE philo_id=? LIMIT 1;", (hit_s,))
         return c.fetchone()
+
+    def prefetch_rows(self, philo_id_strings):
+        """Batch-fetch toms rows into cache. Accepts a list of philo_id strings."""
+        if not philo_id_strings:
+            return
+        c = self.dbh.cursor()
+        c.execute("CREATE TEMP TABLE IF NOT EXISTS _prefetch (philo_id TEXT)")
+        c.executemany("INSERT INTO _prefetch VALUES (?)", [(s,) for s in philo_id_strings])
+        c.execute("SELECT toms.* FROM toms INNER JOIN _prefetch ON toms.philo_id = _prefetch.philo_id")
+        for row in c:
+            self._row_cache[row["philo_id"]] = row
+        c.execute("DROP TABLE _prefetch")
 
     def get_page(self, item):
         """Retrieve page data"""

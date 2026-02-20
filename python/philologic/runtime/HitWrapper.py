@@ -105,7 +105,7 @@ class HitWrapper:
 class ObjectWrapper:
     """Class representing doc, div1, div2, div3, para, sent objects"""
 
-    __slots__ = ["db", "hit", "object_type", "row", "bytes", "words", "philo_id", "page"]
+    __slots__ = ["db", "hit", "object_type", "row", "bytes", "words", "philo_id", "_page"]
 
     def __init__(self, hit, db, obj_type=False, row=None):
         self.db = db
@@ -123,9 +123,15 @@ class ObjectWrapper:
         self.bytes = []
         self.row = row
         self.words = []
-        page_i = self["page"]
-        page_id = (self.hit[0], 0, 0, 0, 0, 0, 0, 0, page_i)
-        self.page = PageWrapper(page_id, db)
+        self._page = None
+
+    @property
+    def page(self):
+        if self._page is None:
+            page_i = self["page"]
+            page_id = (self.hit[0], 0, 0, 0, 0, 0, 0, 0, page_i)
+            self._page = PageWrapper(page_id, self.db)
+        return self._page
 
     def __getitem__(self, key):
         if key in TEXT_OBJECT_LEVELS:
