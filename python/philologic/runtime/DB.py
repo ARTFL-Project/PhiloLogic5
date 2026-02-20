@@ -5,10 +5,13 @@
 import hashlib
 import os
 import sqlite3
+import struct
 
 from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
 from philologic.runtime import HitList, MetadataQuery, Query, QuerySyntax
 from philologic.runtime.HitWrapper import HitWrapper, PageWrapper
+
+LEVEL_MAP = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6}
 
 
 def hit_to_string(hit, width):
@@ -70,6 +73,40 @@ class DB:
         for row in c:
             self._row_cache[row["philo_id"]] = row
         c.execute("DROP TABLE _prefetch")
+
+    def prefetch_hits(self, hits, start, end):
+        """Pre-fetch all toms rows needed for a hitlist page slice in one batch query."""
+        if not hasattr(hits, "filename"):
+            return
+        needed_levels = {1}  # always need doc level
+        for f_type in self.locals["metadata_types"].values():
+            if f_type in LEVEL_MAP:
+                needed_levels.add(LEVEL_MAP[f_type])
+            elif f_type == "div":
+                needed_levels.update((2, 3, 4))
+
+        hit_count = min(end, len(hits)) - max(start - 1, 0)
+        if hit_count <= 0:
+            return
+
+        if hits.sort_order:
+            raw_hits = hits.sorted_hitlist[start - 1 : end]
+        else:
+            offset_bytes = hits.hitsize * (start - 1)
+            with open(hits.filename, "rb") as f:
+                f.seek(offset_bytes)
+                raw_data = f.read(hits.hitsize * hit_count)
+            raw_hits = [
+                struct.unpack(hits.format, raw_data[i * hits.hitsize : (i + 1) * hits.hitsize])
+                for i in range(len(raw_data) // hits.hitsize)
+            ]
+
+        unique_ids = set()
+        for raw in raw_hits:
+            for level in needed_levels:
+                unique_ids.add(hit_to_string(raw[:level], self.width))
+
+        self.prefetch_rows(list(unique_ids))
 
     def get_page(self, item):
         """Retrieve page data"""

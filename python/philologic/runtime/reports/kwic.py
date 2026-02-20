@@ -15,6 +15,9 @@ def kwic_results(request, config):
     db = DB(config.db_path + "/data/")
     hits = db.query(request["q"], request["method"], request["arg"], **request.metadata)
     start, end, n = page_interval(request.results_per_page, hits, request.start, request.end)
+
+    db.prefetch_hits(hits, start, end)
+
     kwic_object = {
         "description": {"start": start, "end": end, "results_per_page": request.results_per_page},
         "query": dict([i for i in request]),
