@@ -12,7 +12,7 @@ from philologic.runtime.sql_validation import validate_column
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
 
-def frequency_results(request, config, sorted_results=False):
+def frequency_results(request, config):
     """reads through a hitlist. looks up request.frequency_field in each hit, and builds up a list of
     unique values and their frequencies."""
     db = DB(config.db_path + "/data/")
@@ -114,10 +114,6 @@ def frequency_results(request, config, sorted_results=False):
                     counts[key]["total_word_count"] = local_hits.get_total_word_count()
         counts[key]["count"] += hit_count
 
-    frequency_object = {}
-    frequency_object["results"] = counts
-    frequency_object["hits_done"] = total_hits
-
     # Handle NULL values
     new_metadata = {k: v for k, v in request.metadata.items() if v}
     new_metadata[frequency_field] = '"NULL"'
@@ -136,31 +132,50 @@ def frequency_results(request, config, sorted_results=False):
         null_url = f'{base_url}&{frequency_field}="NULL"'
         local_hits = db.query(**new_metadata, raw_results=True)
         if not biblio_search:
-            frequency_object["results"]["NULL"] = {
+            counts["NULL"] = {
                 "count": len(new_hits),
                 "url": null_url,
                 "metadata": {frequency_field: '"NULL"'},
                 "total_word_count": local_hits.get_total_word_count(),
             }
         else:
-            frequency_object["results"]["NULL"] = {
+            counts["NULL"] = {
                 "count": len(new_hits),
                 "url": null_url,
                 "metadata": {frequency_field: '"NULL"'},
             }
 
-    frequency_object["more_results"] = False
-    frequency_object["results_length"] = len(hits)
-    frequency_object["query"] = dict([i for i in request])
+    # Build sorted results list — top 100 by absolute count
+    results_list = []
+    for label, data in sorted(counts.items(), key=lambda x: x[1]["count"], reverse=True)[:100]:
+        entry = dict(data)
+        entry["label"] = label
+        results_list.append(entry)
 
-    if sorted_results is True:
-        frequency_object["results"] = sorted(
-            frequency_object["results"].items(),
-            key=lambda x: x[1]["count"],
-            reverse=True,
-        )
+    result = {
+        "results": results_list,
+        "results_length": len(hits),
+        "query": dict([i for i in request]),
+    }
 
-    return frequency_object
+    # Compute relative frequency (per 10,000 words) — top 100 by relative frequency
+    if not biblio_search:
+        relative_list = []
+        for label, data in counts.items():
+            total_wc = data.get("total_word_count", 0)
+            if total_wc > 0:
+                relative_list.append({
+                    "label": label,
+                    "count": round((data["count"] / total_wc) * 10000, 2),
+                    "absolute_count": data["count"],
+                    "total_word_count": total_wc,
+                    "metadata": data["metadata"],
+                    "url": data["url"],
+                })
+        relative_list.sort(key=lambda x: x["count"], reverse=True)
+        result["relative_results"] = relative_list[:100]
+
+    return result
 
 
 def __count_hits_by_level(hits, object_level):

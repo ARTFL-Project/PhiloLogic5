@@ -88,7 +88,7 @@
 
             <!-- Frequency toggle buttons -->
             <div class="btn-group btn-group-sm shadow-sm" role="group" :aria-label="$t('facets.frequencyTypeToggle')"
-                v-if="percent == 100 && formData.report !== 'bibliography' && facet.type === 'facet'">
+                v-if="showFacetResults && formData.report !== 'bibliography' && facet.type === 'facet'">
                 <button type="button" class="btn btn-light" :class="{ active: showingRelativeFrequencies === false }"
                     @click="toggleFrequencies()" :aria-pressed="showingRelativeFrequencies === false"
                     :aria-describedby="'absolute-freq-desc'">
@@ -109,22 +109,6 @@
 
             <div class="m-2 text-center" style="opacity: 0.7">
                 {{ $t("facets.top100Results", { label: selectedFacet.alias }) }}
-            </div>
-
-            <!-- Progress bar -->
-            <div class="progress my-3 mb-3 facet-progress" v-if="percent != 100" role="progressbar"
-                :aria-valuenow="runningTotal" :aria-valuemin="0" :aria-valuemax="resultsLength"
-                :aria-label="$t('facets.loadingProgress')">
-                <div class="progress-bar facet-progress-bar"
-                    :style="`width: ${((runningTotal / resultsLength) * 100)}%`" :aria-hidden="true">
-                </div>
-                <span class="visually-hidden">
-                    {{ $t('facets.progressDescription', {
-                        current: runningTotal,
-                        total: resultsLength,
-                        percent: ((runningTotal / resultsLength) * 100).toFixed(0)
-                    }) }}
-                </span>
             </div>
 
             <!-- Facet results list -->
@@ -150,12 +134,12 @@
 
                         <!-- Relative frequency description -->
                         <div class="relative-frequency-info"
-                            v-if="showingRelativeFrequencies && fullResults.unsorted && fullResults.unsorted[result.label]">
+                            v-if="showingRelativeFrequencies && result.absolute_count != null">
                             <small class="text-muted">
                                 {{
                                     $t("facets.relativeFrequencyDescription", {
-                                        total: fullResults.unsorted[result.label].count,
-                                        wordCount: getTotalCount(result.label),
+                                        total: result.absolute_count,
+                                        wordCount: result.total_word_count,
                                     })
                                 }}
                             </small>
@@ -244,7 +228,6 @@ export default {
     computed: {
         ...mapWritableState(useMainStore, [
             "formData",
-            "resultsLength",
             "showFacets",
             "urlUpdate"
         ]),
@@ -265,20 +248,13 @@ export default {
                 type: "collocationFacet",
             },
             loading: false,
-            moreResults: false,
-            done: true,
             facet: {},
             selectedFacet: {},
             showingRelativeFrequencies: false,
             shouldShowRelativeFrequency: false,
             fullResults: {},
-            relativeFrequencies: [],
-            absoluteFrequencies: [],
             facetResults: [],
-            interrupt: false,
             selected: "",
-            runningTotal: 0,
-            percent: 0,
         };
     },
     created() {
@@ -300,8 +276,6 @@ export default {
                 // Clear facet data when query changes (not just facet selection)
                 this.facetResults = [];
                 this.fullResults = {};
-                this.relativeFrequencies = [];
-                this.absoluteFrequencies = [];
                 // Check if new URL has facet params - if so, show them; if not, hide
                 this.checkFacetStateFromUrl();
             } else if (newUrl.query.facet != oldUrl.query.facet || newUrl.query.word_property != oldUrl.query.word_property) { // this is just a facet change
@@ -387,8 +361,6 @@ export default {
             this.selectedFacet = facetObj;
             this.facet = facetObj;
             this.showFacetSelection = false;
-            this.relativeFrequencies = [];
-            this.absoluteFrequencies = [];
             this.facetResults = []; // Clear old results when switching facets
 
             // Preserve the relative frequency state when restoring from URL
@@ -418,176 +390,111 @@ export default {
                 });
             }
             if (typeof sessionStorage[urlString] !== "undefined" && this.philoConfig.production === true) {
-                this.loading = true;
                 this.fullResults = JSON.parse(sessionStorage[urlString]);
-                this.facetResults = this.fullResults.sorted.slice(0, 100);
-                this.loading = false;
-                this.percent = 100;
-                this.moreResults = false;
+                if (facetObj.type === "facet") {
+                    if (this.shouldShowRelativeFrequency && this.fullResults.relative) {
+                        this.facetResults = this.fullResults.relative;
+                    } else {
+                        this.facetResults = this.fullResults.absolute;
+                    }
+                } else if (facetObj.type === "collocationFacet") {
+                    this.facetResults = this.extractSurfaceFromCollocate(this.fullResults.slice(0, 100));
+                } else {
+                    this.facetResults = this.fullResults.slice(0, 100);
+                }
                 this.showFacetResults = true;
                 this.showFacetSelection = false;
             } else {
-                this.done = false;
-                let fullResults = {};
                 this.loading = true;
-                this.moreResults = true;
-                this.percent = 0;
                 let queryParams = this.copyObject(this.formData);
                 if (facetObj.type === "facet") {
                     queryParams.frequency_field = facetObj.facet;
+                    this.fetchFrequencyFacet(facetObj, queryParams);
                 } else if (facetObj.type === "collocationFacet") {
                     queryParams.report = "collocation";
+                    this.fetchCollocationFacet(facetObj, queryParams);
                 } else if (facetObj.type === "property") {
                     queryParams.word_property = facetObj.facet;
+                    this.fetchPropertyFacet(facetObj, queryParams);
                 }
-                this.populateSidebar(facetObj, fullResults, 0, queryParams);
             }
         },
-        populateSidebar(facet, fullResults, start, queryParams) {
-            if (this.moreResults) {
-                let params = this.paramsFilter({
-                    ...queryParams,
-                    start: start.toString(),
-                })
-                this.showFacetSelection = false;
-                let scriptName = "/scripts/get_frequency.py";
-                if (facet.type === "property") {
-                    scriptName = "/scripts/get_word_property_count.py";
-                }
-                if (facet.type != "collocationFacet") {
-                    this.$http.get(`${this.$dbUrl}/${scriptName}`, {
-                        params: params
-                    })
-                        .then((response) => {
-                            let results = response.data.results;
-                            if (facet.type == "facet") {
-                                this.moreResults = response.data.more_results;
-                                let merge;
-                                if (!this.interrupt && this.selected == facet.alias) {
-                                    if (facet.type === "collocationFacet") {
-                                        merge = this.mergeResults(fullResults.unsorted, response.data.collocates);
-                                    } else {
-                                        merge = this.mergeResults(fullResults.unsorted, results);
-                                    }
-                                    this.facetResults = merge.sorted.slice(0, 100);
-                                    this.loading = false;
-                                    this.showFacetResults = true;
-                                    fullResults = merge;
-                                    this.runningTotal = response.data.hits_done;
-                                    start = response.data.hits_done;
-                                    this.populateSidebar(facet, fullResults, start, queryParams);
-                                } else {
-                                    this.interrupt = false;
-                                }
-                            } else {
-                                this.loading = false;
-                                this.showFacetResults = true;
-                                this.moreResults = false;
-                                this.facetResults = results;
-                                this.populateSidebar(facet, results, start, queryParams);
-                            }
-                        })
-                        .catch((error) => {
-                            this.debug(this, error);
-                            this.loading = false;
-                        });
-
+        fetchFrequencyFacet(facet, queryParams) {
+            this.$http.get(`${this.$dbUrl}/scripts/get_frequency.py`, {
+                params: this.paramsFilter(queryParams)
+            }).then((response) => {
+                this.fullResults = {
+                    absolute: response.data.results,
+                    relative: response.data.relative_results || [],
+                };
+                if (this.shouldShowRelativeFrequency && this.fullResults.relative.length) {
+                    this.facetResults = this.fullResults.relative;
                 } else {
-                    this.$http
-                        .post(`${this.$dbUrl}/reports/collocation.py`, {
-                            current_collocates: fullResults,
-                        },
-                            {
-                                params: this.paramsFilter(params),
-                            })
-                        .then((response) => {
-                            this.moreResults = response.data.more_results;
-                            this.runningTotal = response.data.hits_done;
-                            start = response.data.hits_done;
-                            this.loading = false;
-                            if (response.data.results_length) {
-                                this.showFacetResults = true;
-                                if (this.moreResults) {
-                                    this.facetResults = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
-                                    this.populateSidebar(facet, response.data.collocates, start, queryParams);
-                                }
-                                else {
-                                    this.facetResults = this.extractSurfaceFromCollocate(response.data.collocates.slice(0, 100));
-                                    this.populateSidebar(facet, response.data.collocates, start, queryParams);
-                                }
-                            }
-
-                        })
-                        .catch((error) => {
-                            this.loading = false;
-                            this.debug(this, error);
-                        });
+                    this.facetResults = this.fullResults.absolute;
+                    this.showingRelativeFrequencies = false;
                 }
-            } else {
                 this.loading = false;
-                this.runningTotal = this.resultsLength;
-                this.fullResults = fullResults;
-                this.percent = 100;
-                if (this.shouldShowRelativeFrequency && facet.type === "facet") {
-                    this.displayRelativeFrequencies();
-                }
+                this.showFacetResults = true;
                 let urlString = this.paramsToUrlString({
                     ...queryParams,
                     frequency_field: this.selectedFacet.alias,
                 });
-                this.saveToLocalStorage(urlString, fullResults);
-            }
-        },
-        roundToTwo(num) {
-            return +(Math.round(num + "e+2") + "e-2");
-        },
-        getTotalCount(label) {
-            return this.fullResults.unsorted?.[label]?.total_word_count || 0;
-        },
-        getRelativeFrequencies() {
-            // Use nextTick to make computation non-blocking
-            this.$nextTick(() => {
-                let relativeResults = {};
-                for (let label in this.fullResults.unsorted) {
-                    let resultObj = this.fullResults.unsorted[label];
-                    relativeResults[label] = {
-                        count: this.roundToTwo((resultObj.count / resultObj.total_word_count) * 10000),
-                        url: resultObj.url,
-                        label: label,
-                        total_count: resultObj.total_word_count,
-                        metadata: resultObj.metadata,
-                    };
-                }
-                let fullRelativeFrequencies = relativeResults;
-                let sortedRelativeResults = this.sortResults(fullRelativeFrequencies);
-                this.facetResults = this.copyObject(sortedRelativeResults.slice(0, 100));
-                this.showingRelativeFrequencies = true;
+                this.saveToLocalStorage(urlString, this.fullResults);
+            }).catch((error) => {
+                this.debug(this, error);
                 this.loading = false;
-                this.percent = 100;
+            });
+        },
+        fetchCollocationFacet(facet, queryParams) {
+            this.$http.post(`${this.$dbUrl}/reports/collocation.py`, {}, {
+                params: this.paramsFilter(queryParams)
+            }).then((response) => {
+                if (response.data.results_length) {
+                    this.facetResults = this.extractSurfaceFromCollocate(
+                        response.data.collocates.slice(0, 100)
+                    );
+                    this.fullResults = response.data.collocates;
+                    this.showFacetResults = true;
+                }
+                this.loading = false;
+                let urlString = this.paramsToUrlString({
+                    ...queryParams,
+                    report: "collocation",
+                });
+                this.saveToLocalStorage(urlString, this.fullResults);
+            }).catch((error) => {
+                this.loading = false;
+                this.debug(this, error);
+            });
+        },
+        fetchPropertyFacet(facet, queryParams) {
+            this.$http.get(`${this.$dbUrl}/scripts/get_word_property_count.py`, {
+                params: this.paramsFilter(queryParams)
+            }).then((response) => {
+                this.facetResults = response.data.results.slice(0, 100);
+                this.fullResults = response.data.results;
+                this.loading = false;
+                this.showFacetResults = true;
+                let urlString = this.paramsToUrlString({
+                    ...queryParams,
+                    word_property: facet.facet,
+                });
+                this.saveToLocalStorage(urlString, this.fullResults);
+            }).catch((error) => {
+                this.debug(this, error);
+                this.loading = false;
             });
         },
         displayRelativeFrequencies() {
-            this.loading = true;
-            if (this.relativeFrequencies.length == 0) {
-                this.absoluteFrequencies = this.copyObject(this.facetResults);
-                this.percent = 0;
-                this.getRelativeFrequencies();
-            } else {
-                this.absoluteFrequencies = this.copyObject(this.facetResults);
-                this.facetResults = this.relativeFrequencies;
-                this.showingRelativeFrequencies = true;
-                this.loading = false;
-            }
+            this.facetResults = this.fullResults.relative;
+            this.showingRelativeFrequencies = true;
             if (this.selectedFacet.facet !== this.$route.query.facet || this.showingRelativeFrequencies.toString() !== this.$route.query.relative_frequency) {
                 this.updateFacetUrl();
             }
         },
         displayAbsoluteFrequencies() {
-            this.loading = true;
-            this.relativeFrequencies = this.copyObject(this.facetResults);
-            this.facetResults = this.absoluteFrequencies;
+            this.facetResults = this.fullResults.absolute;
             this.showingRelativeFrequencies = false;
-            this.loading = false;
             if (this.selectedFacet.facet !== this.$route.query.facet || this.showingRelativeFrequencies.toString() !== this.$route.query.relative_frequency) {
                 this.updateFacetUrl();
             }
@@ -671,8 +578,6 @@ export default {
             this.showFacetResults = false;
             this.showFacetSelection = true;
             this.showingRelativeFrequencies = false;
-            this.relativeFrequencies = [];
-            this.absoluteFrequencies = [];
             this.facetResults = [];
             this.fullResults = {};
             if (!skipRouterPush) {
@@ -968,31 +873,4 @@ button.facet-result-item:focus-visible,
     margin: 0;
 }
 
-/* Custom progress bar to match theme */
-.facet-progress {
-    background-color: rgba(theme.$link-color, 0.1);
-    border-radius: 0.375rem;
-    overflow: hidden;
-}
-
-.facet-progress-bar {
-    background-color: theme.$link-color;
-    transition: width 0.3s ease-in-out;
-    background-image: linear-gradient(45deg,
-            rgba(255, 255, 255, 0.15) 25%,
-            transparent 25%,
-            transparent 50%,
-            rgba(255, 255, 255, 0.15) 50%,
-            rgba(255, 255, 255, 0.15) 75%,
-            transparent 75%,
-            transparent);
-    background-size: 1rem 1rem;
-    animation: progress-bar-stripes 1s linear infinite;
-}
-
-@keyframes progress-bar-stripes {
-    0% {
-        background-position-x: 1rem;
-    }
-}
 </style>

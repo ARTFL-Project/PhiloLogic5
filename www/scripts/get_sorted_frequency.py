@@ -23,7 +23,7 @@ def get_sorted_frequency(environ, start_response):
     _frequency_results = get_custom(db_path, "frequency_results", frequency_results)
     config = _WebConfig(db_path)
     request = _WSGIHandler(environ, config)
-    results = _frequency_results(request, config, sorted_results=True)
+    results = _frequency_results(request, config)
     yield orjson.dumps(results)
 
 
