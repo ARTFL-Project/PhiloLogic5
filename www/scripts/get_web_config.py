@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 from philologic.Config import MakeDBConfig
 from philologic.runtime.DB import DB
 
@@ -38,6 +34,3 @@ def time_series_tester(config):
             return True
     return False
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_web_config)

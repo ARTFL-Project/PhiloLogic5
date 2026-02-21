@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime import concordance_results
 
@@ -23,6 +19,3 @@ def get_word_frequency(environ, start_response):
     word_frequency_object = generate_word_frequency(request, config)
     yield orjson.dumps(word_frequency_object)
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_word_frequency)

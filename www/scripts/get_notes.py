@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime import generate_text_object
 from philologic.runtime.DB import DB
@@ -23,6 +19,3 @@ def get_notes(environ, start_response):
     text_object = generate_text_object(request, config, note=True)
     yield orjson.dumps(text_object)
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_notes)

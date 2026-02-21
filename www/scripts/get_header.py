@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 from philologic.runtime import get_tei_header
 from philologic.runtime import WebConfig, WSGIHandler
 
@@ -21,6 +17,3 @@ def get_header(environ, start_response):
     header = get_tei_header(request, config)
     yield header.encode("utf8")
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_header)

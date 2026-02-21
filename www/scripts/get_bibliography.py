@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 from philologic.runtime import landing_page_bibliography
 from philologic.runtime import WebConfig, WSGIHandler
 
@@ -20,6 +16,3 @@ def get_bibliography(environ, start_response):
     request = _WSGIHandler(environ, config)
     yield landing_page_bibliography(request, config)
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_bibliography)

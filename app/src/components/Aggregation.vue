@@ -39,7 +39,7 @@
                     </h6>
 
                     <!-- Expandable breakdown section -->
-                    <div class="breakdown-container ms-4 mt-2" v-if="breakUpFields[resultIndex].show"
+                    <div class="breakdown-container ms-4" v-if="breakUpFields[resultIndex].show"
                         :id="`breakdown-${resultIndex}`" role="group">
 
                         <article class="breakdown-item"

@@ -1,10 +1,6 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from wsgiref.handlers import CGIHandler
-
 import lmdb
 import orjson
 from philologic.runtime.DB import DB
@@ -112,6 +108,3 @@ def get_word_property_count(environ, start_response):
     results = {"query": dict([i for i in request]), "results": word_property_count}
     yield orjson.dumps(results)
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_word_property_count)

@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 
 from philologic.runtime import WebConfig, WSGIHandler, frequency_results
@@ -25,6 +21,3 @@ def get_frequency(environ, start_response):
     results = _frequency_results(request, config)
     yield orjson.dumps(results)
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_frequency)

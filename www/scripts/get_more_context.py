@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime import get_concordance_text
 from philologic.runtime.DB import DB
@@ -27,6 +23,3 @@ def get_more_context(environ, start_response):
     hit_context = get_concordance_text(db, hits[hit_num], config.db_path, context_size)
     yield orjson.dumps(hit_context)
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_more_context)

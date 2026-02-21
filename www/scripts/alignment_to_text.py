@@ -1,9 +1,5 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
 from json import dumps
-from wsgiref.handlers import CGIHandler
-
 from philologic.runtime.DB import DB
 from philologic.runtime.link import byte_range_to_link
 from philologic.runtime import WebConfig, WSGIHandler
@@ -24,6 +20,3 @@ def alignment_to_text(environ, start_response):
     link = byte_range_to_link(db, config, request)
     yield dumps({"link": link}).encode("utf-8")
 
-
-if __name__ == "__main__":
-    CGIHandler().run(alignment_to_text)

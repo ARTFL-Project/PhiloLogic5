@@ -1,11 +1,7 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 """Get similar collocate distributions using excess-over-median cosine similarity
 with top shared collocates as explanations."""
 
 import os
-from wsgiref.handlers import CGIHandler
-
 import numba
 import numpy as np
 import orjson
@@ -217,6 +213,3 @@ def _top_shared_collocates(ref_excess_lookup, group_tids, group_excess, tid_to_n
     shared.sort(key=lambda x: x[1], reverse=True)
     return [tid_to_name.get(tid, "") for tid, _ in shared[:n_words]]
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_similar_collocate_distributions)

@@ -1,7 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
 
 import orjson
 from philologic.runtime import aggregation_by_field, WebConfig, WSGIHandler
@@ -23,7 +20,3 @@ def aggregation(environ, start_response):
     ]
     start_response("200 OK", headers)
     yield orjson.dumps(aggregation_object)
-
-
-if __name__ == "__main__":
-    CGIHandler().run(aggregation)

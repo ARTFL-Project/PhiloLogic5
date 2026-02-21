@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_expanded_query
@@ -27,6 +23,3 @@ def get_query_terms(environ, start_response):
     expanded_terms = get_expanded_query(hits)
     yield orjson.dumps(expanded_terms[0])
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_query_terms)

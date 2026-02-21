@@ -1,7 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
 
 import orjson
 from philologic.runtime import bibliography_results, WebConfig, WSGIHandler
@@ -20,7 +17,3 @@ def bibliography(environ, start_response):
     start_response("200 OK", headers)
     bibliography_object, _ = _bibliography_results(request, config)
     yield orjson.dumps(bibliography_object)
-
-
-if __name__ == "__main__":
-    CGIHandler().run(bibliography)

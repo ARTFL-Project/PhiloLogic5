@@ -1,7 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
 
 import orjson
 from philologic.runtime import kwic_results, WebConfig, WSGIHandler
@@ -20,7 +17,3 @@ def kwic(environ, start_response):
     headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
     start_response("200 OK", headers)
     yield orjson.dumps(kwic_object)
-
-
-if __name__ == "__main__":
-    CGIHandler().run(kwic)

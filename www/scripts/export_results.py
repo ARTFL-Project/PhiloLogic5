@@ -1,11 +1,8 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
 """Output results in JSON or CSV"""
 
 import csv
 import io
 import os
-from wsgiref.handlers import CGIHandler
-
 import regex as re
 from orjson import dumps
 
@@ -99,6 +96,3 @@ def csv_output(results):
         writer.writerow({**result["metadata_fields"], "context": result["context"]})
     return output_string.getvalue()
 
-
-if __name__ == "__main__":
-    CGIHandler().run(export_results)

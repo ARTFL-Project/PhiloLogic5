@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
@@ -39,6 +35,3 @@ def get_academic_citation(environ, start_response):
     else:
         yield orjson.dumps({"citation": citation, "link": ""})
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_academic_citation)

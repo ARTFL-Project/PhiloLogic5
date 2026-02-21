@@ -1,7 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
 
 import orjson
 from philologic.runtime import collocation_results, WebConfig, WSGIHandler
@@ -32,7 +29,3 @@ def collocation(environ, start_response):
     start_response("200 OK", headers)
     collocation_object = _collocation_results(request, config)
     yield orjson.dumps(collocation_object)
-
-
-if __name__ == "__main__":
-    CGIHandler().run(collocation)

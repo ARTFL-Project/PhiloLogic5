@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import split_terms
@@ -47,6 +43,3 @@ def get_term_groups(environ, start_response):
         dump = orjson.dumps({"term_groups": term_groups, "original_query": request.original_q})
     yield dump
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_term_groups)

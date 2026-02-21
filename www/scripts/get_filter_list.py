@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime.reports.collocation import build_filter_list
 from philologic.runtime import WebConfig, WSGIHandler
@@ -22,6 +18,3 @@ def get_filter_list(environ, start_response):
     filter_list = build_filter_list(request, config)
     yield orjson.dumps(filter_list)
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_filter_list)

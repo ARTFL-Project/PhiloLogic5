@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 from philologic.runtime import group_by_metadata, group_by_range
 from philologic.runtime import WebConfig, WSGIHandler
 
@@ -30,6 +26,3 @@ def get_landing_page_content(environ, start_response):
         results = group_by_metadata(request, config)
     yield results
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_landing_page_content)

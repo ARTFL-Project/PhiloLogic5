@@ -1,9 +1,5 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
 import sys
-from wsgiref.handlers import CGIHandler
-
 import regex as re
 from philologic.runtime.DB import DB
 from philologic.runtime.HitWrapper import ObjectWrapper
@@ -104,6 +100,3 @@ def nav_query(obj, db):
         i = HitWrapper.ObjectWrapper(philo_id, db, row=o)
         yield i
 
-
-if __name__ == "__main__":
-    CGIHandler().run(resolve_cite)

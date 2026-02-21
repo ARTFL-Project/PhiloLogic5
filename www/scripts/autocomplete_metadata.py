@@ -1,9 +1,5 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
 import subprocess
-from wsgiref.handlers import CGIHandler
-
 import orjson
 import regex as re
 import re as re_stdlib
@@ -203,6 +199,3 @@ def highlighter(words, token, ascii_conversion):
         new_list.append(highlighted_word)
     return new_list
 
-
-if __name__ == "__main__":
-    CGIHandler().run(autocomplete_metadata)

@@ -1,10 +1,6 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 """Time series of collocations: each period is compared to the previous to get a sense of the shift between each period."""
 
 import os
-from wsgiref.handlers import CGIHandler
-
 import numpy as np
 import orjson
 import pandas as pd
@@ -149,6 +145,3 @@ def calculate_distinctive_collocates(current_period, prev_period, next_period, c
 
     return [(word, float(score)) for word, score in positive_z.head(100).items()]
 
-
-if __name__ == "__main__":
-    CGIHandler().run(collocation_time_series)

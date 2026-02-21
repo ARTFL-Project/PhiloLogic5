@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import numpy as np
 import orjson
 from philologic.runtime.DB import DB
@@ -171,6 +167,3 @@ def tuple_to_str(philo_id, obj_level):
     elif obj_level == 4:
         return f"'{philo_id[0]} {philo_id[1]} {philo_id[2]} {philo_id[3]} {philo_id[4]} 0 0 0'"
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_hitlist_stats)

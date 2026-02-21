@@ -1,7 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
 """Compare collocations between two corpora."""
-
-from wsgiref.handlers import CGIHandler
 
 import numpy as np
 import orjson
@@ -71,6 +68,3 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
 
     return top[:100], bottom[:100]
 
-
-if __name__ == "__main__":
-    CGIHandler().run(comparative_collocations)

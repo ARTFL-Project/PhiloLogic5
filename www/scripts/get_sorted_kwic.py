@@ -1,11 +1,7 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import hashlib
 import os
 import time
 import timeit
-from wsgiref.handlers import CGIHandler
-
 import numba
 import numpy as np
 import orjson
@@ -478,6 +474,3 @@ def get_sorted_kwic(environ, start_response):
     # Phase 5: Paginate and yield final result
     yield orjson.dumps(_paginate(sorted_path, hits, request, config, db)) + b"\n"
 
-
-if __name__ == "__main__":
-    CGIHandler().run(get_sorted_kwic)

@@ -1,8 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime import access_control, login_access
 from philologic.runtime import WebConfig, WSGIHandler
@@ -29,6 +25,3 @@ def access_request(environ, start_response):
         incoming_address, domain_name = access_control.get_client_info(environ)
         yield orjson.dumps({"access": False, "incoming_address": incoming_address, "domain_name": domain_name})
 
-
-if __name__ == "__main__":
-    CGIHandler().run(access_request)

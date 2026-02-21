@@ -1,7 +1,4 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
-from wsgiref.handlers import CGIHandler
 
 import orjson
 from philologic.runtime import generate_toc_object, WebConfig, WSGIHandler
@@ -21,7 +18,3 @@ def table_of_contents(environ, start_response):
     start_response("200 OK", headers)
     toc_object = _generate_toc_object(request, config)
     yield orjson.dumps(toc_object)
-
-
-if __name__ == "__main__":
-    CGIHandler().run(table_of_contents)

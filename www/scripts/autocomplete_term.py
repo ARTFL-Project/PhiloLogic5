@@ -1,9 +1,5 @@
-#!/var/lib/philologic5/philologic_env/bin/python3
-
 import os
 import subprocess
-from wsgiref.handlers import CGIHandler
-
 import orjson
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import grep_exact, grep_word, grep_word_attributes, split_terms
@@ -92,6 +88,3 @@ def format_query(q, db, config):
 
     return output_string
 
-
-if __name__ == "__main__":
-    CGIHandler().run(autocomplete_term)
