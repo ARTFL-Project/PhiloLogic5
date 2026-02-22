@@ -1477,6 +1477,44 @@ def query_parse(query_terms, config):
     return query_terms
 
 
+def resolve_method(q, method, method_arg, cooc_order):
+    """Resolve user-facing search parameters into internal method name and arg.
+
+    Takes the raw query string, method name, method_arg, and cooc_order from
+    the request and returns the (method, arg) pair used by the search engine.
+    """
+    words = [w for w in q.split() if w]
+    method = method or "proxy"
+    try:
+        arg = int(method_arg)
+    except (ValueError, TypeError):
+        arg = 0
+    if len(words) == 1:
+        method = "single_term"
+    elif arg == 0 and method in ("proxy", "exact_cooc"):
+        if cooc_order == "yes":
+            method = "phrase_ordered"
+        else:
+            method = "phrase_unordered"
+    if method == "proxy":
+        if cooc_order == "yes" and arg > 0:
+            method = "proxy_ordered"
+        else:
+            method = "proxy_unordered"
+    elif method == "exact_cooc":
+        if cooc_order == "yes":
+            method = "exact_cooc_ordered"
+        else:
+            method = "exact_cooc_unordered"
+    elif method == "sentence":
+        arg = 6
+        if cooc_order == "yes":
+            method = "sentence_ordered"
+        else:
+            method = "sentence_unordered"
+    return method, str(arg)
+
+
 if __name__ == "__main__":
     path = sys.argv[1]
     terms = sys.argv[2:]

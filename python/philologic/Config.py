@@ -925,6 +925,8 @@ class Config:
 def MakeWebConfig(path, **extra_values):
     """Build web_config with non-default arguments"""
     web_config = Config(path, WEB_CONFIG_DEFAULTS, header=WEB_CONFIG_HEADER)
+    db_locals_path = os.path.join(os.path.dirname(path), "db.locals.py")
+    web_config.db_locals = Config(db_locals_path, DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
     if extra_values:
         for key, value in extra_values.items():
             web_config[key] = value

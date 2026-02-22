@@ -182,17 +182,15 @@ def philo_dispatcher(environ, start_response):
         yield b""
         return
 
-    # Set CGI-compatible environ vars that WSGIHandler expects.
-    # Apache CGI sets these automatically; Gunicorn does not.
-    environ.setdefault("SCRIPT_FILENAME", os.path.join(db_path, "dispatcher.py"))
+    # Extract the database URL prefix and relative path from PATH_INFO.
     db_name = os.path.basename(db_path)
     path_parts = environ.get("PATH_INFO", "").split("/")
     if db_name in path_parts:
         idx = path_parts.index(db_name)
-        if not environ.get("SCRIPT_NAME"):
-            environ["SCRIPT_NAME"] = "/".join(path_parts[: idx + 1]) + "/dispatcher.py"
+        environ["PHILOLOGIC_DBURL"] = "/".join(path_parts[: idx + 1])
         relative_path = "/".join(path_parts[idx + 1:])
     else:
+        environ["PHILOLOGIC_DBURL"] = ""
         relative_path = ""
 
     # Static files (assets, img, favicon)

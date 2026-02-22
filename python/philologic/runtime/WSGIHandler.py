@@ -6,9 +6,50 @@ import hashlib
 import urllib.parse
 from http.cookies import SimpleCookie
 
-from philologic.runtime.DB import DB
-from philologic.runtime.find_similar_words import find_similar_words
-from philologic.runtime.Query import query_parse
+from philologic.runtime.Query import query_parse, resolve_method
+
+
+def check_cookie_auth(environ, secret):
+    """Validate auth cookie. Returns True if authenticated."""
+    if "HTTP_COOKIE" not in environ:
+        return False
+    cookies = SimpleCookie("".join(environ["HTTP_COOKIE"].split()))
+    if "hash" not in cookies or "timestamp" not in cookies:
+        return False
+    h = hashlib.md5()
+    h.update(cookies["timestamp"].value.encode("utf8"))
+    h.update(secret.encode("utf8"))
+    return cookies["hash"].value == h.hexdigest()
+
+
+def expand_approximate_query(request, config):
+    """Expand query terms for approximate/fuzzy search. Requires DB access."""
+    from philologic.runtime.DB import DB
+    from philologic.runtime.find_similar_words import find_similar_words
+
+    request.cgi["original_q"] = request.cgi["q"][:]
+    db = DB(config.db_path + "/data/")
+    request.cgi["q"][0] = find_similar_words(db, config, request)
+
+
+def parse_metadata(cgi, q, metadata_fields, metadata_sql_types, config):
+    """Parse metadata fields from query params. Returns (metadata_dict, no_metadata)."""
+    metadata = {}
+    num_empty = 0
+    for field in metadata_fields:
+        if field in cgi and cgi[field]:
+            if metadata_sql_types[field] not in ("int", "date") and isinstance(cgi[field][0], str):
+                if not cgi[field][0].startswith('"') and field != "filename":
+                    cgi[field][0] = query_parse(cgi[field][0], config)
+            if q != "":
+                metadata[field] = cgi[field][0]
+            elif cgi[field][0] != "":
+                metadata[field] = cgi[field][0]
+        if field not in cgi or not cgi[field][0]:
+            num_empty += 1
+    metadata["philo_type"] = cgi.get("philo_type", [""])[0]
+    no_metadata = num_empty == len(metadata_fields)
+    return metadata, no_metadata
 
 
 class WSGIHandler(object):
@@ -16,25 +57,11 @@ class WSGIHandler(object):
 
     def __init__(self, environ, config):
         """Initialize class."""
-        # Create db object to access config variables
-        db = DB(config.db_path + "/data/")
         self.path_info = environ.get("PATH_INFO", "")
         self.query_string = environ["QUERY_STRING"]
-        self.script_filename = environ["SCRIPT_FILENAME"]
-        self.db_path = "/".join(environ["SCRIPT_NAME"].split("/")[:-2])
+        self.db_path = environ.get("PHILOLOGIC_DBURL", "")
 
-        self.authenticated = False
-        if "HTTP_COOKIE" in environ:
-            self.cookies = SimpleCookie(
-                "".join(environ["HTTP_COOKIE"].split())
-            )  # remove all whitespace in Cookie since it breaks parsing in Python 3.6
-            if "hash" in self.cookies and "timestamp" in self.cookies:
-                h = hashlib.md5()
-                # h.update(environ["REMOTE_ADDR"].encode("utf8"))
-                h.update(self.cookies["timestamp"].value.encode("utf8"))
-                h.update(db.locals.secret.encode("utf8"))
-                if self.cookies["hash"].value == h.hexdigest():
-                    self.authenticated = True
+        self.authenticated = check_cookie_auth(environ, config.db_locals.secret)
         self.cgi = urllib.parse.parse_qs(self.query_string, keep_blank_values=True)
         self.defaults = {"results_per_page": "25", "start": "0", "end": "0"}
 
@@ -65,8 +92,7 @@ class WSGIHandler(object):
         if "q" in self.cgi:
             self.cgi["q"][0] = query_parse(self.cgi["q"][0], config)
             if self.approximate == "yes":
-                self.cgi["original_q"] = self.cgi["q"][:]
-                self.cgi["q"][0] = find_similar_words(db, config, self)
+                expand_approximate_query(self, config)
             if self.cgi["q"][0] != "":
                 self.no_q = False
             else:
@@ -75,42 +101,11 @@ class WSGIHandler(object):
         else:
             self.no_q = True
 
-        words = [w for w in self.q.split() if w]
-        method = self["method"] or "proxy"
-        try:
-            self.arg = int(self["method_arg"])
-        except ValueError:
-            self.arg = 0
-        if len(words) == 1:
-            method = "single_term"
-        elif self.arg == 0 and method in ("proxy", "exact_cooc"):
-            if self.cooc_order == "yes":
-                method = "phrase_ordered"
-            else:
-                method = "phrase_unordered"
-        if method == "proxy":
-            if self.cooc_order == "yes" and self.arg > 0:  # Co-occurrence search within n words ordered
-                method = "proxy_ordered"
-            else:  # Co-occurrence search within n words unordered
-                method = "proxy_unordered"
-        elif method == "exact_cooc":
-            if self.cooc_order == "yes":
-                method = "exact_cooc_ordered"
-            else:
-                method = "exact_cooc_unordered"
-        elif method == "sentence":
-            self.arg = 6
-            if self.cooc_order == "yes":
-                method = "sentence_ordered"
-            else:
-                method = "sentence_unordered"
-        self.arg = str(self.arg)
+        method, self.arg = resolve_method(self.q, self["method"], self["method_arg"], self.cooc_order)
         self.cgi["arg"] = [self.arg]
         self.cgi["method"] = [method]
 
-        self.metadata_fields = db.locals["metadata_fields"]
-        self.metadata = {}
-        num_empty = 0
+        self.metadata_fields = config.db_locals["metadata_fields"]
 
         self.start = int(self["start"] or 0)
         self.end = int(self["end"] or 0)
@@ -126,30 +121,10 @@ class WSGIHandler(object):
             except ValueError:
                 self.end_date = "invalid"
 
-        for field in self.metadata_fields:
-            if field in self.cgi and self.cgi[field]:
-                # Hack to remove hyphens in Frantext
-                if db.locals["metadata_sql_types"][field] not in ("int", "date") and isinstance(
-                    self.cgi[field][0], str
-                ):
-                    if not self.cgi[field][0].startswith('"') and field != "filename":
-                        self.cgi[field][0] = query_parse(self.cgi[field][0], config)
-                # these ifs are to fix the no results you get when you do a
-                # metadata query
-                if self["q"] != "":
-                    self.metadata[field] = self.cgi[field][0]
-                elif self.cgi[field][0] != "":
-                    self.metadata[field] = self.cgi[field][0]
-            # in case of an empty query
-            if field not in self.cgi or not self.cgi[field][0]:
-                num_empty += 1
-
-        self.metadata["philo_type"] = self["philo_type"]
-
-        if num_empty == len(self.metadata_fields):
-            self.no_metadata = True
-        else:
-            self.no_metadata = False
+        self.metadata, self.no_metadata = parse_metadata(
+            self.cgi, self["q"], self.metadata_fields,
+            config.db_locals["metadata_sql_types"], config,
+        )
 
         try:
             self.path_components = [c for c in self.path_info.split("/") if c]
