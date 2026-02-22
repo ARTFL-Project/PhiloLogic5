@@ -1,10 +1,6 @@
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import get_expanded_query
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def get_query_terms(request, config):
     db = DB(config.db_path + "/data/")
     hits = db.query(request["q"], request["method"], request["arg"], **request.metadata)

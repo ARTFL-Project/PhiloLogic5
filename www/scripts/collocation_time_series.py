@@ -8,10 +8,6 @@ from scipy.sparse import csr_matrix
 
 from philologic.runtime.reports.collocation import fightin_words_zscores, load_map_field_cache
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def collocation_time_series(request, config):
     """Reads a numpy cache containing collocations for each year."""
     cache_tids, cache_counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(

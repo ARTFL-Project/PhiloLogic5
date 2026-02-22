@@ -125,9 +125,10 @@ else
     uv pip install "$PACKAGE_FILE" --quiet
 fi
 
-# Install Gunicorn WSGI server
-echo "Installing Gunicorn..."
-uv pip install gunicorn --quiet
+# Install Gunicorn WSGI server and Falcon web framework
+# Falcon ships pre-built Cython wheels on PyPI — binary install is ~5x faster at runtime
+echo "Installing Gunicorn and Falcon..."
+uv pip install gunicorn falcon --quiet
 
 # Deactivate virtual environment
 deactivate

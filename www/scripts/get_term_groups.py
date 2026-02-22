@@ -1,10 +1,6 @@
 from philologic.runtime.Query import split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def get_term_groups(request, config):
     if not request["q"]:
         return {"original_query": "", "term_groups": []}

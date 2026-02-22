@@ -3,10 +3,6 @@
 import numpy as np
 from philologic.runtime.reports.collocation import fightin_words_zscores, safe_pickle_load
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def comparative_collocations(request, config):
     """Calculate relative proportion of each collocate."""
     all_collocates = safe_pickle_load(request.primary_file_path)

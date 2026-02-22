@@ -4,10 +4,6 @@ from philologic.runtime.DB import DB
 from philologic.runtime.Query import grep_exact, grep_word, grep_word_attributes, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def autocomplete_term(request, config):
     """Get term list"""
     db = DB(config.db_path + "/data/")

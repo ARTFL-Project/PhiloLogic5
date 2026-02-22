@@ -5,9 +5,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import lmdb
 from philologic.runtime.DB import DB
 
-from wsgi_helpers import json_endpoint
-
-
 OBJECT_LEVEL = {"doc": 6, "div1": 5, "div2": 4, "div3": 3, "para": 2, "sent": 1}
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
@@ -29,7 +26,6 @@ def query_word_property(db, query, request):
     return result
 
 
-@json_endpoint
 def get_word_property_count(request, config):
     """Get word property count"""
     db = DB(config.db_path + "/data/")

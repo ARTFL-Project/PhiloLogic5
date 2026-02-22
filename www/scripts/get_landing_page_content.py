@@ -1,9 +1,5 @@
 from philologic.runtime import group_by_metadata, group_by_range
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def get_landing_page_content(request, config):
     if request.is_range == "true":
         if isinstance(request.query, bytes):

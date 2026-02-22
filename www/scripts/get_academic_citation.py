@@ -4,10 +4,6 @@ import orjson
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def get_academic_citation(request, config):
     db = DB(config.db_path + "/data/")
     text_obj = db[request.philo_id]

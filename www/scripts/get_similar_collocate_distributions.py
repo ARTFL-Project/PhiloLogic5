@@ -11,9 +11,6 @@ from philologic.runtime.reports.collocation import (
     safe_pickle_load,
 )
 
-from wsgi_helpers import json_endpoint
-
-
 @numba.njit(cache=True)
 def _nb_cosine_similarities(ref_tids, ref_weights, all_tids, all_weights, group_bounds, n_groups, max_tid):
     """Cosine similarity between a reference vector and each group's vector."""
@@ -46,7 +43,6 @@ def _nb_cosine_similarities(ref_tids, ref_weights, all_tids, all_weights, group_
     return similarities
 
 
-@json_endpoint
 def get_similar_collocate_distributions(request, config):
     """Get similar collocate distributions"""
     # Load the map_field numpy cache (all groups)

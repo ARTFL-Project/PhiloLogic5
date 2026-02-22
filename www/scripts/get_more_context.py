@@ -1,10 +1,6 @@
 from philologic.runtime import get_concordance_text
 from philologic.runtime.DB import DB
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def get_more_context(request, config):
     db = DB(config.db_path + "/data/")
     hit_num = int(request.hit_num)

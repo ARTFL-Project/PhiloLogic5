@@ -4,7 +4,7 @@ This configuration is used when running PhiloLogic under Gunicorn instead of
 Apache CGI. It provides better performance and resource efficiency.
 
 Usage:
-    gunicorn --config gunicorn.conf.py dispatcher:application
+    gunicorn --config gunicorn.conf.py app:application
 
 Or via systemd service (see install.sh for service file creation).
 """

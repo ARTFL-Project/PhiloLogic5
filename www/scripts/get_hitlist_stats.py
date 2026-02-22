@@ -3,14 +3,10 @@ import numpy as np
 from philologic.runtime.DB import DB
 from philologic.runtime.sql_validation import validate_column, validate_philo_type
 
-from wsgi_helpers import json_endpoint
-
-
 OBJECT_LEVEL = {"doc": 6, "div1": 5, "div2": 4, "div3": 3, "para": 2, "sent": 1}
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
 
-@json_endpoint
 def get_hitlist_stats(request, config):
     """Count hit occurences per metadata field"""
     db = DB(config.db_path + "/data/")

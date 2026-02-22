@@ -1,9 +1,5 @@
 from philologic.runtime.DB import DB
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def get_total_results(request, config):
     db = DB(config.db_path + "/data/")
     if request.no_q:

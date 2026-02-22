@@ -2,10 +2,6 @@ import os
 
 from philologic.Config import MakeDBConfig
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def get_web_config(request, config):
     """Retrieve Web Config data"""
     if config.valid_config is False:

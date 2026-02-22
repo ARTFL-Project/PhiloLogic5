@@ -8,7 +8,7 @@ Group=www-data
 WorkingDirectory=/var/lib/philologic5/web_app
 ExecStart=/var/lib/philologic5/philologic_env/bin/gunicorn \
     --config /var/lib/philologic5/web_app/gunicorn.conf.py \
-    dispatcher:application
+    app:application
 ExecReload=/bin/kill -s HUP $MAINPID
 Restart=on-failure
 RestartSec=5

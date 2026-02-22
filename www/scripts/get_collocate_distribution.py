@@ -7,10 +7,6 @@ from philologic.runtime.reports.collocation import (
     load_map_field_cache,
 )
 
-from wsgi_helpers import json_endpoint
-
-
-@json_endpoint
 def get_collocate_distribution(request, config):
     """Get collocate distribution for a single field value from a map_field numpy cache."""
     tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(

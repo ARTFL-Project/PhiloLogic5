@@ -7,7 +7,7 @@ from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import metadata_pattern_search
 from unidecode import unidecode
 
-from wsgi_helpers import BadRequest, json_endpoint
+from wsgi_helpers import BadRequest
 
 _environ = os.environ
 _environ["PATH"] += ":/usr/local/bin/"
@@ -28,7 +28,6 @@ patterns = [
 accented_roman_chars = re.compile(r"[\u00c0-\u0174]")
 
 
-@json_endpoint
 def autocomplete_metadata(request, config):
     """Retrieve metadata list"""
     db = DB(config.db_path + "/data/")
