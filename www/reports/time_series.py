@@ -1,19 +1,10 @@
-import os
+from philologic.runtime import generate_time_series
 
-import orjson
-from philologic.runtime import generate_time_series, WebConfig, WSGIHandler
-
-from custom_functions_loader import get_custom
+from wsgi_helpers import resolve
+from wsgi_helpers import json_endpoint
 
 
-def time_series(environ, start_response):
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("reports", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    _generate_time_series = get_custom(db_path, "generate_time_series", generate_time_series)
-    config = _WebConfig(db_path)
-    request = _WSGIHandler(environ, config)
-    time_series_object = _generate_time_series(request, config)
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response("200 OK", headers)
-    yield orjson.dumps(time_series_object)
+@json_endpoint
+def time_series(request, config):
+    _generate_time_series = resolve(config.db_path, "generate_time_series", generate_time_series)
+    return _generate_time_series(request, config)

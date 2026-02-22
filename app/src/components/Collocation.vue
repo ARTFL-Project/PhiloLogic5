@@ -570,8 +570,7 @@ export default {
                 return;
             }
             this.$http
-                .post(`${this.$dbUrl}/reports/collocation.py`, {},
-                    {
+                .get(`${this.$dbUrl}/reports/collocation.py`, {
                         params: this.paramsFilter(this.formData),
                     })
                 .then((response) => {
@@ -793,8 +792,7 @@ export default {
             this.compareSearching = true;
             this.otherCollocates = [];
             this.$http
-                .post(`${this.$dbUrl}/reports/collocation.py`, {},
-                    {
+                .get(`${this.$dbUrl}/reports/collocation.py`, {
                         params: this.paramsFilter(params),
                     })
                 .then((response) => {
@@ -815,10 +813,12 @@ export default {
             this.otherBiblio = this.buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
             this.overRepresented = [];
             this.underRepresented = [];
-            this.$http.post(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
-                primary_file_path: this.collocatesFilePath,
-                other_file_path: otherFilePath,
-                whole_corpus: this.wholeCorpus,
+            this.$http.get(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
+                params: {
+                    primary_file_path: this.collocatesFilePath,
+                    other_file_path: otherFilePath,
+                    whole_corpus: this.wholeCorpus,
+                },
             }).then((response) => {
                 this.overRepresented = this.extractSurfaceFromCollocate(response.data.top);
                 this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
@@ -835,7 +835,7 @@ export default {
             this.collocMethod = 'similar';
             this.updateCollocationUrl();
             this.$http
-                .post(`${this.$dbUrl}/reports/collocation.py`, {}, {
+                .get(`${this.$dbUrl}/reports/collocation.py`, {
                     params: {
                         q: this.formData.q,
                         colloc_filter_choice: this.formData.colloc_filter_choice,
@@ -854,14 +854,12 @@ export default {
         },
         getMostSimilarCollocDistribution(filePath) {
             this.similarSearchProgress = this.$t("collocation.similarCollocCompareMessage")
-            this.$http.post(`${this.$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
-                primary_file_path: this.collocatesFilePath,
-            },
-                {
-                    params: {
-                        file_path: filePath,
-                    }
-                }).then((response) => {
+            this.$http.get(`${this.$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
+                params: {
+                    primary_file_path: this.collocatesFilePath,
+                    file_path: filePath,
+                },
+            }).then((response) => {
                     this.similarDistributions = response.data.similar
                     this.cachedDistributions = filePath
                     this.similarSearching = false
@@ -916,7 +914,7 @@ export default {
                 }
             }
 
-            this.$http.post(`${this.$dbUrl}/reports/collocation.py`, {}, {
+            this.$http.get(`${this.$dbUrl}/reports/collocation.py`, {
                 params: params
             }).then((response) => {
                 this.searching = false;

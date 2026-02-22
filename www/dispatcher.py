@@ -169,6 +169,19 @@ def philo_dispatcher(environ, start_response):
 
     environ["PHILOLOGIC_DBPATH"] = db_path
 
+    # CORS preflight: handle OPTIONS globally for all endpoints
+    if environ["REQUEST_METHOD"] == "OPTIONS":
+        origin = environ.get("HTTP_ORIGIN", "*")
+        start_response("200 OK", [
+            ("Content-Type", "text/plain"),
+            ("Access-Control-Allow-Origin", origin),
+            ("Access-Control-Allow-Methods", "GET, POST, OPTIONS"),
+            ("Access-Control-Allow-Headers", "Content-Type"),
+            ("Access-Control-Max-Age", "86400"),
+        ])
+        yield b""
+        return
+
     # Set CGI-compatible environ vars that WSGIHandler expects.
     # Apache CGI sets these automatically; Gunicorn does not.
     environ.setdefault("SCRIPT_FILENAME", os.path.join(db_path, "dispatcher.py"))

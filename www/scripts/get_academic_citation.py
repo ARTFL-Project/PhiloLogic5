@@ -1,21 +1,14 @@
 import os
+
 import orjson
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
-from philologic.runtime import WebConfig, WSGIHandler
 
-from custom_functions_loader import get_custom
+from wsgi_helpers import json_endpoint
 
 
-def get_academic_citation(environ, start_response):
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    config = _WebConfig(db_path)
-    request = _WSGIHandler(environ, config)
+@json_endpoint
+def get_academic_citation(request, config):
     db = DB(config.db_path + "/data/")
     text_obj = db[request.philo_id]
     citation_hrefs = citation_links(db, config, text_obj)
@@ -31,7 +24,6 @@ def get_academic_citation(environ, start_response):
             return field_citation
 
         citation = [update_link(field_citation) for field_citation in citation]
-        yield orjson.dumps({"citation": citation, "link": permalink})
+        return {"citation": citation, "link": permalink}
     else:
-        yield orjson.dumps({"citation": citation, "link": ""})
-
+        return {"citation": citation, "link": ""}

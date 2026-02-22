@@ -4,7 +4,6 @@
 import sqlite3
 import sys
 
-import orjson
 from unidecode import unidecode
 
 from philologic.runtime.DB import DB
@@ -74,7 +73,7 @@ def landing_page_bibliography(request, config):
         hit_object["end_head"] = end_head
 
         results.append(hit_object)
-    return orjson.dumps(results)
+    return results
 
 
 def group_by_range(request_range, request, config):
@@ -107,20 +106,18 @@ def group_by_range(request_range, request, config):
                     "count": 1,
                 }
             )
-        return orjson.dumps(
-            {
-                "display_count": request.display_count,
-                "content_type": content_type,
-                "content": content,
-                "citations": citations,
-            }
-        )
+        return {
+            "display_count": request.display_count,
+            "content_type": content_type,
+            "content": content,
+            "citations": citations,
+        }
     content_type = metadata_queried
     query_range = set(range(ord(request_range[0]), ord(request_range[1]) + 1))  # Ordinal avoids unicode issues...
     try:
         cursor.execute(f'select *, count(*) as count from toms where philo_type="doc" group by {metadata_queried}')
     except sqlite3.OperationalError:
-        return orjson.dumps({"display_count": request.display_count, "content_type": content_type, "content": []})
+        return {"display_count": request.display_count, "content_type": content_type, "content": []}
     for doc in cursor:
         normalized_test_value = ""
         if doc[metadata_queried] is None:
@@ -149,14 +146,12 @@ def group_by_range(request_range, request, config):
                     "count": doc["count"],
                 }
             )
-    return orjson.dumps(
-        {
-            "display_count": request.display_count,
-            "content_type": content_type,
-            "content": content,
-            "citations": citations,
-        }
-    )
+    return {
+        "display_count": request.display_count,
+        "content_type": content_type,
+        "content": content,
+        "citations": citations,
+    }
 
 
 def group_by_metadata(request, config):
@@ -180,14 +175,12 @@ def group_by_metadata(request, config):
                 "metadata": metadata,
             }
         )
-    return orjson.dumps(
-        {
-            "display_count": request.display_count,
-            "content_type": request.group_by_field,
-            "content": [{"prefix": request.query, "results": result_group}],
-            "citations": citations,
-        }
-    )
+    return {
+        "display_count": request.display_count,
+        "content_type": request.group_by_field,
+        "content": [{"prefix": request.query, "results": result_group}],
+        "citations": citations,
+    }
 
 
 def get_fields_and_citations(request, config, db):

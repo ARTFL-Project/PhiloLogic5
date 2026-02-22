@@ -1,35 +1,25 @@
 """Time series of collocations: each period is compared to the previous to get a sense of the shift between each period."""
 
 import os
+
 import numpy as np
-import orjson
 import pandas as pd
 from scipy.sparse import csr_matrix
 
-from philologic.runtime import WebConfig, WSGIHandler
 from philologic.runtime.reports.collocation import fightin_words_zscores, load_map_field_cache
 
-from custom_functions_loader import get_custom
+from wsgi_helpers import json_endpoint
 
 
-def collocation_time_series(environ, start_response):
+@json_endpoint
+def collocation_time_series(request, config):
     """Reads a numpy cache containing collocations for each year."""
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
-
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    config = _WebConfig(db_path)
-    request = _WSGIHandler(environ, config)
-
     cache_tids, cache_counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(
         request.file_path
     )
 
     # Decode vocab strings for column names
-    colloc_dir = os.path.join(db_path, "data", "collocations")
+    colloc_dir = os.path.join(config.db_path, "data", "collocations")
     if count_lemmas:
         count_offsets = np.load(os.path.join(colloc_dir, "attr_lemma_vocab_offsets.npy"), mmap_mode="r")
         with open(os.path.join(colloc_dir, "attr_lemma_vocab_strings.bin"), "rb") as f:
@@ -80,8 +70,7 @@ def collocation_time_series(environ, start_response):
             continue
 
     if not valid_rows:
-        yield orjson.dumps({"period": None, "done": True})
-        return
+        return {"period": None, "done": True}
 
     dense_data = used_sparse[valid_rows].toarray()
     collocates_per_year_df = pd.DataFrame(dense_data, index=year_indices, columns=col_names)
@@ -113,15 +102,13 @@ def collocation_time_series(environ, start_response):
 
     done = period_number == len(collocates_per_period) - 1
 
-    yield orjson.dumps(
-        {
-            "period": {
-                "year": current_year,
-                "collocates": {"frequent": frequent_collocates, "distinctive": distinctive},
-            },
-            "done": done,
-        }
-    )
+    return {
+        "period": {
+            "year": current_year,
+            "collocates": {"frequent": frequent_collocates, "distinctive": distinctive},
+        },
+        "done": done,
+    }
 
 
 def calculate_distinctive_collocates(current_period, prev_period, next_period, collocates_per_period):
@@ -144,4 +131,3 @@ def calculate_distinctive_collocates(current_period, prev_period, next_period, c
     positive_z = positive_z.sort_values(ascending=False).round(4)
 
     return [(word, float(score)) for word, score in positive_z.head(100).items()]
-

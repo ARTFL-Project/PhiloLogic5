@@ -2,17 +2,16 @@
 with top shared collocates as explanations."""
 
 import os
+
 import numba
 import numpy as np
-import orjson
 
-from philologic.runtime import WebConfig, WSGIHandler
 from philologic.runtime.reports.collocation import (
     load_map_field_cache,
     safe_pickle_load,
 )
 
-from custom_functions_loader import get_custom
+from wsgi_helpers import json_endpoint
 
 
 @numba.njit(cache=True)
@@ -47,43 +46,21 @@ def _nb_cosine_similarities(ref_tids, ref_weights, all_tids, all_weights, group_
     return similarities
 
 
-def get_similar_collocate_distributions(environ, start_response):
+@json_endpoint
+def get_similar_collocate_distributions(request, config):
     """Get similar collocate distributions"""
-    if environ["REQUEST_METHOD"] == "OPTIONS":
-        start_response(
-            "200 OK",
-            [
-                ("Content-Type", "text/plain"),
-                ("Access-Control-Allow-Origin", environ["HTTP_ORIGIN"]),
-                ("Access-Control-Allow-Methods", "POST, OPTIONS"),
-                ("Access-Control-Allow-Headers", "Content-Type"),
-            ],
-        )
-        return [b""]
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    config = _WebConfig(db_path)
-    request = _WSGIHandler(environ, config)
-    start_response(
-        "200 OK",
-        [
-            ("Content-Type", "application/json"),
-            ("Access-Control-Allow-Origin", "*"),
-        ],
-    )
-    post_data = orjson.loads(environ["wsgi.input"].read())
-
     # Load the map_field numpy cache (all groups)
     tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(
         request.file_path
     )
 
     # Load reference collocates (Counter from a previous collocation query)
-    reference_collocates = safe_pickle_load(post_data["primary_file_path"])
+    if not request.primary_file_path:
+        return {"similar": []}
+    reference_collocates = safe_pickle_load(request.primary_file_path)
 
-    # Build name↔tid lookups (use lemma vocab when counting lemmas)
-    colloc_dir = os.path.join(db_path, "data", "collocations")
+    # Build name<->tid lookups (use lemma vocab when counting lemmas)
+    colloc_dir = os.path.join(config.db_path, "data", "collocations")
     if count_lemmas:
         count_offsets = np.load(os.path.join(colloc_dir, "attr_lemma_vocab_offsets.npy"), mmap_mode="r")
         with open(os.path.join(colloc_dir, "attr_lemma_vocab_strings.bin"), "rb") as f:
@@ -104,7 +81,7 @@ def get_similar_collocate_distributions(environ, start_response):
 
     # Convert reference Counter to sparse arrays.
     # Reference Counter keys may have an attribute suffix (e.g. ":pos:noun")
-    # that the vocab strings don't include — strip it before looking up tids.
+    # that the vocab strings don't include -- strip it before looking up tids.
     attr_suffix = f":{attribute}:{attribute_value}" if attribute else ""
     ref_tids_list = []
     ref_counts_list = []
@@ -116,8 +93,7 @@ def get_similar_collocate_distributions(environ, start_response):
             ref_counts_list.append(count)
 
     if not ref_tids_list:
-        yield orjson.dumps({"similar": []})
-        return
+        return {"similar": []}
 
     ref_tids = np.array(ref_tids_list, dtype=np.uint32)
     ref_counts_arr = np.array(ref_counts_list, dtype=np.int32)
@@ -178,7 +154,7 @@ def get_similar_collocate_distributions(environ, start_response):
             (group_names[idx], round(float(sims[idx]), 3), words)
         )
 
-    yield orjson.dumps({"similar": similar})
+    return {"similar": similar}
 
 
 def _top_similar_indices(similarities, n):
@@ -197,7 +173,7 @@ def _top_shared_collocates(ref_excess_lookup, group_tids, group_excess, tid_to_n
     """Return the top shared collocates ranked by min excess-over-median.
 
     For each word both the reference and the group use above the corpus
-    median, rank by min(excess_ref, excess_group) — the bottleneck value.
+    median, rank by min(excess_ref, excess_group) -- the bottleneck value.
     """
     shared = []
     for i in range(len(group_tids)):
@@ -212,4 +188,3 @@ def _top_shared_collocates(ref_excess_lookup, group_tids, group_excess, tid_to_n
 
     shared.sort(key=lambda x: x[1], reverse=True)
     return [tid_to_name.get(tid, "") for tid, _ in shared[:n_words]]
-

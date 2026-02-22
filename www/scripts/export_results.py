@@ -17,7 +17,7 @@ from philologic.runtime import (
     aggregation_by_field,
 )
 
-from custom_functions_loader import get_custom
+from wsgi_helpers import resolve
 
 
 TAGS = re.compile(r"<[^>]+>")
@@ -27,14 +27,14 @@ SPACES = re.compile(r"\s{2,}")
 
 def export_results(environ, start_response):
     db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    _bibliography_results = get_custom(db_path, "bibliography_results", bibliography_results)
-    _concordance_results = get_custom(db_path, "concordance_results", concordance_results)
-    _kwic_results = get_custom(db_path, "kwic_results", kwic_results)
-    _collocation_results = get_custom(db_path, "collocation_results", collocation_results)
-    _generate_time_series = get_custom(db_path, "generate_time_series", generate_time_series)
-    _aggregation_by_field = get_custom(db_path, "aggregation_by_field", aggregation_by_field)
+    _WebConfig = resolve(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = resolve(db_path, "WSGIHandler", WSGIHandler)
+    _bibliography_results = resolve(db_path, "bibliography_results", bibliography_results)
+    _concordance_results = resolve(db_path, "concordance_results", concordance_results)
+    _kwic_results = resolve(db_path, "kwic_results", kwic_results)
+    _collocation_results = resolve(db_path, "collocation_results", collocation_results)
+    _generate_time_series = resolve(db_path, "generate_time_series", generate_time_series)
+    _aggregation_by_field = resolve(db_path, "aggregation_by_field", aggregation_by_field)
     config = _WebConfig(db_path)
     request = _WSGIHandler(environ, config)
     results = []

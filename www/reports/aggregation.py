@@ -1,22 +1,10 @@
-import os
+from philologic.runtime import aggregation_by_field
 
-import orjson
-from philologic.runtime import aggregation_by_field, WebConfig, WSGIHandler
-
-from custom_functions_loader import get_custom
+from wsgi_helpers import resolve
+from wsgi_helpers import json_endpoint
 
 
-def aggregation(environ, start_response):
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("reports", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    _aggregation_by_field = get_custom(db_path, "aggregation_by_field", aggregation_by_field)
-    config = _WebConfig(db_path)
-    request = _WSGIHandler(environ, config)
-    aggregation_object = _aggregation_by_field(request, config)
-    headers = [
-        ("Content-type", "application/json; charset=UTF-8"),
-        ("Access-Control-Allow-Origin", "*"),
-    ]
-    start_response("200 OK", headers)
-    yield orjson.dumps(aggregation_object)
+@json_endpoint
+def aggregation(request, config):
+    _aggregation_by_field = resolve(config.db_path, "aggregation_by_field", aggregation_by_field)
+    return _aggregation_by_field(request, config)

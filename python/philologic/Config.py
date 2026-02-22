@@ -903,8 +903,8 @@ class Config:
                 written_keys.append(key)
         return string
 
-    def to_json(self):
-        """Convert Config to JSON representation"""
+    def to_dict(self):
+        """Convert Config to dict representation"""
         out_obj = {"valid_config": True}
         written = []
         for key in self.defaults.keys():
@@ -919,7 +919,7 @@ class Config:
                 out_obj["search_reports"].remove("time_series")
             except ValueError:
                 pass
-        return json.dumps(out_obj)
+        return out_obj
 
 
 def MakeWebConfig(path, **extra_values):

@@ -1,59 +1,39 @@
 """Compare collocations between two corpora."""
 
 import numpy as np
-import orjson
 from philologic.runtime.reports.collocation import fightin_words_zscores, safe_pickle_load
 
+from wsgi_helpers import json_endpoint
 
-def comparative_collocations(environ, start_response):
+
+@json_endpoint
+def comparative_collocations(request, config):
     """Calculate relative proportion of each collocate."""
-    if environ["REQUEST_METHOD"] == "OPTIONS":
-        # Handle preflight request
-        start_response(
-            "200 OK",
-            [
-                ("Content-Type", "text/plain"),
-                ("Access-Control-Allow-Origin", environ["HTTP_ORIGIN"]),
-                ("Access-Control-Allow-Methods", "POST, OPTIONS"),
-                ("Access-Control-Allow-Headers", "Content-Type"),
-            ],
-        )
-        return [b""]
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
-
-    post_data = orjson.loads(environ["wsgi.input"].read())
-    all_collocates = safe_pickle_load(post_data["primary_file_path"])
-    other_collocates = safe_pickle_load(post_data["other_file_path"])
-    whole_corpus = post_data["whole_corpus"]
+    all_collocates = safe_pickle_load(request.primary_file_path)
+    other_collocates = safe_pickle_load(request.other_file_path)
+    whole_corpus = request.whole_corpus.lower() == "true" if request.whole_corpus else False
 
     top_relative_proportions, low_relative_proportions = get_relative_proportions(
         all_collocates, other_collocates, whole_corpus
     )
 
-    yield orjson.dumps(
-        {
-            "top": top_relative_proportions,
-            "bottom": low_relative_proportions,
-        }
-    )
+    return {
+        "top": top_relative_proportions,
+        "bottom": low_relative_proportions,
+    }
 
 
 def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     """Compare two Counter dicts using Fightin' Words z-scores."""
-    # Collect the full vocabulary and build aligned count arrays
     words = sorted(set(all_collocates) | set(other_collocates))
     y_sub = np.array([all_collocates.get(w, 0) for w in words], dtype=np.float64)
     y_other = np.array([other_collocates.get(w, 0) for w in words], dtype=np.float64)
 
-    # When comparing against the whole corpus, subtract the sub-corpus counts
     if whole_corpus:
         y_other = np.maximum(y_other - y_sub, 0.0)
 
     zscores = fightin_words_zscores(y_sub, y_other)
 
-    # Split into over- and under-represented, sorted by magnitude
     order = np.argsort(zscores)[::-1]
 
     top = []
@@ -67,4 +47,3 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
     bottom.reverse()
 
     return top[:100], bottom[:100]
-

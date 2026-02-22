@@ -1,30 +1,21 @@
-import os
 import subprocess
-import orjson
+
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import grep_exact, grep_word, grep_word_attributes, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
-from philologic.runtime import WebConfig, WSGIHandler
 
-from custom_functions_loader import get_custom
+from wsgi_helpers import json_endpoint
 
 
-def autocomplete_term(environ, start_response):
+@json_endpoint
+def autocomplete_term(request, config):
     """Get term list"""
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    config = _WebConfig(db_path)
     db = DB(config.db_path + "/data/")
-    request = _WSGIHandler(environ, config)
     term = request.term
     if isinstance(term, list):
         term = term[-1]
     all_words = format_query(term, db, config)[:100]
-    yield orjson.dumps(all_words)
+    return all_words
 
 
 def format_query(q, db, config):
@@ -87,4 +78,3 @@ def format_query(q, db, config):
             output_string.append(prefix + m)
 
     return output_string
-

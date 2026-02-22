@@ -1,23 +1,12 @@
-import os
-import orjson
+from philologic.runtime import frequency_results
 
-from philologic.runtime import WebConfig, WSGIHandler, frequency_results
-
-from custom_functions_loader import get_custom
+from wsgi_helpers import resolve
+from wsgi_helpers import json_endpoint
 
 
-def get_frequency(environ, start_response):
+@json_endpoint
+def get_frequency(request, config):
     """reads through a hitlist. looks up q.frequency_field in each hit, and builds up a list of
     unique values and their frequencies."""
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    _frequency_results = get_custom(db_path, "frequency_results", frequency_results)
-    config = _WebConfig(db_path)
-    request = _WSGIHandler(environ, config)
-    results = _frequency_results(request, config)
-    yield orjson.dumps(results)
-
+    _frequency_results = resolve(config.db_path, "frequency_results", frequency_results)
+    return _frequency_results(request, config)

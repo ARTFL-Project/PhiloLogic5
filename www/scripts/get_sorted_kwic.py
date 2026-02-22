@@ -5,7 +5,7 @@ import timeit
 import numba
 import numpy as np
 import orjson
-from custom_functions_loader import get_custom
+from wsgi_helpers import resolve
 from philologic.runtime import WebConfig, WSGIHandler, kwic_hit_object, page_interval
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
@@ -429,8 +429,8 @@ def get_sorted_kwic(environ, start_response):
     start_response("200 OK", headers)
 
     db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    _WebConfig = resolve(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = resolve(db_path, "WSGIHandler", WSGIHandler)
     config = _WebConfig(db_path)
     db = DB(config.db_path + "/data/")
     request = _WSGIHandler(environ, config)

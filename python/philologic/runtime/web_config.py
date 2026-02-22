@@ -2,7 +2,6 @@
 
 import sys
 
-from orjson import dumps
 from philologic.Config import MakeWebConfig
 
 
@@ -18,9 +17,9 @@ class brokenConfig(object):
     def __getitem__(self, _):
         return ""
 
-    def to_json(self):
-        """Return JSON representation of config"""
-        return dumps({"valid_config": False, "traceback": self.traceback, "web_config_path": self.web_config_path})
+    def to_dict(self):
+        """Return dict representation of config"""
+        return {"valid_config": False, "traceback": self.traceback, "web_config_path": self.web_config_path}
 
 
 def WebConfig(db_path):

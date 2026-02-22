@@ -1,22 +1,11 @@
-import os
-from json import dumps
 from philologic.runtime.DB import DB
 from philologic.runtime.link import byte_range_to_link
-from philologic.runtime import WebConfig, WSGIHandler
 
-from custom_functions_loader import get_custom
+from wsgi_helpers import json_endpoint
 
 
-def alignment_to_text(environ, start_response):
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    config = _WebConfig(db_path)
+@json_endpoint
+def alignment_to_text(request, config):
     db = DB(config.db_path + "/data/")
-    request = _WSGIHandler(environ, config)
     link = byte_range_to_link(db, config, request)
-    yield dumps({"link": link}).encode("utf-8")
-
+    return {"link": link}

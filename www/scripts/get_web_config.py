@@ -1,27 +1,19 @@
 import os
+
 from philologic.Config import MakeDBConfig
-from philologic.runtime.DB import DB
 
-from philologic.runtime import WebConfig
-
-from custom_functions_loader import get_custom
+from wsgi_helpers import json_endpoint
 
 
-def get_web_config(environ, start_response):
+@json_endpoint
+def get_web_config(request, config):
     """Retrieve Web Config data"""
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    config = _WebConfig(db_path)
     if config.valid_config is False:
-        yield config.to_json()
-    else:
-        config.time_series_status = time_series_tester(config)
-        db_locals = MakeDBConfig(os.path.join(db_path, "data/db.locals.py"))
-        config.data["available_metadata"] = db_locals.metadata_fields
-        yield config.to_json()
+        return config.to_dict()
+    config.time_series_status = time_series_tester(config)
+    db_locals = MakeDBConfig(os.path.join(config.db_path, "data/db.locals.py"))
+    config.data["available_metadata"] = db_locals.metadata_fields
+    return config.to_dict()
 
 
 def time_series_tester(config):
@@ -33,4 +25,3 @@ def time_series_tester(config):
         if line_count > 1:
             return True
     return False
-

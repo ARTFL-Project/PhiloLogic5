@@ -1,13 +1,11 @@
 import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
+
 import lmdb
-import orjson
 from philologic.runtime.DB import DB
 
-from philologic.runtime import WebConfig, WSGIHandler
-
-from custom_functions_loader import get_custom
+from wsgi_helpers import json_endpoint
 
 
 OBJECT_LEVEL = {"doc": 6, "div1": 5, "div2": 4, "div3": 3, "para": 2, "sent": 1}
@@ -31,19 +29,9 @@ def query_word_property(db, query, request):
     return result
 
 
-def get_word_property_count(environ, start_response):
+@json_endpoint
+def get_word_property_count(request, config):
     """Get word property count"""
-    status = "200 OK"
-    headers = [
-        ("Content-type", "application/json; charset=UTF-8"),
-        ("Access-Control-Allow-Origin", "*"),
-    ]
-    start_response(status, headers)
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    config = _WebConfig(db_path)
-    request = _WSGIHandler(environ, config)
     db = DB(config.db_path + "/data/")
 
     word_property_count = []
@@ -87,24 +75,9 @@ def get_word_property_count(environ, start_response):
                         lemma_count[lemma] += 1
                     else:
                         lemma_count[lemma] = 1
-                        # local_hits = db.query(
-                        #     lemma,
-                        #     request["method"],
-                        #     request["arg"],
-                        #     raw_results=True,
-                        #     raw_bytes=True,
-                        #     **request.metadata,
-                        # )
-                        # local_hits.finish()
-                        # total_count_per_lemma[lemma] = len(local_hits)
-        # word_property_count = [
-        #     {"label": k.replace("lemma:", ""), "count": v, "overall_count": total_count_per_lemma[k], "q": k}
-        #     for k, v in lemma_count.items()
-        # ]
         word_property_count = [{"label": k.replace("lemma:", ""), "count": v, "q": k} for k, v in lemma_count.items()]
 
     word_property_count.sort(key=lambda x: x["count"], reverse=True)
 
     results = {"query": dict([i for i in request]), "results": word_property_count}
-    yield orjson.dumps(results)
-
+    return results

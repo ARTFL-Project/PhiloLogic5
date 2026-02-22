@@ -1,21 +1,9 @@
-import os
-import orjson
 from philologic.runtime import concordance_results
 
-from philologic.runtime import WebConfig, WSGIHandler
-
-from custom_functions_loader import get_custom
+from wsgi_helpers import json_endpoint
 
 
-def get_word_frequency(environ, start_response):
-    status = "200 OK"
-    headers = [("Content-type", "application/json; charset=UTF-8"), ("Access-Control-Allow-Origin", "*")]
-    start_response(status, headers)
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
-    config = _WebConfig(db_path)
-    request = _WSGIHandler(environ, config)
+@json_endpoint
+def get_word_frequency(request, config):
     word_frequency_object = generate_word_frequency(request, config)
-    yield orjson.dumps(word_frequency_object)
-
+    return word_frequency_object

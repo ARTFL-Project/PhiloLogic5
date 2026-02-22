@@ -6,13 +6,13 @@ from philologic.runtime.HitWrapper import ObjectWrapper
 
 from philologic.runtime import WebConfig, WSGIHandler
 
-from custom_functions_loader import get_custom
+from wsgi_helpers import resolve
 
 
 def resolve_cite(environ, start_response):
     db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = get_custom(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = get_custom(db_path, "WSGIHandler", WSGIHandler)
+    _WebConfig = resolve(db_path, "WebConfig", WebConfig)
+    _WSGIHandler = resolve(db_path, "WSGIHandler", WSGIHandler)
     config = _WebConfig(db_path)
     db = DB(config.db_path + "/data/")
     request = _WSGIHandler(environ, config)
