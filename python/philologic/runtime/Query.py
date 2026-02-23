@@ -28,11 +28,6 @@ os.environ["NUMBA_CACHE_DIR"] = cache_dir
 numba.config.CACHE_DIR = cache_dir
 
 
-# =============================================================================
-# Document-level search helper functions
-# =============================================================================
-
-
 @numba.jit(nopython=True, cache=True)
 def _merge_two_sorted_arrays(arr1, arr2):
     """Merge two sorted hit arrays using two-way merge (O(n)).
@@ -1066,6 +1061,32 @@ def filter_philo_ids(corpus_file, philo_ids) -> np.ndarray:
         return philo_ids[overall_mask]
 
 
+_EARLY_FLUSH_BYTES = 100 * 9 * 4  # 100 hits × 36 bytes — enough for first page
+
+
+def _write_with_early_flush(output_file, data):
+    """Write data with an early flush so the HitList reader can see the first page immediately."""
+    mv = memoryview(data)
+    output_file.write(mv[:_EARLY_FLUSH_BYTES])
+    output_file.flush()
+    if len(mv) > _EARLY_FLUSH_BYTES:
+        output_file.write(mv[_EARLY_FLUSH_BYTES:])
+
+
+def _stream_file_with_early_flush(source_path, output_file):
+    """Stream from a file with an early flush after the first chunk."""
+    with open(source_path, "rb") as src:
+        first_chunk = src.read(_EARLY_FLUSH_BYTES)
+        if first_chunk:
+            output_file.write(first_chunk)
+            output_file.flush()
+        while True:
+            chunk = src.read(8 * 1024 * 1024)
+            if not chunk:
+                break
+            output_file.write(chunk)
+
+
 def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
     """Search for a single word in the database."""
     with open(f"{hitlist_filename}.terms", "r") as terms_file:
@@ -1077,24 +1098,23 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
             if corpus_file is None:
                 if word not in overflow_words:
                     buffer = txn.get(word.encode("utf8"))
-                    output_file.write(buffer)
+                    _write_with_early_flush(output_file, buffer)
                 else:
                     file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
-                    with open(file_path, "rb") as overflow_file:
-                        output_file.write(overflow_file.read())
+                    _stream_file_with_early_flush(file_path, output_file)
             else:
                 word_array = get_word_array(txn, word, overflow_words, db_path)
                 filtered_philo_ids = filter_philo_ids(
                     corpus_file,
                     word_array,
                 )
-                output_file.write(filtered_philo_ids.tobytes())
+                _write_with_early_flush(output_file, filtered_philo_ids.tobytes())
     else:
         with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
             merged = _load_word_group_hits(db_path, txn, words, overflow_words)
             if corpus_file is not None:
                 merged = filter_philo_ids(corpus_file, merged)
-            output_file.write(merged.tobytes())
+            _write_with_early_flush(output_file, merged.tobytes())
     env.close()
 
 
@@ -1150,6 +1170,7 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
             rights[g] = np.searchsorted(g_doc_ids, rare_docs, side='right')
 
         with open(hitlist_filename, "wb") as output_file:
+            flushed = False
             for d_idx in range(len(rare_docs)):
                 # Get rare group's hits for this document
                 rare_doc_hits = all_hits[rare_group_idx][rare_starts[d_idx]:rare_starts[d_idx + 1]]
@@ -1195,6 +1216,9 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
 
                 if len(result) > 0:
                     output_file.write(result.tobytes())
+                    if not flushed:
+                        output_file.flush()
+                        flushed = True
 
     env.close()
 
@@ -1277,6 +1301,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
             other_rights[g] = np.searchsorted(g_doc_ids, rare_docs, side='right')
 
         with open(hitlist_filename, "wb") as output_file:
+            flushed = False
             for d_idx in range(len(rare_docs)):
                 # Extract hits for this document from each group
                 empty = np.empty((0, 9), dtype=np.uint32)
@@ -1307,6 +1332,9 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
 
                     if len(result) > 0:
                         output_file.write(result.tobytes())
+                        if not flushed:
+                            output_file.flush()
+                            flushed = True
                 else:
                     # General N-group case: use sentence intersection pipeline
                     common_sent_data = _find_common_sentences(doc_hits, cooc_slice)
@@ -1323,6 +1351,9 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
 
                     if len(result) > 0:
                         output_file.write(result.tobytes())
+                        if not flushed:
+                            output_file.flush()
+                            flushed = True
 
     env.close()
 

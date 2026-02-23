@@ -89,7 +89,10 @@ export default {
             "currentReport",
             "metadataUpdate",
             "urlUpdate",
-            "showFacets"
+            "showFacets",
+            "searching",
+            "resultsLength",
+            "totalResultsDone"
         ]),
         ...mapStores(useMainStore),
     },
@@ -120,8 +123,10 @@ export default {
     },
     methods: {
         fetchResults() {
+            this.totalResultsDone = false;
             this.results = {};
             this.searchParams = { ...this.formData };
+            this.searching = true;
             this.$http
                 .get(`${this.$dbUrl}/reports/bibliography.py`, {
                     params: this.paramsFilter(this.searchParams),
@@ -133,8 +138,16 @@ export default {
                     } else {
                         this.results = this.dictionaryBibliography(response.data);
                     }
+                    if (response.data.results_length !== undefined) {
+                        this.mainStore.updateResultsLength(parseInt(response.data.results_length));
+                    }
+                    if (response.data.query_done) {
+                        this.totalResultsDone = true;
+                    }
+                    this.searching = false;
                 })
                 .catch((error) => {
+                    this.searching = false;
                     this.loading = false;
                     this.error = error.toString();
                     this.debug(this, error);

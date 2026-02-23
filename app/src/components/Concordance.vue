@@ -92,7 +92,8 @@ export default {
             "currentReport",
             "description",
             "showFacets",
-            "urlUpdate"
+            "urlUpdate",
+            "totalResultsDone"
         ]),
         ...mapStores(useMainStore),
     },
@@ -120,6 +121,7 @@ export default {
     },
     methods: {
         fetchResults() {
+            this.totalResultsDone = false;
             this.results = { description: { end: 0 } };
             this.searchParams = { ...this.formData };
             this.searching = true;
@@ -130,6 +132,9 @@ export default {
                 .then((response) => {
                     this.results = response.data;
                     this.mainStore.updateResultsLength(parseInt(response.data.results_length));
+                    if (response.data.query_done) {
+                        this.totalResultsDone = true;
+                    }
                     this.searching = false;
                 })
                 .catch((error) => {

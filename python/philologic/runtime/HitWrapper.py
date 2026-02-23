@@ -2,8 +2,36 @@
 
 """All different types of hit objects"""
 
+import threading
+
 TEXT_OBJECT_LEVELS = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
-SHARED_CACHE = {}
+_thread_local = threading.local()
+
+
+class _ThreadLocalCache:
+    """Dict-like object backed by thread-local storage.
+
+    Each thread gets its own dict, so concurrent requests in gthread
+    workers never see each other's cached metadata rows.
+    """
+
+    def __contains__(self, key):
+        return key in getattr(_thread_local, "cache", {})
+
+    def __getitem__(self, key):
+        return _thread_local.cache[key]
+
+    def __setitem__(self, key, value):
+        if not hasattr(_thread_local, "cache"):
+            _thread_local.cache = {}
+        _thread_local.cache[key] = value
+
+    def clear(self):
+        if hasattr(_thread_local, "cache"):
+            _thread_local.cache.clear()
+
+
+SHARED_CACHE = _ThreadLocalCache()
 
 
 def _safe_lookup(row, field):

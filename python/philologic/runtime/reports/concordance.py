@@ -12,6 +12,7 @@ from philologic.runtime.pages import page_interval
 def concordance_results(request, config):
     """Fetch concordances results."""
     db = DB(config.db_path + "/data/")
+
     hits = db.query(
         request["q"],
         request["method"],
@@ -20,6 +21,7 @@ def concordance_results(request, config):
         sort_order=request["sort_order"],
         **request.metadata,
     )
+
     start, end, _ = page_interval(request["results_per_page"], hits, request.start, request.end)
 
     db.prefetch_hits(hits, start, end)
@@ -38,8 +40,8 @@ def concordance_results(request, config):
     results = []
     for hit in hits[start - 1 : end]:
         citation_hrefs = citation_links(db, config, hit)
-        metadata_fields = {metadata: hit[metadata] for metadata in db.locals["metadata_fields"]}
         citation = citations(hit, citation_hrefs, config, report="concordance")
+        metadata_fields = {metadata: hit[metadata] for metadata in db.locals["metadata_fields"]}
         context = get_concordance_text(db, hit, config.db_path, config.concordance_length)
         if formatting_regexes:
             for formatting_regex, replacement in formatting_regexes:
@@ -53,6 +55,7 @@ def concordance_results(request, config):
             "bytes": hit.bytes,
         }
         results.append(result_obj)
+
     concordance_object["results"] = results
     concordance_object["results_length"] = len(hits)
     concordance_object["query_done"] = hits.done

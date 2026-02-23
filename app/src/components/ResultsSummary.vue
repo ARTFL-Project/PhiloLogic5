@@ -257,7 +257,8 @@ export default {
             "resultsLength",
             "aggregationCache",
             "totalResultsDone",
-            "showFacets"
+            "showFacets",
+            "searching"
         ]),
         ...mapStores(useMainStore),
         colloc_filter_choice() {
@@ -326,18 +327,17 @@ export default {
                 this.updateDescriptions();
             }
         },
-    },
-    methods: {
-        updateDescriptions() {
-            let modalEl = document.getElementById("results-bibliography");
-            if (modalEl) {
-                // hide modal if open
-                let modal = Modal.getOrCreateInstance(modalEl);
-                modal.hide();
-            }
-            this.buildDescription();
-            this.updateTotalResults();
-            if (["concordance", "kwic", "bibliography"].includes(this.formData.report)) {
+        searching(newVal, oldVal) {
+            // When a concordance/kwic/bibliography report response arrives (searching
+            // goes from true to false), fire the deferred secondary requests. By this
+            // time the search is usually done, so hits.finish() returns instantly.
+            // Other reports (collocation, time_series, aggregation) call
+            // updateTotalResults directly from updateDescriptions(), so skip them here.
+            if (oldVal === true && newVal === false
+                && ["concordance", "kwic", "bibliography"].includes(this.formData.report)) {
+                if (!this.totalResultsDone) {
+                    this.updateTotalResults();
+                }
                 let newQuery = {
                     ...this.formData,
                     start: "",
@@ -350,6 +350,25 @@ export default {
                     this.getHitListStats();
                     this.currentQuery = newQuery;
                 }
+                this.buildDescription();
+            }
+        },
+    },
+    methods: {
+        updateDescriptions() {
+            let modalEl = document.getElementById("results-bibliography");
+            if (modalEl) {
+                // hide modal if open
+                let modal = Modal.getOrCreateInstance(modalEl);
+                modal.hide();
+            }
+            this.buildDescription();
+            // For reports that set searching/totalResultsDone (concordance, kwic, bibliography),
+            // defer updateTotalResults and getHitListStats until the report response arrives
+            // (via the searching watcher below). This avoids blocking extra Gunicorn workers
+            // with hits.finish() calls while the main report request is still in flight.
+            if (!["concordance", "kwic", "bibliography"].includes(this.formData.report)) {
+                this.updateTotalResults();
             }
         },
         buildDescription() {
@@ -386,6 +405,11 @@ export default {
             return description;
         },
         updateTotalResults() {
+            // If the report response already provided the final count, skip the extra request
+            if (this.totalResultsDone) {
+                this.hits = this.buildDescription();
+                return;
+            }
             let params = { ...this.formData };
             if (this.formData.report == "time_series") {
                 params.year = `${this.formData.start_date || this.$philoConfig.time_series_start_end_date.start_date}-${this.formData.end_date || this.$philoConfig.time_series_start_end_date.end_date

@@ -16,14 +16,16 @@ import os
 bind = "unix:/var/run/philologic/gunicorn.sock"
 
 # Worker processes
-# Formula: (2 x CPU cores) + 1 is a good starting point
-# Adjust based on your workload and available memory
-workers = min(multiprocessing.cpu_count() * 2 + 1, 8)
+workers = min(multiprocessing.cpu_count(), 4)
 
 # Worker class
-# 'sync' is the default and works well with subprocess spawning
-# Do NOT use 'gevent' or 'eventlet' - they don't work well with subprocess
-worker_class = "sync"
+# gthread: each worker handles multiple requests via threads.
+# Do NOT use 'gevent' or 'eventlet' - they break subprocess and numpy.
+worker_class = "gthread"
+
+# Threads per worker
+# 4 workers × 4 threads = 16 concurrent request slots
+threads = 4
 
 # Timeout for worker processes (seconds)
 # Long timeout to accommodate large searches
@@ -55,6 +57,7 @@ proc_name = "philologic5"
 accesslog = None
 errorlog = "/var/log/philologic5/gunicorn-error.log"
 loglevel = "info"
+capture_output = True
 
 # Security
 # Limit request sizes to prevent DoS

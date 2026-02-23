@@ -145,7 +145,8 @@ export default {
             "description",
             "sortedKwicCache",
             "urlUpdate",
-            "showFacets"
+            "showFacets",
+            "totalResultsDone"
         ]),
         ...mapStores(useMainStore),
         first_kwic_sorting_option: {
@@ -348,6 +349,7 @@ export default {
             }
         },
         fetchResults() {
+            this.totalResultsDone = false;
             this.results = { description: { end: 0 }, results: [] };
             this.searchParams = { ...this.formData };
             const hasSorting = this.first_kwic_sorting_option !== "" ||
@@ -364,6 +366,9 @@ export default {
                         this.resultsLength = response.data.results_length;
                         this.runningTotal = response.data.results_length;
                         this.results.description = response.data.description;
+                        if (response.data.query_done) {
+                            this.totalResultsDone = true;
+                        }
                         this.searching = false;
                     })
                     .catch((error) => {
