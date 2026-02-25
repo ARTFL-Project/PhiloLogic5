@@ -230,10 +230,7 @@ export default {
         },
         setupCustomPage() {
             this.$http
-                .get(`${this.$dbUrl}/${this.landingPageBrowsing}`, {
-                    withCredentials: false,
-                    headers: { "Access-Control-Allow-Origin": "*", "Content-Type": "text/html" },
-                })
+                .get(`${this.$dbUrl}/scripts/get_custom_landing_page.py`)
                 .then((response) => (this.customLandingPage = response.data));
         },
         getContent(browseType, range) {
@@ -357,95 +354,100 @@ export default {
     },
 };
 </script>
-<style lang="scss" scoped>
+<style lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;
 
-.btn-light {
-    background-color: #fff;
-    border-width: 0px 1px 0px 0px;
-    border-color: rgba(0, 0, 0, 0.125);
-}
+#landing-page-container {
+    .btn-light {
+        background-color: #fff;
+        border-width: 0px 1px 0px 0px;
+        border-color: rgba(0, 0, 0, 0.125);
+    }
 
-.first {
-    border-bottom-left-radius: 0.25rem !important;
-}
+    .first {
+        border-bottom-left-radius: 0.25rem !important;
+    }
 
-.last {
-    border-bottom-right-radius: 0.25rem !important;
-    border-right-width: 0px;
-}
+    .last {
+        border-bottom-right-radius: 0.25rem !important;
+        border-right-width: 0px;
+    }
 
-.btn-light:hover {
-    background-color: #f8f8f8;
-}
+    .btn-light:hover {
+        background-color: #f8f8f8;
+    }
 
-.card-header {
-    text-align: center;
-    font-variant: small-caps;
-}
+    .card-header {
+        text-align: center;
+        font-variant: small-caps;
+    }
 
-.letter {
-    text-align: center;
-    cursor: pointer;
-    color: theme.$link-color;
-    text-decoration: none;
-    border: none;
-    background: transparent;
-    padding: 0.5rem;
-    width: 100%;
-}
+    .letter {
+        text-align: center;
+        cursor: pointer;
+        color: theme.$link-color;
+        text-decoration: none;
+        border: none;
+        padding: 0.5rem;
+        width: 100%;
+    }
 
-.letter:hover,
-.letter:focus {
-    background-color: #e8e8e8;
-    color: theme.$link-color;
-    text-decoration: none;
-}
+    .letter:focus {
+        background-color: #f8f8f8;
+        color: #fff;
+        text-decoration: none;
+    }
 
-tr:nth-child(odd) {
-    background-color: #f8f8f8;
-}
+    .letter:hover {
+        color: #fff !important;
+        text-decoration: none;
+    }
 
-tr:nth-child(odd) td.letter:nth-child(2n + 1) {
-    background-color: #fff;
-}
+    td {
+        padding: 0;
+    }
 
-tr:nth-child(even) {
-    background-color: #fff;
-}
+    tr:nth-child(odd) td {
+        background-color: #f8f8f8;
+    }
 
-tr:nth-child(even) td.letter:nth-child(2n + 1) {
-    background-color: #f8f8f8;
-}
+    tr:nth-child(odd) td:nth-child(2n + 1) {
+        background-color: #fff;
+    }
 
-.landing-page-btn:focus {
-    border-width: 3px;
-}
+    tr:nth-child(even) td {
+        background-color: #fff;
+    }
 
-#dico-landing-volume .list-group-item {
-    padding: 0 1rem;
-}
+    tr:nth-child(even) td:nth-child(2n + 1) {
+        background-color: #f8f8f8;
+    }
 
-#dico-landing-volume a {
-    display: inline-block;
-    padding: 0.5rem 0;
-}
+    .landing-page-btn:focus {
+        border-width: 3px;
+    }
 
-.letter {
-    text-align: center;
-}
+    #dico-landing-volume .list-group-item {
+        padding: 0.5rem 1rem;
+    }
 
-#landing-page-logo {
-    text-align: center;
-}
+    #dico-landing-volume a {
+        display: inline-block;
+        padding: 0.5rem 0;
+    }
 
-.landing-page-title {
-    margin-top: 2rem;
-    font-size: 1.5rem;
-    font-weight: 600;
-    font-variant: small-caps;
-    letter-spacing: 0.05em;
-    margin-bottom: 0;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    #landing-page-logo {
+        text-align: center;
+    }
+
+    .landing-page-title {
+        margin-top: 2rem;
+        font-size: 1.5rem;
+        font-weight: 600;
+        font-variant: small-caps;
+        letter-spacing: 0.05em;
+        margin-bottom: 0;
+        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    }
 }
 </style>

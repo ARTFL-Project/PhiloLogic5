@@ -6,6 +6,7 @@ from .comparative_collocations import comparative_collocations
 from .get_academic_citation import get_academic_citation
 from .get_bibliography import get_bibliography
 from .get_collocate_distribution import get_collocate_distribution
+from .get_custom_landing_page import get_custom_landing_page
 from .get_filter_list import get_filter_list
 from .get_frequency import get_frequency
 from .get_header import get_header

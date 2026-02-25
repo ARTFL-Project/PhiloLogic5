@@ -43,6 +43,7 @@ JSON_SCRIPTS = {
 
 # Scripts that return HTML instead of JSON
 HTML_SCRIPTS = {
+    "get_custom_landing_page",
     "get_header",
 }
 

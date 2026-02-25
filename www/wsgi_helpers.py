@@ -7,6 +7,7 @@ Provides:
 
 import importlib.util
 import os
+import sys
 
 _cache = {}
 
@@ -19,11 +20,16 @@ def _load_module(db_path):
     if db_path in _cache:
         return _cache[db_path]
 
-    custom_path = os.path.join(db_path, "custom_functions", "__init__.py")
+    custom_dir = os.path.join(db_path, "custom_functions")
+    custom_path = os.path.join(custom_dir, "__init__.py")
     if os.path.exists(custom_path):
         module_name = f"custom_functions_{db_path.replace('/', '_')}"
-        spec = importlib.util.spec_from_file_location(module_name, custom_path)
+        spec = importlib.util.spec_from_file_location(
+            module_name, custom_path,
+            submodule_search_locations=[custom_dir],
+        )
         module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
         spec.loader.exec_module(module)
         _cache[db_path] = module
     else:

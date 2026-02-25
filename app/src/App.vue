@@ -507,6 +507,7 @@ span.note {
 .toc-children {
     list-style: none;
     padding-left: 1.25rem;
+    margin-top: 0.3rem;
     margin-bottom: 0;
     position: relative;
 }
@@ -527,7 +528,7 @@ span.note {
     content: '';
     position: absolute;
     left: 0.75rem;
-    top: 0;
+    top: 0.3rem;
     bottom: 0;
     width: 1px;
     border-left: 1px dotted theme.$link-color;
