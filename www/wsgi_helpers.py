@@ -52,5 +52,5 @@ def resolve(db_path, name, default):
     return default
 
 
-class BadRequest(Exception):
-    """Raise from an endpoint to return a 400 response with a plain-text message."""
+# Re-export from philologic package so www/ code keeps using the same import path
+from philologic.runtime.exceptions import BadRequest  # noqa: F401

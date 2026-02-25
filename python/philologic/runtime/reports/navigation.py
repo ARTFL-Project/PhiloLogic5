@@ -2,13 +2,21 @@
 """Navigate inside objects"""
 
 import regex as re
+
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.get_text import get_text_obj
 
 
 def generate_text_object(request, config, note=False):
     """Return text object given an philo_id"""
+    # Block doc-level text rendering to prevent scraping
+    parts = request.philo_id.split()
+    non_zero = [p for p in parts if p != "0"]
+    if len(non_zero) <= 1:
+        raise BadRequest("Document-level text rendering is not allowed.")
+
     # verify this isn't a page ID or if this is a note
     if len(request.philo_id.split()) == 9 and note is not True:
         width = 9

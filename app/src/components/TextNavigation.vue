@@ -264,6 +264,15 @@ export default {
             this.textRendered = false;
             this.textObjectURL = this.$route.params;
             this.philoID = this.textObjectURL.pathInfo.split("/").join(" ");
+
+            // Block doc-level rendering — redirect to table of contents
+            const nonZeroParts = this.philoID.split(" ").filter(n => n !== "0");
+            if (nonZeroParts.length <= 1) {
+                const docId = this.philoID.split(" ")[0];
+                this.$router.replace(`/navigate/${docId}/table-of-contents`);
+                return;
+            }
+
             let byteString = "";
             if ("byte" in this.$route.query) {
                 this.byte = this.$route.query.byte;
