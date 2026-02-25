@@ -219,10 +219,6 @@ export default {
     outline: 1px solid theme.$link-color;
 }
 
-.toc-child .toc-content-wrapper {
-    display: inline-block;
-    margin-top: 0.3rem;
-}
 
 .separator {
     padding: 5px;

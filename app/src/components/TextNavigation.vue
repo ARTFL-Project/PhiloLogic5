@@ -855,12 +855,25 @@ export default {
     position: relative;
     max-height: 90vh;
     min-width: 250px;
+    max-width: 66.667%;
     overflow: scroll;
     text-align: justify;
     line-height: 180%;
     z-index: 50;
     background: #fff;
     padding: 0 1rem;
+}
+
+@media (max-width: 991.98px) {
+    #toc-content {
+        max-width: 83.333%;
+    }
+}
+
+@media (max-width: 575.98px) {
+    #toc-content {
+        max-width: 100%;
+    }
 }
 
 #toc-wrapper {

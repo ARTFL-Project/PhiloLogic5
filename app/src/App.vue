@@ -509,51 +509,48 @@ span.note {
     padding-left: 1.25rem;
     margin-top: 0.3rem;
     margin-bottom: 0;
-    position: relative;
+    overflow: hidden;
 }
 
 .toc-child {
     position: relative;
     padding-left: 0.75rem;
+    border-left: 1px dotted rgba(theme.$link-color, 0.4);
+}
+
+.toc-child:last-child {
+    border-left-color: transparent;
 }
 
 .toc-content-wrapper {
-    display: inline-block;
-    width: 100%;
-    vertical-align: top;
+    display: flex;
+    align-items: baseline;
 }
 
-/* Tree visual lines (dotted) */
-.toc-children::before {
-    content: '';
-    position: absolute;
-    left: 0.75rem;
-    top: 0.3rem;
-    bottom: 0;
-    width: 1px;
-    border-left: 1px dotted theme.$link-color;
-    opacity: 0.4;
+/* Horizontal branch — tied to content wrapper so it moves with text */
+.toc-child > .toc-content-wrapper {
+    position: relative;
 }
 
-.toc-child::before {
+.toc-child > .toc-content-wrapper::before {
     content: '';
     position: absolute;
-    left: 0;
-    top: 1.25rem;
+    left: -0.75rem;
+    top: calc(0.25rem + 0.85em);
     width: 0.75rem;
     height: 1px;
-    border-top: 1px dotted theme.$link-color;
-    opacity: 0.4;
+    border-top: 1px dotted rgba(theme.$link-color, 0.4);
 }
 
-.toc-child:last-child::after {
+/* Last child: partial vertical line from top down to the branch */
+.toc-child:last-child > .toc-content-wrapper::after {
     content: '';
     position: absolute;
-    left: -0.25rem;
-    top: 50%;
-    bottom: -0.5rem;
-    width: 1px;
-    background-color: white;
+    left: -0.75rem;
+    top: -100vh;
+    height: calc(100vh + 0.25rem + 0.75em);
+    width: 0px;
+    border-left: 1px dotted rgba(theme.$link-color, 0.4);
 }
 
 /* Special markers */
@@ -563,6 +560,7 @@ span.note {
     font-size: 1.1rem;
     margin-left: -1rem;
     font-weight: 700;
+    flex-shrink: 0;
 }
 
 .toc-div1 .toc-section {
