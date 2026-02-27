@@ -268,6 +268,9 @@ def _migrate_one(db_path):
 # ---------------------------------------------------------------------------
 
 # These were per-database in CGI mode but are now served centrally by gunicorn.
+# Databases with custom Vue apps that should not be overwritten by the default app.
+_SKIP_APP_COPY = {"encyclopedie0226", "kafker"}
+
 _LEGACY_DIRS = ("reports", "scripts")
 _LEGACY_FILES = ("dispatcher.py", "webApp.py", ".htaccess")
 
@@ -302,6 +305,11 @@ def remove_legacy_files(db_path):
 
 def copy_app(db_path):
     """Copy app/ source to database, preserving its appConfig.json."""
+    name = os.path.basename(db_path)
+    if name in _SKIP_APP_COPY:
+        print(f"  Skipped (custom app)")
+        return
+
     db_app_dir = os.path.join(db_path, "app")
     if not os.path.isdir(db_app_dir):
         print(f"  Warning: {db_app_dir} does not exist, skipping")
@@ -343,6 +351,11 @@ def copy_app(db_path):
 
 def build_frontend(db_path):
     """Run npm install + npm run build for a database."""
+    name = os.path.basename(db_path)
+    if name in _SKIP_APP_COPY:
+        print(f"  Skipped (custom app)")
+        return
+
     app_dir = os.path.join(db_path, "app")
     if not os.path.isdir(app_dir):
         print(f"  Warning: {app_dir} does not exist, skipping")
@@ -382,6 +395,8 @@ def build_frontend(db_path):
 def _build_one(db_path):
     """Worker for parallel frontend builds. Returns (name, summary)."""
     name = os.path.basename(db_path)
+    if name in _SKIP_APP_COPY:
+        return name, "skipped (custom app)"
     app_dir = os.path.join(db_path, "app")
     if not os.path.isdir(app_dir):
         return name, "skipped (no app/)"

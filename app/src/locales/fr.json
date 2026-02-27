@@ -142,6 +142,7 @@
         "totalOccurrences": "{n} occurrences",
         "spreadAcross": "dispersés à travers",
         "displayingHits": "Affichage des résultats {start}-{end} sur {total}",
+        "displayingHitsPartial": "Affichage des résultats {start}-{end}",
         "noResults": "pas de résultat pour cette recherche",
         "fromTheseTitles": "dans ces textes",
         "groupByOccurrences": "{total} occurrences disséminées à travers {n} {label}(s)",

@@ -20,7 +20,7 @@
                                 <div class="modal-header">
                                     <h2 class="modal-title" id="export-modal-header">{{
                                         $t('resultsSummary.exportResults')
-                                        }}</h2>
+                                    }}</h2>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"
                                         :aria-label="$t('common.close')"></button>
                                 </div>
@@ -36,9 +36,14 @@
 
                     <div v-if="['concordance', 'kwic', 'bibliography'].includes(formData.report)">
                         <div id="result-stats" class="pb-2">
-                            {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
+                            <span class="d-inline-flex align-items-center">
+                                <template v-if="totalResultsDone">
+                                    {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
+                                </template>
+                                <progress-spinner progress="0" :sm="true" v-else />
+                            </span>
                             <span class="d-inline-flex" style=" align-items: center;" v-if="fieldSummary.length > 0">
-                                <span>{{ $t("resultsSummary.spreadAcross") }}&nbsp;</span>
+                                <span>&nbsp;{{ $t("resultsSummary.spreadAcross") }}&nbsp;</span>
                                 <progress-spinner progress="0" :sm="true" v-if="!hitlistStatsDone" />
                                 <span v-else>
                                     <span v-for="(stat, statIndex) in statsDescription" :key="stat.field">
@@ -49,20 +54,29 @@
                                         </router-link>
                                         <span v-else>{{ stat.count }} {{ stat.label }}(s)</span>
                                         <span v-if="statIndex != statsDescription.length - 1">&nbsp;{{ $t("common.and")
-                                        }}&nbsp;</span>
+                                            }}&nbsp;</span>
                                     </span>
                                 </span>
                             </span>
                         </div>
 
                         <div id="search-hits">
-                            <strong v-if="resultsLength > 0">{{
-                                $t("resultsSummary.displayingHits", {
-                                    start: descriptionStart,
-                                    end: descriptionEnd,
-                                    total: resultsLength,
-                                })
-                            }}</strong>
+                            <strong v-if="resultsLength > 0" class="d-inline-flex align-items-center">
+                                <span v-if="totalResultsDone">{{
+                                    $t("resultsSummary.displayingHits", {
+                                        start: descriptionStart,
+                                        end: descriptionEnd,
+                                        total: resultsLength,
+                                    })
+                                }}</span>
+                                <span v-else>
+                                    {{ $t("resultsSummary.displayingHitsPartial", {
+                                        start: descriptionStart,
+                                        end: descriptionEnd,
+                                    }) }}
+                                    <progress-spinner progress="0" :sm="true" class="ms-1" />
+                                </span>
+                            </strong>
                             <strong v-else>{{ $t("resultsSummary.noResults") }}</strong>
 
                             <button type="button" class="btn rounded-pill btn-outline-secondary btn-sm ms-1"
@@ -171,7 +185,7 @@
                                     :aria-label="$t('resultsSummary.concordanceBig')"
                                     :aria-pressed="formData.report === 'concordance'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.concordanceBig")
-                                    }}</span>
+                                        }}</span>
                                     <span class="d-inline d-lg-none">{{
                                         $t("resultsSummary.concordanceSmall") }}</span>
                                 </button>
@@ -180,7 +194,8 @@
                                     :aria-label="$t('resultsSummary.kwicBig')"
                                     :aria-pressed="formData.report === 'kwic'">
                                     <span class="d-none d-lg-inline">{{ $t("resultsSummary.kwicBig") }}</span>
-                                    <span class="d-none d-sm-inline d-lg-none">{{ $t("resultsSummary.kwicSmall") }}</span>
+                                    <span class="d-none d-sm-inline d-lg-none">{{ $t("resultsSummary.kwicSmall")
+                                        }}</span>
                                     <span class="d-inline d-sm-none">KWIC</span>
                                 </button>
                             </div>

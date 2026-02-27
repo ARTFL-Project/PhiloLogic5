@@ -142,6 +142,7 @@
         "totalOccurrences": "{n} total occurrences",
         "spreadAcross": "spread across",
         "displayingHits": "Displaying hits {start}-{end} of {total}",
+        "displayingHitsPartial": "Displaying hits {start}-{end}",
         "noResults": "No results for your query",
         "fromTheseTitles": "from these titles",
         "groupByOccurrences": "{total} total occurrences spread across {n} {label}(s)",

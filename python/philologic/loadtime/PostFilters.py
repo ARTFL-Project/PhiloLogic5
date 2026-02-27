@@ -7,7 +7,9 @@ import os
 import sqlite3
 import struct as _struct
 import time
+from collections import defaultdict
 
+import lmdb
 import lz4.frame
 import multiprocess as mp
 import numpy as np
@@ -379,12 +381,8 @@ def build_norm_word_lmdb(loader_obj):
     """Build LMDB index from normalized_word_frequencies for fast query expansion.
 
     Maps each normalized form (key) to a NUL-delimited list of original word
-    forms (value). Replaces the per-query subprocess/rg pipeline in expand_query_not,
-    cutting term-expansion time from ~4-10 ms to ~0.003 ms per call.
+    forms (value).
     """
-    import lmdb
-    from collections import defaultdict
-
     freq_file = loader_obj.destination + "/frequencies/normalized_word_frequencies"
     lmdb_path = freq_file + ".lmdb"
     tmp_path   = freq_file + ".lmdb.tmp"
@@ -461,10 +459,7 @@ def build_metadata_word_index(loader_obj):
     """Build inverted word index LMDB for metadata fields.
 
     Maps each word found in normalized metadata values back to original values.
-    Replaces the per-query rg|cut subprocess pipeline in metadata_pattern_search,
-    cutting metadata term expansion from ~5-10ms to sub-millisecond.
     """
-    import lmdb
 
     from philologic.runtime.term_expansion import build_metadata_word_index as _build
 
