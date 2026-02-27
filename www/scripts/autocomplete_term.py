@@ -1,6 +1,7 @@
 from philologic.runtime.DB import DB
-from philologic.runtime.Query import expand_autocomplete, split_terms
+from philologic.runtime.Query import split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
+from philologic.runtime.term_expansion import expand_autocomplete
 
 
 def autocomplete_term(request, config):
