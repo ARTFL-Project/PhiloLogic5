@@ -11,7 +11,7 @@ import falcon
 import orjson
 
 import scripts
-from wsgi_helpers import BadRequest
+from wsgi_helpers import BadRequest, resolve
 
 # Scripts that return JSON
 JSON_SCRIPTS = {
@@ -57,9 +57,10 @@ class ScriptResource:
         if script_name not in ALLOWED_SCRIPTS:
             raise falcon.HTTPBadRequest(description=f"Invalid script: {script_name}")
 
-        fn = getattr(scripts, script_name)
+        default_fn = getattr(scripts, script_name)
         config = req.context.config
         request = req.context.request
+        fn = resolve(config.db_path, script_name, default_fn)
 
         try:
             result = fn(request, config)

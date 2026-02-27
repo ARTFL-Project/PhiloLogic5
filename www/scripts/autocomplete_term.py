@@ -1,8 +1,7 @@
-import subprocess
-
 from philologic.runtime.DB import DB
-from philologic.runtime.Query import grep_exact, grep_word, grep_word_attributes, split_terms
+from philologic.runtime.Query import expand_autocomplete, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
+
 
 def autocomplete_term(request, config):
     """Get term list"""
@@ -15,7 +14,7 @@ def autocomplete_term(request, config):
 
 
 def format_query(q, db, config):
-    """Format query"""
+    """Format query using LMDB cursor scans (no subprocess)."""
     parsed = parse_query(q)
     group = group_terms(parsed)
     all_groups = split_terms(group)
@@ -34,43 +33,31 @@ def format_query(q, db, config):
         prefix = ""
 
     frequency_file = config.db_path + "/data/frequencies/normalized_word_frequencies"
+    db_path = config.db_path + "/data"
 
-    if kind == "TERM" and db.locals.ascii_conversion is True:
-        expanded_token = token + ".*"
-        grep_proc = grep_word(expanded_token, frequency_file, subprocess.PIPE, db.locals["lowercase_index"])
-    elif kind == "TERM" and db.locals.ascii_conversion is False:
-        expanded_token = token + ".*"
-        grep_proc = grep_word(expanded_token, frequency_file, subprocess.PIPE, db.locals["lowercase_index"])
-    elif kind == "QUOTE":
-        expanded_token = token[:-1] + ".*" + token[-1]
-        grep_proc = grep_exact(expanded_token, frequency_file, subprocess.PIPE)
-    elif kind == "LEMMA":
-        grep_proc = grep_word_attributes(f"{token}.*", frequency_file, subprocess.PIPE, "lemmas")
-        grep_proc.wait()
-    elif kind == "LEMMA_ATTR":
-        grep_proc = grep_word_attributes(f"{token}.*", frequency_file, subprocess.PIPE, "lemma_word_attributes")
-        grep_proc.wait()
-    elif kind == "ATTR":
-        grep_proc = grep_word_attributes(f"{token}.*", frequency_file, subprocess.PIPE, "word_attributes")
-        grep_proc.wait()
-    elif kind == "NOT" or kind == "OR":
+    matches = expand_autocomplete(
+        kind,
+        token,
+        frequency_file=frequency_file,
+        db_path=db_path,
+        ascii_conversion=db.locals.ascii_conversion,
+        lowercase=db.locals["lowercase_index"],
+        max_results=100,
+    )
+
+    if not matches:
         return []
 
-    matches = []
-    len_token = len(token)
-    for line in grep_proc.stdout:
-        if kind in ("TERM", "QUOTE"):
-            word = line.split(b"\t")[1].strip().decode("utf8")
-        else:
-            word = line.strip().decode("utf8")
-        highlighted_word = f'<span class="highlight">{word[:len_token]}</span>{word[len_token:]}'
-        matches.append(highlighted_word)
+    # len of the typed portion (without surrounding quotes for QUOTE)
+    raw_token = token[1:-1] if kind == "QUOTE" else token
+    len_token = len(raw_token)
 
     output_string = []
-    for m in matches:
+    for word in matches:
+        highlighted = f'<span class="highlight">{word[:len_token]}</span>{word[len_token:]}'
         if kind == "QUOTE":
-            output_string.append(prefix + '"%s"' % m)
+            output_string.append(prefix + '"%s"' % highlighted)
         else:
-            output_string.append(prefix + m)
+            output_string.append(prefix + highlighted)
 
     return output_string
