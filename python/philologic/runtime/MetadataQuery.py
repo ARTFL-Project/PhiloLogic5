@@ -1,9 +1,9 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 import os
+import re
 import sqlite3
 import struct
-import subprocess
 import sys
 
 from unidecode import unidecode
@@ -11,7 +11,7 @@ from unidecode import unidecode
 from . import HitList
 from .HitList import NoHits
 from .QuerySyntax import group_terms, parse_date_query, parse_query
-from .sql_validation import validate_column, validate_philo_type, validate_sort_order
+from .sql_validation import validate_column, validate_sort_order
 
 os.environ["PATH"] += ":/usr/local/bin/"
 
@@ -362,13 +362,29 @@ def make_grouped_sql_clause(expanded, column, db):
 
 
 def metadata_pattern_search(term, path):
-    """Create rg pattern to find metadata"""
-    command = ["rg", "-awie", "[[:blank:]]?%s" % term, "%s" % path]
-    grep = subprocess.Popen(command, stdout=subprocess.PIPE, env=os.environ)
-    cut = subprocess.Popen(["cut", "-f", "2"], stdin=grep.stdout, stdout=subprocess.PIPE)
-    match, _ = cut.communicate()
-    matches = [i for i in match.decode("utf8", "ignore").split("\n") if i]
-    return matches
+    """Find metadata values containing term as a word, using LMDB index."""
+    if isinstance(term, bytes):
+        term = term.decode("utf-8", errors="replace")
+
+    # Extract db_path and field from freq file path
+    # path = "{db}/frequencies/normalized_{field}_frequencies"
+    db_path = os.path.dirname(os.path.dirname(path))
+    basename = os.path.basename(path)
+    field = basename[len("normalized_"):-len("_frequencies")]
+
+    from .term_expansion import metadata_word_lookup
+
+    words = re.findall(r"\w+", term)
+    if not words:
+        return []
+    if len(words) == 1:
+        return metadata_word_lookup(db_path, field, words[0])
+    # Multi-token (e.g. "o'brien"): intersect per-word results, filter
+    sets = [set(metadata_word_lookup(db_path, field, w)) for w in words]
+    common = sets[0]
+    for s in sets[1:]:
+        common &= s
+    return [v for v in common if term in v.lower()]
 
 
 def escape_sql_string(s):

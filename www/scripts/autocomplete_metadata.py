@@ -1,17 +1,12 @@
 import os
-import subprocess
+import re as re_stdlib
 
 import regex as re
-import re as re_stdlib
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import metadata_pattern_search
 from unidecode import unidecode
 
 from wsgi_helpers import BadRequest
-
-_environ = os.environ
-_environ["PATH"] += ":/usr/local/bin/"
-_environ["LANG"] = "C"
 
 patterns = [
     ("QUOTE", r'".+?"'),
@@ -115,25 +110,21 @@ def parse_query(qstring):
 
 
 def exact_word_pattern_search(term, path, field, label, ascii_conversion):
-    """Exact word pattern search"""
-    if label == "TERM":
-        norm_term = term.lower()
-        path = path + "normalized_%s_frequencies" % field
-        command = ["rg", "-awie", "[[:blank:]]?" + norm_term, path]
-        grep = subprocess.Popen(command, stdout=subprocess.PIPE, env=_environ)
-        cut = subprocess.Popen(["cut", "-f", "2"], stdin=grep.stdout, stdout=subprocess.PIPE)
-        match, _ = cut.communicate()
-        matches = [i.decode("utf8") for i in match.split(b"\n") if i]
+    """Exact word prefix search using LMDB metadata word index."""
+    from philologic.runtime.term_expansion import metadata_word_prefix_scan
 
-    elif label == "QUOTE_S":
-        path = path + "%s_frequencies" % field
-        command = ["rg", "-awie", "^" + term, path]
-        grep = subprocess.Popen(command, stdout=subprocess.PIPE, env=_environ)
-        cut = subprocess.Popen(["cut", "-f", "1"], stdin=grep.stdout, stdout=subprocess.PIPE)
-        match, _ = cut.communicate()
-        matches = [i.decode("utf8") for i in match.split(b"\n") if i]
+    # Strip trailing .* regex suffix and unescape regex escapes
+    prefix = re_stdlib.sub(r"\.\*$", "", term).lower()
+    prefix = re_stdlib.sub(r"\\(.)", r"\1", prefix)
+    # Extract word characters for LMDB prefix scan
+    words = re_stdlib.findall(r"\w+", prefix)
+    if not words:
+        return []
 
-    return matches
+    # path is the frequencies directory; db_path is its parent
+    db_path = os.path.dirname(path.rstrip("/"))
+
+    return metadata_word_prefix_scan(db_path, field, words[-1], max_results=100)
 
 
 def highlighter(words, token, ascii_conversion):

@@ -367,6 +367,122 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
                         dest_fh.write((form + "\n").encode("utf-8"))
 
 
+# ── Metadata inverted word index ──────────────────────────────────────────────
+
+_META_LMDB_NAME = "metadata_word_index.lmdb"
+
+
+def build_metadata_word_index(db_path: str) -> int:
+    """Build inverted word index LMDB from all normalized_{field}_frequencies files.
+
+    Key: {field}\\x00{word}  Value: NUL-joined original metadata values.
+    Cap at 10000 values per word to bound stopword entries.
+    Returns the number of keys written.
+    """
+    from collections import defaultdict
+
+    freq_dir = os.path.join(db_path, "frequencies")
+    lmdb_path = os.path.join(freq_dir, _META_LMDB_NAME)
+    tmp_path = lmdb_path + ".tmp"
+
+    index: dict[tuple[str, str], set[str]] = defaultdict(set)
+
+    for fname in sorted(os.listdir(freq_dir)):
+        if not fname.startswith("normalized_") or not fname.endswith("_frequencies"):
+            continue
+        if fname.endswith(".lmdb"):
+            continue
+        field = fname[len("normalized_"):-len("_frequencies")]
+        if field == "word":
+            continue
+
+        fpath = os.path.join(freq_dir, fname)
+        with open(fpath, encoding="utf-8") as f:
+            for line in f:
+                tab = line.find("\t")
+                if tab < 0:
+                    continue
+                norm_val = line[:tab]
+                orig_val = line[tab + 1:].rstrip("\n")
+                if not norm_val:
+                    continue
+                for w in re.findall(r"\w+", norm_val):
+                    key = (field, w)
+                    if len(index[key]) < 10000:
+                        index[key].add(orig_val)
+
+    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024,
+                        writemap=True, sync=False, metasync=False)
+    with tmp_env.begin(write=True) as txn:
+        for (field, word), originals in index.items():
+            key = f"{field}\x00{word}".encode("utf-8")
+            val = "\x00".join(originals).encode("utf-8")
+            txn.put(key, val)
+    tmp_env.sync(True)
+    os.makedirs(lmdb_path, exist_ok=True)
+    tmp_env.copy(lmdb_path, compact=True)
+    tmp_env.close()
+    os.system(f"rm -rf {tmp_path}")
+    return len(index)
+
+
+def _get_metadata_index_env(db_path: str) -> lmdb.Environment:
+    """Return (and cache) the metadata_word_index.lmdb env, building lazily if absent."""
+    lmdb_path = os.path.join(db_path, "frequencies", _META_LMDB_NAME)
+    if lmdb_path not in _norm_lmdb_cache and not os.path.exists(lmdb_path):
+        import sys
+        print("Building metadata word index LMDB (first use)...", file=sys.stderr, flush=True)
+        build_metadata_word_index(db_path)
+    return get_lmdb_env(lmdb_path)
+
+
+def metadata_word_lookup(db_path: str, field: str, term: str) -> list[str]:
+    """Look up metadata values containing term as a whole word.
+
+    Returns list of original metadata values from the inverted word index.
+    """
+    env = _get_metadata_index_env(db_path)
+    key = f"{field}\x00{term}".encode("utf-8")
+    with env.begin(buffers=True) as txn:
+        val = txn.get(key)
+        if val is None:
+            return []
+        return bytes(val).decode("utf-8").split("\x00")
+
+
+def metadata_word_prefix_scan(db_path: str, field: str, prefix: str,
+                              max_results: int = 100) -> list[str]:
+    """Scan metadata word index for words starting with prefix.
+
+    Returns deduplicated list of original metadata values from all matching words.
+    Used for metadata autocomplete.
+    """
+    env = _get_metadata_index_env(db_path)
+    key_prefix = f"{field}\x00{prefix}".encode("utf-8")
+    seen: set[str] = set()
+    results: list[str] = []
+    with env.begin(buffers=True) as txn:
+        cursor = txn.cursor()
+        try:
+            if not cursor.set_range(key_prefix):
+                return results
+            while True:
+                k = bytes(cursor.key())
+                if not k.startswith(key_prefix):
+                    break
+                for val in bytes(cursor.value()).decode("utf-8").split("\x00"):
+                    if val not in seen:
+                        seen.add(val)
+                        results.append(val)
+                        if len(results) >= max_results:
+                            return results
+                if not cursor.next():
+                    break
+        finally:
+            cursor.close()
+    return results
+
+
 def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str,
                         ascii_conversion: bool, lowercase: bool,
                         max_results: int = 100) -> list[str]:

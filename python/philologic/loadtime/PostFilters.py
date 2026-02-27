@@ -457,6 +457,22 @@ def build_word_forms_lmdb(loader_obj):
     print("%s: word_forms LMDB index built (%d keys)." % (time.ctime(), count), flush=True)
 
 
+def build_metadata_word_index(loader_obj):
+    """Build inverted word index LMDB for metadata fields.
+
+    Maps each word found in normalized metadata values back to original values.
+    Replaces the per-query rg|cut subprocess pipeline in metadata_pattern_search,
+    cutting metadata term expansion from ~5-10ms to sub-millisecond.
+    """
+    import lmdb
+
+    from philologic.runtime.term_expansion import build_metadata_word_index as _build
+
+    print("%s: Building metadata word index LMDB..." % time.ctime(), flush=True)
+    n_keys = _build(loader_obj.destination)
+    print("%s: Metadata word index built (%d keys)." % (time.ctime(), n_keys), flush=True)
+
+
 def metadata_frequencies(loader_obj):
     """ "Generate metadata frequencies"""
     print("%s: Generating metadata frequencies..." % time.ctime())
@@ -598,6 +614,7 @@ DefaultPostFilters = [
     build_word_forms_lmdb,
     metadata_frequencies,
     normalized_metadata_frequencies,
+    build_metadata_word_index,
     # tfidf_per_doc,
 ]
 
