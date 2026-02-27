@@ -9,9 +9,11 @@ import os
 import shutil
 import sqlite3
 import struct
+import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from glob import iglob
 from json import dump
 
@@ -722,18 +724,21 @@ class Loader:
                 open_file_command = "lz4cat --rm"
             else:
                 open_file_command = "lz4cat"
-            sort_command = f"LANG=C sort -S 25% -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            sort_command = f"LANG=C sort -S 7% -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
         elif file_type == "lemmas":
             suffix = "/*raw.lemma.lz4"
             if self.debug is False:
                 open_file_command = "lz4cat --rm"
             else:
                 open_file_command = "lz4cat"
-            sort_command = f"LANG=C sort -S 25% -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            sort_command = f"LANG=C sort -S 7% -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
         else:  # sorting for toms
             suffix = "/*.toms.sorted"
             open_file_command = "cat"
-            sort_command = f"LANG=C sort -S 25% -m -T {self.workdir} {self.sort_by_id} "
+            sort_command = f"LANG=C sort -S 7% -m -T {self.workdir} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_id} "
 
         # First we split the sort workload into chunks of 1000 (default defined in the file_num keyword)
         for f in iglob(self.workdir + suffix):
@@ -756,28 +761,35 @@ class Loader:
             print(f"Merging {file_type} in batches of {file_num}...", flush=True)
         os.system(f"touch {self.workdir}/sorted.init")
         with tqdm(total=total_files, leave=False) as pbar:
-            for pos, object_list in enumerate(lists_of_files):
+
+            def run_batch(pos, object_list):
                 command_list = " ".join([i[0] for i in object_list])
                 output = os.path.join(self.workdir, f"sorted.{pos}.split")
                 args = sort_command + command_list
                 command = f'/bin/bash -c "{args} | lz4 -3 -q >{output}"'
-                status = os.system(command)
-                if status != 0:
-                    print(f"{file_type} sorting failed\nInterrupting database load...")
-                    sys.exit()
-                pbar.update(len(object_list))
+                result = subprocess.run(command, shell=True)
+                return pos, len(object_list), result.returncode
+
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = [executor.submit(run_batch, pos, obj_list) for pos, obj_list in enumerate(lists_of_files)]
+                for future in as_completed(futures):
+                    pos, batch_size, returncode = future.result()
+                    if returncode != 0:
+                        print(f"{file_type} sorting failed\nInterrupting database load...")
+                        sys.exit()
+                    pbar.update(batch_size)
 
         # WARNING: we are technically limited by the file descriptor limit (1024), which should be equivalent to 1,024,000 files.
         sorted_files = " ".join([f"<(lz4cat -q --rm {i})" for i in iglob(f"{self.workdir}/*.split")])
         if file_type == "words":
             output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
-            command = f'/bin/bash -c "{sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
+            command = f'/bin/bash -c "{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
         elif file_type == "lemmas":
             output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
-            command = f'/bin/bash -c "{sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
+            command = f'/bin/bash -c "{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
         else:
             output_file = os.path.join(self.workdir, "all_toms_sorted")
-            command = f'/bin/bash -c "{sort_command} {sorted_files} > {output_file}"'
+            command = f'/bin/bash -c "{final_sort_command} {sorted_files} > {output_file}"'
         if verbose is True:
             print(
                 f"{time.ctime()}: Merging all merged sorted files (this may take a while)...",
@@ -793,7 +805,7 @@ class Loader:
 
         for sorted_file in os.scandir(self.workdir):
             if sorted_file.name.endswith(".split"):
-                os.system(f"rm {sorted_file.name}")
+                os.unlink(sorted_file.path)
 
     @classmethod
     def count_words(cls):
