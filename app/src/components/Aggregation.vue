@@ -22,9 +22,9 @@
                         {{ result.count }}
                     </span>
 
-                    <div :id="`result-heading-${resultIndex}`" class="d-inline-block">
+                    <span :id="`result-heading-${resultIndex}`">
                         <citations :citation="result.citation" :result-number="resultIndex + 1"></citations>
-                    </div>
+                    </span>
 
                     <!-- Breakdown summary -->
                     <span class="d-inline-block ps-1" v-if="breakUpFields[resultIndex].results.length">

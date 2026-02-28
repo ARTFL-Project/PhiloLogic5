@@ -199,7 +199,8 @@ class HitList(object):
     def readhit(self, n):
         # reads hitlist into buffer, unpacks
         # should do some work to read k at once, track buffer state.
-        self.update()
+        if not self.done:
+            self.update()
         while n >= len(self):
             if self.done:
                 raise IndexError

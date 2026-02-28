@@ -89,6 +89,7 @@ def frequency_results(request, config):
             key = ""
             for div in ["div3", "div2", "div1"]:
                 prefix = philo_id[: OBJ_DICT[div]]
+                prefix = prefix + (0,) * (4 - len(prefix))
                 if prefix in metadata_dict:
                     key = metadata_dict[prefix]
                     break

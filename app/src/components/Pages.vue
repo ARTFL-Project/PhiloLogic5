@@ -157,7 +157,6 @@ export default {
 
 .page-range {
     font-size: 80%;
-    opacity: 0.85;
     color: theme.$link-color;
 }
 

@@ -468,7 +468,11 @@ class Loader:
 
     def create_year_field(self, metadata):
         """Create year field from date fields in header"""
-        year_finder = re.compile(r"^.*?(\-?\d{1,}).*")  # we are assuming positive years
+        # Matches a year with an optional single leading minus for BCE dates (ISO 8601/TEI).
+        # A single hyphen before digits = negative year (e.g. "-0044" for 44 BC).
+        # Double hyphens ("--") indicate a partial date with unknown year (W3C "--mm-dd" format)
+        # or junk delimiters (e.g. "--1798--"), so we skip those.
+        year_finder = re.compile(r"(?<!\-)(\-?)(\d{1,})")
         earliest_year = float("inf")
         metadata_with_year = ""
         for field in ["date", "create_date", "pub_date", "period"]:
@@ -477,9 +481,10 @@ class Loader:
                     metadata[field] = str(metadata[field].year)
                 elif isinstance(metadata[field], int):
                     metadata[field] = str(metadata[field])
-                year_match = year_finder.search(metadata[field])  # make sure it's not a datetime or an int.
+                year_match = year_finder.search(metadata[field])
                 if year_match:
-                    year = int(year_match.groups()[0])
+                    sign, digits = year_match.groups()
+                    year = int(f"{sign}{digits}")
                     metadata_with_year = field
                     if field == "create_date":  # this should be the canonical date
                         earliest_year = year
@@ -487,8 +492,8 @@ class Loader:
                     if year < earliest_year:
                         earliest_year = year
         if earliest_year != float("inf"):
-            if re.search(r"BC", metadata[metadata_with_year], re.I) and "-" not in metadata[metadata_with_year]:
-                metadata["year"] = int(f"-{earliest_year}")
+            if re.search(r"BC", metadata[metadata_with_year], re.I) and earliest_year > 0:
+                metadata["year"] = -earliest_year
             else:
                 metadata["year"] = earliest_year
         return metadata

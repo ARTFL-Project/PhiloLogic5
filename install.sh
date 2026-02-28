@@ -153,6 +153,10 @@ fi
 
 cp -R www/* /var/lib/philologic5/web_app/
 cp -R app /var/lib/philologic5/web_app/
+# Delete appConfig.json if it exists
+if [ -f /var/lib/philologic5/web_app/app/appConfig.json ]; then
+    rm /var/lib/philologic5/web_app/app/appConfig.json
+fi
 
 # Restore user-customized gunicorn.conf.py if one existed
 if [ -n "$GUNICORN_BACKUP" ]; then
