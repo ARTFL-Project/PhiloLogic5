@@ -108,28 +108,9 @@
                         </div>
                     </div>
 
-                    <!-- Progress bar section -->
-                    <div v-if="['collocation', 'time_series'].includes(formData.report)">
-                        <div class="progress ms-3 me-3 mb-3" v-if="runningTotal != resultsLength" role="progressbar"
-                            :aria-valuenow="Math.floor((runningTotal / resultsLength) * 100)" :aria-valuemax="100"
-                            aria-valuemin="0" :aria-label="$t('resultsSummary.progressLabel', {
-                                percent: Math.floor((runningTotal / resultsLength) * 100)
-                            })" aria-live="polite">
-                            <div class="progress-bar"
-                                :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`">
-                                {{ Math.floor((runningTotal / resultsLength) * 100) }}%
-                            </div>
-                            <span class="visually-hidden">
-                                {{ $t('resultsSummary.progressDescription', {
-                                    current: runningTotal,
-                                    total: resultsLength,
-                                    percent: Math.floor((runningTotal / resultsLength) * 100)
-                                }) }}
-                            </span>
-                        </div>
-
-                        <!-- Collocation filter section -->
-                        <div v-if="formData.report == 'collocation'">
+                    <!-- Collocation filter section -->
+                    <div v-if="formData.report === 'collocation'">
+                        <div>
                             <span>
                                 <span>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
@@ -264,7 +245,7 @@ export default {
         ExportResults,
         ProgressSpinner
     },
-    props: ["description", "runningTotal", "filterList", "groupLength"],
+    props: ["description", "filterList", "groupLength"],
     computed: {
         ...mapWritableState(useMainStore, [
             "formData",

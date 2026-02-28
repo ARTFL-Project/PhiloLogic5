@@ -1,17 +1,102 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 """Time series"""
 
+import os
 import time
-from collections import defaultdict
 
+import numba
+import numpy as np
 import regex as re
 
 from philologic.runtime.DB import DB
 from philologic.runtime.link import make_absolute_query_link
-from philologic.runtime.sql_validation import validate_column, validate_object_level
+from philologic.runtime.sql_validation import validate_column
+
+
+def _get_doc_year_data(db, year_field):
+    """Return (year_array, year_word_counts, year_doc_counts, min_date, max_date).
+
+    Cached as .npz in the hitlists directory. First request per database
+    computes from SQL and saves; subsequent requests load from disk.
+    """
+    cache_path = os.path.join(db.path, "hitlists", "time_series_year_data.npz")
+
+    if os.path.exists(cache_path):
+        data = np.load(cache_path)
+        year_array = data["year_array"]
+        years = data["years"]
+        word_counts = data["word_counts"]
+        doc_counts = data["doc_counts"]
+        min_date, max_date = int(data["min_max"][0]), int(data["min_max"][1])
+        year_word_counts = dict(zip(years.tolist(), word_counts.tolist()))
+        year_doc_counts = dict(zip(years.tolist(), doc_counts.tolist()))
+        return year_array, year_word_counts, year_doc_counts, min_date, max_date
+
+    cursor = db.dbh.cursor()
+    cursor.execute(
+        f"SELECT philo_id, CAST({year_field} AS INTEGER), word_count FROM toms "
+        f"WHERE philo_type='doc' AND {year_field} IS NOT NULL"
+    )
+    max_doc_id = 0
+    doc_year_list = []
+    year_word_counts = {}
+    year_doc_counts = {}
+    min_date = None
+    max_date = None
+    for row in cursor:
+        doc_id = int(row[0].split()[0])
+        try:
+            year = int(row[1])
+        except (TypeError, ValueError):
+            continue
+        doc_year_list.append((doc_id, year))
+        if doc_id > max_doc_id:
+            max_doc_id = doc_id
+        if min_date is None or year < min_date:
+            min_date = year
+        if max_date is None or year > max_date:
+            max_date = year
+        wc = int(row[2]) if row[2] else 0
+        year_word_counts[year] = year_word_counts.get(year, 0) + wc
+        year_doc_counts[year] = year_doc_counts.get(year, 0) + 1
+
+    year_array = np.zeros(max_doc_id + 1, dtype=np.int32)
+    for doc_id, year in doc_year_list:
+        year_array[doc_id] = year
+
+    # Save to disk for subsequent requests
+    years = np.array(sorted(year_word_counts.keys()), dtype=np.int32)
+    np.savez(
+        cache_path,
+        year_array=year_array,
+        years=years,
+        word_counts=np.array([year_word_counts[y] for y in years], dtype=np.int64),
+        doc_counts=np.array([year_doc_counts[y] for y in years], dtype=np.int64),
+        min_max=np.array([min_date, max_date], dtype=np.int32),
+    )
+    return year_array, year_word_counts, year_doc_counts, min_date, max_date
+
+
+@numba.jit(nopython=True, nogil=True, cache=True)
+def _bucket_hits_by_year(doc_ids, year_array, start_date, interval, n_ranges):
+    """Single-pass: read doc_id → look up year → bucket into range."""
+    bin_counts = np.zeros(n_ranges, dtype=np.int64)
+    total = 0
+    year_len = len(year_array)
+    for i in range(len(doc_ids)):
+        doc_id = doc_ids[i]
+        if doc_id < year_len:
+            year = year_array[doc_id]
+            if year > 0:
+                idx = (year - start_date) // interval
+                if 0 <= idx < n_ranges:
+                    bin_counts[idx] += 1
+                    total += 1
+    return bin_counts, total
 
 
 def generate_time_series(request, config):
+    t0 = time.time()
     db = DB(config.db_path + "/data/")
     year_field = validate_column(config.time_series_year_field, db)
     time_series_object = {"query": dict([i for i in request]), "query_done": False}
@@ -24,90 +109,100 @@ def generate_time_series(request, config):
         time_series_object["results"] = {"absolute_count": {}, "date_count": {}}
         return time_series_object
 
-    start_date, end_date = get_start_end_date(
-        db, config, start_date=request.start_date or None, end_date=request.end_date or None
-    )
-
-    # Generate date ranges
     interval = int(request.year_interval)
+
+    # Get cached doc→year mapping (SQL only on first request per worker)
+    t1 = time.time()
+    year_array, year_word_counts, year_doc_counts, min_date, max_date = _get_doc_year_data(db, year_field)
+    print(f"[time_series] doc year data: {time.time()-t1:.3f}s", flush=True)
+
+    # Resolve start/end dates
+    start_date = int(request.start_date) if request.start_date else min_date
+    end_date = int(request.end_date) if request.end_date else max_date
+
+    # Fire the word query now that we have start/end dates
+    t1 = time.time()
+    hits = None
+    if request.q:
+        metadata = dict(request.metadata)
+        metadata[year_field] = "%d-%d" % (start_date, end_date)
+        hits = db.query(request["q"], request["method"], request["arg"], raw_results=True, **metadata)
+    print(f"[time_series] db.query dispatch: {time.time()-t1:.3f}s", flush=True)
+
+    # Generate date ranges for output
     date_ranges = []
-    # Make sure last date gets included in for loop below by adding one to last step
     for start in range(start_date, end_date + 1, interval):
         end = start + interval - 1
         if end > end_date:
             end = end_date
-        date_range = "%d-%d" % (start, end)
-        date_ranges.append((start, date_range))
+        date_ranges.append((start, "%d-%d" % (start, end)))
+    n_ranges = len(date_ranges)
 
-        # Start running queries concurrently to avoid waiting for results in the below loop
-        request.metadata[year_field] = date_range
-        hits = db.query(request["q"], request["method"], request["arg"], raw_results=True, **request.metadata)
-
-    absolute_count = defaultdict(int)
+    # Aggregate word counts / doc counts into date ranges
+    year_totals = year_word_counts if request.q else year_doc_counts
     date_counts = {}
-    total_hits = 0
-    last_date_done = start_date
-    start_time = time.time()
-    max_time = int(request.max_time) or 2
-    cursor = db.dbh.cursor()
-    object_level = validate_object_level(db.locals.default_object_level)
-    for start_range, date_range in date_ranges:
+    for range_start, _ in date_ranges:
+        total = 0
+        range_end = range_start + interval
+        for y in range(range_start, range_end):
+            total += year_totals.get(y, 0)
+        date_counts[range_start] = total
+
+    # Absolute hit counts: wait for search, then vectorized bucketing
+    if hits is not None:
+        t1 = time.time()
+        hits.finish()
+        t_finish = time.time() - t1
+        total_hits = len(hits)
+        print(f"[time_series] hits.finish() wait ({total_hits} hits): {t_finish:.3f}s", flush=True)
+
+        if total_hits > 0:
+            t1 = time.time()
+            hit_length = hits.length
+            mm = np.memmap(hits.filename, dtype="u4", mode="r").reshape(-1, hit_length)
+            doc_ids = np.ascontiguousarray(mm[:, 0])
+            del mm  # release mmap immediately
+            t_read = time.time() - t1
+
+            # Single-pass JIT on contiguous doc_id column
+            t1 = time.time()
+            bin_counts, total_hits = _bucket_hits_by_year(
+                doc_ids, year_array, start_date, interval, n_ranges
+            )
+            t_jit = time.time() - t1
+            print(f"[time_series] mmap+extract doc_ids: {t_read:.3f}s, JIT bucket: {t_jit:.3f}s ({total_hits} hits in {n_ranges} bins)", flush=True)
+        else:
+            bin_counts = np.zeros(n_ranges, dtype=np.int64)
+    else:
+        # Metadata-only (no word query): count docs per range from SQL
+        total_hits = 0
+        bin_counts = np.zeros(n_ranges, dtype=np.int64)
+        for i, (range_start, _) in enumerate(date_ranges):
+            bin_counts[i] = date_counts.get(range_start, 0)
+            total_hits += int(bin_counts[i])
+
+    # Build absolute_count output matching expected format
+    t1 = time.time()
+    absolute_count = {}
+    for i, (range_start, date_range) in enumerate(date_ranges):
         params = {"report": "concordance", "start": "0", "end": "0"}
         params[year_field] = date_range
         url = make_absolute_query_link(config, request, **params)
+        absolute_count[str(range_start)] = {
+            "label": range_start,
+            "count": int(bin_counts[i]),
+            "url": url,
+        }
+    print(f"[time_series] build output ({n_ranges} ranges): {time.time()-t1:.3f}s", flush=True)
 
-        # Get date total count
-        if interval != 1:
-            end_range = start_range + (int(request["year_interval"]) - 1)
-            if request.q:
-                cursor.execute(
-                    f"select sum(word_count) from toms where {year_field} between ? and ?",
-                    (str(start_range), str(end_range)),
-                )
-            else:
-                cursor.execute(
-                    f"SELECT COUNT(*) FROM toms WHERE philo_type=? AND {year_field} BETWEEN ? AND ?",
-                    (object_level, start_range, end_range),
-                )
-        else:
-            if request.q:
-                cursor.execute(
-                    f"select sum(word_count) from toms where {year_field}=?",
-                    (str(start_range),),
-                )
-            else:
-                cursor.execute(
-                    f"SELECT COUNT(*) FROM toms WHERE philo_type=? AND {year_field}=?",
-                    (object_level, str(start_range)),
-                )
-        date_counts[start_range] = cursor.fetchone()[0] or 0
-
-        # Get absolute count
-        request.metadata[year_field] = date_range
-        hits = db.query(request["q"], request["method"], request["arg"], raw_results=True, **request.metadata)
-        hits.finish()
-        hit_len = len(hits)
-
-        absolute_count[str(start_range)] = {"label": start_range, "count": hit_len, "url": url}
-        total_hits += hit_len
-
-        last_date_done = start_range
-        # avoid timeouts by splitting the query if more than request.max_time
-        # (in seconds) has been spent in the loop
-        if time.time() - start_time > max_time:
-            break
-
-    time_series_object["results_length"] = total_hits
-    if (last_date_done + int(request.year_interval)) >= end_date:
-        time_series_object["more_results"] = False
-    else:
-        time_series_object["more_results"] = True
-        time_series_object["new_start_date"] = last_date_done + int(request.year_interval)
+    time_series_object["results_length"] = int(total_hits)
+    time_series_object["more_results"] = False
     time_series_object["results"] = {
         "absolute_count": absolute_count,
         "date_count": {str(date): count for date, count in date_counts.items()},
     }
 
+    print(f"[time_series] TOTAL: {time.time()-t0:.3f}s", flush=True)
     return time_series_object
 
 

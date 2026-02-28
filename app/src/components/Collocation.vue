@@ -57,7 +57,7 @@
                 </li>
             </ul>
         </div>
-        <results-summary :description="results.description" :running-total="runningTotal" :filter-list="filterList"
+        <results-summary :description="results.description" :filter-list="filterList"
             :colloc-method="collocMethod" v-if="collocMethod === 'frequency'"
             style="margin-top:0 !important;"></results-summary>
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -448,7 +448,6 @@ export default {
             sortedList: [],
             collocatesFilePath: "",
             showFilteredWords: false,
-            runningTotal: 0,
             collocCloudWords: [],
             collocMethod: "frequency",
             relativeFrequencies: {},
@@ -575,7 +574,6 @@ export default {
                     })
                 .then((response) => {
                     this.resultsLength = response.data.results_length;
-                    this.runningTotal = response.data.results_length;
                     this.filterList = response.data.filter_list;
                     this.collocatesFilePath = response.data.file_path;
                     this.searching = false;
@@ -1240,10 +1238,6 @@ input:focus::placeholder {
     outline-offset: -2px;
     box-shadow: inset 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
     z-index: 2;
-}
-
-:deep(.progress-bar) {
-    background-color: theme.$link-color !important;
 }
 
 .autocomplete-results {

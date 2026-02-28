@@ -1,7 +1,9 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 
+import mmap
 import os
+from collections import OrderedDict
 
 import regex as re
 from lxml import etree
@@ -10,13 +12,32 @@ from philologic.runtime.HitWrapper import ObjectWrapper
 
 from .ObjectFormatter import adjust_bytes, format_concordance, format_text_object
 
+# Module-level bounded mmap cache. Keyed by absolute file path so entries
+# are unique across different databases served by the same worker process.
+_mmap_cache = OrderedDict()  # path -> mmap object
+_MMAP_CACHE_MAX = 64
+
+
+def _get_mmap(file_path):
+    """Return a read-only mmap for *file_path*, using a bounded LRU cache."""
+    if file_path in _mmap_cache:
+        _mmap_cache.move_to_end(file_path)
+        return _mmap_cache[file_path]
+    fh = open(file_path, "rb")
+    mm = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
+    fh.close()  # mmap keeps its own reference to the fd
+    if len(_mmap_cache) >= _MMAP_CACHE_MAX:
+        _, old_mm = _mmap_cache.popitem(last=False)
+        old_mm.close()
+    _mmap_cache[file_path] = mm
+    return mm
+
 
 def get_text(hit, start_byte, length, path):
     """Returns the text of a hit as a string."""
     file_path = path + "/data/TEXT/" + hit.doc.filename
-    with open(file_path, "rb") as text_file:
-        text_file.seek(start_byte)
-        return text_file.read(length)
+    mm = _get_mmap(file_path)
+    return mm[start_byte:start_byte + length]
 
 
 def get_concordance_text(db, hit, path, context_size):
@@ -43,11 +64,10 @@ def get_text_obj(obj, config, request, word_regex, note=False, images=True):
         c = obj.db.dbh.cursor()
         c.execute("select filename from toms where philo_type='doc' and philo_id =? limit 1", (philo_id,))
         path += "/data/TEXT/" + c.fetchone()["filename"]
-    with open(path, "rb") as file:
-        obj_start_byte = int(obj.start_byte)
-        file.seek(obj_start_byte)
-        width = int(obj.end_byte) - obj_start_byte
-        raw_text = file.read(width)
+    mm = _get_mmap(path)
+    obj_start_byte = int(obj.start_byte)
+    width = int(obj.end_byte) - obj_start_byte
+    raw_text = mm[obj_start_byte:obj_start_byte + width]
     try:
         byte_offsets = sorted([int(byte) - obj_start_byte for byte in request.byte])
     except ValueError:  ## request.byte contains an empty string

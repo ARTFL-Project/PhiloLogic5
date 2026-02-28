@@ -1,7 +1,7 @@
 <template>
     <div class="container-fluid">
         <div id="time-series-container" class="mt-4">
-            <results-summary :description="results.description" :running-total="runningTotal"></results-summary>
+            <results-summary :description="results.description"></results-summary>
             <div class="card mt-4 mx-2" id="time-series">
                 <div class="btn-group d-inline-block" role="group" aria-label="Frequency type selection">
                     <button type="button" class="btn btn-secondary"
@@ -21,9 +21,6 @@
                     <div v-if="searching" class="text-center p-5">
                         <div class="spinner-border" role="status" aria-live="polite" aria-atomic="true">
                             <span class="visually-hidden">{{ $t("common.loading") }}</span>
-                        </div>
-                        <div class="mt-2" aria-live="polite">
-                            {{ $t("timeSeries.loadingProgress", { current: runningTotal, total: resultsLength || 0 }) }}
                         </div>
                     </div>
                     <div v-else-if="dateLabels.length > 0" class="chart-container">
@@ -202,18 +199,13 @@ export default {
         return {
             frequencyType: "absolute_time",
             totalResults: 100,
-            globalQuery: "",
-            localQuery: "",
             absoluteCounts: [],
             dateCounter: [],
             relativeCounts: [],
             dateLabels: [],
-            moreResults: false,
-            done: false,
             startDate: "",
             endDate: "",
             results: [],
-            runningTotal: 0,
             dateCounts: {},
             selectedBarIndex: 0, // For keyboard navigation
             customTooltip: {
@@ -458,7 +450,6 @@ export default {
             );
         },
         fetchResults() {
-            this.runningTotal = 0;
             if (this.formData.year_interval == "") {
                 this.formData.year_interval = this.$philoConfig.time_series.interval;
             }
@@ -471,9 +462,6 @@ export default {
                 startDate: this.startDate,
                 endDate: this.endDate,
             });
-
-            this.globalQuery = this.copyObject(this.formData);
-            this.localQuery = this.copyObject(this.globalQuery);
 
             var dateList = [];
             var zeros = [];
@@ -488,31 +476,22 @@ export default {
             this.dateCounts = {};
             this.selectedBarIndex = 0; // Reset selection
 
-            var fullResults;
-            this.updateTimeSeries(fullResults);
-        },
-
-        updateTimeSeries(fullResults) {
             this.$http
                 .get(`${this.$dbUrl}/reports/time_series.py`, {
                     params: {
                         ...this.paramsFilter({ ...this.formData }),
                         start_date: this.startDate,
-                        max_time: 5,
                         year_interval: this.formData.year_interval,
                     },
                 })
                 .then((results) => {
-                    this.searching = false;
-                    var timeSeriesResults = results.data;
-                    this.results = results.data;
-                    this.runningTotal += timeSeriesResults.results_length;
-                    this.moreResults = timeSeriesResults.more_results;
-                    this.startDate = timeSeriesResults.new_start_date;
-                    for (let date in timeSeriesResults.results.date_count) {
-                        this.dateCounts[date] = timeSeriesResults.results.date_count[date];
+                    var data = results.data;
+                    this.results = data;
+                    for (let date in data.results.date_count) {
+                        this.dateCounts[date] = data.results.date_count[date];
                     }
-                    this.sortAndRenderTimeSeries(fullResults, timeSeriesResults);
+                    this.renderTimeSeries(data.results["absolute_count"]);
+                    this.searching = false;
                 })
                 .catch((response) => {
                     this.debug(this, response);
@@ -520,9 +499,8 @@ export default {
                 });
         },
 
-        sortAndRenderTimeSeries(fullResults, timeSeriesResults) {
-            var allResults = this.mergeResults(fullResults, timeSeriesResults.results["absolute_count"], "label");
-            fullResults = allResults.unsorted;
+        renderTimeSeries(absoluteCount) {
+            var allResults = this.mergeResults(undefined, absoluteCount, "label");
 
             for (let i = 0; i < allResults.sorted.length; i += 1) {
                 var date = allResults.sorted[i].label;
@@ -531,17 +509,6 @@ export default {
                 this.relativeCounts[i] = Math.round((value / this.dateCounts[date]) * 10000 * 100) / 100;
                 if (isNaN(this.relativeCounts[i])) {
                     this.relativeCounts[i] = 0;
-                }
-            }
-
-            if (this.formData.report === "time_series" && this.deepEqual(this.globalQuery, this.localQuery)) {
-                if (this.moreResults) {
-                    this.searching = true;
-                    this.updateTimeSeries(fullResults);
-                } else {
-                    this.runningTotal = this.resultsLength;
-                    this.done = true;
-                    this.searching = false;
                 }
             }
         },
