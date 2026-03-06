@@ -1,4 +1,12 @@
-// Custom Bootstrap changes: don't edit
+// Theme colors
+$header-color: rgb(0, 33, 71);
+$button-color: rgba(18, 47, 83, 0.9);
+$button-color-active: rgb(0, 33, 71);
+$link-color: rgb(0, 33, 71);
+$passage-color: rgba(18, 47, 83, 0.9);
+$card-header-color: rgba(18, 47, 83, 0.9);
+$focus-on-dark-color: #fff; // Focus indicator for dark backgrounds (WCAG 3:1 contrast)
+
 $popover-max-width: 50%;
 .custom-popover {
     overflow: auto;
@@ -6,37 +14,84 @@ $popover-max-width: 50%;
     max-height: 60%;
 }
 
-// Theme colors
-$header-color: #fff;
-$button-color: rgba(18, 47, 83, .9);
-$button-color-active: rgb(0, 33, 71);
-$link-color: rgb(0, 33, 71);
-$passage-color: rgba(18, 47, 83, .9);
 // Themed elements
 nav.navbar {
     background-color: $header-color !important;
 }
+nav.navbar a, #academic-citation-link {
+    color: #fff !important;
+}
 
-$secondary: $button-color;
-.btn-secondary.active {
+// Hamburger menu styling
+.navbar-toggler {
+    border-color: $focus-on-dark-color !important;
+}
+.navbar-toggler-icon {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(255, 255, 255, 1)' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e") !important;
+}
+
+.btn-secondary {
+    color: #fff !important;
+    background-color: $button-color !important;
+    border-color: $button-color !important;
+}
+.btn-secondary.active, .btn-check:checked + .btn {
+    color: #fff !important;
     background-color: $button-color-active !important;
+}
+
+// btn-group btn-secondary are special since they are the reverse of regular btn-secondary
+.btn-group .btn-secondary {
+    background-color: #fff !important;
+    color: $link-color !important;
+    border-color: $link-color !important;
+}
+.btn-group .btn-secondary.active, #toc-top-bar .btn-secondary {
+    border-color: $button-color !important;
+    background-color: $button-color-active !important;
+    color: #fff !important;
+}
+
+.btn-outline-secondary {
+    color: $link-color !important;
+    background-color: #fff !important;
+    border-color: $link-color !important;
 }
 
 .btn-outline-secondary.active {
     color: #fff !important;
 }
 
-$info: $button-color;
-.btn-light {
-    border: solid 1px rgb(206, 212, 218) !important;
+.btn-light, .btn-outline-info {
+    color: $link-color !important;
+    background-color: #fff !important;
+    border-color: $link-color !important;
+}
+.btn-light.active {
+    font-weight: 700 !important;
 }
 
-.btn-light.active {
-    background-color: #eee !important;
+.btn-outline-info:hover {
+    color: #fff !important;
+    background-color: $button-color !important;
+    border-color: $button-color !important;
 }
 
 .link-color {
     color: $link-color
+}
+
+.highlight {
+    color: $passage-color !important;
+    font-weight: 700 !important;
+    border: 1px dotted rgba($passage-color, 0.6) !important;
+    padding: 0.1em 0.2em !important;
+    border-radius: 0.2em !important;
+}
+
+.passage-highlight {
+    color: $passage-color !important;
+    font-weight: 700 !important;
 }
 
 a {
@@ -47,10 +102,30 @@ a.btn-secondary {
     color: #fff !important;
 }
 
-.number,
-.card-header {
-    background-color: $link-color !important;
+.number, .card-header, th {
     color: #fff !important;
+    background-color: $card-header-color !important;
+    font-weight: 700 !important;
+}
+
+// Close box buttons in card headers need inverted colors
+.close-box {
+    color: #fff !important;
+    border-width: 0 !important;
+    background-color: transparent !important;
+}
+
+.close-box .icon-x,
+.btn-secondary .icon-x {
+    background-color: #fff !important;
+}
+
+.close-box:hover {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+}
+
+.close-box:hover .icon-x {
+    background-color: #fff !important;
 }
 
 .input-group-text,
@@ -66,12 +141,19 @@ a.btn-secondary {
 .term-groups,
 .close-pill {
     border-color: $link-color !important;
+    background-color: #fff !important;
 }
 
 .metadata-label,
 .remove-metadata:hover,
+.remove-metadata:focus,
+.remove-metadata:focus-visible,
 .term-group-word:hover,
-.close-pill:hover {
+.term-group-word:focus,
+.term-group-word:focus-visible,
+.close-pill:hover,
+.close-pill:focus,
+.close-pill:focus-visible {
     background-color: $button-color !important;
     color: #fff !important;
 }
@@ -96,20 +178,177 @@ a.btn-secondary {
 .custom-select:focus,
 .custom-control-input:checked~.custom-control-label::before,
 .custom-control-input:focus~.custom-control-label::before,
-input[type="text"]:focus {
-    box-shadow: 0 0 0 0.05rem $button-color !important;
+input[type="text"]:focus,
+select:focus,
+.form-select:focus {
     border-color: $button-color !important;
-    opacity: .5
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+    box-shadow: none !important;
 }
 
-.landing-page-btn:focus {
-    border-color: $link-color !important;
+.landing-page-btn {
+    border-bottom-width: 1px !important;
 }
 
-#report button:focus {
-    mix-blend-mode: hard-light;
+.note-ref {
+    color: #fff !important;
+    background-color: $button-color-active !important;
 }
 
+// Fonts
+body,
+.btn,
+select,
+.custom-control-label,
+.custom-control,
+.input-group-text,
+.number,
+input {
+    font-family: "Open-Sans", sans-serif !important;
+}
+.text-view {
+    font-family: "Source Serif Pro", serif;
+}
+
+// Theme color overrides for specific components
+.badge.bg-secondary,
+.badge.text-bg-secondary {
+    background-color: $button-color !important;
+    color: #fff !important;
+}
+
+// Ensure btn-link follows theme colors globally
+.btn-link, .btn-link:hover, .btn-link:focus {
+    color: $link-color !important;
+}
+
+.alert-info {
+    background-color: rgba($button-color, 0.15);
+    color: #000;
+    border-color: rgba($button-color, 0.15);
+}
+
+// Simple checkbox theming
+.form-check-input {
+    border-color: $button-color !important;
+    background-color: $button-color !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
+}
+
+.form-check-input:checked {
+    background-color: $button-color !important;
+    border-color: $button-color !important;
+}
+
+.form-check-input:focus {
+    border-color: $button-color !important;
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+    box-shadow: none !important;
+}
+
+.form-check-input:focus:not(:checked) {
+    background-color: $button-color !important;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
+}
+
+.icon-x {
+    background-color: $link-color !important;
+}
+.close-pill:hover .icon-x,
+.close-pill:focus .icon-x,
+.close-pill:focus-visible .icon-x {
+    background-color: #fff !important;
+}
+
+// Focus indicators for accessibility
+.nav-link:focus,
+.btn:focus,
+button:focus {
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+}
+
+// Higher contrast focus indicator for navbar elements (WCAG 3:1 requirement)
+nav.navbar .btn:focus,
+nav.navbar button:focus,
+nav.navbar a:focus,
+nav.navbar .nav-link:focus,
+nav.navbar .navbar-brand:focus {
+    outline: 2px solid $focus-on-dark-color !important;
+    outline-offset: 2px !important;
+}
+
+.nav-tabs .nav-link:focus {
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+}
+
+.nav-tabs .nav-link:focus:not(.active) {
+    background-color: rgba($button-color, 0.05) !important;
+}
+
+// Special styling for collocation method selector tabs (on white background)
+#colloc-method-switch .nav-link:focus {
+    background-color: rgba($button-color, 0.08) !important;
+    border-color: rgba($button-color, 0.3) !important;
+    box-shadow: inset 0 -2px 0 0 $button-color !important;
+}
+
+#colloc-method-switch .nav-link:focus.active {
+    background-color: rgba($button-color, 0.12) !important;
+}
+
+// Elegant focus styling for search report buttons
+#report .btn:focus {
+    box-shadow: inset 3px 0 4px 0 rgba(255, 255, 255, 0.4), inset -3px 0 4px 0 rgba(255, 255, 255, 0.4), inset 0 3px 4px 0 rgba(255, 255, 255, 0.4), inset 0 -3px 4px 0 rgba(255, 255, 255, 0.4) !important;
+    outline: none !important;
+}
+
+#report .btn:focus:not(.active) {
+    background-color: $button-color-active !important;
+    color: #fff !important;
+}
+
+// Don't show focus on mouse clicks, only keyboard navigation
+.nav-link:focus:not(:focus-visible),
+.btn:focus:not(:focus-visible),
+button:focus:not(:focus-visible) {
+    box-shadow: none !important;
+}
+
+/* Override Bootstrap's default focus outline for all buttons */
+.btn:focus-visible,
+button:focus-visible {
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+}
+
+/* Higher contrast for navbar buttons on keyboard focus */
+nav.navbar .btn:focus-visible,
+nav.navbar button:focus-visible,
+nav.navbar a:focus-visible,
+nav.navbar .nav-link:focus-visible,
+nav.navbar .navbar-brand:focus-visible {
+    outline: 2px solid $focus-on-dark-color !important;
+    outline-offset: 2px !important;
+}
+
+form .btn:focus-visible,
+form button:focus-visible,
+.card .btn:focus-visible,
+.card button:focus-visible,
+.input-group .btn:focus-visible,
+.input-group button:focus-visible,
+.btn.btn-secondary:focus-visible,
+.btn.btn-outline-secondary:focus-visible {
+    outline: 2px solid $button-color !important;
+    outline-offset: 2px !important;
+    box-shadow: 0 0 0 0.25rem rgba($button-color, 0.25) !important;
+}
+
+// Export colors for JavaScript usage
 :export {
-    color: $link-color
+  color: $link-color;
 }

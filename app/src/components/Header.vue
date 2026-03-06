@@ -1,101 +1,117 @@
 <template>
     <header>
-        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1" style="min-height: 73px"
+        <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1"
             aria-label="Main navigation">
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarContent"
-                aria-controls="navbarContent" aria-expanded="false" :aria-label="$t('header.toggleNavigation')">
-                <span class="navbar-toggler-icon"></span>
-            </button>
+            <!-- Row 1: navigation links + brand -->
+            <div class="header-main">
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
+                    data-bs-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false"
+                    :aria-label="$t('header.toggleNavigation')">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
 
-            <div class="collapse navbar-collapse top-links" id="navbarContent">
-                <ul class="navbar-nav me-auto mb-lg-0">
+                <div class="collapse navbar-collapse top-links" id="navbarContent">
+                    <ul class="navbar-nav me-auto mb-lg-0">
+                        <li class="nav-item">
+                            <!-- Skip navigation for keyboard users -->
+                            <a href="#main-content" class="visually-hidden-focusable"
+                                @click.prevent="skipToMainContent">
+                                {{ $t('common.skipToMain') }}
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" :href="philoConfig.link_to_home_page"
+                                :aria-label="$t('header.goHome')"
+                                v-if="philoConfig.link_to_home_page != ''">
+                                {{ $t("header.goHome") }}
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="https://artfl-project.uchicago.edu"
+                                aria-label="Visit ARTFL Project website">
+                                ARTFL Project
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="https://textual-optics-lab.uchicago.edu"
+                                aria-label="Visit Textual Optics Lab website">
+                                Textual Optics Lab
+                            </a>
+                        </li>
+                        <!-- Right side items - only shown in hamburger menu -->
+                        <li class="nav-item d-lg-none">
+                            <a class="nav-link" href="https://www.uchicago.edu"
+                                aria-label="Visit University of Chicago website">
+                                University of Chicago
+                            </a>
+                        </li>
+                        <li class="nav-item d-lg-none">
+                            <a class="nav-link" href="https://www.atilf.fr/"
+                                aria-label="Visit ATILF-CNRS website">
+                                ATILF-CNRS
+                            </a>
+                        </li>
+                        <li class="nav-item d-lg-none">
+                            <a class="nav-link"
+                                href="https://artfl-project.uchicago.edu/content/contact-us"
+                                title="Contact information for the ARTFL Project"
+                                aria-label="Contact us">
+                                {{ $t("header.contactUs") }}
+                            </a>
+                        </li>
+                        <li class="nav-item d-lg-none">
+                            <locale-changer />
+                        </li>
+                    </ul>
+                </div>
+
+                <router-link class="navbar-brand" to="/" :aria-label="stripHtmlTags(philoConfig.dbname)"
+                    v-html="philoConfig.dbname">
+                </router-link>
+
+                <!-- Right side items - only shown on desktop -->
+                <ul class="navbar-nav ml-auto top-links d-none d-lg-flex">
                     <li class="nav-item">
-                        <!-- Skip navigation for keyboard users -->
-                        <a href="#main-content" class="visually-hidden-focusable" @click.prevent="skipToMainContent">
-                            {{ $t('common.skipToMain') }}
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" :href="philoConfig.link_to_home_page" :aria-label="$t('header.goHome')"
-                            v-if="philoConfig.link_to_home_page != ''">
-                            {{ $t("header.goHome") }}
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="https://artfl-project.uchicago.edu"
-                            aria-label="Visit ARTFL Project website">
-                            ARTFL Project
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="https://textual-optics-lab.uchicago.edu"
-                            aria-label="Visit Textual Optics Lab website">
-                            Textual Optics Lab
-                        </a>
-                    </li>
-                    <!-- Right side items - only shown in hamburger menu -->
-                    <li class="nav-item d-lg-none">
                         <a class="nav-link" href="https://www.uchicago.edu"
                             aria-label="Visit University of Chicago website">
                             University of Chicago
                         </a>
                     </li>
-                    <li class="nav-item d-lg-none">
-                        <a class="nav-link" href="https://www.atilf.fr/" aria-label="Visit ATILF-CNRS website">
+                    <li class="nav-item">
+                        <a class="nav-link" href="https://www.atilf.fr/"
+                            aria-label="Visit ATILF-CNRS website">
                             ATILF-CNRS
                         </a>
                     </li>
-                    <li class="nav-item d-lg-none">
-                        <a class="nav-link" href="https://artfl-project.uchicago.edu/content/contact-us"
+                    <li class="nav-item">
+                        <a class="nav-link"
+                            href="https://artfl-project.uchicago.edu/content/contact-us"
                             title="Contact information for the ARTFL Project" aria-label="Contact us">
                             {{ $t("header.contactUs") }}
                         </a>
                     </li>
-                    <li class="nav-item d-lg-none">
+                    <li class="nav-item">
                         <locale-changer />
                     </li>
                 </ul>
             </div>
 
-            <button type="button" id="academic-citation-link" class="nav-link position-absolute" data-bs-toggle="modal"
-                data-bs-target="#academic-citation" :aria-label="$t('header.citeUs')"
-                v-if="philoConfig.academic_citation.collection.length > 0">
-                {{ $t("header.citeUs") }}
-            </button>
+            <!-- Row 2: action links -->
+            <div class="header-actions">
+                <button type="button" id="academic-citation-link" class="nav-link" data-bs-toggle="modal"
+                    data-bs-target="#academic-citation" :aria-label="$t('header.citeUs')"
+                    v-if="philoConfig.academic_citation.collection.length > 0">
+                    {{ $t("header.citeUs") }}
+                </button>
+                <span v-else></span>
 
-            <router-link class="navbar-brand" to="/" :aria-label="stripHtmlTags(philoConfig.dbname)"
-                v-html="philoConfig.dbname">
-            </router-link>
-
-            <!-- Right side items - only shown on desktop -->
-            <ul class="navbar-nav ml-auto top-links d-none d-lg-flex">
-                <li class="nav-item">
-                    <a class="nav-link" href="https://www.uchicago.edu"
-                        aria-label="Visit University of Chicago website">
-                        University of Chicago
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="https://www.atilf.fr/" aria-label="Visit ATILF-CNRS website">
-                        ATILF-CNRS
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="https://artfl-project.uchicago.edu/content/contact-us"
-                        title="Contact information for the ARTFL Project" aria-label="Contact us">
-                        {{ $t("header.contactUs") }}
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <locale-changer />
-                </li>
-            </ul>
-
-            <a id="report-error-link" class="nav-link position-absolute" :href="philoConfig.report_error_link"
-                target="_blank" rel="noopener noreferrer" :aria-label="$t('common.reportError') + ' (opens in new tab)'"
-                v-if="philoConfig.report_error_link.length > 0">
-                {{ $t("common.reportError") }}
-            </a>
+                <a id="report-error-link" class="nav-link" :href="philoConfig.report_error_link"
+                    target="_blank" rel="noopener noreferrer"
+                    :aria-label="$t('common.reportError') + ' (opens in new tab)'"
+                    v-if="philoConfig.report_error_link.length > 0">
+                    {{ $t("common.reportError") }}
+                </a>
+            </div>
 
             <!-- Modal -->
             <div class="modal fade" id="academic-citation" tabindex="-1" aria-labelledby="modal-title"
@@ -205,10 +221,36 @@ export default {
 <style lang="scss" scoped>
 @use "../assets/styles/theme.module.scss" as theme;
 
+// Override Bootstrap navbar-expand-lg nowrap so our two rows stack
+nav.navbar {
+    flex-wrap: wrap !important;
+}
+
+// Row 1: nav links + brand — grid ensures true centering
+.header-main {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    width: 100%;
+}
+
+// Row 2: Cite Us (left) + Report Error (right)
+.header-actions {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+}
+
 .top-links {
     margin-left: -0.25rem;
     margin-top: -2rem;
     font-variant: small-caps;
+    white-space: nowrap;
+
+    // Right group: align to end of its grid cell
+    &.ml-auto {
+        justify-self: end;
+    }
 }
 
 // Proper spacing for hamburger menu items
@@ -228,13 +270,12 @@ export default {
         transform: none !important;
     }
 
-    // Use flexbox for navbar-brand in hamburger menu
-    nav.navbar {
+    .header-main {
+        display: flex;
         flex-wrap: wrap;
     }
 
     .navbar-brand {
-        position: static !important;
         order: 1;
         flex-grow: 1;
         text-align: center;
@@ -264,28 +305,25 @@ nav.navbar a,
 
 .navbar-brand {
     font-weight: 700;
-    font-size: 1.6rem !important;
+    font-size: clamp(1.15rem, 2.5vw, 1.6rem) !important;
     font-variant: small-caps;
-    position: absolute;
-    left: 0;
-    right: 0;
     text-align: center;
-    margin: 0 auto;
-    width: fit-content;
-    line-height: 80%;
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    line-height: 1.2;
+    margin: 0;
 }
 
 #report-error-link {
-    right: 0.5rem;
-    bottom: 0.25rem;
     font-variant: small-caps;
     font-weight: 700;
 }
 
 #academic-citation-link {
     background-color: inherit;
-    left: 0rem;
-    bottom: 0.25rem;
     font-variant: small-caps;
     font-weight: 700;
     border-width: 0;

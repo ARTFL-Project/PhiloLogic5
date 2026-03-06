@@ -20,7 +20,6 @@ import shutil
 import subprocess
 import sys
 
-
 # ---------------------------------------------------------------------------
 # Ensure PhiloLogic is importable (works when run from repo, not just venv)
 # ---------------------------------------------------------------------------
@@ -165,7 +164,6 @@ def migrate_collocation(db_path):
         word_attrs = []
 
     import lz4.frame
-
     import orjson
 
     print(f"  Counting words...")
@@ -269,7 +267,7 @@ def _migrate_one(db_path):
 
 # These were per-database in CGI mode but are now served centrally by gunicorn.
 # Databases with custom Vue apps that should not be overwritten by the default app.
-_SKIP_APP_COPY = {"encyclopedie0226", "kafker"}
+_SKIP_APP_COPY = {"encyclopedie0226", "kafker", "bayle-0326", "montaigne1580", "montaigne1588", "montessaisvilley", "mvogeminitest"}
 
 _LEGACY_DIRS = ("reports", "scripts")
 _LEGACY_FILES = ("dispatcher.py", "webApp.py", ".htaccess")
