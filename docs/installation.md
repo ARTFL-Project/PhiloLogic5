@@ -2,57 +2,228 @@
 title: Installation
 ---
 
-Installing PhiloLogic consists of two steps:
+## Overview
 
-1. Run the install.sh script which installs PhiloLogic5 in `/var/lib/philologic5/`
-2. Set up a directory in your web server to serve databases from
-3. Edit /etc/philologic/philologic5.cfg according to your machine
+PhiloLogic5 runs as a Gunicorn WSGI application behind a reverse proxy (Apache or Nginx). The installer handles Python, Node.js, and all Python dependencies automatically via [uv](https://docs.astral.sh/uv/).
 
-You can find more detailed installation instructions for specific OSes here:
+Installation steps:
 
--   [RedHat (and CentOS)](specific_installations/redhat_installation.md)
--   [Ubuntu](specific_installations/ubuntu_installation.md)
+1. Install system dependencies
+2. Run `install.sh`
+3. Configure `/etc/philologic/philologic5.cfg`
+4. Set up your web server as a reverse proxy
+5. Enable and start the Gunicorn service
 
-### Downloading
+## System Requirements
 
-IMPORTANT: Do not install from the master branch on github: this is the development branch and is in no way garanteed to be stable
+- Linux (Ubuntu 22.04+, Debian 12+, RHEL 9+, or similar)
+- Python 3.11+ (the installer downloads its own Python via uv by default)
+- Root/sudo access for installing to `/var/lib/philologic5/`
 
-You can find a copy of the latest version of PhiloLogic5 [here](../../../releases/).
+## System Dependencies
 
-### Prerequisites
+### Ubuntu / Debian
 
--   Apache Webserver
--   Python 3.10 and up
--   LZ4
--   Brotli (for Apache compression)
--   Ripgrep
+```bash
+sudo apt-get update
+sudo apt-get install -y \
+    libxml2-dev libxslt-dev zlib1g-dev \
+    liblz4-tool ripgrep curl
+```
 
-### Installing
+### RHEL / CentOS / Fedora
 
-Installing PhiloLogic's libraries requires administrator privileges.
-Just run the install.sh in the top level directory of the PhiloLogic4 you downloaded to install PhiloLogic and its dependencies:
+```bash
+sudo dnf install -y \
+    libxml2-devel libxslt-devel zlib-devel \
+    lz4 ripgrep curl
+```
 
-`./install.sh`
+**Notes:**
+- `libxml2-dev`/`libxslt-dev`/`zlib1g-dev`: required for building `lxml` (XML parsing)
+- `liblz4-tool`/`lz4`: used at database load time for compressing word indexes
+- `ripgrep`: used at database load time for filtering parser output
+- `curl`: used by the installer to download [uv](https://docs.astral.sh/uv/) and [nvm](https://github.com/nvm-sh/nvm)
+- The installer downloads its own Python via uv, so system Python packages are not required
 
-You can specify a different version of Python with the `-p` flag followed by the python executable to use, e.g.:
-`./install.sh -p python3.12`
+## Installing PhiloLogic
 
-### <a name="global-config"></a>Global Configuration
+Clone or download the repository, then run the install script:
 
-The installer creates a file in `/etc/philologic/philologic5.cfg` which contains several important global variables:
+```bash
+git clone https://github.com/ARTFL-Project/PhiloLogic5.git
+cd PhiloLogic5
+sudo ./install.sh
+```
 
--   `database_root` defines the filesytem path to the root web directory for your PhiloLogic install such as `/var/www/html/philologic`. Make sure your user or group has full write permissions to that directory.
--   `url_root` defines the URL path to the same root directory for your philologic install, such as http://localhost/philologic/
+### Installer Options
 
-### Setting up PhiloLogic Web Application
+| Flag | Description |
+|------|-------------|
+| `-p VERSION` | Python version to use (default: `3.12`) |
+| `-t` | Install transformer support (includes spacy-transformers with CUDA) |
 
-Each new PhiloLogic database you load, containing one or more files, will be served
-by a its own dedicated copy of PhiloLogic web application.
-By convention, this database and web app reside together in a directory
-accessible via an HTTP server configured to run Python CGI scripts.
+Examples:
 
-Make sure you configure the `/etc/philologic/philologic5.cfg` appropriately.
+```bash
+# Use Python 3.13
+sudo ./install.sh -p 3.13
 
-Configuring your web server is outside of the scope of this document; but the web install
-does come with a preconfigured .htaccess file that allows you to run the Web App.
-Therefore, you need to make sure your server is configured to allow htaccess files.
+# Install with transformer support
+sudo ./install.sh -t
+```
+
+### What the Installer Does
+
+The installer:
+
+1. Installs [uv](https://docs.astral.sh/uv/) (if not already present)
+2. Downloads the specified Python version via uv
+3. Creates a virtual environment at `/var/lib/philologic5/philologic_env/`
+4. Installs [nvm](https://github.com/nvm-sh/nvm) and Node.js 22 (for building the web app)
+5. Builds and installs the PhiloLogic Python package with all dependencies (numpy, numba, lmdb, spacy, etc.)
+6. Installs Gunicorn and Falcon
+7. Copies the web application to `/var/lib/philologic5/web_app/`
+8. Installs the `philoload5` command to `/usr/local/bin/`
+9. Creates the global config at `/etc/philologic/philologic5.cfg` (if it doesn't exist)
+10. Installs a systemd service file for Gunicorn
+
+### Installation Layout
+
+```
+/var/lib/philologic5/
+├── philologic_env/       # Python virtual environment
+├── web_app/              # Web application (Falcon + JS frontend)
+│   ├── app.py            # WSGI entry point
+│   ├── gunicorn.conf.py  # Gunicorn configuration
+│   └── scripts/          # API endpoint scripts
+├── nvm/                  # Node.js (used at load time for building the frontend)
+├── bin/
+│   └── philoload5        # Database loading command
+└── numba_cache/          # JIT compilation cache
+
+/etc/philologic/
+└── philologic5.cfg       # Global configuration
+
+/usr/local/bin/
+└── philoload5            # Symlink to loader script
+```
+
+## Global Configuration
+
+Edit `/etc/philologic/philologic5.cfg` to set two required paths:
+
+```python
+# Filesystem path where databases will be stored
+database_root = "/var/www/html/philologic5/"
+
+# URL root matching the database_root location
+url_root = "http://localhost/philologic5/"
+```
+
+Make sure the `database_root` directory exists and is writable by your user:
+
+```bash
+sudo mkdir -p /var/www/html/philologic5
+sudo chown -R $USER:$USER /var/www/html/philologic5
+```
+
+## Web Server Configuration
+
+PhiloLogic5 runs behind Gunicorn, which listens on a Unix socket. You need a reverse proxy (Apache or Nginx) to forward HTTP requests to Gunicorn.
+
+### Starting Gunicorn
+
+```bash
+sudo systemctl enable philologic5-gunicorn
+sudo systemctl start philologic5-gunicorn
+```
+
+Check status:
+
+```bash
+sudo systemctl status philologic5-gunicorn
+journalctl -u philologic5-gunicorn -f   # follow logs
+```
+
+### Apache
+
+Enable the required modules:
+
+```bash
+sudo a2enmod proxy proxy_http
+sudo systemctl restart apache2
+```
+
+Add to your `<VirtualHost>` block:
+
+```apache
+ProxyTimeout 300
+<Location "/philologic5">
+    ProxyPass unix:/var/run/philologic/gunicorn.sock|http://localhost/philologic5 flushpackets=on
+    ProxyPassReverse unix:/var/run/philologic/gunicorn.sock|http://localhost/philologic5
+    SetEnv no-gzip 1
+    SetEnv force-no-buffering 1
+</Location>
+```
+
+### Nginx
+
+Add to your `server` block:
+
+```nginx
+location /philologic5/ {
+    proxy_pass http://unix:/var/run/philologic/gunicorn.sock;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 300s;
+    proxy_buffering off;
+}
+```
+
+Adjust the URL prefix (`/philologic5`) to match your `url_root` setting in `/etc/philologic/philologic5.cfg`.
+
+## Docker
+
+A `Dockerfile` is included for containerized deployment:
+
+```bash
+docker build -t philologic5 .
+docker run -p 8000:8000 -v /path/to/databases:/var/www/html/philologic philologic5
+```
+
+In the container, Gunicorn binds directly to port 8000 (no reverse proxy needed inside the container).
+
+## Tuning Gunicorn
+
+The default configuration is in `/var/lib/philologic5/web_app/gunicorn.conf.py`. Key settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `workers` | `min(cpu_count, 4)` | Number of worker processes |
+| `threads` | `4` | Threads per worker |
+| `timeout` | `300` | Request timeout (seconds) |
+| `max_requests` | `1000` | Requests before worker recycling |
+| `preload_app` | `True` | Preload app for memory efficiency |
+
+The installer preserves any customizations to `gunicorn.conf.py` across reinstalls.
+
+## Upgrading
+
+To upgrade an existing installation, pull the latest code and rerun the installer:
+
+```bash
+cd PhiloLogic5
+git pull
+sudo ./install.sh
+```
+
+The installer will remove and recreate `/var/lib/philologic5/` but preserves your `gunicorn.conf.py` customizations and `/etc/philologic/philologic5.cfg`. Existing databases are not affected (they live under `database_root`).
+
+After upgrading, restart Gunicorn:
+
+```bash
+sudo systemctl restart philologic5-gunicorn
+```

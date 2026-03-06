@@ -6,7 +6,7 @@ This directory contains the comprehensive test suite for PhiloLogic5, covering t
 
 ```bash
 # Install test dependencies
-cd python && pip install -e ".[test]"
+cd python && uv pip install -e ".[test]"
 
 # Run all tests
 pytest tests/ -v

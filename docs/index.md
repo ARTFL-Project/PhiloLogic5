@@ -17,6 +17,6 @@ description, you can refer to [our blog](<http://artfl.blogspot.com>).
 
 ### IMPORTANT
 
--   PhiloLogic5 will only work on Unix-based systems (Linux, \*BSD) though MacOS is not supported and guaranteed to work.
--   PhiloLogic5 will only run on the Apache Webserver
--   PhiloLogic5 has only been tested on Python 3.10 and up
+-   PhiloLogic5 runs on Linux (Ubuntu, Debian, RHEL, etc.). macOS is not officially supported.
+-   PhiloLogic5 uses Gunicorn as its WSGI server, with Apache or Nginx as a reverse proxy.
+-   Python 3.11 or higher is required.
