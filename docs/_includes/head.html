@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ page.title }}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-9ndCyUaIbzAi2FUVXJi0CjmCapSmO7SnpJef0486qhLnuZ2cdeRhO02iuK6FUUVM" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Pinyon+Script&display=swap" rel="stylesheet">
   <link href="{{ site.baseurl }}/assets/css/style.css" rel="stylesheet">
   <style>
     a {
@@ -17,8 +18,9 @@
     body {
         background: #fff !important;
     }
-    .navbar-brand {
+    .navbar-brand, .navbar-brand:hover {
         padding: 0;
+        color: #fff !important;
     }
     .nav-item {
         font-size: 110%;
@@ -54,9 +56,8 @@
 
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark sticky-top shadow" style="margin-bottom: 40px; background-color: rgb(95, 2, 2);" data-bs-theme="dark">
-    <a class="navbar-brand" href="{{ site.url }}">
-      <img src="{{ site.url }}assets/philo.png" height="82" width="220" class="d-inline-block align-top" alt="">
-      <span style="display: inline-block; vertical-align: bottom; font-size: 120%; font-family: monospace; padding-bottom: 20px; color: #fff;">5</span>
+    <a class="navbar-brand" href="{{ site.url }}" style="color: #fff; text-decoration: none; line-height: 1; padding: 8px 0;">
+      <span style="font-family: 'Pinyon Script', cursive; font-size: 42px;">Philo</span><span style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 28px; letter-spacing: 4px; font-weight: 300;">LOGIC</span><span style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 16px; vertical-align: super; margin-left: 2px;">5</span>
     </a>
     <button class="navbar-toggler d-flex d-sm-none" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
