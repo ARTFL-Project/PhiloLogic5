@@ -450,6 +450,40 @@ def metadata_word_lookup(db_path: str, field: str, term: str) -> list[str]:
         return bytes(val).decode("utf-8").split("\x00")
 
 
+def metadata_word_regex_scan(db_path: str, field: str, pattern: str) -> list[str]:
+    """Scan metadata word index for words matching a regex pattern.
+
+    Scans all keys for the given field and applies the regex against each
+    indexed word.  Returns deduplicated list of original metadata values
+    from all matching words.
+    """
+    env = _get_metadata_index_env(db_path)
+    field_prefix = f"{field}\x00".encode("utf-8")
+    compiled = re.compile(pattern)
+    seen: set[str] = set()
+    results: list[str] = []
+    with env.begin(buffers=True) as txn:
+        cursor = txn.cursor()
+        try:
+            if not cursor.set_range(field_prefix):
+                return results
+            while True:
+                k = bytes(cursor.key())
+                if not k.startswith(field_prefix):
+                    break
+                word = k[len(field_prefix):].decode("utf-8", errors="replace")
+                if compiled.search(word):
+                    for val in bytes(cursor.value()).decode("utf-8").split("\x00"):
+                        if val not in seen:
+                            seen.add(val)
+                            results.append(val)
+                if not cursor.next():
+                    break
+        finally:
+            cursor.close()
+    return results
+
+
 def metadata_word_prefix_scan(db_path: str, field: str, prefix: str,
                               max_results: int = 100) -> list[str]:
     """Scan metadata word index for words starting with prefix.

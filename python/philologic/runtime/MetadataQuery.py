@@ -372,7 +372,11 @@ def metadata_pattern_search(term, path):
     basename = os.path.basename(path)
     field = basename[len("normalized_"):-len("_frequencies")]
 
-    from .term_expansion import metadata_word_lookup
+    from .term_expansion import metadata_word_lookup, metadata_word_regex_scan, _is_regex_pattern
+
+    # Regex patterns need a cursor scan to match against indexed words
+    if _is_regex_pattern(term):
+        return metadata_word_regex_scan(db_path, field, term)
 
     words = re.findall(r"\w+", term)
     if not words:

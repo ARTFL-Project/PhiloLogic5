@@ -5,15 +5,16 @@ This directory contains the comprehensive test suite for PhiloLogic5, covering t
 ## Quick Start
 
 ```bash
-# Install test dependencies
-cd python && uv pip install -e ".[test]"
-
 # Run all tests
 pytest tests/ -v
 
 # Run only unit tests (fast, no corpus build required)
 pytest tests/unit/ -v
 ```
+
+> **Note:** Do NOT use `uv pip install -e ".[test]"` — this replaces the
+> installed philologic package with an editable install and can break the
+> live gunicorn service. Install test dependencies separately as shown above.
 
 ## Test Structure
 

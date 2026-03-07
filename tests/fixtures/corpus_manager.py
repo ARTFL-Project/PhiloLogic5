@@ -122,28 +122,46 @@ class CorpusManager:
         if not force_rebuild and self._is_valid_corpus(corpus_path, corpus_hash):
             return corpus_path / "data"
 
+        # Remove stale builds for the same corpus name (different hash)
+        self._remove_stale_builds(config.name, corpus_hash)
+
         # Build the corpus
         self._build_corpus(config, corpus_path)
         return corpus_path / "data"
+
+    def _remove_stale_builds(self, corpus_name: str, current_hash: str) -> None:
+        """Remove old builds for the same corpus with a different hash."""
+        prefix = f"{corpus_name}_"
+        current_dir = f"{corpus_name}_{current_hash}"
+        for item in self.database_root.iterdir():
+            if item.is_dir() and item.name.startswith(prefix) and item.name != current_dir:
+                print(f"Removing stale test corpus: {item.name}")
+                shutil.rmtree(item)
 
     def _is_valid_corpus(self, corpus_path: Path, expected_hash: str) -> bool:
         """Check if cached corpus is valid."""
         manifest_path = corpus_path / self.MANIFEST_FILE
         if not manifest_path.exists():
+            print(f"Cache miss: {corpus_path.name} — manifest.json not found")
             return False
 
         try:
             manifest = json.loads(manifest_path.read_text())
             if manifest.get("hash") != expected_hash:
+                print(f"Cache miss: {corpus_path.name} — hash mismatch (cached={manifest.get('hash')}, expected={expected_hash})")
                 return False
             # Also verify the database files exist
             data_path = corpus_path / "data"
             if not (data_path / "toms.db").exists():
+                print(f"Cache miss: {corpus_path.name} — toms.db not found")
                 return False
             if not (data_path / "words.lmdb").exists():
+                print(f"Cache miss: {corpus_path.name} — words.lmdb not found")
                 return False
+            print(f"Cache hit: {corpus_path.name}")
             return True
-        except (json.JSONDecodeError, KeyError):
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Cache miss: {corpus_path.name} — manifest error: {e}")
             return False
 
     def _build_corpus(self, config: CorpusConfig, dest_path: Path) -> None:
@@ -159,9 +177,22 @@ class CorpusManager:
             Loader,
             setup_db_dir,
             DEFAULT_OBJECT_LEVEL,
+            DEFAULT_TABLES,
             NAVIGABLE_OBJECTS,
             ASCII_CONVERSION,
         )
+
+        # Reset Loader class state to prevent leakage between builds
+        Loader.metadata_fields = []
+        Loader.metadata_types = {}
+        Loader.metadata_hierarchy = []
+        Loader.metadata_fields_not_found = []
+        Loader.data_dicts = []
+        Loader.filequeue = []
+        Loader.raw_files = []
+        Loader.tables = DEFAULT_TABLES
+        Loader.word_attributes = []
+        Loader.overflow_words = set()
 
         # Clean any existing partial build
         if dest_path.exists():

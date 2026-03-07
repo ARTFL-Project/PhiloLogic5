@@ -120,12 +120,7 @@
                 <section aria-labelledby="regexp-heading">
                     <h3 id="regexp-heading" class="h5" style="margin-top: 20px">{{ $t('searchTips.regexpSyntax') }}</h3>
                     <p class="mb-0">
-                        {{ $t('searchTips.regexpDescription') }}
-                        <a href="http://www.gnu.org/software/findutils/manual/html_node/find_html/egrep-regular-expression-syntax.html#egrep-regular-expression-syntax"
-                            target="_blank" rel="noopener noreferrer" :aria-label="$t('searchTips.egrepLinkLabel')">
-                            {{ $t('searchTips.egrepLink') }}
-                            <span class="visually-hidden">{{ $t('common.opensInNewWindow') }}</span>
-                        </a>:
+                        {{ $t('searchTips.regexpDescription') }}:
                     </p>
                     <ol>
                         <li>

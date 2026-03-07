@@ -130,6 +130,10 @@ fi
 echo "Installing Gunicorn and Falcon..."
 uv pip install gunicorn falcon --quiet
 
+# Install test dependencies (without reinstalling philologic as editable)
+echo "Installing test dependencies..."
+uv pip install pytest pytest-timeout pytest-benchmark --quiet
+
 # Deactivate virtual environment
 deactivate
 
