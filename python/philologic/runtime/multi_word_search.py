@@ -22,10 +22,8 @@ numba.config.CACHE_DIR = cache_dir
 
 from philologic.runtime.Query import (
     _find_doc_boundaries,
-    _kway_merge_sorted_arrays,
     _load_word_arrays,
     _load_word_group_hits,
-    _write_with_early_flush,
     filter_philo_ids,
     get_word_groups,
     search_word,
@@ -712,194 +710,6 @@ def _cooc_match_doc_two_groups(w1_hits, w2_hits, cooc_slice,
     return output[:out_idx]
 
 
-@numba.jit(nopython=True, cache=True, nogil=True)
-def _cooc_match_all_docs_two_groups(
-    w1_all, w2_all,
-    g0_starts, g0_ends, g1_starts, g1_ends,
-    n_docs, cooc_slice, cooc_order, max_distance, exact_distance,
-):
-    """Fused document-loop kernel for 2-group co-occurrence matching.
-
-    Processes ALL documents in a single Numba call, eliminating Python-level
-    per-document dispatch overhead (~22us x N_docs).
-
-    Args:
-        w1_all, w2_all: Full contiguous hit arrays for groups 0 and 1
-        g0_starts, g0_ends: Per-document index ranges into w1_all (int64[n_docs])
-        g1_starts, g1_ends: Per-document index ranges into w2_all (int64[n_docs])
-        n_docs: Number of documents to process
-        cooc_slice: Columns defining text object (6=sent, 5=para)
-        cooc_order: Whether group 0 must precede group 1
-        max_distance: Max word distance (0=no limit)
-        exact_distance: If True, distance must equal max_distance
-    """
-    max_out = 4096
-    output = np.empty((max_out, 11), dtype=np.uint32)
-    out_idx = 0
-
-    for d_idx in range(n_docs):
-        g0_s = g0_starts[d_idx]
-        g0_e = g0_ends[d_idx]
-        g1_s = g1_starts[d_idx]
-        g1_e = g1_ends[d_idx]
-
-        n1 = g0_e - g0_s
-        n2 = g1_e - g1_s
-        if n1 <= 0 or n2 <= 0:
-            continue
-
-        # Pick smaller group to scan, larger to binary-search
-        if n1 <= n2:
-            scan_arr = w1_all
-            search_arr = w2_all
-            scan_s = g0_s
-            search_s = g1_s
-            n_scan = n1
-            n_search = n2
-            scan_is_w1 = True
-        else:
-            scan_arr = w2_all
-            search_arr = w1_all
-            scan_s = g1_s
-            search_s = g0_s
-            n_scan = n2
-            n_search = n1
-            scan_is_w1 = False
-
-        # Process each unique sentence in scan group
-        s = 0
-        while s < n_scan:
-            si_abs = scan_s + s
-
-            # Find end of this sentence
-            s_end = s + 1
-            while s_end < n_scan:
-                si2_abs = scan_s + s_end
-                same = True
-                for c in range(cooc_slice):
-                    if scan_arr[si2_abs, c] != scan_arr[si_abs, c]:
-                        same = False
-                        break
-                if not same:
-                    break
-                s_end += 1
-
-            # Binary search: lower bound
-            lo, hi = 0, n_search
-            while lo < hi:
-                mid = (lo + hi) // 2
-                mid_abs = search_s + mid
-                cmp = 0
-                for c in range(cooc_slice):
-                    if search_arr[mid_abs, c] < scan_arr[si_abs, c]:
-                        cmp = -1
-                        break
-                    elif search_arr[mid_abs, c] > scan_arr[si_abs, c]:
-                        cmp = 1
-                        break
-                if cmp < 0:
-                    lo = mid + 1
-                else:
-                    hi = mid
-            search_start = lo
-
-            # Binary search: upper bound
-            lo2, hi2 = search_start, n_search
-            while lo2 < hi2:
-                mid = (lo2 + hi2) // 2
-                mid_abs = search_s + mid
-                cmp = 0
-                for c in range(cooc_slice):
-                    if search_arr[mid_abs, c] < scan_arr[si_abs, c]:
-                        cmp = -1
-                        break
-                    elif search_arr[mid_abs, c] > scan_arr[si_abs, c]:
-                        cmp = 1
-                        break
-                if cmp <= 0:
-                    lo2 = mid + 1
-                else:
-                    hi2 = mid
-            search_end = lo2
-
-            if search_start < search_end:
-                sent_output_start = out_idx
-
-                for si in range(s, s_end):
-                    si_a = scan_s + si
-                    for sj in range(search_start, search_end):
-                        sj_a = search_s + sj
-
-                        if scan_is_w1:
-                            pos1 = scan_arr[si_a, 7]
-                            pos2 = search_arr[sj_a, 7]
-                        else:
-                            pos1 = search_arr[sj_a, 7]
-                            pos2 = scan_arr[si_a, 7]
-
-                        if cooc_order:
-                            if pos1 >= pos2:
-                                continue
-                        else:
-                            if pos1 == pos2:
-                                continue
-
-                        if max_distance > 0:
-                            dist = pos1 - pos2 if pos1 > pos2 else pos2 - pos1
-                            if exact_distance:
-                                if dist != max_distance:
-                                    continue
-                            else:
-                                if dist > max_distance:
-                                    continue
-
-                        # Determine output order (earlier position first)
-                        if scan_is_w1:
-                            if pos1 < pos2:
-                                f_a, f_arr, s_a, s_arr = si_a, scan_arr, sj_a, search_arr
-                            else:
-                                f_a, f_arr, s_a, s_arr = sj_a, search_arr, si_a, scan_arr
-                        else:
-                            if pos1 < pos2:
-                                f_a, f_arr, s_a, s_arr = sj_a, search_arr, si_a, scan_arr
-                            else:
-                                f_a, f_arr, s_a, s_arr = si_a, scan_arr, sj_a, search_arr
-
-                        # Duplicate check within this sentence
-                        is_dup = False
-                        for k in range(sent_output_start, out_idx):
-                            match = True
-                            for c in range(9):
-                                if output[k, c] != f_arr[f_a, c]:
-                                    match = False
-                                    break
-                            if match:
-                                if output[k, 9] == s_arr[s_a, 7] and output[k, 10] == s_arr[s_a, 8]:
-                                    is_dup = True
-                                    break
-                        if is_dup:
-                            continue
-
-                        # Grow output if needed
-                        if out_idx >= max_out:
-                            max_out *= 2
-                            new_output = np.empty((max_out, 11), dtype=np.uint32)
-                            for i in range(out_idx):
-                                for c2 in range(11):
-                                    new_output[i, c2] = output[i, c2]
-                            output = new_output
-
-                        for c in range(9):
-                            output[out_idx, c] = f_arr[f_a, c]
-                        output[out_idx, 9] = s_arr[s_a, 7]
-                        output[out_idx, 10] = s_arr[s_a, 8]
-                        out_idx += 1
-
-            s = s_end
-
-    return output[:out_idx]
-
-
 # ── Python search entry points ────────────────────────────────────────────────
 
 def _phrase_process_doc(group_doc_slices, n_groups, rare_group_idx, out_cols):
@@ -999,47 +809,37 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
                                 output_file.flush()
                                 flushed = True
 
-                # Phase 2: full merge for remaining docs
+                # Phase 2: per-form processing for remaining docs (no global merge)
                 n_remaining = len(rare_doc_ids) - batch
                 if n_remaining > 0:
-                    all_hits = []
+                    remaining_doc_ids = rare_doc_ids[batch:]
+
+                    # Pre-compute per-form per-doc boundaries for ALL remaining docs
+                    all_form_lefts_p2 = []
+                    all_form_rights_p2 = []
                     for g in range(n_groups):
-                        arrays = group_arrays[g]
-                        if len(arrays) > 1:
-                            all_hits.append(_kway_merge_sorted_arrays(arrays))
-                        elif len(arrays) == 1:
-                            all_hits.append(arrays[0])
-                        else:
-                            all_hits.append(np.empty((0, 9), dtype=np.uint32))
+                        fl = [np.searchsorted(arr[:, 0], remaining_doc_ids, side='left') for arr in group_arrays[g]]
+                        fr = [np.searchsorted(arr[:, 0], remaining_doc_ids, side='right') for arr in group_arrays[g]]
+                        all_form_lefts_p2.append(fl)
+                        all_form_rights_p2.append(fr)
 
-                    rare_docs, rare_starts = _find_doc_boundaries(all_hits[rare_group_idx])
-                    phase2_start = np.searchsorted(rare_docs, rare_doc_ids[batch - 1], side='right') if batch > 0 else 0
-
-                    lefts = {}
-                    rights = {}
-                    for g in range(n_groups):
-                        if g == rare_group_idx:
-                            continue
-                        g_doc_ids = all_hits[g][:, 0]
-                        lefts[g] = np.searchsorted(g_doc_ids, rare_docs, side='left')
-                        rights[g] = np.searchsorted(g_doc_ids, rare_docs, side='right')
-
-                    for d_idx in range(phase2_start, len(rare_docs)):
-                        rare_doc_hits = all_hits[rare_group_idx][rare_starts[d_idx]:rare_starts[d_idx + 1]]
-
+                    for d_idx in range(n_remaining):
                         skip_doc = False
                         group_doc_slices = [None] * n_groups
-                        group_doc_slices[rare_group_idx] = rare_doc_hits
-
                         for g in range(n_groups):
-                            if g == rare_group_idx:
-                                continue
-                            g_left = lefts[g][d_idx]
-                            g_right = rights[g][d_idx]
-                            if g_left >= g_right:
+                            parts = []
+                            for k in range(len(group_arrays[g])):
+                                left = all_form_lefts_p2[g][k][d_idx]
+                                right = all_form_rights_p2[g][k][d_idx]
+                                if right > left:
+                                    parts.append(group_arrays[g][k][left:right])
+                            if not parts:
                                 skip_doc = True
                                 break
-                            group_doc_slices[g] = all_hits[g][g_left:g_right]
+                            doc_hits = np.concatenate(parts) if len(parts) > 1 else parts[0]
+                            if len(parts) > 1:
+                                doc_hits = np.ascontiguousarray(doc_hits[np.argsort(doc_hits[:, 8])])
+                            group_doc_slices[g] = doc_hits
 
                         if skip_doc:
                             continue
@@ -1232,135 +1032,161 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                                 output_file.flush()
                                 flushed = True
 
-                # Phase 2: full merge both groups, process remaining docs with fused kernel
+                # Phase 2: per-doc processing for ALL remaining docs (no merge)
                 n_remaining_docs = len(rare_doc_ids) - batch
                 if n_remaining_docs > 0:
-                    # Merge both groups fully
-                    all_hits = []
-                    for g in range(n_groups):
-                        arrays = group_arrays[g]
-                        if len(arrays) > 1:
-                            all_hits.append(_kway_merge_sorted_arrays(arrays))
-                        elif len(arrays) == 1:
-                            all_hits.append(arrays[0])
-                        else:
-                            all_hits.append(np.empty((0, 9), dtype=np.uint32))
+                    remaining_doc_ids = rare_doc_ids[batch:]
 
-                    # Recompute rare group info from merged array
-                    rare_docs, rare_starts = _find_doc_boundaries(all_hits[rare_idx])
-                    n_docs = len(rare_docs)
+                    # Pre-compute per-doc ranges for ALL remaining docs (vectorized)
+                    rare_fl_p2 = [np.searchsorted(arr[:, 0], remaining_doc_ids, side='left')
+                                  for arr in rare_arrays]
+                    rare_fr_p2 = [np.searchsorted(arr[:, 0], remaining_doc_ids, side='right')
+                                  for arr in rare_arrays]
+                    common_fl_p2 = [np.searchsorted(arr[:, 0], remaining_doc_ids, side='left')
+                                    for arr in common_arrays]
+                    common_fr_p2 = [np.searchsorted(arr[:, 0], remaining_doc_ids, side='right')
+                                    for arr in common_arrays]
 
-                    # Find where the batch docs end in the merged rare array
-                    # (docs are sorted, so we can find the offset)
-                    phase2_start = np.searchsorted(rare_docs, rare_doc_ids[batch - 1], side='right') if batch > 0 else 0
-                    remaining = n_docs - phase2_start
+                    for d_idx in range(n_remaining_docs):
+                        r_parts = []
+                        for k in range(len(rare_arrays)):
+                            left, right = rare_fl_p2[k][d_idx], rare_fr_p2[k][d_idx]
+                            if right > left:
+                                r_parts.append(rare_arrays[k][left:right])
+                        if not r_parts:
+                            continue
+                        rare_doc = np.concatenate(r_parts) if len(r_parts) > 1 else r_parts[0]
+                        if len(r_parts) > 1:
+                            rare_doc = np.ascontiguousarray(rare_doc[np.argsort(rare_doc[:, 8])])
 
-                    if remaining > 0:
-                        other_g = common_idx
-                        g_doc_ids = all_hits[other_g][:, 0]
-                        cm_lefts = np.searchsorted(g_doc_ids, rare_docs[phase2_start:], side='left')
-                        cm_rights = np.searchsorted(g_doc_ids, rare_docs[phase2_start:], side='right')
+                        c_parts = []
+                        for k in range(len(common_arrays)):
+                            left, right = common_fl_p2[k][d_idx], common_fr_p2[k][d_idx]
+                            if right > left:
+                                c_parts.append(common_arrays[k][left:right])
+                        if not c_parts:
+                            continue
+                        common_doc = np.concatenate(c_parts) if len(c_parts) > 1 else c_parts[0]
+                        if len(c_parts) > 1:
+                            common_doc = np.ascontiguousarray(common_doc[np.argsort(common_doc[:, 8])])
 
                         if rare_idx == 0:
-                            g0_starts = rare_starts[phase2_start:-1].astype(np.int64)
-                            g0_ends = rare_starts[phase2_start + 1:].astype(np.int64)
-                            g1_starts = cm_lefts.astype(np.int64)
-                            g1_ends = cm_rights.astype(np.int64)
+                            result = _cooc_match_doc_two_groups(
+                                rare_doc, common_doc, cooc_slice,
+                                cooc_order, max_distance, exact_distance)
                         else:
-                            g0_starts = cm_lefts.astype(np.int64)
-                            g0_ends = cm_rights.astype(np.int64)
-                            g1_starts = rare_starts[phase2_start:-1].astype(np.int64)
-                            g1_ends = rare_starts[phase2_start + 1:].astype(np.int64)
-
-                        w1 = np.ascontiguousarray(all_hits[0])
-                        w2 = np.ascontiguousarray(all_hits[1])
-
-                        # Phase 2a: small batch for early flush
-                        batch2 = min(100, remaining)
-                        result2a = _cooc_match_all_docs_two_groups(
-                            w1, w2, g0_starts[:batch2], g0_ends[:batch2],
-                            g1_starts[:batch2], g1_ends[:batch2],
-                            batch2, cooc_slice, cooc_order, max_distance, exact_distance,
-                        )
-                        if len(result2a) > 0:
-                            output_file.write(result2a.tobytes())
-                            output_file.flush()
-
-                        # Phase 2b: remaining documents
-                        remaining2 = remaining - batch2
-                        if remaining2 > 0:
-                            result2b = _cooc_match_all_docs_two_groups(
-                                w1, w2, g0_starts[batch2:], g0_ends[batch2:],
-                                g1_starts[batch2:], g1_ends[batch2:],
-                                remaining2, cooc_slice, cooc_order, max_distance, exact_distance,
-                            )
-                            if len(result2b) > 0:
-                                output_file.write(result2b.tobytes())
+                            result = _cooc_match_doc_two_groups(
+                                common_doc, rare_doc, cooc_slice,
+                                cooc_order, max_distance, exact_distance)
+                        if len(result) > 0:
+                            output_file.write(result.tobytes())
+                            if not flushed:
+                                output_file.flush()
+                                flushed = True
         else:
-            # N-group or corpus-filtered: use original merged path
-            all_hits = []
-            for group in word_groups:
-                hits = _load_word_group_hits(db_path, txn, group, overflow_words)
-                all_hits.append(hits)
+            # N-group or corpus-filtered path
+            # Load per-form arrays for all groups (no eager merge)
+            group_arrays = [_load_word_arrays(db_path, txn, g, overflow_words) for g in word_groups]
 
+            # For corpus-filtered: filter each form individually
             if corpus_file is not None:
-                all_hits = [filter_philo_ids(corpus_file, hits) for hits in all_hits]
+                for g in range(n_groups):
+                    group_arrays[g] = [filter_philo_ids(corpus_file, arr) for arr in group_arrays[g]]
+                    group_arrays[g] = [arr for arr in group_arrays[g] if len(arr) > 0]
 
-            sizes = [len(h) for h in all_hits]
-            rare_idx = int(np.argmin(np.array(sizes)))
-            rare_docs, rare_starts = _find_doc_boundaries(all_hits[rare_idx])
+            # Compute per-group total hit counts
+            group_counts = [sum(len(a) for a in arrays) for arrays in group_arrays]
+            if any(c == 0 for c in group_counts):
+                env.close()
+                return
 
-            other_lefts = {}
-            other_rights = {}
+            rare_idx = int(np.argmin(np.array(group_counts)))
+
+            # Get unique doc IDs from rare group
+            rare_arrays = group_arrays[rare_idx]
+            if rare_arrays:
+                rare_doc_ids_all = np.unique(np.concatenate([arr[:, 0] for arr in rare_arrays]))
+            else:
+                rare_doc_ids_all = np.empty(0, dtype=np.uint32)
+
+            if len(rare_doc_ids_all) == 0:
+                env.close()
+                return
+
+            # Pre-compute per-form per-doc boundaries for all groups
+            group_fl = []
+            group_fr = []
             for g in range(n_groups):
-                if g == rare_idx:
-                    continue
-                g_doc_ids = all_hits[g][:, 0]
-                other_lefts[g] = np.searchsorted(g_doc_ids, rare_docs, side='left')
-                other_rights[g] = np.searchsorted(g_doc_ids, rare_docs, side='right')
+                fl = [np.searchsorted(arr[:, 0], rare_doc_ids_all, side='left') for arr in group_arrays[g]]
+                fr = [np.searchsorted(arr[:, 0], rare_doc_ids_all, side='right') for arr in group_arrays[g]]
+                group_fl.append(fl)
+                group_fr.append(fr)
 
             with open(hitlist_filename, "wb") as output_file:
                 if n_groups == 2:
-                    n_docs = len(rare_docs)
-                    other_g = 1 - rare_idx
-                    if rare_idx == 0:
-                        g0_starts = rare_starts[:-1].astype(np.int64)
-                        g0_ends = rare_starts[1:].astype(np.int64)
-                        g1_starts = other_lefts[other_g].astype(np.int64)
-                        g1_ends = other_rights[other_g].astype(np.int64)
-                    else:
-                        g0_starts = other_lefts[other_g].astype(np.int64)
-                        g0_ends = other_rights[other_g].astype(np.int64)
-                        g1_starts = rare_starts[:-1].astype(np.int64)
-                        g1_ends = rare_starts[1:].astype(np.int64)
+                    # 2-group corpus-filtered: per-doc processing
+                    common_idx = 1 - rare_idx
+                    common_arrays = group_arrays[common_idx]
+                    flushed = False
+                    for d_idx in range(len(rare_doc_ids_all)):
+                        r_parts = []
+                        for k in range(len(rare_arrays)):
+                            left = group_fl[rare_idx][k][d_idx]
+                            right = group_fr[rare_idx][k][d_idx]
+                            if right > left:
+                                r_parts.append(rare_arrays[k][left:right])
+                        if not r_parts:
+                            continue
+                        rare_doc = np.concatenate(r_parts) if len(r_parts) > 1 else r_parts[0]
+                        if len(r_parts) > 1:
+                            rare_doc = np.ascontiguousarray(rare_doc[np.argsort(rare_doc[:, 8])])
 
-                    w1 = np.ascontiguousarray(all_hits[0])
-                    w2 = np.ascontiguousarray(all_hits[1])
-                    result = _cooc_match_all_docs_two_groups(
-                        w1, w2, g0_starts, g0_ends, g1_starts, g1_ends,
-                        n_docs, cooc_slice, cooc_order, max_distance, exact_distance,
-                    )
-                    if len(result) > 0:
-                        _write_with_early_flush(output_file, result.tobytes())
+                        c_parts = []
+                        for k in range(len(common_arrays)):
+                            left = group_fl[common_idx][k][d_idx]
+                            right = group_fr[common_idx][k][d_idx]
+                            if right > left:
+                                c_parts.append(common_arrays[k][left:right])
+                        if not c_parts:
+                            continue
+                        common_doc = np.concatenate(c_parts) if len(c_parts) > 1 else c_parts[0]
+                        if len(c_parts) > 1:
+                            common_doc = np.ascontiguousarray(common_doc[np.argsort(common_doc[:, 8])])
+
+                        if rare_idx == 0:
+                            result = _cooc_match_doc_two_groups(
+                                rare_doc, common_doc, cooc_slice,
+                                cooc_order, max_distance, exact_distance)
+                        else:
+                            result = _cooc_match_doc_two_groups(
+                                common_doc, rare_doc, cooc_slice,
+                                cooc_order, max_distance, exact_distance)
+                        if len(result) > 0:
+                            output_file.write(result.tobytes())
+                            if not flushed:
+                                output_file.flush()
+                                flushed = True
 
                 else:
-                    # N-group case: per-document loop
+                    # N-group case: per-document loop with per-form extraction
                     flushed = False
-                    for d_idx in range(len(rare_docs)):
-                        empty = np.empty((0, 9), dtype=np.uint32)
-                        doc_hits = [empty] * n_groups
-                        doc_hits[rare_idx] = all_hits[rare_idx][rare_starts[d_idx]:rare_starts[d_idx + 1]]
-
+                    for d_idx in range(len(rare_doc_ids_all)):
                         skip_doc = False
+                        doc_hits = [None] * n_groups
                         for g in range(n_groups):
-                            if g == rare_idx:
-                                continue
-                            left = other_lefts[g][d_idx]
-                            right = other_rights[g][d_idx]
-                            if left >= right:
+                            parts = []
+                            for k in range(len(group_arrays[g])):
+                                left = group_fl[g][k][d_idx]
+                                right = group_fr[g][k][d_idx]
+                                if right > left:
+                                    parts.append(group_arrays[g][k][left:right])
+                            if not parts:
                                 skip_doc = True
                                 break
-                            doc_hits[g] = all_hits[g][left:right]
+                            doc_h = np.concatenate(parts) if len(parts) > 1 else parts[0]
+                            if len(parts) > 1:
+                                doc_h = np.ascontiguousarray(doc_h[np.argsort(doc_h[:, 8])])
+                            doc_hits[g] = doc_h
 
                         if skip_doc:
                             continue

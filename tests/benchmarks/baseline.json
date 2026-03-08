@@ -1,22 +1,22 @@
 {
   "metadata": {
-    "generated_date": "2026-02-12T22:47:00.656435",
+    "generated_date": "2026-03-07T21:10:36.741944",
     "machine_info": {
       "node": "anomander",
       "processor": "x86_64",
       "machine": "x86_64",
-      "python_compiler": "GCC 13.3.0",
+      "python_compiler": "Clang 20.1.4 ",
       "python_implementation": "CPython",
-      "python_implementation_version": "3.12.3",
-      "python_version": "3.12.3",
+      "python_implementation_version": "3.12.10",
+      "python_version": "3.12.10",
       "python_build": [
         "main",
-        "Jan 22 2026 20:57:42"
+        "May 22 2025 01:59:14"
       ],
       "release": "6.8.0-90-generic",
       "system": "Linux",
       "cpu": {
-        "python_version": "3.12.3.final.0 (64 bit)",
+        "python_version": "3.12.10.final.0 (64 bit)",
         "cpuinfo_version": [
           9,
           0,
@@ -214,92 +214,92 @@
       }
     },
     "commit_info": {
-      "id": "256a779138f06d83e2c92b08a1edd18e0364ddd7",
-      "time": "2026-02-12T21:18:31-06:00",
-      "author_time": "2026-02-12T21:18:31-06:00",
+      "id": "3f3be1dd9bde1ff08351bd1867f67bff2fbf229d",
+      "time": "2026-03-07T14:25:53-06:00",
+      "author_time": "2026-03-07T14:25:53-06:00",
       "dirty": true,
       "project": "PhiloLogic5",
       "branch": "main"
     }
   },
   "single_term_common_word": {
-    "median_seconds": 0.04751219553872943,
-    "mean_seconds": 0.047588406363502145,
-    "min_seconds": 0.04069599183276296,
-    "max_seconds": 0.056654199957847595,
-    "stddev_seconds": 0.005389170799785784,
+    "median_seconds": 0.051023004576563835,
+    "mean_seconds": 0.05205823313444853,
+    "min_seconds": 0.04068227671086788,
+    "max_seconds": 0.07100011687725782,
+    "stddev_seconds": 0.012183290296453717,
     "rounds": 10
   },
   "single_term_rare_word": {
-    "median_seconds": 0.02055218257009983,
-    "mean_seconds": 0.020554329687729477,
-    "min_seconds": 0.02039924869313836,
-    "max_seconds": 0.020760700572282076,
-    "stddev_seconds": 0.00012703540760676936,
+    "median_seconds": 0.02097219042479992,
+    "mean_seconds": 0.02100630830973387,
+    "min_seconds": 0.020842974074184895,
+    "max_seconds": 0.021194099448621273,
+    "stddev_seconds": 0.00015350094108626338,
     "rounds": 10
   },
   "phrase_search": {
-    "median_seconds": 0.020498811034485698,
-    "mean_seconds": 0.020519037172198294,
-    "min_seconds": 0.020402865018695593,
-    "max_seconds": 0.020665116142481565,
-    "stddev_seconds": 9.795293857398344e-05,
+    "median_seconds": 0.02066257828846574,
+    "mean_seconds": 0.020666973013430835,
+    "min_seconds": 0.02040093857795,
+    "max_seconds": 0.020927040837705135,
+    "stddev_seconds": 0.00014079266996468853,
     "rounds": 10
   },
   "proximity_search": {
-    "median_seconds": 0.020643556956201792,
-    "mean_seconds": 0.020655569294467567,
-    "min_seconds": 0.02046481892466545,
-    "max_seconds": 0.0209368709474802,
-    "stddev_seconds": 0.00016268162193775393,
+    "median_seconds": 0.02114917617291212,
+    "mean_seconds": 0.02116956254467368,
+    "min_seconds": 0.02075336594134569,
+    "max_seconds": 0.021587658673524857,
+    "stddev_seconds": 0.00023845705735002672,
     "rounds": 10
   },
   "sentence_search": {
-    "median_seconds": 0.05169898830354214,
-    "mean_seconds": 0.05070701111108065,
-    "min_seconds": 0.041010279674082994,
-    "max_seconds": 0.05755911208689213,
-    "stddev_seconds": 0.006059415175393604,
+    "median_seconds": 0.030762779992073774,
+    "mean_seconds": 0.030848025996237993,
+    "min_seconds": 0.030630968511104584,
+    "max_seconds": 0.031252115964889526,
+    "stddev_seconds": 0.00021357972299929177,
     "rounds": 10
   },
   "or_search": {
-    "median_seconds": 0.020847297506406903,
-    "mean_seconds": 0.020848264498636127,
-    "min_seconds": 0.020645365118980408,
-    "max_seconds": 0.021198740229010582,
-    "stddev_seconds": 0.00015169672945443318,
+    "median_seconds": 0.02100536599755287,
+    "mean_seconds": 0.02112208232283592,
+    "min_seconds": 0.020572581328451633,
+    "max_seconds": 0.021973648108541965,
+    "stddev_seconds": 0.0004805907505413315,
     "rounds": 10
   },
   "single_term_with_metadata": {
-    "median_seconds": 0.023819596972316504,
-    "mean_seconds": 0.023854431230574846,
-    "min_seconds": 0.023287559393793344,
-    "max_seconds": 0.024305975064635277,
-    "stddev_seconds": 0.0003298556089983139,
+    "median_seconds": 0.021333367563784122,
+    "mean_seconds": 0.021349243726581334,
+    "min_seconds": 0.020954152569174767,
+    "max_seconds": 0.02176027186214924,
+    "stddev_seconds": 0.000280273325032858,
     "rounds": 10
   },
   "phrase_with_metadata": {
-    "median_seconds": 0.023751417407765985,
-    "mean_seconds": 0.02390572251752019,
-    "min_seconds": 0.023469618055969477,
-    "max_seconds": 0.0250560799613595,
-    "stddev_seconds": 0.00047523729793940973,
+    "median_seconds": 0.02096929494291544,
+    "mean_seconds": 0.021190181933343412,
+    "min_seconds": 0.02071409672498703,
+    "max_seconds": 0.02216570172458887,
+    "stddev_seconds": 0.0004798611877881106,
     "rounds": 10
   },
   "iterate_first_100": {
-    "median_seconds": 0.048629245487973094,
-    "mean_seconds": 0.048940681479871274,
-    "min_seconds": 0.042838233057409525,
-    "max_seconds": 0.05657570995390415,
-    "stddev_seconds": 0.004195223593852399,
+    "median_seconds": 0.05161973973736167,
+    "mean_seconds": 0.05147812059149146,
+    "min_seconds": 0.048663847148418427,
+    "max_seconds": 0.05315008945763111,
+    "stddev_seconds": 0.0011127364113520638,
     "rounds": 10
   },
   "random_access": {
-    "median_seconds": 0.0415576274972409,
-    "mean_seconds": 0.04752996219322085,
-    "min_seconds": 0.04118461813777685,
-    "max_seconds": 0.07180244103074074,
-    "stddev_seconds": 0.010624031415172815,
+    "median_seconds": 0.05098372558131814,
+    "mean_seconds": 0.05137059483677149,
+    "min_seconds": 0.05082906037569046,
+    "max_seconds": 0.053746478632092476,
+    "stddev_seconds": 0.0009033721990727594,
     "rounds": 10
   }
 }
