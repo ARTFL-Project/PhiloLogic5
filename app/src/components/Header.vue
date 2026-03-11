@@ -303,6 +303,12 @@ nav.navbar a,
     border-radius: 0.25rem;
 }
 
+@media (min-width: 992px) {
+    .navbar-brand {
+        transform: translateY(0.75rem);
+    }
+}
+
 .navbar-brand {
     font-weight: 700;
     font-size: clamp(1.15rem, 2.5vw, 1.6rem) !important;
