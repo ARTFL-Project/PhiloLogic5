@@ -123,7 +123,7 @@ def make_collocation_database(loader_obj, db_destination):
 
     with tqdm(total=getattr(loader_obj, "word_count", None), leave=False, desc="Building collocation arrays") as pbar:
         for raw_words in sorted(
-            os.scandir(f"{loader_obj.destination}/words_and_philo_ids"),
+            (e for e in os.scandir(f"{loader_obj.destination}/words_and_philo_ids") if e.name.endswith(".lz4")),
             key=lambda x: int(x.name.split(".")[0]),
         ):
             with lz4.frame.open(raw_words.path) as input_file:

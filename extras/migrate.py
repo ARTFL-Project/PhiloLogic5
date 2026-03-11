@@ -477,7 +477,8 @@ def main():
     )
     parser.add_argument(
         "db_root",
-        help="Root directory containing PhiloLogic databases (e.g. /var/www/html/philologic5)",
+        help="Root directory containing PhiloLogic databases (e.g. /var/www/html/philologic5), "
+             "or path to a single database",
     )
     parser.add_argument(
         "--skip-collocation", action="store_true",
@@ -499,12 +500,16 @@ def main():
         print(f"Error: {db_root} is not a directory")
         sys.exit(1)
 
-    databases = find_databases(db_root)
+    # Accept either a single database or a root containing multiple databases
+    if is_philologic_db(db_root):
+        databases = [db_root]
+    else:
+        databases = find_databases(db_root)
     if not databases:
-        print(f"No PhiloLogic databases found under {db_root}")
+        print(f"No PhiloLogic databases found at {db_root}")
         sys.exit(1)
 
-    print(f"Found {len(databases)} database(s) under {db_root}:")
+    print(f"Found {len(databases)} database(s):")
     for db in databases:
         print(f"  {os.path.basename(db)}")
 
