@@ -261,13 +261,54 @@ def _migrate_one(db_path):
     return name, " | ".join(parts)
 
 
+def _pipeline_one(db_path, skip_collocation=False):
+    """Run the full migration pipeline for a single database. Returns (name, results_dict)."""
+    import contextlib
+
+    name = os.path.basename(db_path)
+    results = {}
+
+    # Phase 1: Data migration
+    if not skip_collocation:
+        _, data_summary = _migrate_one(db_path)
+        results["data"] = data_summary
+    else:
+        results["data"] = "skipped (--skip-collocation)"
+
+    # Phase 2: Remove legacy files
+    try:
+        log_path = os.path.join(db_path, "data", "legacy_cleanup.log")
+        with open(log_path, "w") as log:
+            with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                remove_legacy_files(db_path)
+        results["legacy"] = "done"
+    except Exception as e:
+        results["legacy"] = f"FAILED: {e}"
+
+    # Phase 3: Copy app source
+    try:
+        log_path = os.path.join(db_path, "data", "app_copy.log")
+        with open(log_path, "w") as log:
+            with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                copy_app(db_path)
+        results["app_copy"] = "done"
+    except Exception as e:
+        results["app_copy"] = f"FAILED: {e}"
+
+    # Phase 4: Build frontend
+    _, build_summary = _build_one(db_path)
+    results["frontend"] = build_summary
+
+    return name, results
+
+
 # ---------------------------------------------------------------------------
 # Phase 2: Remove legacy CGI files
 # ---------------------------------------------------------------------------
 
 # These were per-database in CGI mode but are now served centrally by gunicorn.
 # Databases with custom Vue apps that should not be overwritten by the default app.
-_SKIP_APP_COPY = {"encyclopedie0226", "kafker", "bayle-0326", "montaigne1580", "montaigne1588", "montessaisvilley", "mvogeminitest"}
+_SKIP_APP_COPY = {"encyclopedie0226", "kafker", "bayle-0326", "montaigne1580", "montaigne1588", "montessaisvilley", "mvogeminitest", "tout-voltaire"}
 
 _LEGACY_DIRS = ("reports", "scripts")
 _LEGACY_FILES = ("dispatcher.py", "webApp.py", ".htaccess")
@@ -444,7 +485,7 @@ def main():
     )
     parser.add_argument(
         "-j", "--jobs", type=int, default=1,
-        help="Number of databases to process in parallel for collocation migration (default: 1)",
+        help="Number of databases to process in parallel (default: 1)",
     )
     args = parser.parse_args()
 
@@ -467,82 +508,83 @@ def main():
     for db in databases:
         print(f"  {os.path.basename(db)}")
 
-    # Phase 1: Data migration (collocations + norm LMDB)
-    if not args.skip_collocation:
-        print(f"\n{'=' * 60}")
-        print("Phase 1: Migrating data (collocations + norm LMDB)")
+    failures = []  # list of (db_name, phase, error_message)
+
+    if args.jobs > 1 and len(databases) > 1:
+        # ---- Parallel mode: run the full pipeline per-database ----
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        n_jobs = min(args.jobs, len(databases))
+        # Schedule largest databases first so small ones fill the tail
+        by_size = sorted(databases, key=_db_text_size, reverse=True)
+        print(f"\nRunning full pipeline for {n_jobs} databases in parallel (largest first)")
         print(f"{'=' * 60}")
-        if args.jobs > 1 and len(databases) > 1:
-            from concurrent.futures import ProcessPoolExecutor, as_completed
-            n_jobs = min(args.jobs, len(databases))
-            # Schedule largest databases first so small ones fill the tail
-            by_size = sorted(databases, key=_db_text_size, reverse=True)
-            print(f"Running {n_jobs} databases in parallel (largest first)")
-            with ProcessPoolExecutor(max_workers=n_jobs) as pool:
-                futures = {pool.submit(_migrate_one, db): db for db in by_size}
-                for future in as_completed(futures):
-                    name, summary = future.result()
-                    print(f"  [{name}] {summary}")
-        else:
+
+        with ProcessPoolExecutor(max_workers=n_jobs) as pool:
+            futures = {
+                pool.submit(_pipeline_one, db, args.skip_collocation): db
+                for db in by_size
+            }
+            for future in as_completed(futures):
+                try:
+                    name, results = future.result()
+                    parts = [f"{k}: {v}" for k, v in results.items()]
+                    print(f"  [{name}] {' | '.join(parts)}")
+                    for phase, summary in results.items():
+                        if isinstance(summary, str) and summary.startswith("FAILED"):
+                            failures.append((name, phase, summary))
+                except Exception as e:
+                    db = futures[future]
+                    name = os.path.basename(db)
+                    print(f"  [{name}] Error: {e}")
+                    failures.append((name, "pipeline", str(e)))
+    else:
+        # ---- Sequential mode: run phase-by-phase with visible output ----
+
+        # Phase 1: Data migration (collocations + norm LMDB)
+        if not args.skip_collocation:
+            print(f"\n{'=' * 60}")
+            print("Phase 1: Migrating data (collocations + norm LMDB)")
+            print(f"{'=' * 60}")
             for db_path in databases:
                 print(f"\n[{os.path.basename(db_path)}]")
                 migrate_collocation(db_path)
                 ensure_norm_lmdb(db_path)
                 ensure_forms_lmdb(db_path)
                 ensure_metadata_word_index(db_path)
-    else:
-        print("\nPhase 1: Skipped (--skip-collocation)")
+        else:
+            print("\nPhase 1: Skipped (--skip-collocation)")
 
-    failures = []  # list of (db_name, phase, error_message)
+        # Phase 2: Remove legacy CGI files
+        print(f"\n{'=' * 60}")
+        print("Phase 2: Removing legacy CGI files")
+        print(f"{'=' * 60}")
+        for db_path in databases:
+            name = os.path.basename(db_path)
+            print(f"\n[{name}]")
+            try:
+                remove_legacy_files(db_path)
+            except Exception as e:
+                print(f"  Error: {e}")
+                failures.append((name, "legacy cleanup", str(e)))
 
-    # Phase 2: Remove legacy CGI files
-    print(f"\n{'=' * 60}")
-    print("Phase 2: Removing legacy CGI files")
-    print(f"{'=' * 60}")
-    for db_path in databases:
-        name = os.path.basename(db_path)
-        print(f"\n[{name}]")
-        try:
-            remove_legacy_files(db_path)
-        except Exception as e:
-            print(f"  Error: {e}")
-            failures.append((name, "legacy cleanup", str(e)))
+        # Phase 3: Copy app source
+        print(f"\n{'=' * 60}")
+        print("Phase 3: Copying app source to databases")
+        print(f"{'=' * 60}")
+        for db_path in databases:
+            name = os.path.basename(db_path)
+            print(f"\n[{name}]")
+            try:
+                copy_app(db_path)
+            except Exception as e:
+                print(f"  Error: {e}")
+                failures.append((name, "app copy", str(e)))
 
-    # Phase 3: Copy app source
-    print(f"\n{'=' * 60}")
-    print("Phase 3: Copying app source to databases")
-    print(f"{'=' * 60}")
-    for db_path in databases:
-        name = os.path.basename(db_path)
-        print(f"\n[{name}]")
-        try:
-            copy_app(db_path)
-        except Exception as e:
-            print(f"  Error: {e}")
-            failures.append((name, "app copy", str(e)))
-
-    # Phase 4: Rebuild frontends
-    print(f"\n{'=' * 60}")
-    print("Phase 4: Rebuilding frontends")
-    print(f"{'=' * 60}")
-    if args.jobs > 1 and len(databases) > 1:
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-        n_jobs = min(args.jobs, len(databases))
-        print(f"Running {n_jobs} builds in parallel")
-        with ProcessPoolExecutor(max_workers=n_jobs) as pool:
-            futures = {pool.submit(_build_one, db): db for db in databases}
-            for future in as_completed(futures):
-                try:
-                    name, summary = future.result()
-                    print(f"  [{name}] {summary}")
-                    if summary.startswith("FAILED"):
-                        failures.append((name, "frontend build", summary))
-                except Exception as e:
-                    db = futures[future]
-                    name = os.path.basename(db)
-                    print(f"  [{name}] Error: {e}")
-                    failures.append((name, "frontend build", str(e)))
-    else:
+        # Phase 4: Rebuild frontends
+        print(f"\n{'=' * 60}")
+        print("Phase 4: Rebuilding frontends")
+        print(f"{'=' * 60}")
         for db_path in databases:
             name = os.path.basename(db_path)
             print(f"\n[{name}]")
