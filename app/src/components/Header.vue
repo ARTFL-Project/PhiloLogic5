@@ -65,7 +65,7 @@
                     </ul>
                 </div>
 
-                <router-link class="navbar-brand" to="/" :aria-label="stripHtmlTags(philoConfig.dbname)"
+                <router-link class="navbar-brand" :class="{ 'has-actions': hasActionsRow }" to="/" :aria-label="stripHtmlTags(philoConfig.dbname)"
                     v-html="philoConfig.dbname">
                 </router-link>
 
@@ -163,6 +163,11 @@ export default {
     watch: {
         $route() {
             this.getDocCitation();
+        },
+    },
+    computed: {
+        hasActionsRow() {
+            return this.philoConfig.academic_citation.collection.length > 0 || this.philoConfig.report_error_link.length > 0;
         },
     },
     methods: {
@@ -304,7 +309,7 @@ nav.navbar a,
 }
 
 @media (min-width: 992px) {
-    .navbar-brand {
+    .navbar-brand.has-actions {
         transform: translateY(0.75rem);
     }
 }
