@@ -19,12 +19,13 @@ local_networks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"
 ip_ranges = [re.compile(rf"^{i.split('/')[0]}.*") for i in local_networks]  # For backward compatibility
 
 # Cached IP whitelist info
-COMPILED_IP_SUFFIX = ".compiled_ips"
+_COMPILED_IP_CACHE_DIR = "/var/lib/philologic5/ip_cache"
 
 
 def load_or_compile_ip_whitelist(access_file):
     """Load compiled IP whitelist or recompile if outdated"""
-    compiled_file = access_file + COMPILED_IP_SUFFIX
+    safe_name = access_file.replace("/", "_").lstrip("_") + ".compiled_ips"
+    compiled_file = os.path.join(_COMPILED_IP_CACHE_DIR, safe_name)
     access_mtime = os.path.getmtime(access_file)
 
     # Check if compiled file exists and is newer than access file
