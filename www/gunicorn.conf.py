@@ -73,6 +73,11 @@ limit_request_field_size = 8190
 # Defaults to CPU count if unset; cap to avoid contention with gunicorn workers
 os.environ.setdefault("NUMBA_NUM_THREADS", "2")
 
+# Numba cache directory — must be set BEFORE import numba (which happens during
+# preload_app). If set after, Numba ignores it and falls back to __pycache__
+# next to the source file, which www-data cannot write to.
+os.environ.setdefault("NUMBA_CACHE_DIR", "/var/lib/philologic5/numba_cache")
+
 # Working directory
 # For central dispatcher mode, this should be /var/lib/philologic5/web_app/
 # For per-database mode, this is the database's www/ directory
