@@ -282,7 +282,8 @@ def check_access(environ, config):
 
 
 def get_client_info(environ):
-    incoming_address = environ["REMOTE_ADDR"]
+    forwarded_for = environ.get("HTTP_X_FORWARDED_FOR", "")
+    incoming_address = forwarded_for.split(",")[0].strip() if forwarded_for else environ["REMOTE_ADDR"]
     fq_domain_name = socket.getfqdn(incoming_address).split(",")[-1]
     edit_domain = re.split(r"\.", fq_domain_name)
 
