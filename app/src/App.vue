@@ -240,6 +240,8 @@ export default {
         },
         getBaseUrl() {
             let href = window.location.href;
+            href = href.replace(/\/landing.*/, "");
+            href = href.replace(/\/query.*/, "");
             href = href.replace(/\/concordance.*/, "");
             href = href.replace(/\/kwic.*/, "");
             href = href.replace(/\/collocation.*/, "");
