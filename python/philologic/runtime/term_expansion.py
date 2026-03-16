@@ -33,72 +33,14 @@ def get_lmdb_env(lmdb_path: str) -> lmdb.Environment:
 
 
 def _get_norm_env(freq_file: str) -> lmdb.Environment:
-    """Return (and cache) the norm_word.lmdb env, building it from the freq file if absent."""
-    lmdb_path = freq_file + ".lmdb"
-    if lmdb_path not in _norm_lmdb_cache and not os.path.exists(lmdb_path):
-        _build_norm_lmdb(freq_file, lmdb_path)
-    return get_lmdb_env(lmdb_path)
-
-
-def _build_norm_lmdb(freq_file: str, lmdb_path: str) -> None:
-    """Build norm→originals LMDB on first use (for databases pre-dating this feature)."""
-    from collections import defaultdict
-
-    tmp_path = lmdb_path + ".tmp"
-    mapping: dict[bytes, list[bytes]] = defaultdict(list)
-    with open(freq_file, "rb") as f:
-        for line in f:
-            tab = line.find(b"\t")
-            if tab < 0:
-                continue
-            norm = line[:tab]
-            orig = line[tab + 1:].rstrip(b"\n")
-            if norm:
-                mapping[norm].append(orig)
-
-    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024,
-                        writemap=True, sync=False, metasync=False)
-    with tmp_env.begin(write=True) as txn:
-        for norm, originals in mapping.items():
-            txn.put(norm, b"\x00".join(originals))
-    tmp_env.sync(True)
-    os.makedirs(lmdb_path, exist_ok=True)
-    tmp_env.copy(lmdb_path, compact=True)
-    tmp_env.close()
-    os.system(f"rm -rf {tmp_path}")
-
-
-def _build_forms_lmdb(db_path: str, lmdb_path: str) -> None:
-    """Build key-only LMDB from lemma/attr flat files (lemmas, word_attributes, lemma_word_attributes).
-
-    Keys are the form strings (e.g. b'lemma:love', b'love:pos:NOUN'); values are empty.
-    Used for fast prefix/regex scanning without touching the large words.lmdb.
-    """
-    freq_dir = os.path.join(db_path, "frequencies")
-    tmp_path = lmdb_path + ".tmp"
-    tmp_env = lmdb.open(tmp_path, map_size=512 * 1024 * 1024,
-                        writemap=True, sync=False, metasync=False)
-    with tmp_env.begin(write=True) as txn:
-        for fname in _FORMS_FLAT_FILES:
-            fpath = os.path.join(freq_dir, fname)
-            if not os.path.exists(fpath):
-                continue
-            with open(fpath, "rb") as f:
-                for line in f:
-                    key = line.rstrip(b"\n")
-                    if key:
-                        txn.put(key, b"")
-    tmp_env.sync(True)
-    os.makedirs(lmdb_path, exist_ok=True)
-    tmp_env.copy(lmdb_path, compact=True)
-    tmp_env.close()
-    os.system(f"rm -rf {tmp_path}")
+    """Return (and cache) the norm_word.lmdb env (built at index time by PostFilters)."""
+    return get_lmdb_env(freq_file + ".lmdb")
 
 
 def _get_forms_env(db_path: str) -> lmdb.Environment | None:
-    """Return (and cache) the word_forms.lmdb env, building it lazily if absent.
+    """Return (and cache) the word_forms.lmdb env (built at index time by PostFilters).
 
-    Returns None if the database has no lemma/attr flat files (plain word-only corpus).
+    Returns None if the database has no word_forms.lmdb (no lemma/attr data).
     """
     lmdb_path = os.path.join(db_path, "frequencies", "word_forms.lmdb")
     if lmdb_path in _norm_lmdb_cache:
@@ -106,12 +48,8 @@ def _get_forms_env(db_path: str) -> lmdb.Environment | None:
     if db_path in _no_forms_lmdb:
         return None
     if not os.path.exists(lmdb_path):
-        freq_dir = os.path.join(db_path, "frequencies")
-        has_files = any(os.path.exists(os.path.join(freq_dir, f)) for f in _FORMS_FLAT_FILES)
-        if not has_files:
-            _no_forms_lmdb.add(db_path)
-            return None
-        _build_forms_lmdb(db_path, lmdb_path)
+        _no_forms_lmdb.add(db_path)
+        return None
     return get_lmdb_env(lmdb_path)
 
 
@@ -427,12 +365,8 @@ def build_metadata_word_index(db_path: str) -> int:
 
 
 def _get_metadata_index_env(db_path: str) -> lmdb.Environment:
-    """Return (and cache) the metadata_word_index.lmdb env, building lazily if absent."""
+    """Return (and cache) the metadata_word_index.lmdb env (built at index time by PostFilters)."""
     lmdb_path = os.path.join(db_path, "frequencies", _META_LMDB_NAME)
-    if lmdb_path not in _norm_lmdb_cache and not os.path.exists(lmdb_path):
-        import sys
-        print("Building metadata word index LMDB (first use)...", file=sys.stderr, flush=True)
-        build_metadata_word_index(db_path)
     return get_lmdb_env(lmdb_path)
 
 
