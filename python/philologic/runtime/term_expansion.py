@@ -6,6 +6,7 @@ scanning, LEMMA/ATTR expansion, NOT-term exclusion, and autocomplete.
 """
 
 import os
+import threading
 
 import lmdb
 import regex as re
@@ -15,6 +16,7 @@ from unidecode import unidecode
 # Process-level cache: one LMDB env per lmdb_path, kept open for the
 # lifetime of the worker process (avoids repeated open/close overhead).
 _norm_lmdb_cache: dict[str, lmdb.Environment] = {}
+_lmdb_cache_lock = threading.Lock()
 # db_paths for which word_forms.lmdb is absent (no lemma/attr flat files)
 _no_forms_lmdb: set[str] = set()
 
@@ -27,9 +29,14 @@ def get_lmdb_env(lmdb_path: str) -> lmdb.Environment:
     env = _norm_lmdb_cache.get(lmdb_path)
     if env is not None:
         return env
-    env = lmdb.open(lmdb_path, readonly=True, lock=False, readahead=False, max_spare_txns=4)
-    _norm_lmdb_cache[lmdb_path] = env
-    return env
+    with _lmdb_cache_lock:
+        # Double-check after acquiring lock (another thread may have created it)
+        env = _norm_lmdb_cache.get(lmdb_path)
+        if env is not None:
+            return env
+        env = lmdb.open(lmdb_path, readonly=True, lock=False, readahead=False, max_spare_txns=4)
+        _norm_lmdb_cache[lmdb_path] = env
+        return env
 
 
 def _get_norm_env(freq_file: str) -> lmdb.Environment:
