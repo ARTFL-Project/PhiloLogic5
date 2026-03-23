@@ -28,6 +28,19 @@ fi
 # Get the directory where install.sh lives
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Detect OS and set platform-specific defaults
+PHILO_ROOT="/var/lib/philologic5"
+if [ "$(uname)" = "Darwin" ]; then
+    IS_MACOS=true
+    WEB_USER="$(whoami)"
+    WEB_GROUP="staff"
+    echo "Detected macOS — using user $WEB_USER for service ownership"
+else
+    IS_MACOS=false
+    WEB_USER="www-data"
+    WEB_GROUP="www-data"
+fi
+
 # Set uv cache in the repo directory so it survives reinstalls
 export UV_CACHE_DIR="$SCRIPT_DIR/.uv-cache"
 
@@ -41,12 +54,18 @@ then
     export PATH="$UV_LOCAL_DIR:$PATH"
 fi
 
-# Preserve user-customized gunicorn.conf.py across reinstall
+# Preserve gunicorn config files for upgrade merge
 GUNICORN_CONF="/var/lib/philologic5/web_app/gunicorn.conf.py"
-GUNICORN_BACKUP=""
+GUNICORN_DEFAULTS="/var/lib/philologic5/web_app/gunicorn.conf.defaults.py"
+GUNICORN_CONF_BACKUP=""
+GUNICORN_DEFAULTS_BACKUP=""
 if [ -f "$GUNICORN_CONF" ]; then
-    GUNICORN_BACKUP=$(mktemp)
-    cp "$GUNICORN_CONF" "$GUNICORN_BACKUP"
+    GUNICORN_CONF_BACKUP=$(mktemp)
+    cp "$GUNICORN_CONF" "$GUNICORN_CONF_BACKUP"
+fi
+if [ -f "$GUNICORN_DEFAULTS" ]; then
+    GUNICORN_DEFAULTS_BACKUP=$(mktemp)
+    cp "$GUNICORN_DEFAULTS" "$GUNICORN_DEFAULTS_BACKUP"
 fi
 
 # Delete virtual environment if it already exists
@@ -94,7 +113,7 @@ chmod -R 1777 /var/lib/philologic5/numba_cache
 
 # Create IP whitelist cache directory writable by the web server user
 mkdir -p /var/lib/philologic5/ip_cache
-sudo chown www-data:www-data /var/lib/philologic5/ip_cache
+sudo chown "$WEB_USER:$WEB_GROUP" /var/lib/philologic5/ip_cache
 chmod 755 /var/lib/philologic5/ip_cache
 
 # Configure uv to install Python in /var/lib/philologic5/python
@@ -152,7 +171,7 @@ sudo chmod 775 /usr/local/bin/philoload5
 
 sudo mkdir -p /etc/philologic/
 sudo mkdir -p /var/log/philologic5/
-sudo chown www-data:www-data /var/log/philologic5/
+sudo chown "$WEB_USER:$WEB_GROUP" /var/log/philologic5/
 mkdir -p /var/lib/philologic5/web_app/
 rm -rf /var/lib/philologic5/web_app/*
 
@@ -167,11 +186,37 @@ if [ -f /var/lib/philologic5/web_app/app/appConfig.json ]; then
     rm /var/lib/philologic5/web_app/app/appConfig.json
 fi
 
-# Restore user-customized gunicorn.conf.py if one existed
-if [ -n "$GUNICORN_BACKUP" ]; then
-    cp "$GUNICORN_BACKUP" "$GUNICORN_CONF"
-    rm "$GUNICORN_BACKUP"
-    echo "Restored custom gunicorn.conf.py"
+# Upgrade gunicorn.conf.py, preserving user customizations
+# At this point the new conf/defaults are already in place (from cp -R www/*).
+# The backups contain the OLD installed versions.
+if [ -n "$GUNICORN_CONF_BACKUP" ] && [ -n "$GUNICORN_DEFAULTS_BACKUP" ]; then
+    echo "Upgrading gunicorn.conf.py (preserving user customizations)..."
+    if /var/lib/philologic5/philologic_env/bin/python3 -c "
+from philologic.utils.upgrade_gunicorn_conf import upgrade_gunicorn_conf
+import sys
+old_conf, old_defaults = sys.argv[1], sys.argv[2]
+customized = upgrade_gunicorn_conf(
+    old_conf=old_conf,
+    old_defaults=old_defaults,
+    new_conf='$GUNICORN_CONF',
+    new_defaults='$GUNICORN_DEFAULTS',
+)
+if customized:
+    print(f'  Preserved user settings: {\", \".join(customized)}')
+else:
+    print('  No user customizations detected')
+" "$GUNICORN_CONF_BACKUP" "$GUNICORN_DEFAULTS_BACKUP"; then
+        rm -f "$GUNICORN_CONF_BACKUP" "$GUNICORN_DEFAULTS_BACKUP"
+    else
+        echo "  WARNING: upgrade failed, restoring previous gunicorn.conf.py"
+        cp "$GUNICORN_CONF_BACKUP" "$GUNICORN_CONF"
+        rm -f "$GUNICORN_CONF_BACKUP" "$GUNICORN_DEFAULTS_BACKUP"
+    fi
+elif [ -n "$GUNICORN_CONF_BACKUP" ]; then
+    # Old install without defaults file — keep user's conf as-is
+    echo "Restoring existing gunicorn.conf.py (no defaults file to diff against)"
+    cp "$GUNICORN_CONF_BACKUP" "$GUNICORN_CONF"
+    rm -f "$GUNICORN_CONF_BACKUP"
 fi
 
 
@@ -192,8 +237,30 @@ else
     echo "Please delete and rerun the install script to avoid incompatibilities\n"
 fi
 
-# Install systemd service file for Gunicorn (non-fatal if no systemd)
-if [ -d /etc/systemd/system ]; then
+# Install service file for Gunicorn (platform-specific)
+if [ "$IS_MACOS" = true ]; then
+    # Install launchd plist for macOS
+    PLIST_LABEL="com.philologic5.gunicorn"
+    PLIST_SRC="$SCRIPT_DIR/${PLIST_LABEL}.plist"
+    PLIST_DEST="$PHILO_ROOT/${PLIST_LABEL}.plist"
+
+    # Fill in the current user in the plist template
+    sed "s|__WEB_USER__|$WEB_USER|g" "$PLIST_SRC" > "$PLIST_DEST"
+
+    echo -e "\n## LAUNCHD SERVICE ##"
+    echo "Plist installed to $PLIST_DEST"
+    echo ""
+    echo "To install and start the service:"
+    echo "  sudo cp $PLIST_DEST /Library/LaunchDaemons/"
+    echo "  sudo launchctl bootstrap system /Library/LaunchDaemons/${PLIST_LABEL}.plist"
+    echo ""
+    echo "To stop:"
+    echo "  sudo launchctl bootout system/$PLIST_LABEL"
+    echo ""
+    echo "Configure your web server as a reverse proxy to the Gunicorn socket."
+    echo "  Socket: /var/run/philologic/gunicorn.sock"
+
+elif [ -d /etc/systemd/system ]; then
     sudo cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
     sudo systemctl daemon-reload
     if systemctl is-active --quiet philologic5-gunicorn 2>/dev/null; then

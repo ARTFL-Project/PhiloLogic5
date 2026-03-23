@@ -45,6 +45,10 @@ class StripURLPrefix:
 
     def __call__(self, environ, start_response):
         path = environ.get("PATH_INFO", "")
+        # Collapse consecutive slashes (e.g. /philologic/dbname//scripts/ => /philologic/dbname/scripts/)
+        while "//" in path:
+            path = path.replace("//", "/")
+        environ["PATH_INFO"] = path
         parts = path.split("/")
         for i, part in enumerate(parts):
             if part and os.path.isdir(os.path.join(PHILOLOGIC_DB_ROOT, part)):
@@ -56,11 +60,13 @@ class StripURLPrefix:
 
 
 def create_app():
-    falcon_app = falcon.App(middleware=[
-        CORSMiddleware(),
-        PhiloDBMiddleware(),
-        CleanupMiddleware(),
-    ])
+    falcon_app = falcon.App(
+        middleware=[
+            CORSMiddleware(),
+            PhiloDBMiddleware(),
+            CleanupMiddleware(),
+        ]
+    )
 
     # Reports: /{db_name}/reports/{report_name}.py
     falcon_app.add_route("/{db_name}/reports/{report_name}.py", ReportResource())

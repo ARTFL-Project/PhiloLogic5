@@ -6,7 +6,7 @@ Apache CGI. It provides better performance and resource efficiency.
 Usage:
     gunicorn --config gunicorn.conf.py app:application
 
-Or via systemd service (see install.sh for service file creation).
+Or via systemd (Linux) / launchd (macOS) service — see install.sh.
 """
 
 import multiprocessing
@@ -86,10 +86,15 @@ chdir = os.path.dirname(os.path.abspath(__file__))
 
 def on_starting(server):
     """Called just before the master process is initialized."""
-    # Ensure socket directory exists with correct permissions
-    socket_dir = "/var/run/philologic"
-    if not os.path.exists(socket_dir):
-        os.makedirs(socket_dir, mode=0o755)
+    # Ensure socket directory exists (only needed when binding to a Unix socket)
+    if bind.startswith("unix:"):
+        socket_dir = os.path.dirname(bind.split(":", 1)[1])
+        if not os.path.exists(socket_dir):
+            os.makedirs(socket_dir, mode=0o755)
+    # Ensure log directory exists
+    log_dir = os.path.dirname(errorlog)
+    if log_dir and not os.path.exists(log_dir):
+        os.makedirs(log_dir, mode=0o755)
 
 
 def worker_exit(server, worker):
