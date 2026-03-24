@@ -4,19 +4,19 @@ title: Installation
 
 ## Overview
 
-PhiloLogic5 runs as a Gunicorn WSGI application behind a reverse proxy (Apache or Nginx). The installer handles Python, Node.js, and all Python dependencies automatically via [uv](https://docs.astral.sh/uv/).
+PhiloLogic5 runs as a Gunicorn WSGI application. On Linux it typically runs behind a reverse proxy (Apache or Nginx); on macOS it can bind directly to a TCP port. The installer handles Python, Node.js, and all Python dependencies automatically via [uv](https://docs.astral.sh/uv/).
 
 Installation steps:
 
 1. Install system dependencies
 2. Run `install.sh`
 3. Configure `/etc/philologic/philologic5.cfg`
-4. Set up your web server as a reverse proxy
+4. Set up your web server as a reverse proxy (Linux) or configure a TCP port (macOS)
 5. Enable and start the Gunicorn service
 
 ## System Requirements
 
-- Linux (Ubuntu 22.04+, Debian 12+, RHEL 9+, or similar)
+- Linux (Ubuntu 22.04+, Debian 12+, RHEL 9+, or similar) or macOS (Apple Silicon or Intel)
 - Python 3.11+ (the installer downloads its own Python via uv by default)
 - Root/sudo access for installing to `/var/lib/philologic5/`
 
@@ -39,11 +39,23 @@ sudo dnf install -y \
     lz4 ripgrep curl
 ```
 
+### macOS
+
+```bash
+brew install lz4 ripgrep
+```
+
+Xcode Command Line Tools are also required (for C compiler headers used by `lxml`):
+
+```bash
+xcode-select --install
+```
+
 **Notes:**
-- `libxml2-dev`/`libxslt-dev`/`zlib1g-dev`: required for building `lxml` (XML parsing)
+- `libxml2-dev`/`libxslt-dev`/`zlib1g-dev`: required for building `lxml` (XML parsing). On macOS these are provided by Xcode Command Line Tools.
 - `liblz4-tool`/`lz4`: used at database load time for compressing word indexes
 - `ripgrep`: used at database load time for filtering parser output
-- `curl`: used by the installer to download [uv](https://docs.astral.sh/uv/) and [nvm](https://github.com/nvm-sh/nvm)
+- `curl`: used by the installer to download [uv](https://docs.astral.sh/uv/) and [nvm](https://github.com/nvm-sh/nvm). Pre-installed on macOS.
 - The installer downloads its own Python via uv, so system Python packages are not required
 
 ## Installing PhiloLogic
@@ -86,7 +98,7 @@ The installer:
 7. Copies the web application to `/var/lib/philologic5/web_app/`
 8. Installs the `philoload5` command to `/usr/local/bin/`
 9. Creates the global config at `/etc/philologic/philologic5.cfg` (if it doesn't exist)
-10. Installs a systemd service file for Gunicorn
+10. Installs a systemd service file for Gunicorn (Linux) or a launchd plist (macOS)
 
 ### Installation Layout
 
@@ -121,18 +133,30 @@ database_root = "/var/www/html/philologic5/"
 url_root = "http://localhost/philologic5/"
 ```
 
+On macOS, typical values would be:
+
+```python
+database_root = "/Library/WebServer/Documents/philologic/"
+url_root = "http://localhost:8080/"
+```
+
 Make sure the `database_root` directory exists and is writable by your user:
 
 ```bash
-sudo mkdir -p /var/www/html/philologic5
-sudo chown -R $USER:$USER /var/www/html/philologic5
+sudo mkdir -p /var/www/html/philologic5    # Linux
+# or
+sudo mkdir -p /Library/WebServer/Documents/philologic  # macOS
+
+sudo chown -R $USER:$USER <database_root>
 ```
 
 ## Web Server Configuration
 
-PhiloLogic5 runs behind Gunicorn, which listens on a Unix socket. You need a reverse proxy (Apache or Nginx) to forward HTTP requests to Gunicorn.
+### Linux
 
-### Starting Gunicorn
+On Linux, PhiloLogic5 runs behind Gunicorn, which listens on a Unix socket. You need a reverse proxy (Apache or Nginx) to forward HTTP requests to Gunicorn.
+
+#### Starting Gunicorn
 
 ```bash
 sudo systemctl enable philologic5-gunicorn
@@ -146,7 +170,42 @@ sudo systemctl status philologic5-gunicorn
 journalctl -u philologic5-gunicorn -f   # follow logs
 ```
 
-### Apache
+### macOS
+
+On macOS, the simplest setup is to bind Gunicorn directly to a TCP port (no reverse proxy needed). Edit `/var/lib/philologic5/web_app/gunicorn.conf.py` and change the `bind` setting:
+
+```python
+bind = "127.0.0.1:8080"
+```
+
+Make sure the port matches the one in your `url_root` in `/etc/philologic/philologic5.cfg`.
+
+You can then start Gunicorn manually:
+
+```bash
+/var/lib/philologic5/philologic_env/bin/gunicorn \
+    --config /var/lib/philologic5/web_app/gunicorn.conf.py \
+    app:application
+```
+
+Or use the installed launchd plist for automatic startup:
+
+```bash
+sudo cp /var/lib/philologic5/com.philologic5.gunicorn.plist /Library/LaunchDaemons/
+sudo launchctl bootstrap system /Library/LaunchDaemons/com.philologic5.gunicorn.plist
+```
+
+To stop or restart:
+
+```bash
+# Restart (launchd will relaunch automatically since KeepAlive is set)
+sudo launchctl kill SIGTERM system/com.philologic5.gunicorn
+
+# Stop completely
+sudo launchctl bootout system/com.philologic5.gunicorn
+```
+
+### Apache (Linux)
 
 Enable the required modules:
 
@@ -167,7 +226,7 @@ ProxyTimeout 300
 </Location>
 ```
 
-### Nginx
+### Nginx (Linux)
 
 Add to your `server` block:
 
@@ -225,5 +284,9 @@ The installer will remove and recreate `/var/lib/philologic5/` but preserves you
 After upgrading, restart Gunicorn:
 
 ```bash
+# Linux
 sudo systemctl restart philologic5-gunicorn
+
+# macOS (launchd restarts automatically via KeepAlive)
+sudo launchctl kill SIGTERM system/com.philologic5.gunicorn
 ```

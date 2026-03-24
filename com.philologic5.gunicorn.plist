@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.philologic5.gunicorn</string>
+
+    <key>UserName</key>
+    <string>__WEB_USER__</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/var/lib/philologic5/philologic_env/bin/gunicorn</string>
+        <string>--config</string>
+        <string>/var/lib/philologic5/web_app/gunicorn.conf.py</string>
+        <string>app:application</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/var/lib/philologic5/web_app</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardErrorPath</key>
+    <string>/var/log/philologic5/launchd-stderr.log</string>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/philologic5/launchd-stdout.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>NUMBA_NUM_THREADS</key>
+        <string>2</string>
+        <key>NUMBA_CACHE_DIR</key>
+        <string>/var/lib/philologic5/numba_cache</string>
+    </dict>
+</dict>
+</plist>
