@@ -14,9 +14,11 @@ sudo dnf install -y \
 
 ### 2. Run the Installer
 
+Download the [latest release](https://github.com/ARTFL-Project/PhiloLogic5/releases/latest) from GitHub, extract it, then:
+
 ```bash
-cd PhiloLogic5
-sudo ./install.sh
+cd PhiloLogic5-*/
+./install.sh
 ```
 
 ### 3. Configure PhiloLogic

@@ -14,6 +14,12 @@ Installation steps:
 4. Set up your web server as a reverse proxy (Linux) or configure a TCP port (macOS)
 5. Enable and start the Gunicorn service
 
+For step-by-step guides tailored to your platform, see:
+
+- [Ubuntu](specific_installations/ubuntu_installation.md)
+- [RHEL / CentOS](specific_installations/redhat_installation.md)
+- [macOS](specific_installations/macos_installation.md)
+
 ## System Requirements
 
 - Linux (Ubuntu 22.04+, Debian 12+, RHEL 9+, or similar) or macOS (Apple Silicon or Intel)
