@@ -95,9 +95,3 @@ def on_starting(server):
     log_dir = os.path.dirname(errorlog)
     if log_dir and not os.path.exists(log_dir):
         os.makedirs(log_dir, mode=0o755)
-
-
-def worker_exit(server, worker):
-    """Called when a worker exits."""
-    # Clean up any worker-specific resources if needed
-    pass

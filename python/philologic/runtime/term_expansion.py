@@ -6,56 +6,30 @@ scanning, LEMMA/ATTR expansion, NOT-term exclusion, and autocomplete.
 """
 
 import os
-import threading
 
 import lmdb
 import regex as re
 from unidecode import unidecode
 
 
-# Process-level cache: one LMDB env per lmdb_path, kept open for the
-# lifetime of the worker process (avoids repeated open/close overhead).
-_norm_lmdb_cache: dict[str, lmdb.Environment] = {}
-_lmdb_cache_lock = threading.Lock()
-# db_paths for which word_forms.lmdb is absent (no lemma/attr flat files)
-_no_forms_lmdb: set[str] = set()
-
 # Flat files (in frequencies/) that feed word_forms.lmdb
 _FORMS_FLAT_FILES = ("lemmas", "word_attributes", "lemma_word_attributes")
 
 
 def get_lmdb_env(lmdb_path: str) -> lmdb.Environment:
-    """Return (and cache) a read-only LMDB environment for the given path."""
-    env = _norm_lmdb_cache.get(lmdb_path)
-    if env is not None:
-        return env
-    with _lmdb_cache_lock:
-        # Double-check after acquiring lock (another thread may have created it)
-        env = _norm_lmdb_cache.get(lmdb_path)
-        if env is not None:
-            return env
-        env = lmdb.open(lmdb_path, readonly=True, lock=False, readahead=False, max_spare_txns=4)
-        _norm_lmdb_cache[lmdb_path] = env
-        return env
+    """Open a read-only LMDB environment. Caller should close it when done."""
+    return lmdb.open(lmdb_path, readonly=True, lock=False, readahead=False)
 
 
 def _get_norm_env(freq_file: str) -> lmdb.Environment:
-    """Return (and cache) the norm_word.lmdb env (built at index time by PostFilters)."""
+    """Open the normalized word frequencies LMDB. Caller should close it when done."""
     return get_lmdb_env(freq_file + ".lmdb")
 
 
 def _get_forms_env(db_path: str) -> lmdb.Environment | None:
-    """Return (and cache) the word_forms.lmdb env (built at index time by PostFilters).
-
-    Returns None if the database has no word_forms.lmdb (no lemma/attr data).
-    """
+    """Open the word_forms.lmdb env, or return None if it doesn't exist."""
     lmdb_path = os.path.join(db_path, "frequencies", "word_forms.lmdb")
-    if lmdb_path in _norm_lmdb_cache:
-        return _norm_lmdb_cache[lmdb_path]
-    if db_path in _no_forms_lmdb:
-        return None
     if not os.path.exists(lmdb_path):
-        _no_forms_lmdb.add(db_path)
         return None
     return get_lmdb_env(lmdb_path)
 
@@ -270,46 +244,51 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
     forms_env = _get_forms_env(db_path)
     first = True
 
-    with env.begin(buffers=True) as txn:
-        for group in split:
-            if not first:
-                try:
-                    dest_fh.write("\n")
-                except TypeError:
-                    dest_fh.write(b"\n")
-                dest_fh.flush()
-            first = False
-
-            # Separate positive tokens from NOT-excluded tokens
-            exclude_specs: list[tuple[str, str]] = []
-            pos_group = list(group)
-            for i, (kind, _) in enumerate(group):
-                if kind == "NOT":
-                    exclude_specs = list(group[i + 1:])
-                    pos_group = list(group[:i])
-                    break
-
-            # Union of all positive-term expansions (order-preserving, deduped)
-            seen: set[str] = set()
-            pos_forms: list[str] = []
-            for kind, token in pos_group:
-                for form in _expand_positive(kind, token, txn, ascii_conversion, lowercase, forms_env):
-                    if form not in seen:
-                        seen.add(form)
-                        pos_forms.append(form)
-
-            # Set of forms to exclude
-            excl: set[str] = set()
-            for kind, token in exclude_specs:
-                excl |= _expand_exclude(kind, token, txn, ascii_conversion, lowercase, forms_env)
-
-            # Write filtered forms, one per line
-            for form in pos_forms:
-                if form not in excl:
+    try:
+        with env.begin(buffers=True) as txn:
+            for group in split:
+                if not first:
                     try:
-                        dest_fh.write(form + "\n")
+                        dest_fh.write("\n")
                     except TypeError:
-                        dest_fh.write((form + "\n").encode("utf-8"))
+                        dest_fh.write(b"\n")
+                    dest_fh.flush()
+                first = False
+
+                # Separate positive tokens from NOT-excluded tokens
+                exclude_specs: list[tuple[str, str]] = []
+                pos_group = list(group)
+                for i, (kind, _) in enumerate(group):
+                    if kind == "NOT":
+                        exclude_specs = list(group[i + 1:])
+                        pos_group = list(group[:i])
+                        break
+
+                # Union of all positive-term expansions (order-preserving, deduped)
+                seen: set[str] = set()
+                pos_forms: list[str] = []
+                for kind, token in pos_group:
+                    for form in _expand_positive(kind, token, txn, ascii_conversion, lowercase, forms_env):
+                        if form not in seen:
+                            seen.add(form)
+                            pos_forms.append(form)
+
+                # Set of forms to exclude
+                excl: set[str] = set()
+                for kind, token in exclude_specs:
+                    excl |= _expand_exclude(kind, token, txn, ascii_conversion, lowercase, forms_env)
+
+                # Write filtered forms, one per line
+                for form in pos_forms:
+                    if form not in excl:
+                        try:
+                            dest_fh.write(form + "\n")
+                        except TypeError:
+                            dest_fh.write((form + "\n").encode("utf-8"))
+    finally:
+        env.close()
+        if forms_env is not None:
+            forms_env.close()
 
 
 # ── Metadata inverted word index ──────────────────────────────────────────────
@@ -372,7 +351,7 @@ def build_metadata_word_index(db_path: str) -> int:
 
 
 def _get_metadata_index_env(db_path: str) -> lmdb.Environment:
-    """Return (and cache) the metadata_word_index.lmdb env (built at index time by PostFilters)."""
+    """Open the metadata_word_index.lmdb env. Caller should close it when done."""
     lmdb_path = os.path.join(db_path, "frequencies", _META_LMDB_NAME)
     return get_lmdb_env(lmdb_path)
 
@@ -383,12 +362,15 @@ def metadata_word_lookup(db_path: str, field: str, term: str) -> list[str]:
     Returns list of original metadata values from the inverted word index.
     """
     env = _get_metadata_index_env(db_path)
-    key = f"{field}\x00{term}".encode("utf-8")
-    with env.begin(buffers=True) as txn:
-        val = txn.get(key)
-        if val is None:
-            return []
-        return bytes(val).decode("utf-8").split("\x00")
+    try:
+        key = f"{field}\x00{term}".encode("utf-8")
+        with env.begin(buffers=True) as txn:
+            val = txn.get(key)
+            if val is None:
+                return []
+            return bytes(val).decode("utf-8").split("\x00")
+    finally:
+        env.close()
 
 
 def metadata_word_regex_scan(db_path: str, field: str, pattern: str) -> list[str]:
@@ -399,30 +381,33 @@ def metadata_word_regex_scan(db_path: str, field: str, pattern: str) -> list[str
     from all matching words.
     """
     env = _get_metadata_index_env(db_path)
-    field_prefix = f"{field}\x00".encode("utf-8")
-    compiled = re.compile(pattern)
-    seen: set[str] = set()
-    results: list[str] = []
-    with env.begin(buffers=True) as txn:
-        cursor = txn.cursor()
-        try:
-            if not cursor.set_range(field_prefix):
-                return results
-            while True:
-                k = bytes(cursor.key())
-                if not k.startswith(field_prefix):
-                    break
-                word = k[len(field_prefix):].decode("utf-8", errors="replace")
-                if compiled.search(word):
-                    for val in bytes(cursor.value()).decode("utf-8").split("\x00"):
-                        if val not in seen:
-                            seen.add(val)
-                            results.append(val)
-                if not cursor.next():
-                    break
-        finally:
-            cursor.close()
-    return results
+    try:
+        field_prefix = f"{field}\x00".encode("utf-8")
+        compiled = re.compile(pattern)
+        seen: set[str] = set()
+        results: list[str] = []
+        with env.begin(buffers=True) as txn:
+            cursor = txn.cursor()
+            try:
+                if not cursor.set_range(field_prefix):
+                    return results
+                while True:
+                    k = bytes(cursor.key())
+                    if not k.startswith(field_prefix):
+                        break
+                    word = k[len(field_prefix):].decode("utf-8", errors="replace")
+                    if compiled.search(word):
+                        for val in bytes(cursor.value()).decode("utf-8").split("\x00"):
+                            if val not in seen:
+                                seen.add(val)
+                                results.append(val)
+                    if not cursor.next():
+                        break
+            finally:
+                cursor.close()
+        return results
+    finally:
+        env.close()
 
 
 def metadata_word_prefix_scan(db_path: str, field: str, prefix: str,
@@ -433,29 +418,32 @@ def metadata_word_prefix_scan(db_path: str, field: str, prefix: str,
     Used for metadata autocomplete.
     """
     env = _get_metadata_index_env(db_path)
-    key_prefix = f"{field}\x00{prefix}".encode("utf-8")
-    seen: set[str] = set()
-    results: list[str] = []
-    with env.begin(buffers=True) as txn:
-        cursor = txn.cursor()
-        try:
-            if not cursor.set_range(key_prefix):
-                return results
-            while True:
-                k = bytes(cursor.key())
-                if not k.startswith(key_prefix):
-                    break
-                for val in bytes(cursor.value()).decode("utf-8").split("\x00"):
-                    if val not in seen:
-                        seen.add(val)
-                        results.append(val)
-                        if len(results) >= max_results:
-                            return results
-                if not cursor.next():
-                    break
-        finally:
-            cursor.close()
-    return results
+    try:
+        key_prefix = f"{field}\x00{prefix}".encode("utf-8")
+        seen: set[str] = set()
+        results: list[str] = []
+        with env.begin(buffers=True) as txn:
+            cursor = txn.cursor()
+            try:
+                if not cursor.set_range(key_prefix):
+                    return results
+                while True:
+                    k = bytes(cursor.key())
+                    if not k.startswith(key_prefix):
+                        break
+                    for val in bytes(cursor.value()).decode("utf-8").split("\x00"):
+                        if val not in seen:
+                            seen.add(val)
+                            results.append(val)
+                            if len(results) >= max_results:
+                                return results
+                    if not cursor.next():
+                        break
+            finally:
+                cursor.close()
+        return results
+    finally:
+        env.close()
 
 
 def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str,
@@ -477,28 +465,34 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
         if not raw_token:
             return []
         env = _get_norm_env(frequency_file)
-        with env.begin(buffers=True) as txn:
-            if _is_regex_pattern(raw_token):
-                norm_prefix, pattern_str = _normalize_pattern(raw_token, lowercase and ascii_conversion)
-                return _lmdb_expand_term(txn, norm_prefix, pattern_str, max_results)
-            elif ascii_conversion:
-                norm_prefix = _norm_key(raw_token, lowercase)
-                return _lmdb_expand_term(txn, norm_prefix, None, max_results)
-            else:
-                # ascii_conversion=False: query token is the norm key as-is
-                norm_prefix = raw_token.lower().encode("utf-8") if lowercase else raw_token.encode("utf-8")
-                return _lmdb_expand_term(txn, norm_prefix, None, max_results)
+        try:
+            with env.begin(buffers=True) as txn:
+                if _is_regex_pattern(raw_token):
+                    norm_prefix, pattern_str = _normalize_pattern(raw_token, lowercase and ascii_conversion)
+                    return _lmdb_expand_term(txn, norm_prefix, pattern_str, max_results)
+                elif ascii_conversion:
+                    norm_prefix = _norm_key(raw_token, lowercase)
+                    return _lmdb_expand_term(txn, norm_prefix, None, max_results)
+                else:
+                    # ascii_conversion=False: query token is the norm key as-is
+                    norm_prefix = raw_token.lower().encode("utf-8") if lowercase else raw_token.encode("utf-8")
+                    return _lmdb_expand_term(txn, norm_prefix, None, max_results)
+        finally:
+            env.close()
 
     elif kind in ("LEMMA", "ATTR", "LEMMA_ATTR"):
         if not token:
             return []
         scan_env = _get_forms_env(db_path) or get_lmdb_env(os.path.join(db_path, "words.lmdb"))
-        with scan_env.begin(buffers=True) as txn:
-            if _is_regex_pattern(token):
-                literal, meta = _split_literal_prefix(token)
-                prefix_bytes = literal.encode("utf-8")
-                return _lmdb_scan_keys(txn, prefix_bytes, literal + meta, max_results)
-            else:
-                return _lmdb_scan_keys(txn, token.encode("utf-8"), None, max_results)
+        try:
+            with scan_env.begin(buffers=True) as txn:
+                if _is_regex_pattern(token):
+                    literal, meta = _split_literal_prefix(token)
+                    prefix_bytes = literal.encode("utf-8")
+                    return _lmdb_scan_keys(txn, prefix_bytes, literal + meta, max_results)
+                else:
+                    return _lmdb_scan_keys(txn, token.encode("utf-8"), None, max_results)
+        finally:
+            scan_env.close()
 
     return []
