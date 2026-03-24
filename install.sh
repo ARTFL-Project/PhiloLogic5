@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Python version — change here to update across all installs
 PYTHON_VERSION="3.12"
@@ -257,7 +258,7 @@ if [ "$IS_MACOS" = true ]; then
     echo "Configure your web server as a reverse proxy to the Gunicorn socket."
     echo "  Socket: /var/run/philologic/gunicorn.sock"
 
-elif [ -d /etc/systemd/system ]; then
+elif [ -d /etc/systemd/system ] && command -v systemctl &> /dev/null; then
     sudo cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
     sudo systemctl daemon-reload
     if systemctl is-active --quiet philologic5-gunicorn 2>/dev/null; then

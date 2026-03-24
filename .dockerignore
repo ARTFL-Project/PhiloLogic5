@@ -1,0 +1,7 @@
+.git
+.uv-bin
+.uv-cache
+tests
+app/node_modules
+**/__pycache__
+*.egg-info
