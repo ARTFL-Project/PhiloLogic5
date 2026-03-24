@@ -1,19 +1,16 @@
 #!/bin/bash
 
-# Default Python version
+# Python version — change here to update across all installs
 PYTHON_VERSION="3.12"
 INSTALL_TRANSFORMERS=false
 NODE_MAJOR_VERSION="22"
 
 # Parse command line arguments
-while getopts "p:t" opt; do
+while getopts "t" opt; do
   case $opt in
-    p) PYTHON_VERSION="$OPTARG"
-    ;;
     t) INSTALL_TRANSFORMERS=true
     ;;
-    *) echo "Usage: $0 [-p python_version] [-t]"
-       echo "  -p: Python version (default: 3.12)"
+    *) echo "Usage: $0 [-t]"
        echo "  -t: Install transformers support (includes CUDA)"
        exit 1
     ;;

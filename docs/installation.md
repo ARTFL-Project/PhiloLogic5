@@ -60,11 +60,10 @@ xcode-select --install
 
 ## Installing PhiloLogic
 
-Clone or download the repository, then run the install script:
+Download the [latest release](https://github.com/ARTFL-Project/PhiloLogic5/releases/latest) from GitHub, extract it, and run the install script:
 
 ```bash
-git clone https://github.com/ARTFL-Project/PhiloLogic5.git
-cd PhiloLogic5
+cd PhiloLogic5-*/   # or PhiloLogic5/ if you cloned via git
 sudo ./install.sh
 ```
 
@@ -72,18 +71,16 @@ sudo ./install.sh
 
 | Flag | Description |
 |------|-------------|
-| `-p VERSION` | Python version to use (default: `3.12`) |
 | `-t` | Install transformer support (includes spacy-transformers with CUDA) |
 
-Examples:
+Example:
 
 ```bash
-# Use Python 3.13
-sudo ./install.sh -p 3.13
-
 # Install with transformer support
 sudo ./install.sh -t
 ```
+
+The Python version is controlled by the `PYTHON_VERSION` variable at the top of `install.sh`.
 
 ### What the Installer Does
 
@@ -271,11 +268,10 @@ The installer preserves any customizations to `gunicorn.conf.py` across reinstal
 
 ## Upgrading
 
-To upgrade an existing installation, pull the latest code and rerun the installer:
+To upgrade an existing installation, download the [latest release](https://github.com/ARTFL-Project/PhiloLogic5/releases/latest) and rerun the installer:
 
 ```bash
-cd PhiloLogic5
-git pull
+cd PhiloLogic5-*/
 sudo ./install.sh
 ```
 
