@@ -245,18 +245,22 @@ if [ "$IS_MACOS" = true ]; then
     # Fill in the current user in the plist template
     sed "s|__WEB_USER__|$WEB_USER|g" "$PLIST_SRC" > "$PLIST_DEST"
 
-    echo -e "\n## LAUNCHD SERVICE ##"
-    echo "Plist installed to $PLIST_DEST"
-    echo ""
-    echo "To install and start the service:"
-    echo "  sudo cp $PLIST_DEST /Library/LaunchDaemons/"
-    echo "  sudo launchctl bootstrap system /Library/LaunchDaemons/${PLIST_LABEL}.plist"
-    echo ""
-    echo "To stop:"
-    echo "  sudo launchctl bootout system/$PLIST_LABEL"
-    echo ""
-    echo "Configure your web server as a reverse proxy to the Gunicorn socket."
-    echo "  Socket: /var/run/philologic/gunicorn.sock"
+    # Restart if already running, otherwise print setup instructions
+    if sudo launchctl print system/$PLIST_LABEL &> /dev/null; then
+        sudo cp "$PLIST_DEST" /Library/LaunchDaemons/
+        sudo launchctl kickstart -k system/$PLIST_LABEL
+        echo -e "\n## GUNICORN SERVICE RESTARTED ##"
+    else
+        echo -e "\n## LAUNCHD SERVICE ##"
+        echo "Plist installed to $PLIST_DEST"
+        echo ""
+        echo "To install and start the service:"
+        echo "  sudo cp $PLIST_DEST /Library/LaunchDaemons/"
+        echo "  sudo launchctl bootstrap system /Library/LaunchDaemons/${PLIST_LABEL}.plist"
+        echo ""
+        echo "To stop:"
+        echo "  sudo launchctl bootout system/$PLIST_LABEL"
+    fi
 
 elif [ -d /etc/systemd/system ] && command -v systemctl &> /dev/null; then
     sudo cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/

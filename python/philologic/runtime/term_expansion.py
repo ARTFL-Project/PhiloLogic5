@@ -16,22 +16,9 @@ from unidecode import unidecode
 _FORMS_FLAT_FILES = ("lemmas", "word_attributes", "lemma_word_attributes")
 
 
-def get_lmdb_env(lmdb_path: str) -> lmdb.Environment:
+def _open_lmdb(lmdb_path: str) -> lmdb.Environment:
     """Open a read-only LMDB environment. Caller should close it when done."""
     return lmdb.open(lmdb_path, readonly=True, lock=False, readahead=False)
-
-
-def _get_norm_env(freq_file: str) -> lmdb.Environment:
-    """Open the normalized word frequencies LMDB. Caller should close it when done."""
-    return get_lmdb_env(freq_file + ".lmdb")
-
-
-def _get_forms_env(db_path: str) -> lmdb.Environment | None:
-    """Open the word_forms.lmdb env, or return None if it doesn't exist."""
-    lmdb_path = os.path.join(db_path, "frequencies", "word_forms.lmdb")
-    if not os.path.exists(lmdb_path):
-        return None
-    return get_lmdb_env(lmdb_path)
 
 
 def _norm_key(token: str, lowercase: bool = True) -> bytes:
@@ -239,9 +226,10 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
     forms, and writes the result to dest_fh.
     Groups are separated by blank lines (consumed by get_word_groups()).
     """
-    env = _get_norm_env(freq_file)
+    env = _open_lmdb(freq_file + ".lmdb")
     db_path = os.path.normpath(os.path.join(os.path.dirname(freq_file), ".."))
-    forms_env = _get_forms_env(db_path)
+    forms_lmdb_path = os.path.join(db_path, "frequencies", "word_forms.lmdb")
+    forms_env = _open_lmdb(forms_lmdb_path) if os.path.exists(forms_lmdb_path) else None
     first = True
 
     try:
@@ -350,18 +338,13 @@ def build_metadata_word_index(db_path: str) -> int:
     return len(index)
 
 
-def _get_metadata_index_env(db_path: str) -> lmdb.Environment:
-    """Open the metadata_word_index.lmdb env. Caller should close it when done."""
-    lmdb_path = os.path.join(db_path, "frequencies", _META_LMDB_NAME)
-    return get_lmdb_env(lmdb_path)
-
 
 def metadata_word_lookup(db_path: str, field: str, term: str) -> list[str]:
     """Look up metadata values containing term as a whole word.
 
     Returns list of original metadata values from the inverted word index.
     """
-    env = _get_metadata_index_env(db_path)
+    env = _open_lmdb(os.path.join(db_path, "frequencies", _META_LMDB_NAME))
     try:
         key = f"{field}\x00{term}".encode("utf-8")
         with env.begin(buffers=True) as txn:
@@ -380,7 +363,7 @@ def metadata_word_regex_scan(db_path: str, field: str, pattern: str) -> list[str
     indexed word.  Returns deduplicated list of original metadata values
     from all matching words.
     """
-    env = _get_metadata_index_env(db_path)
+    env = _open_lmdb(os.path.join(db_path, "frequencies", _META_LMDB_NAME))
     try:
         field_prefix = f"{field}\x00".encode("utf-8")
         compiled = re.compile(pattern)
@@ -417,7 +400,7 @@ def metadata_word_prefix_scan(db_path: str, field: str, prefix: str,
     Returns deduplicated list of original metadata values from all matching words.
     Used for metadata autocomplete.
     """
-    env = _get_metadata_index_env(db_path)
+    env = _open_lmdb(os.path.join(db_path, "frequencies", _META_LMDB_NAME))
     try:
         key_prefix = f"{field}\x00{prefix}".encode("utf-8")
         seen: set[str] = set()
@@ -464,7 +447,7 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
         raw_token = token[1:-1] if kind == "QUOTE" else token
         if not raw_token:
             return []
-        env = _get_norm_env(frequency_file)
+        env = _open_lmdb(frequency_file + ".lmdb")
         try:
             with env.begin(buffers=True) as txn:
                 if _is_regex_pattern(raw_token):
@@ -483,7 +466,8 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
     elif kind in ("LEMMA", "ATTR", "LEMMA_ATTR"):
         if not token:
             return []
-        scan_env = _get_forms_env(db_path) or get_lmdb_env(os.path.join(db_path, "words.lmdb"))
+        forms_lmdb_path = os.path.join(db_path, "frequencies", "word_forms.lmdb")
+        scan_env = _open_lmdb(forms_lmdb_path) if os.path.exists(forms_lmdb_path) else _open_lmdb(os.path.join(db_path, "words.lmdb"))
         try:
             with scan_env.begin(buffers=True) as txn:
                 if _is_regex_pattern(token):
