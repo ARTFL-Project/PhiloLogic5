@@ -64,7 +64,7 @@ Download the [latest release](https://github.com/ARTFL-Project/PhiloLogic5/relea
 
 ```bash
 cd PhiloLogic5-*/   # or PhiloLogic5/ if you cloned via git
-sudo ./install.sh
+./install.sh
 ```
 
 ### Installer Options
@@ -77,17 +77,15 @@ Example:
 
 ```bash
 # Install with transformer support
-sudo ./install.sh -t
+./install.sh -t
 ```
-
-The Python version is controlled by the `PYTHON_VERSION` variable at the top of `install.sh`.
 
 ### What the Installer Does
 
 The installer:
 
 1. Installs [uv](https://docs.astral.sh/uv/) (if not already present)
-2. Downloads the specified Python version via uv
+2. Downloads Python version via uv
 3. Creates a virtual environment at `/var/lib/philologic5/philologic_env/`
 4. Installs [nvm](https://github.com/nvm-sh/nvm) and Node.js 22 (for building the web app)
 5. Builds and installs the PhiloLogic Python package with all dependencies (numpy, numba, lmdb, spacy, etc.)
