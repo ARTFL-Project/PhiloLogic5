@@ -126,13 +126,10 @@ uv venv /var/lib/philologic5/philologic_env --python $PYTHON_VERSION --managed-p
 # Activate virtual environment
 source /var/lib/philologic5/philologic_env/bin/activate
 
-# Install build tool with uv
-uv pip install build
-
 echo -e "\n## INSTALLING PYTHON LIBRARY ##"
 cd python
 rm -rf dist/ philologic.egg-info/
-python3 -m build --sdist
+uv build --sdist
 
 # Get the actual package filename
 PACKAGE_FILE=$(ls dist/*.tar.gz)
