@@ -112,7 +112,7 @@ chmod -R 1777 /var/lib/philologic5/numba_cache
 # Create IP whitelist cache directory writable by the web server user
 mkdir -p /var/lib/philologic5/ip_cache
 sudo chown "$WEB_USER:$WEB_GROUP" /var/lib/philologic5/ip_cache
-chmod 755 /var/lib/philologic5/ip_cache
+sudo chmod 755 /var/lib/philologic5/ip_cache
 
 # Configure uv to install Python in /var/lib/philologic5/python
 # This location is accessible by all users
