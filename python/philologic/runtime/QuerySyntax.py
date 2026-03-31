@@ -31,12 +31,14 @@ date_patterns = [
 ]
 
 
-def parse_query(qstring):
+def parse_query(qstring, query_patterns=None):
     """Parse query"""
+    if query_patterns is None:
+        query_patterns = patterns
     buf = qstring[:]
     parsed = []
     while len(buf) > 0:
-        for label, pattern in patterns:
+        for label, pattern in query_patterns:
             m = re.match(pattern, buf)
             if m:
                 parsed.append((label, m.group()))

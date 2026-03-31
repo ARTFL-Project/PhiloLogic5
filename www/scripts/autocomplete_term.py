@@ -16,7 +16,7 @@ def autocomplete_term(request, config):
 
 def format_query(q, db, config):
     """Format query using LMDB cursor scans (no subprocess)."""
-    parsed = parse_query(q)
+    parsed = parse_query(q, query_patterns=db.locals.query_patterns)
     group = group_terms(parsed)
     all_groups = split_terms(group)
 

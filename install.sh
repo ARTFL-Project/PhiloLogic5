@@ -104,10 +104,7 @@ ln -sf "$(which npm)" /var/lib/philologic5/bin/npm
 chmod -R 755 "$NVM_DIR"
 chmod -R 755 /var/lib/philologic5
 
-# Create Numba cache directory with full write permissions
-# The sticky bit (1777) ensures new files/dirs inherit group write permissions
 mkdir -p /var/lib/philologic5/numba_cache
-chmod -R 1777 /var/lib/philologic5/numba_cache
 
 # Create IP whitelist cache directory writable by the web server user
 mkdir -p /var/lib/philologic5/ip_cache
@@ -231,6 +228,11 @@ else
     echo "/etc/philologic/philologic5.cfg already exists"
     echo "Please delete and rerun the install script to avoid incompatibilities\n"
 fi
+
+# Fix Numba cache ownership — the build steps above may have created subdirectories
+# as the current user; the gunicorn worker (www-data) needs to write into them.
+sudo chown -R "$WEB_USER:$WEB_GROUP" /var/lib/philologic5/numba_cache
+sudo chmod -R 1777 /var/lib/philologic5/numba_cache
 
 # Install service file for Gunicorn (platform-specific)
 if [ "$IS_MACOS" = true ]; then

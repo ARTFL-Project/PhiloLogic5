@@ -269,7 +269,7 @@ class DB:
                     raw_bytes=raw_bytes,
                     ascii_conversion=self.locals.ascii_conversion,
                 )
-            parsed = QuerySyntax.parse_query(qs)
+            parsed = QuerySyntax.parse_query(qs, query_patterns=self.locals.query_patterns)
             grouped = QuerySyntax.group_terms(parsed)
             split = Query.split_terms(grouped)
             words_per_hit = len(split)

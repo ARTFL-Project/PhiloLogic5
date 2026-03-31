@@ -197,3 +197,35 @@ class TestQueryEdgeCases:
         result = parse_query("café")
         assert len(result) == 1
         assert result[0] == ("TERM", "café")
+
+
+@pytest.mark.unit
+class TestCustomQueryPatterns:
+    """Tests for custom query_patterns parameter."""
+
+    def test_default_patterns_when_none(self):
+        """Test that None query_patterns uses built-in defaults."""
+        result = parse_query("hamlet", query_patterns=None)
+        assert result == [("TERM", "hamlet")]
+
+    def test_custom_patterns(self):
+        """Test that custom patterns override defaults."""
+        # Custom patterns that only recognize TERM (no RANGE, QUOTE, etc.)
+        custom_patterns = [
+            ("TERM", r'[^\s]+'),
+        ]
+        result = parse_query("1800-1850", query_patterns=custom_patterns)
+        # With default patterns this would be RANGE, but custom treats it as TERM
+        assert len(result) == 1
+        assert result[0] == ("TERM", "1800-1850")
+
+    def test_custom_patterns_new_token_type(self):
+        """Test that custom patterns can introduce new token types."""
+        custom_patterns = [
+            ("WILDCARD", r'\*'),
+            ("TERM", r'[^\s*]+'),
+        ]
+        result = parse_query("test*word", query_patterns=custom_patterns)
+        assert ("WILDCARD", "*") in result
+        assert ("TERM", "test") in result
+        assert ("TERM", "word") in result

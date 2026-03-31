@@ -164,7 +164,11 @@ DB_LOCALS_DEFAULTS = {
     "overflow_words": {
         "value": set(),
         "comment": "# The overflow_words variable is a set of words which are not indexed in the database, but stored as blobs in the data/overflow_words directory.",
-    }
+    },
+    "query_patterns": {
+        "value": None,
+        "comment": "# Custom query tokenization patterns. When set, overrides the default patterns in QuerySyntax.parse_query.\n# Must be a list of (label, regex) tuples, e.g. [(\"TERM\", r'[^\\s\"]+'), ...].\n# When None, the built-in default patterns are used.",
+    },
 }
 DB_LOCALS_HEADER = """
    #########################################################\n

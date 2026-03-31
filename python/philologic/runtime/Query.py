@@ -7,23 +7,24 @@ import threading
 from bisect import bisect_left, bisect_right
 from pathlib import Path
 
+# Set Numba cache directory BEFORE importing numba — otherwise Numba resolves
+# its cache locator using the default (write next to source file), which fails
+# when the source is in a read-only site-packages directory.
+_cache_dir = os.environ.get("NUMBA_CACHE_DIR", "/var/lib/philologic5/numba_cache")
+if not os.access(_cache_dir, os.W_OK):
+    _cache_dir = f"/tmp/philologic_numba_cache_{os.getuid()}"
+    os.makedirs(_cache_dir, mode=0o755, exist_ok=True)
+os.environ["NUMBA_CACHE_DIR"] = _cache_dir
+
 import lmdb
 import numba
 import numpy as np
 import regex as re
 
+numba.config.CACHE_DIR = _cache_dir
+
 from philologic.runtime import HitList
 from philologic.runtime.QuerySyntax import group_terms, parse_query
-
-# Set Numba cache directory
-# Try shared cache first, fall back to /tmp if permission denied
-cache_dir = "/var/lib/philologic5/numba_cache"
-if not os.access(cache_dir, os.W_OK):
-    # In hardened containers, use per-user temp cache
-    cache_dir = f"/tmp/philologic_numba_cache_{os.getuid()}"
-    os.makedirs(cache_dir, mode=0o755, exist_ok=True)
-os.environ["NUMBA_CACHE_DIR"] = cache_dir
-numba.config.CACHE_DIR = cache_dir
 
 
 @numba.jit(nopython=True, cache=True, nogil=True)
@@ -455,7 +456,7 @@ def query(
 ):
     """Runs concordance queries"""
     sys.stdout.flush()
-    parsed = parse_query(terms)
+    parsed = parse_query(terms, query_patterns=db.locals.query_patterns)
     grouped = group_terms(parsed)
     split = split_terms(grouped)
     words_per_hit = len(split)

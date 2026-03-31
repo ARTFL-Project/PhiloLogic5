@@ -200,7 +200,7 @@ def query_lowlevel(db, param_dict, sort_order, ascii_conversion):
         for v in values:
             parsed = "text"
             if db.locals.metadata_sql_types[column] in ("text", "int"):
-                parsed = parse_query(v)
+                parsed = parse_query(v, query_patterns=db.locals.query_patterns)
             elif db.locals.metadata_sql_types[column] == "date":
                 v = v.replace('"', "")  # remove quotes
                 parsed = parse_date_query(v)

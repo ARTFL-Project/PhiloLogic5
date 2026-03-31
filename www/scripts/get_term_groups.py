@@ -4,7 +4,7 @@ from philologic.runtime.QuerySyntax import group_terms, parse_query
 def get_term_groups(request, config):
     if not request["q"]:
         return {"original_query": "", "term_groups": []}
-    parsed = parse_query(request.q)
+    parsed = parse_query(request.q, query_patterns=config.db_locals.query_patterns)
     group = group_terms(parsed)
     all_groups = split_terms(group)
     term_groups = []
