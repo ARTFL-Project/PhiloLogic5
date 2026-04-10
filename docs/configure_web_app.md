@@ -64,9 +64,10 @@ The `theme.module.scss` file is a Sass stylesheet which uses global variables to
 $header-color: rgb(95, 2, 2);          // Navigation bar background
 $button-color: rgb(173, 66, 66);       // Primary buttons, form elements
 $button-color-active: rgba(160, 55, 55, 0.9);  // Active/hover state
-$link-color: rgb(156, 60, 60);         // Hyperlinks and text accents
+$link-color: rgb(156, 60, 60);         // Hyperlinks, text accents, and focus indicators
 $passage-color: rgb(155, 65, 55);      // Search result highlights
 $card-header-color: rgb(173, 66, 66);  // Card and table headers
+$focus-on-dark-color: #fff;            // Focus indicator on dark backgrounds (e.g. navbar)
 ```
 
 Once you've edited the theme file, rebuild the web application by running the following command from the `app/` directory:
