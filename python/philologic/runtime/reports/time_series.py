@@ -2,7 +2,6 @@
 """Time series"""
 
 import os
-import time
 
 import numba
 import numpy as np
@@ -96,7 +95,6 @@ def _bucket_hits_by_year(doc_ids, year_array, start_date, interval, n_ranges):
 
 
 def generate_time_series(request, config):
-    t0 = time.time()
     db = DB(config.db_path + "/data/")
     year_field = validate_column(config.time_series_year_field, db)
     time_series_object = {"query": dict([i for i in request]), "query_done": False}
@@ -109,25 +107,24 @@ def generate_time_series(request, config):
         time_series_object["results"] = {"absolute_count": {}, "date_count": {}}
         return time_series_object
 
-    interval = int(request.year_interval)
+    try:
+        interval = int(request.year_interval)
+    except (ValueError, TypeError):
+        interval = int(config.time_series_interval)
 
     # Get cached doc→year mapping (SQL only on first request per worker)
-    t1 = time.time()
     year_array, year_word_counts, year_doc_counts, min_date, max_date = _get_doc_year_data(db, year_field)
-    print(f"[time_series] doc year data: {time.time()-t1:.3f}s", flush=True)
 
     # Resolve start/end dates
     start_date = int(request.start_date) if request.start_date else min_date
     end_date = int(request.end_date) if request.end_date else max_date
 
     # Fire the word query now that we have start/end dates
-    t1 = time.time()
     hits = None
     if request.q:
         metadata = dict(request.metadata)
         metadata[year_field] = "%d-%d" % (start_date, end_date)
         hits = db.query(request["q"], request["method"], request["arg"], raw_results=True, **metadata)
-    print(f"[time_series] db.query dispatch: {time.time()-t1:.3f}s", flush=True)
 
     # Generate date ranges for output
     date_ranges = []
@@ -150,27 +147,18 @@ def generate_time_series(request, config):
 
     # Absolute hit counts: wait for search, then vectorized bucketing
     if hits is not None:
-        t1 = time.time()
         hits.finish()
-        t_finish = time.time() - t1
         total_hits = len(hits)
-        print(f"[time_series] hits.finish() wait ({total_hits} hits): {t_finish:.3f}s", flush=True)
 
         if total_hits > 0:
-            t1 = time.time()
             hit_length = hits.length
             mm = np.memmap(hits.filename, dtype="u4", mode="r").reshape(-1, hit_length)
             doc_ids = np.ascontiguousarray(mm[:, 0])
             del mm  # release mmap immediately
-            t_read = time.time() - t1
 
-            # Single-pass JIT on contiguous doc_id column
-            t1 = time.time()
             bin_counts, total_hits = _bucket_hits_by_year(
                 doc_ids, year_array, start_date, interval, n_ranges
             )
-            t_jit = time.time() - t1
-            print(f"[time_series] mmap+extract doc_ids: {t_read:.3f}s, JIT bucket: {t_jit:.3f}s ({total_hits} hits in {n_ranges} bins)", flush=True)
         else:
             bin_counts = np.zeros(n_ranges, dtype=np.int64)
     else:
@@ -182,7 +170,6 @@ def generate_time_series(request, config):
             total_hits += int(bin_counts[i])
 
     # Build absolute_count output matching expected format
-    t1 = time.time()
     absolute_count = {}
     for i, (range_start, date_range) in enumerate(date_ranges):
         params = {"report": "concordance", "start": "0", "end": "0"}
@@ -193,7 +180,6 @@ def generate_time_series(request, config):
             "count": int(bin_counts[i]),
             "url": url,
         }
-    print(f"[time_series] build output ({n_ranges} ranges): {time.time()-t1:.3f}s", flush=True)
 
     time_series_object["results_length"] = int(total_hits)
     time_series_object["more_results"] = False
@@ -202,8 +188,29 @@ def generate_time_series(request, config):
         "date_count": {str(date): count for date, count in date_counts.items()},
     }
 
-    print(f"[time_series] TOTAL: {time.time()-t0:.3f}s", flush=True)
     return time_series_object
+
+
+def time_series_to_csv(results):
+    """Convert time series results to CSV string."""
+    import csv
+    import io
+
+    absolute_count = results.get("absolute_count", {})
+    date_count = results.get("date_count", {})
+    if not absolute_count:
+        return ""
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["period", "count", "total_words"])
+    writer.writeheader()
+    for period_start in sorted(absolute_count.keys(), key=int):
+        entry = absolute_count[period_start]
+        writer.writerow({
+            "period": entry["label"],
+            "count": entry["count"],
+            "total_words": date_count.get(period_start, ""),
+        })
+    return output.getvalue()
 
 
 def get_start_end_date(db, config, start_date=None, end_date=None):

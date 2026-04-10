@@ -4,7 +4,6 @@ These endpoints couldn't use @json_endpoint because they need streaming,
 custom headers (Set-Cookie), or non-JSON responses (302 redirect).
 """
 
-import io
 import os
 import sys
 
@@ -16,13 +15,19 @@ from philologic.runtime import (
     WebConfig,
     WSGIHandler,
     access_control,
+    aggregation_by_field,
+    aggregation_to_csv,
     bibliography_results,
+    bibliography_to_csv,
     collocation_results,
+    collocation_to_csv,
     concordance_results,
+    concordance_to_csv,
     generate_time_series,
     kwic_results,
+    kwic_to_csv,
     login_access,
-    aggregation_by_field,
+    time_series_to_csv,
 )
 from philologic.runtime.DB import DB
 from philologic.runtime.HitWrapper import ObjectWrapper
@@ -65,34 +70,6 @@ class AccessRequestResource:
 # export_results — JSON or CSV export
 # ---------------------------------------------------------------------------
 
-_TAGS = re.compile(r"<[^>]+>")
-_NEWLINES = re.compile(r"\n+")
-_SPACES = re.compile(r"\s{2,}")
-
-
-def _filter_html(html):
-    """Strip out all HTML."""
-    text = _TAGS.sub("", html).strip()
-    text = _NEWLINES.sub(" ", text)
-    text = _SPACES.sub(" ", text)
-    return text
-
-
-def _csv_output(results):
-    """Convert results to CSV representation."""
-    import csv
-
-    output_string = io.StringIO()
-    writer = csv.DictWriter(
-        output_string,
-        fieldnames=["context", *sorted(results[0]["metadata_fields"].keys())],
-    )
-    writer.writeheader()
-    for result in results:
-        writer.writerow({**result["metadata_fields"], "context": result["context"]})
-    return output_string.getvalue()
-
-
 class ExportResultsResource:
     """Export search results in JSON or CSV format."""
 
@@ -108,40 +85,38 @@ class ExportResultsResource:
         _generate_time_series = resolve(db_path, "generate_time_series", generate_time_series)
         _aggregation_by_field = resolve(db_path, "aggregation_by_field", aggregation_by_field)
 
+        filter_html = request.filter_html == "true"
         results = []
+        csv_output = ""
+
         if request.report == "bibliography":
             results = _bibliography_results(request, config)["results"]
-        if request.report == "concordance":
-            for hit in _concordance_results(request, config)["results"]:
-                hit_to_save = {
-                    "metadata_fields": {**hit["metadata_fields"], "philo_id": hit["philo_id"]},
-                    "context": hit["context"],
-                }
-                if request.filter_html == "true":
-                    hit_to_save["context"] = _filter_html(hit["context"])
-                results.append(hit_to_save)
+            csv_output = bibliography_to_csv(results)
+        elif request.report == "concordance":
+            results = _concordance_results(request, config)["results"]
+            csv_output = concordance_to_csv(results, filter_html=filter_html)
         elif request.report == "kwic":
-            for hit in _kwic_results(request, config)["results"]:
-                hit_to_save = {
-                    "metadata_fields": {**hit["metadata_fields"], "philo_id": hit["philo_id"]},
-                    "context": hit["context"],
-                }
-                if request.filter_html == "true":
-                    hit_to_save["context"] = _filter_html(hit["context"])
-                results.append(hit_to_save)
+            results = _kwic_results(request, config)["results"]
+            csv_output = kwic_to_csv(results, filter_html=filter_html)
         elif request.report == "collocation":
-            results = _collocation_results(request, config)["collocates"]
+            collocates = _collocation_results(request, config)["collocates"]
+            results = collocates
+            csv_output = collocation_to_csv(collocates)
         elif request.report == "time_series":
-            results = _generate_time_series(request, config)["results"]
+            report_data = _generate_time_series(request, config)
+            results = report_data["results"]
+            csv_output = time_series_to_csv(results)
         elif request.report == "aggregation":
-            results = _aggregation_by_field(request, config)["results"]
+            report_data = _aggregation_by_field(request, config)
+            results = report_data["results"]
+            csv_output = aggregation_to_csv(results, report_data.get("break_up_field", ""))
 
         if request.output_format == "json":
             resp.content_type = "application/json; charset=UTF-8"
             resp.data = orjson.dumps(results)
         elif request.output_format == "csv":
             resp.content_type = "text/csv; charset=UTF-8"
-            resp.data = _csv_output(results).encode("utf8")
+            resp.data = csv_output.encode("utf8")
 
 
 # ---------------------------------------------------------------------------

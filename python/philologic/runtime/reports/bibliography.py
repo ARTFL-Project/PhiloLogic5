@@ -1,6 +1,8 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 """Bibliography results"""
 
+import csv
+import io
 
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
@@ -77,3 +79,19 @@ def bibliography_results(request, config):
     bibliography_object["query_done"] = hits.done
     bibliography_object["result_type"] = result_type
     return bibliography_object, hits
+
+
+def bibliography_to_csv(results):
+    """Convert bibliography results to CSV string."""
+    if not results:
+        return ""
+    output = io.StringIO()
+    metadata_keys = sorted(results[0]["metadata_fields"].keys())
+    fieldnames = ["philo_id"] + metadata_keys
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for result in results:
+        row = {"philo_id": " ".join(str(x) for x in result["philo_id"])}
+        row.update(result["metadata_fields"])
+        writer.writerow(row)
+    return output.getvalue()

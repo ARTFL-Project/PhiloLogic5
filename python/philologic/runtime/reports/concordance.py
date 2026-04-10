@@ -1,6 +1,9 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 """Concordance report"""
 
+import csv
+import io
+
 import regex as re
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
@@ -60,3 +63,23 @@ def concordance_results(request, config):
     concordance_object["results_length"] = len(hits)
     concordance_object["query_done"] = hits.done
     return concordance_object
+
+
+def concordance_to_csv(results, filter_html=False):
+    """Convert concordance results to CSV string."""
+    if not results:
+        return ""
+    tags_re = re.compile(r"<[^>]+>")
+    output = io.StringIO()
+    metadata_keys = sorted(results[0]["metadata_fields"].keys())
+    fieldnames = ["philo_id", "context"] + metadata_keys
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for result in results:
+        context = result["context"]
+        if filter_html:
+            context = tags_re.sub("", context).strip()
+        row = {"philo_id": " ".join(str(x) for x in result["philo_id"]), "context": context}
+        row.update(result["metadata_fields"])
+        writer.writerow(row)
+    return output.getvalue()

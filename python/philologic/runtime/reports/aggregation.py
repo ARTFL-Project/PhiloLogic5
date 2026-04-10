@@ -1,6 +1,9 @@
 # /usr/bin/env python3
 """Report designed to group results by metadata with additional breakdown optional"""
 
+import csv
+import io
+
 import numpy as np
 
 from philologic.runtime.DB import DB
@@ -135,6 +138,45 @@ def aggregation_by_field(request, config):
         "query": {k: v for k, v in request},
         "total_results": total_results,
     }
+
+
+def aggregation_to_csv(results, break_up_field_name=""):
+    """Convert aggregation results to CSV string.
+
+    Each breakdown entry gets its own row. Rows from the same group
+    are contiguous, with the group-level metadata repeated.
+    """
+    if not results:
+        return ""
+    output = io.StringIO()
+    first = results[0]
+    group_keys = sorted(k for k in first["metadata_fields"].keys() if k not in ("field_name", "philo_id"))
+    has_breakdown = break_up_field_name and any(r["break_up_field"] for r in results)
+    if has_breakdown:
+        # Collect all metadata keys from breakdown entries
+        breakdown_keys = set()
+        for result in results:
+            for sub in result["break_up_field"]:
+                breakdown_keys.update(k for k in sub["metadata_fields"].keys() if k not in ("field_name", "philo_id"))
+        breakdown_keys = sorted(breakdown_keys - set(group_keys))
+        fieldnames = group_keys + ["group_count"] + breakdown_keys + ["count"]
+    else:
+        fieldnames = group_keys + ["count"]
+    writer = csv.DictWriter(output, fieldnames=fieldnames)
+    writer.writeheader()
+    for result in results:
+        group_fields = {k: result["metadata_fields"].get(k, "") for k in group_keys}
+        if has_breakdown and result["break_up_field"]:
+            for sub in result["break_up_field"]:
+                row = {**group_fields, "group_count": result["count"]}
+                for k in breakdown_keys:
+                    row[k] = sub["metadata_fields"].get(k, "")
+                row["count"] = sub["count"]
+                writer.writerow(row)
+        else:
+            row = {**group_fields, "count": result["count"]}
+            writer.writerow(row)
+    return output.getvalue()
 
 
 def __expand_hits_counted(hits, metadata_type):

@@ -580,6 +580,21 @@ def collocation_results(request, config):
     return collocation_object
 
 
+def collocation_to_csv(collocates):
+    """Convert collocation results (list of (word, count) tuples) to CSV string."""
+    import csv
+    import io
+
+    if not collocates:
+        return ""
+    output = io.StringIO()
+    writer = csv.DictWriter(output, fieldnames=["collocate", "count"])
+    writer.writeheader()
+    for word, count in collocates:
+        writer.writerow({"collocate": word, "count": count})
+    return output.getvalue()
+
+
 def atomic_pickle_dump(data, file_path):
     """Write pickle atomically to prevent truncated reads from concurrent requests."""
     dir_path = os.path.dirname(file_path)
