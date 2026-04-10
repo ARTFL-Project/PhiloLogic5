@@ -57,57 +57,58 @@
                 </li>
             </ul>
         </div>
-        <results-summary :description="results.description" :filter-list="filterList"
-            :colloc-method="collocMethod" v-if="collocMethod === 'frequency'"
-            style="margin-top:0 !important;"></results-summary>
+        <results-summary :description="results.description" :filter-list="filterList" :colloc-method="collocMethod"
+            v-if="collocMethod === 'frequency'" style="margin-top:0 !important;"></results-summary>
         <div role="region" :aria-label="$t('collocation.collocationResults')">
-            <div class="card shadow-sm mx-2 p-2" style="border-top-width: 0;" v-if="collocMethod == 'compare'">
-                <button id="toggle-metadata" class="btn btn-link" style="text-align: start;" type="button"
-                    data-bs-toggle="collapse" data-bs-target="#other-corpus-metadata" aria-expanded="false"
-                    aria-controls="other-corpus-metadata" @click="filterMetadataOpen = !filterMetadataOpen">
-                    <span v-if="!filterMetadataOpen">&#9654;</span>
-                    <span v-else>&#9660;</span>
-                    {{ $t('collocation.metadataFilter') }}
-                </button>
-                <div class="collapse my-2" id="other-corpus-metadata">
-                    <div class="alert alert-info p-1" style="width: fit-content" role="alert">
-                        {{ $t('collocation.emptySearch') }}</div>
-                    <div class="row">
-                        <MetadataFields
-                            :fields="metadataDisplay" :input-styles="metadataInputStyle"
+            <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod == 'compare'"
+                role="region" :aria-label="$t('collocation.compareTo')">
+                <div class="row">
+                    <!-- Primary corpus criteria -->
+                    <div class="col-12 col-md-6 mb-3 mb-md-0" role="region"
+                        :aria-label="$t('collocation.primaryCorpusCriteria')">
+                        <h6 class="fw-bold border-bottom pb-2">{{ $t('collocation.primaryCorpusCriteria') }}</h6>
+                        <!-- Spacer to align with the comparison side's alert -->
+                        <div class="alert alert-info p-1 mb-2 d-none d-md-block invisible" aria-hidden="true">&nbsp;
+                        </div>
+                        <MetadataFields :fields="metadataDisplay" :input-styles="metadataInputStyle"
+                            :choice-values="metadataChoiceValues" :model-value="formData" :checked-values="{}"
+                            :selected-values="{}" id-prefix="primary-" />
+                    </div>
+                    <!-- Comparison corpus criteria -->
+                    <div class="col-12 col-md-6 compare-divider" role="region"
+                        :aria-label="$t('collocation.comparisonCorpusCriteria')">
+                        <h6 class="fw-bold border-bottom pb-2">{{ $t('collocation.comparisonCorpusCriteria') }}</h6>
+                        <div class="alert alert-info p-1 mb-2" style="width: fit-content" role="note">
+                            {{ $t('collocation.emptySearch') }}</div>
+                        <MetadataFields :fields="metadataDisplay" :input-styles="metadataInputStyle"
                             :choice-values="metadataChoiceValues" :model-value="comparedMetadataValues"
                             :checked-values="metadataChoiceChecked" :selected-values="metadataChoiceSelected"
-                            :date-type="dateType" :date-range="dateRange">
+                            :date-type="dateType" :date-range="dateRange" id-prefix="compare-">
                             <template #text-input="{ field }">
                                 <label class="btn btn-outline-secondary"
-                                    :for="field.value + '-input-filter'">
+                                    :for="'compare-' + field.value + '-input-filter'">
                                     {{ field.label }}
                                 </label>
-                                <input type="text" class="form-control"
-                                    :id="field.value + '-input-filter'"
+                                <input type="text" class="form-control" :id="'compare-' + field.value + '-input-filter'"
                                     :name="field.value" :placeholder="field.example"
                                     v-model="comparedMetadataValues[field.value]"
-                                    @input="autocompleteOnChange(field.value)"
-                                    @keydown.down="onArrowDown(field.value)"
-                                    @keydown.up="onArrowUp(field.value)"
-                                    @keyup.enter="onEnter(field.value)"
-                                    @keyup.escape="clearAutoCompletePopup"
-                                    autocomplete="off"
+                                    @input="autocompleteOnChange(field.value)" @keydown.down="onArrowDown(field.value)"
+                                    @keydown.up="onArrowUp(field.value)" @keyup.enter="onEnter(field.value)"
+                                    @keyup.escape="clearAutoCompletePopup" autocomplete="off"
                                     :aria-label="`${$t('collocation.filterBy')} ${field.label}`" />
-                                <ul :id="'autocomplete-' + field.value"
-                                    class="autocomplete-results shadow"
+                                <ul :id="'compare-autocomplete-' + field.value" class="autocomplete-results shadow"
                                     :style="autoCompletePosition(field.value)"
                                     v-if="autoCompleteResults[field.value].length > 0">
-                                    <li tabindex="-1"
-                                        v-for="(result, i) in autoCompleteResults[field.value]"
+                                    <li tabindex="-1" v-for="(result, i) in autoCompleteResults[field.value]"
                                         :key="result" @click="setMetadataResult(result, field.value)"
                                         class="autocomplete-result"
-                                        :class="{ 'is-active': i === arrowCounters[field.value] }"
-                                        v-html="result"></li>
+                                        :class="{ 'is-active': i === arrowCounters[field.value] }" v-html="result"></li>
                                 </ul>
                             </template>
                         </MetadataFields>
                     </div>
+                </div>
+                <div class="mt-1">
                     <button type="button" class="btn btn-secondary" style="width: fit-content"
                         @click="getOtherCollocates()">{{
                             $t('collocation.runComparison') }}
@@ -160,7 +161,8 @@
                     <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years") }}</span>
                 </div>
                 <button type="button" class="btn btn-secondary mt-2" style="width: fit-content"
-                    @click="getCollocatesOverTime()">{{ $t('collocation.searchEvolution') }}</button>
+                    @click="getCollocatesOverTime()">{{
+                        $t('collocation.searchEvolution') }}</button>
             </div>
 
             <!-- Results below -->
@@ -356,7 +358,6 @@
 <script>
 import { inject, reactive } from "vue";
 import { useRoute } from "vue-router";
-import { Collapse } from "bootstrap";
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
 import { useAutocomplete } from "../composables/useAutocomplete";
@@ -464,7 +465,6 @@ export default {
             otherCollocates: [],
             otherBiblio: {},
             comparedTo: "wholeCorpus",
-            filterMetadataOpen: false,
             compareSearching: false,
             comparativeSearchStarted: false,
             otherDone: false,
@@ -570,8 +570,8 @@ export default {
             }
             this.$http
                 .get(`${this.$dbUrl}/reports/collocation.py`, {
-                        params: this.paramsFilter(this.formData),
-                    })
+                    params: this.paramsFilter(this.formData),
+                })
                 .then((response) => {
                     this.resultsLength = response.data.results_length;
                     this.filterList = response.data.filter_list;
@@ -605,11 +605,7 @@ export default {
             }
         },
         handleMobileMethodChange() {
-            // The collocMethod v-model already updated the view
-            // Only compare mode needs special handling to open the form
-            if (this.collocMethod === 'compare') {
-                this.toggleCompare(false);
-            }
+            this.setCollocationMethod(this.collocMethod, false);
         },
         checkCollocationMethod() {
             this.collocMethod = this.$route.query.collocation_method || 'frequency';
@@ -677,19 +673,6 @@ export default {
         },
         toggleCompare(updateUrl = false) {
             this.collocMethod = "compare";
-            this.filterMetadataOpen = true
-            this.$nextTick(() => {
-                let collapseElement = document.getElementById('other-corpus-metadata')
-                if (collapseElement) {
-                    try {
-                        new Collapse(collapseElement, {
-                            toggle: true
-                        })
-                    } catch (error) {
-                        console.warn('Could not initialize Bootstrap Collapse:', error);
-                    }
-                }
-            })
             if (updateUrl) {
                 this.updateCollocationUrl();
             }
@@ -767,12 +750,6 @@ export default {
             }
         },
         getOtherCollocates() {
-            // Hide the metadata form
-            let collapseElement = document.getElementById('other-corpus-metadata')
-            if (collapseElement != null) {
-                Collapse.getInstance(collapseElement).hide()
-                this.filterMetadataOpen = false
-            }
             this.wholeCorpus = Object.keys(this.comparedMetadataValues).length === 0;
             this.collocMethod = 'compare';
             this.updateCollocationUrl();
@@ -791,8 +768,8 @@ export default {
             this.otherCollocates = [];
             this.$http
                 .get(`${this.$dbUrl}/reports/collocation.py`, {
-                        params: this.paramsFilter(params),
-                    })
+                    params: this.paramsFilter(params),
+                })
                 .then((response) => {
                     this.compareSearching = false;
                     if (response.data.results_length) {
@@ -858,13 +835,13 @@ export default {
                     file_path: filePath,
                 },
             }).then((response) => {
-                    this.similarDistributions = response.data.similar
-                    this.cachedDistributions = filePath
-                    this.similarSearching = false
-                }).catch((error) => {
-                    this.similarSearching = false;
-                    this.debug(this, error);
-                });
+                this.similarDistributions = response.data.similar
+                this.cachedDistributions = filePath
+                this.similarSearching = false
+            }).catch((error) => {
+                this.similarSearching = false;
+                this.debug(this, error);
+            });
         },
         similarToComparative(field) {
             this.$http.get(`${this.$dbUrl}/scripts/get_collocate_distribution.py`, {
@@ -1116,11 +1093,6 @@ input:focus::placeholder {
     opacity: 0;
 }
 
-.btn-link {
-    text-decoration: none;
-    margin-left: -.75rem;
-}
-
 #colloc-tab button {
     font-variant: small-caps;
     font-size: 1rem;
@@ -1199,6 +1171,12 @@ input:focus::placeholder {
 
 .badge {
     font-size: 0.75rem;
+}
+
+@media (min-width: 768px) {
+    .compare-divider {
+        border-left: solid 1px rgba(0, 0, 0, 0.176);
+    }
 }
 
 .alert-warning {

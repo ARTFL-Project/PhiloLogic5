@@ -171,6 +171,8 @@
         "overRepresentedCollocates": "Distinctive collocates",
         "emptySearch": "Note that an empty search will run a comparison against the rest of the corpus",
         "metadataFilter": "Filter by the following metadata fields",
+        "primaryCorpusCriteria": "Primary subcorpus (current search)",
+        "comparisonCorpusCriteria": "Comparison subcorpus (compare against)",
         "runComparison": "Run comparison",
         "similarCollocGatheringMessage": "Gathering all collocates",
         "similarCollocCompareMessage": "Comparing collocate distributions",

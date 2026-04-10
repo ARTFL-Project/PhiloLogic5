@@ -579,7 +579,7 @@ export default {
             }
             this.metadataDisplay.push(metadataObj);
             if (this.formData[metadataField] != "") {
-                if (this.$philoConfig.metadata_input_style[metadataField] == "text") {
+                if (["text", "date", "int"].includes(this.$philoConfig.metadata_input_style[metadataField])) {
                     this.metadataValues[metadataField] = this.formData[metadataField];
                 } else if (this.$philoConfig.metadata_input_style[metadataField] == "checkbox") {
                     this.metadataChoiceChecked[metadataField] = this.formData[metadataField].split(" | ");
@@ -606,19 +606,6 @@ export default {
         for (let metadata in this.metadataInputStyle) {
             this.dateType[metadata] = "exact";
             this.dateRange[metadata] = { start: "", end: "" };
-        }
-        for (let metadata in this.metadataInputStyle) {
-            if (metadata in this.formData) {
-                if (this.metadataInputStyle[metadata] == "date" && this.formData[metadata].search(/<=>/) != -1) {
-                    this.dateType[metadata] = "range";
-                    let dateRanges = this.formData[metadata].split(/<=>/);
-                    this.dateRange[metadata] = { start: dateRanges[0], end: dateRanges[1] };
-                } else if (this.metadataInputStyle[metadata] == "int" && this.formData[metadata].search(/-/) != -1) {
-                    this.dateType[metadata] = "range";
-                    let dateRanges = this.formData[metadata].split(/-/);
-                    this.dateRange[metadata] = { start: dateRanges[0], end: dateRanges[1] };
-                }
-            }
         }
         if (Object.keys(this.$philoConfig.word_attributes).length > 0) {
             // place the word attribute option at the second position

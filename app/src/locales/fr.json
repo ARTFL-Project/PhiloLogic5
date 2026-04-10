@@ -171,6 +171,8 @@
         "overRepresentedCollocates": "Collocations distinctives",
         "emptySearch": "Notez qu'une recherche vide lancera une comparaison avec le reste du corpus",
         "metadataFilter": "Filtrez par les métadonnées suivantes",
+        "primaryCorpusCriteria": "Sous-corpus principal (recherche actuelle)",
+        "comparisonCorpusCriteria": "Sous-corpus de comparaison (comparer avec)",
         "runComparison": "Lancer la comparaison",
         "similarCollocGatheringMessage": "Récupération des collocations",
         "similarCollocCompareMessage": "Comparaison des collocations",
