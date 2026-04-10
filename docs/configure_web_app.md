@@ -70,11 +70,13 @@ $card-header-color: rgb(173, 66, 66);  // Card and table headers
 $focus-on-dark-color: #fff;            // Focus indicator on dark backgrounds (e.g. navbar)
 ```
 
-Once you've edited the theme file, rebuild the web application by running the following command from the `app/` directory:
+Once you've edited the theme file, rebuild the web application by running:
 
 ```bash
 npm run build
 ```
+
+> **Important:** This command must be run from the database's own `app/` directory (e.g. `/path/to/your_database/app/`), not from the PhiloLogic source directory.
 
 ## <a name="aggregation"></a>Configuring the aggregation report
 The aggregation report (much like faceted browsing) sums up results from concordances by metadata fields. What it can also do is break-up results from any metadata field
