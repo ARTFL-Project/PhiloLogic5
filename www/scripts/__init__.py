@@ -24,3 +24,4 @@ from .get_total_results import get_total_results
 from .get_web_config import get_web_config
 from .get_word_frequency import get_word_frequency
 from .get_word_property_count import get_word_property_count
+from .lookup_word import lookup_word

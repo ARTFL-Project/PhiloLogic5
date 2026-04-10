@@ -68,8 +68,8 @@ def spa_handler(req, resp):
             token = access_control.check_access(req.env, config)
             if token:
                 h, ts = token
-                resp.append_header("Set-Cookie", "hash=%s" % h)
-                resp.append_header("Set-Cookie", "timestamp=%s" % ts)
+                resp.append_header("Set-Cookie", "hash=%s; Path=/" % h)
+                resp.append_header("Set-Cookie", "timestamp=%s; Path=/" % ts)
 
     # Serve Brotli-compressed index.html if client supports it
     accept_encoding = req.get_header("Accept-Encoding") or ""

@@ -39,6 +39,7 @@ JSON_SCRIPTS = {
     "get_web_config",
     "get_word_frequency",
     "get_word_property_count",
+    "lookup_word",
 }
 
 # Scripts that return HTML instead of JSON
