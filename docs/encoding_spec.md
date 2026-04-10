@@ -1,7 +1,3 @@
----
-title: Text Encoding Specification
----
-
 -   PhiloLogic can parse non-valid XML and does not rely on an XML lib for document parsing (with the exception of the TEI Header).
 
 -   The only requirement is that files are encoded in **UTF-8**.

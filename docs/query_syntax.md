@@ -1,7 +1,3 @@
----
-title: PhiloLogic 4 Query Syntax
----
-
 PhiloLogic4's query syntax has 5 basic operators:
 
 1. the plain token, essentially, any word at all, split on space, e.g. `token`

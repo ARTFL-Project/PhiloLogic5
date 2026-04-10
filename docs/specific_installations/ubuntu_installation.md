@@ -1,7 +1,3 @@
----
-title: Installing PhiloLogic5 on Ubuntu
----
-
 Tested on Ubuntu 22.04 and 24.04.
 
 ### 1. Install System Dependencies

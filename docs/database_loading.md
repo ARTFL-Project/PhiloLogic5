@@ -1,6 +1,3 @@
----
-title: Database Loading
----
 
 Loading PhiloLogic databases is very straight forward, and most of the time, you shouldn't need to specify any specialized load option.
 

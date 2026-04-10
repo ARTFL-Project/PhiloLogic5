@@ -1,7 +1,3 @@
----
-title: How to set-up access-control
----
-
 There are two ways to control access, user/password authentication, and ip/domain checks. You can use either separately, or both.
 
 ### Turn on access control

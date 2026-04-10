@@ -1,7 +1,3 @@
----
-title: What is Philologic?
----
-
 PhiloLogic is an XML database/search engine/web app developped at the [ARTFL Project](https://artfl-project.uchicago.edu) and designed
 for the particular difficulties of TEI XML. For a more theoretical
 description, you can refer to [our blog](<http://artfl.blogspot.com>).

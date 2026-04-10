@@ -1,7 +1,3 @@
----
-title: Configuring the Web Application
----
-
 -   [Layout of the Web Application](#layout)
 -   [UI configuration](#ui)
 -   [Access control](#access)
@@ -11,7 +7,7 @@ title: Configuring the Web Application
 
 Each loaded database contains its own copy of the web application and data. Here is what the database directory looks like after a load:
 
-<pre><code>
+```
 database/
 ├── app/                    # Vue.js client application
 │   ├── src/
@@ -32,7 +28,7 @@ database/
 │   └── hitlists/           # Cached query results
 ├── custom_functions/       # User-defined Python functions
 └── favicon.ico
-</code></pre>
+```
 
 There are three main sections:
 

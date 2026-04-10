@@ -1,7 +1,3 @@
----
-title: Installing PhiloLogic5 on macOS
----
-
 Tested on macOS Ventura and later (Apple Silicon and Intel).
 
 ### 1. Install System Dependencies

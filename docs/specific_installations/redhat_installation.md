@@ -1,7 +1,3 @@
----
-title: Installing PhiloLogic5 on RedHat (and CentOS)
----
-
 Tested on RHEL 9 and CentOS Stream 9.
 
 ### 1. Install System Dependencies
