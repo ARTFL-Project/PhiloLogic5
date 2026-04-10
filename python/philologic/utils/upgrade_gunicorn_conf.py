@@ -17,11 +17,7 @@ import re
 MERGEABLE_SETTINGS = {
     "bind",
     "workers",
-    "worker_class",
-    "threads",
     "timeout",
-    "graceful_timeout",
-    "keepalive",
     "max_requests",
     "max_requests_jitter",
     "preload_app",
@@ -30,11 +26,6 @@ MERGEABLE_SETTINGS = {
     "errorlog",
     "loglevel",
     "capture_output",
-    "limit_request_line",
-    "limit_request_fields",
-    "limit_request_field_size",
-    "user",
-    "group",
 }
 
 
@@ -63,6 +54,24 @@ def _load_conf_values(path):
             # Not a literal (e.g. min(cpu_count(), 4)) — skip, can't merge
             pass
     return values
+
+
+def _load_conf_names(path):
+    """Extract all top-level assignment names from a config file.
+
+    Unlike _load_conf_values, this returns names even for non-literal values
+    (e.g. min(cpu_count(), 4)), so we can detect which settings exist in the file.
+    """
+    with open(path) as f:
+        tree = ast.parse(f.read(), filename=path)
+    names = set()
+    for node in ast.iter_child_nodes(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+            continue
+        names.add(node.targets[0].id)
+    return names
 
 
 def _replace_setting_in_file(filepath, name, value):
@@ -115,8 +124,15 @@ def upgrade_gunicorn_conf(old_conf, old_defaults, new_conf, new_defaults=None):
             # User added a setting that wasn't in the defaults (e.g. user/group)
             user_customizations[key] = prev_conf[key]
 
-    # Replace values in-place in the new conf
+    # Only preserve customizations for settings that exist in the new defaults.
+    # Settings removed from the new defaults (e.g. worker_class, threads) are
+    # intentionally dropped — even if the user had customized them.
+    new_default_names = _load_conf_names(new_defaults) if new_defaults else set()
+    preserved = []
     for key, value in user_customizations.items():
-        _replace_setting_in_file(new_conf, key, value)
+        if new_default_names and key not in new_default_names:
+            continue
+        if _replace_setting_in_file(new_conf, key, value):
+            preserved.append(key)
 
-    return list(user_customizations.keys())
+    return preserved

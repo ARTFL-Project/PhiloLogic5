@@ -19,9 +19,10 @@ if not os.access(cache_dir, os.W_OK):
 os.environ["NUMBA_CACHE_DIR"] = cache_dir
 numba.config.CACHE_DIR = cache_dir
 
+import lmdb
+
 from philologic.runtime.Query import (
     _find_doc_boundaries,
-    _get_words_env,
     _load_word_arrays,
     _load_word_group_hits,
     filter_philo_ids,
@@ -751,7 +752,7 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
 
     out_cols = 9 + 2 * (n_groups - 1)
 
-    env = _get_words_env(db_path)
+    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
     with env.begin(buffers=True) as txn:
         if corpus_file is None:
             # Merge-free Phase 1 + merged Phase 2 for early flush
@@ -759,6 +760,7 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
             group_counts = [sum(len(a) for a in arrays) for arrays in group_arrays]
 
             if any(c == 0 for c in group_counts):
+                env.close()
                 return
 
             rare_group_idx = int(np.argmin(np.array(group_counts)))
@@ -856,6 +858,7 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
             all_hits = [filter_philo_ids(corpus_file, hits) for hits in all_hits]
 
             if any(len(h) == 0 for h in all_hits):
+                env.close()
                 return
 
             sizes = [len(h) for h in all_hits]
@@ -899,7 +902,7 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
                         if not flushed:
                             output_file.flush()
                             flushed = True
-
+    env.close()
 
 
 def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus_file=None):
@@ -952,7 +955,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
     mapping_order = list(range(n_groups))
 
     # Keep transaction open for the entire processing to use zero-copy views
-    env = _get_words_env(db_path)
+    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
     with env.begin(buffers=True) as txn:
         # For 2-group case: use merge-free early flush then full merge
         if n_groups == 2 and corpus_file is None:
@@ -1094,6 +1097,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
             # Compute per-group total hit counts
             group_counts = [sum(len(a) for a in arrays) for arrays in group_arrays]
             if any(c == 0 for c in group_counts):
+                env.close()
                 return
 
             rare_idx = int(np.argmin(np.array(group_counts)))
@@ -1106,6 +1110,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                 rare_doc_ids_all = np.empty(0, dtype=np.uint32)
 
             if len(rare_doc_ids_all) == 0:
+                env.close()
                 return
 
             # Pre-compute per-form per-doc boundaries for all groups
@@ -1203,4 +1208,5 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                             if not flushed:
                                 output_file.flush()
                                 flushed = True
+    env.close()
 

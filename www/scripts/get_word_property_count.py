@@ -59,8 +59,7 @@ def get_word_property_count(request, config):
             raw_bytes=True,
             **request.metadata,
         )
-        from philologic.runtime.term_expansion import _open_lmdb
-        lemma_db_env = _open_lmdb(f"{config.db_path}/data/lemmas.lmdb")
+        lemma_db_env = lmdb.open(f"{config.db_path}/data/lemmas.lmdb", readonly=True, lock=False)
         lemma_count = {}
         total_count_per_lemma = {}
         with lemma_db_env.begin() as txn:

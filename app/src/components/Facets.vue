@@ -446,7 +446,7 @@ export default {
             });
         },
         fetchCollocationFacet(facet, queryParams) {
-            this.$http.post(`${this.$dbUrl}/reports/collocation.py`, {}, {
+            this.$http.get(`${this.$dbUrl}/reports/collocation.py`, {
                 params: this.paramsFilter(queryParams)
             }).then((response) => {
                 if (response.data.results_length) {

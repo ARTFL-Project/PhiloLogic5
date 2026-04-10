@@ -26,26 +26,6 @@ numba.config.CACHE_DIR = _cache_dir
 from philologic.runtime import HitList
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 
-# Cache LMDB environments per path to avoid "already open in this process" errors
-# when multiple threads (gthread workers) query the same database concurrently.
-_lmdb_envs: dict[str, lmdb.Environment] = {}
-_lmdb_lock = threading.Lock()
-
-
-def _get_words_env(db_path: str) -> lmdb.Environment:
-    """Return a shared read-only LMDB environment for words.lmdb."""
-    lmdb_path = f"{db_path}/words.lmdb"
-    env = _lmdb_envs.get(lmdb_path)
-    if env is not None:
-        return env
-    with _lmdb_lock:
-        env = _lmdb_envs.get(lmdb_path)
-        if env is not None:
-            return env
-        env = lmdb.open(lmdb_path, readonly=True, lock=False, readahead=False)
-        _lmdb_envs[lmdb_path] = env
-        return env
-
 
 @numba.jit(nopython=True, cache=True, nogil=True)
 def _merge_two_sorted_arrays(arr1, arr2):
@@ -354,7 +334,7 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
     """Search for a single word in the database."""
     with open(f"{hitlist_filename}.terms", "r") as terms_file:
         words = terms_file.read().split()
-    env = _get_words_env(db_path)
+    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
     if len(words) == 1:
         with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
             word = words[0]
@@ -392,6 +372,7 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
                 merged = _kway_merge_sorted_arrays(arrays) if len(arrays) > 1 else arrays[0]
                 merged = filter_philo_ids(corpus_file, merged)
                 _write_with_early_flush(output_file, merged.tobytes())
+    env.close()
 
 
 def get_word_array(txn, word, overflow_words, db_path):

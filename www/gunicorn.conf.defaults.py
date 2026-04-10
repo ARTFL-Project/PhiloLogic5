@@ -9,12 +9,8 @@ If you want to customize settings, edit gunicorn.conf.py directly.
 import multiprocessing
 
 bind = "unix:/var/run/philologic/gunicorn.sock"
-workers = min(multiprocessing.cpu_count(), 4)
-worker_class = "gthread"
-threads = 4
+workers = min(multiprocessing.cpu_count(), 8)
 timeout = 300
-graceful_timeout = 30
-keepalive = 2
 max_requests = 1000
 max_requests_jitter = 50
 preload_app = True
@@ -23,6 +19,3 @@ accesslog = None
 errorlog = "/var/log/philologic5/gunicorn-error.log"
 loglevel = "info"
 capture_output = True
-limit_request_line = 4094
-limit_request_fields = 100
-limit_request_field_size = 8190
