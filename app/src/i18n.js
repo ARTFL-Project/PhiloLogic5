@@ -5,6 +5,6 @@ export default createI18n({
     legacy: false,
     locale: "en",
     fallbackLocale: "en",
-    availableLocales: ["en", "fr"],
+    availableLocales: ["en", "fr", "es"],
     messages: messages,
 });
