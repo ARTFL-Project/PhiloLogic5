@@ -14,11 +14,11 @@
                             Incorrect login, please try again.
                         </div>
                         <div class="row mb-3">
-                            <div class="cols-12 cols-sm-6 cols-md-5 cols-lg-4">
+                            <div class="col-12 col-sm-6 col-md-5 col-lg-4">
                                 <div class="input-group">
-                                    <button class="btn btn-outline-secondary" type="button" id="username-label">
+                                    <span class="input-group-text" id="username-label">
                                         Username
-                                    </button>
+                                    </span>
                                     <input type="text" class="form-control" id="username-input"
                                         aria-labelledby="username-label" style="max-width: 300px"
                                         v-model="accessInput.username" />
@@ -26,11 +26,11 @@
                             </div>
                         </div>
                         <div class="row mb-3">
-                            <div class="cols-12 cols-sm-6 cols-md-5 cols-lg-4">
+                            <div class="col-12 col-sm-6 col-md-5 col-lg-4">
                                 <div class="input-group">
-                                    <button class="btn btn-outline-secondary" type="button" id="password-label">
+                                    <span class="input-group-text" id="password-label">
                                         Password
-                                    </button>
+                                    </span>
                                     <input type="password" class="form-control" id="password-input"
                                         aria-labelledby="password-label" style="max-width: 300px"
                                         v-model="accessInput.password" />
@@ -38,7 +38,7 @@
                             </div>
                         </div>
                         <div class="row">
-                            <div class="cols-12">
+                            <div class="col-12">
                                 <div class="btn-group" role="group" aria-label="Login form actions">
                                     <button type="submit" class="btn btn-outline-secondary"
                                         aria-describedby="login-error" :aria-invalid="incorrectLogin">

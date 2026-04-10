@@ -309,15 +309,15 @@ def login_access(environ, request, config, headers):
                 token = make_token(db)
                 if token:
                     h, ts = token
-                    headers.append(("Set-Cookie", f"hash={h}"))
-                    headers.append(("Set-Cookie", f"timestamp={ts}"))
+                    headers.append(("Set-Cookie", f"hash={h}; Path=/"))
+                    headers.append(("Set-Cookie", f"timestamp={ts}; Path=/"))
         else:
             # WORKAROUND because cookie not being sent on access_request.py request
             token = check_access(environ, config)
             if token:
                 h, ts = token
-                headers.append(("Set-Cookie", f"hash={h}"))
-                headers.append(("Set-Cookie", f"timestamp={ts}"))
+                headers.append(("Set-Cookie", f"hash={h}; Path=/"))
+                headers.append(("Set-Cookie", f"timestamp={ts}; Path=/"))
                 access = True
             else:
                 access = False
