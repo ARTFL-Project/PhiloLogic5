@@ -7,6 +7,10 @@ import { defineConfig } from "vite";
 import compression from "vite-plugin-compression2";
 
 export default defineConfig({
+    test: {
+        environment: "jsdom",
+        globals: true,
+    },
     plugins: [
         vue(),
         VueI18nPlugin({

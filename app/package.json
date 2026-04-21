@@ -10,7 +10,9 @@
     "scripts": {
         "serve": "npm i && vite preview",
         "build": "npm i && vite build && rm -rf node_modules",
-        "host": "npm i && vite --host"
+        "host": "npm i && vite --host",
+        "test": "vitest run",
+        "test:watch": "vitest"
     },
     "dependencies": {
         "@intlify/unplugin-vue-i18n": "^6.0.8",
@@ -35,11 +37,14 @@
         "@originjs/vite-plugin-commonjs": "^1.0.3",
         "@vitejs/plugin-vue": "^6.0.0",
         "@vue/compiler-sfc": "^3.1.0",
+        "@vue/test-utils": "^2.4.6",
         "eslint": "^7.5.0",
         "eslint-plugin-vue": "^8.5.0",
+        "jsdom": "^29.0.2",
         "sass": "^1.80.0",
         "vite": "^7.1.2",
-        "vite-plugin-compression2": "^2.2.0"
+        "vite-plugin-compression2": "^2.2.0",
+        "vitest": "^4.1.4"
     },
     "eslintConfig": {
         "root": true,
