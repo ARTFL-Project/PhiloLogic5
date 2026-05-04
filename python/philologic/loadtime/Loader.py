@@ -152,9 +152,12 @@ class Loader:
         cls.metadata_sql_types = loader_options["metadata_sql_types"]
         if loader_options["lemma_file"] is not None:
             cls.lemmas = {}
+            lowercase_lemma_keys = loader_options.get("lowercase_index", True)
             with open(loader_options["lemma_file"], encoding="utf8") as lemma_file:
                 for line in lemma_file:
                     word, lemma = line.strip().split("\t")
+                    if lowercase_lemma_keys:
+                        word = word.lower()
                     cls.lemmas[word] = lemma
         for option in PARSER_OPTIONS:
             try:
@@ -293,8 +296,10 @@ class Loader:
         # Strip whitespace from column names to match csv.DictReader behavior
         df.columns = df.columns.str.strip()
 
-        # Strip whitespace from all string values to match csv.DictReader behavior
-        df = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+        # Strip whitespace from all string values to match csv.DictReader behavior.
+        # Use is_string_dtype so this keeps working when pandas 3.0 makes StringDtype
+        # (rather than object) the default for string columns.
+        df = df.apply(lambda x: x.str.strip() if pd.api.types.is_string_dtype(x) else x)
 
         # Validate that required 'filename' column exists
         if "filename" not in df.columns:
@@ -1113,6 +1118,8 @@ class Loader:
                     line = line.decode("utf-8")
                     _, _, _, attributes = line.split("\t", 3)
                     word_attributes.update(loads(attributes).keys())
+        if cls.lemma_count > 0:
+            word_attributes.add("lemma")
         cls.word_attributes = list(word_attributes.difference(attributes_to_skip))
 
         colloc_destination = os.path.join(cls.destination, "collocations")

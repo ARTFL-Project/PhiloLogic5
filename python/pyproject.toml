@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "philologic"
-version = "5.2.2"
+version = "5.2.2.1"
 authors = [
     { name = "Clovis Gladstone", email = "clovisgladstone@artfl.uchicago.edu" },
 ]
@@ -30,7 +30,7 @@ dependencies = [
     "numpy~=2.3",
     "numba~=0.63",
     "scikit-learn~=1.8",
-    "pandas~=2.2",
+    "pandas~=2.3",
     "spacy~=3.8",
     "netaddr",
 ]
