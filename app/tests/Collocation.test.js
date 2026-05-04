@@ -178,6 +178,108 @@ describe("Collocation", () => {
         await row.trigger("keydown.space");
     });
 
+    // --- Workflow modes (driven by ?collocation_method= URL param) ---
+    // Each of the four modes branches in created() to a different HTTP path.
+    // These tests cover the load-bearing dispatch logic — under <script setup>
+    // it'll move from created() to top-level setup code, and the dispatch is
+    // easy to mis-translate.
+    //
+    // Helper: mount with a settled route. mountCollocation can't do this
+    // because createTestRouter doesn't await isReady(), and Collocation reads
+    // $route.query in created() — which runs synchronously at mount time.
+    async function mountCollocationWithRoute(http, query) {
+        const global = createGlobalConfig({
+            http,
+            route: { name: "collocation", path: "/collocation", query },
+            stubs: {
+                ResultsSummary: { template: "<div class='results-summary-stub' />" },
+                WordCloud: { template: "<div class='word-cloud-stub' />", props: ["wordWeights", "clickHandler", "label"] },
+                BibliographyCriteria: { template: "<div class='biblio-criteria-stub' />" },
+                ProgressSpinner: { template: "<div class='spinner-stub' />" },
+                MetadataFields: { template: "<div class='metadata-fields-stub' />" },
+            },
+        });
+        const router = global.plugins[2];
+        await router.isReady();
+
+        const store = useMainStore();
+        store.formData = { ...store.formData, q: "liberty", report: "collocation", colloc_within: "sent", colloc_filter_choice: "frequency", filter_frequency: 100 };
+        store.searchableMetadata = {
+            display: [{ value: "author", label: "Author", example: "Voltaire" }],
+            inputStyle: { author: "text" },
+            choiceValues: {},
+        };
+
+        return mount(Collocation, { global });
+    }
+
+    it("frequency mode (default) fetches collocation.py on mount", async () => {
+        const http = createMockHttp({ "collocation.py": collocationFixture });
+        mountCollocation({ http });
+        await flushPromises();
+
+        const calls = http.get.mock.calls.filter(c => c[0].includes("/reports/collocation.py"));
+        expect(calls.length).toBeGreaterThan(0);
+    });
+
+    it("similar mode fetches collocation.py and activates the similar tab", async () => {
+        const http = createMockHttp({ "collocation.py": collocationFixture });
+        const wrapper = await mountCollocationWithRoute(http, {
+            q: "liberty",
+            report: "collocation",
+            collocation_method: "similar",
+            similarity_by: "author",
+        });
+        await flushPromises();
+        await nextTick();
+
+        const calls = http.get.mock.calls.filter(c => c[0].includes("/reports/collocation.py"));
+        expect(calls.length).toBeGreaterThan(0);
+        expect(wrapper.find("#similar-tab").classes()).toContain("active");
+    });
+
+    it("timeSeries mode fetches collocation_time_series.py and activates the time-series tab", async () => {
+        // The component first hits reports/collocation.py to get a file_path,
+        // then polls scripts/collocation_time_series.py until response.data.done
+        // is truthy. We must return done: true on the first poll or the test hangs.
+        const http = createMockHttp({
+            "reports/collocation.py": { file_path: "/tmp/test-time-series" },
+            "collocation_time_series.py": {
+                period: { year: 1800, collocates: { frequent: [], distinctive: [] } },
+                done: true,
+            },
+        });
+        const wrapper = await mountCollocationWithRoute(http, {
+            q: "liberty",
+            report: "collocation",
+            collocation_method: "timeSeries",
+            time_series_interval: "10",
+        });
+        await flushPromises();
+        await nextTick();
+
+        const calls = http.get.mock.calls.filter(c => c[0].includes("collocation_time_series.py"));
+        expect(calls.length).toBeGreaterThan(0);
+        expect(wrapper.find("#time-series-tab").classes()).toContain("active");
+    });
+
+    it("compare mode activates the compare tab and shows the compare panel", async () => {
+        const http = createMockHttp({
+            "collocation.py": collocationFixture,
+            "comparative_collocations.py": { top: [], bottom: [] },
+        });
+        const wrapper = await mountCollocationWithRoute(http, {
+            q: "liberty",
+            report: "collocation",
+            collocation_method: "compare",
+        });
+        await flushPromises();
+        await nextTick();
+
+        expect(wrapper.find("#compare-tab").classes()).toContain("active");
+        expect(wrapper.find(".compare-divider").exists()).toBe(true);
+    });
+
     // --- Compare: Run comparison button ---
     it("fires getOtherCollocates on Run comparison click", async () => {
         const http = createMockHttp({

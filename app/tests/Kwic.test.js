@@ -22,7 +22,13 @@ function mountKwic(overrides = {}) {
     });
 
     const store = useMainStore();
-    store.formData = { ...store.formData, q: "liberty", report: "kwic", results_per_page: 25 };
+    store.formData = {
+        ...store.formData,
+        q: "liberty",
+        report: "kwic",
+        results_per_page: 25,
+        ...(overrides.formData || {}),
+    };
 
     return mount(Kwic, { global });
 }
@@ -151,5 +157,35 @@ describe("Kwic", () => {
             await biblioLink.trigger("focus");
             await nextTick();
         }
+    });
+
+    // --- Lifecycle cleanup: AbortController on streaming fetch ---
+    // The sorted-kwic path uses native fetch with an AbortController. On
+    // unmount (and on query change), beforeUnmount must call abort() so the
+    // streaming reader stops reading from the response body. This guards
+    // against the Composition API migration losing the abort wiring.
+    it("aborts the streaming fetch on unmount", async () => {
+        let capturedSignal;
+        const fetchSpy = vi.spyOn(global, "fetch").mockImplementation((_url, opts) => {
+            capturedSignal = opts.signal;
+            return new Promise(() => {}); // never resolves — keeps the controller alive
+        });
+
+        // first_kwic_sorting_option triggers the streaming code path
+        const wrapper = mountKwic({
+            formData: { first_kwic_sorting_option: "author" },
+        });
+        await flushPromises();
+        await nextTick();
+
+        expect(fetchSpy).toHaveBeenCalled();
+        expect(capturedSignal).toBeDefined();
+        expect(capturedSignal.aborted).toBe(false);
+
+        wrapper.unmount();
+
+        expect(capturedSignal.aborted).toBe(true);
+
+        fetchSpy.mockRestore();
     });
 });

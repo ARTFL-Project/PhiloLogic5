@@ -216,4 +216,26 @@ describe("TextNavigation", () => {
         expect(tocPanel.text()).toContain("Chapter 1");
         expect(tocPanel.text()).toContain("Chapter 2");
     });
+
+    // --- Lifecycle cleanup (load-bearing for the Composition API migration) ---
+    // The TOC scroll listener is added via setTimeout when the panel opens, and
+    // must be removed on unmount. Under <script setup>, the same cleanup needs
+    // to be wired through onBeforeUnmount/onUnmounted; this test guards against
+    // a regression where the listener is leaked.
+    it("removes the TOC scroll listener on unmount", async () => {
+        const removeSpy = vi.spyOn(Element.prototype, "removeEventListener");
+        const { wrapper } = await mountTextNavigation();
+
+        // Open the TOC — the listener is attached on a 100ms setTimeout
+        await wrapper.find("#show-toc").trigger("click");
+        await new Promise(resolve => setTimeout(resolve, 120));
+
+        removeSpy.mockClear();
+        wrapper.unmount();
+
+        const scrollRemovals = removeSpy.mock.calls.filter(c => c[0] === "scroll");
+        expect(scrollRemovals.length).toBeGreaterThan(0);
+
+        removeSpy.mockRestore();
+    });
 });
