@@ -105,7 +105,8 @@ describe("Collocation", () => {
         await wrapper.find("#similar-tab").trigger("click");
         await nextTick();
 
-        expect(wrapper.vm.collocMethod).toBe("similar");
+        expect(wrapper.find("#similar-tab").classes()).toContain("active");
+        expect(wrapper.find("#similar-tab").attributes("aria-selected")).toBe("true");
     });
 
     it("switches to time series view on tab click", async () => {
@@ -116,7 +117,8 @@ describe("Collocation", () => {
         await wrapper.find("#time-series-tab").trigger("click");
         await nextTick();
 
-        expect(wrapper.vm.collocMethod).toBe("timeSeries");
+        expect(wrapper.find("#time-series-tab").classes()).toContain("active");
+        expect(wrapper.find("#time-series-tab").attributes("aria-selected")).toBe("true");
     });
 
     it("switches back to frequency view", async () => {
@@ -129,7 +131,8 @@ describe("Collocation", () => {
         await wrapper.find("#frequency-tab").trigger("click");
         await nextTick();
 
-        expect(wrapper.vm.collocMethod).toBe("frequency");
+        expect(wrapper.find("#frequency-tab").classes()).toContain("active");
+        expect(wrapper.find("#compare-tab").classes()).not.toContain("active");
     });
 
     // --- @change on mobile dropdown ---
@@ -142,7 +145,8 @@ describe("Collocation", () => {
         await select.setValue("compare");
         await nextTick();
 
-        expect(wrapper.vm.collocMethod).toBe("compare");
+        // The "compare" tab button reflects the active method via .active class
+        expect(wrapper.find("#compare-tab").classes()).toContain("active");
     });
 
     // --- Collocate row click: @click, @keydown.enter, @keydown.space ---

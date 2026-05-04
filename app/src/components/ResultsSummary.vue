@@ -236,6 +236,14 @@ import searchArguments from "./SearchArguments";
 
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import {
+    debug,
+    deepEqual,
+    isOnlyFacetChange,
+    paramsFilter,
+    paramsToRoute,
+    paramsToUrlString,
+} from "../utils.js";
 
 export default {
     name: "ResultsSummary",
@@ -316,7 +324,7 @@ export default {
         $route(newUrl, oldUrl) {
             let facetReports = ["concordance", "kwic", "bibliography"]
             if (facetReports.includes(this.formData.report)) {
-                if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
+                if (!isOnlyFacetChange(newUrl.query, oldUrl.query)) {
                     this.updateDescriptions();
                 }
             } else {
@@ -342,7 +350,7 @@ export default {
                     second_kwic_sorting_option: "",
                     third_kwic_sorting_option: "",
                 };
-                if (!this.deepEqual(newQuery, this.currentQuery) || Object.keys(this.statsDescription).length == 0) {
+                if (!deepEqual(newQuery, this.currentQuery) || Object.keys(this.statsDescription).length == 0) {
                     this.getHitListStats();
                     this.currentQuery = newQuery;
                 }
@@ -414,7 +422,7 @@ export default {
             this.totalResultsDone = false;
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_total_results.py`, {
-                    params: this.paramsFilter(params),
+                    params: paramsFilter(params),
                 })
                 .then((response) => {
                     this.resultsLength = response.data;
@@ -422,14 +430,14 @@ export default {
                     this.totalResultsDone = true;
                 })
                 .catch((error) => {
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         getHitListStats() {
             this.hitlistStatsDone = false;
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_hitlist_stats.py`, {
-                    params: this.paramsFilter({ ...this.formData }),
+                    params: paramsFilter({ ...this.formData }),
                 })
                 .then((response) => {
                     this.hitlistStatsDone = true;
@@ -443,7 +451,7 @@ export default {
                         }
                         let link = "";
                         if (stat.link_field) {
-                            link = this.paramsToUrlString({
+                            link = paramsToUrlString({
                                 ...this.formData,
                                 report: "aggregation",
                                 start: "",
@@ -464,7 +472,7 @@ export default {
                     this.statsDescription = statsDescription;
                 })
                 .catch((error) => {
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         switchReport(reportName) {
@@ -473,12 +481,12 @@ export default {
             this.second_kwic_sorting_option = "";
             this.third_kwic_sorting_option = "";
             this.formData.results_per_page = 25;
-            this.$router.push(this.paramsToRoute({ ...this.formData }));
+            this.$router.push(paramsToRoute({ ...this.formData }));
         },
         switchResultsPerPage(number) {
             this.formData.results_per_page = parseInt(number);
             this.$router.push(
-                this.paramsToRoute({ ...this.formData, results_per_page: number, start: "1", end: number })
+                paramsToRoute({ ...this.formData, results_per_page: number, start: "1", end: number })
             );
         },
         showResultsBiblio() {

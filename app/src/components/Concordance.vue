@@ -65,6 +65,7 @@ import gsap from "gsap";
 import { mapStores, mapWritableState } from "pinia";
 import { computed } from "vue";
 import { useMainStore } from "../stores/main";
+import { debug, isOnlyFacetChange, paramsFilter } from "../utils.js";
 import citations from "./Citations";
 import facets from "./Facets";
 import pages from "./Pages";
@@ -114,7 +115,7 @@ export default {
     watch: {
         urlUpdate(newUrl, oldUrl) {
             console.log(newUrl.q, oldUrl.q);
-            if (!this.isOnlyFacetChange(newUrl, oldUrl)) {
+            if (!isOnlyFacetChange(newUrl, oldUrl)) {
                 this.fetchResults();
             }
         },
@@ -127,7 +128,7 @@ export default {
             this.searching = true;
             this.$http
                 .get(`${this.$dbUrl}/reports/concordance.py`, {
-                    params: this.paramsFilter(this.searchParams),
+                    params: paramsFilter(this.searchParams),
                 })
                 .then((response) => {
                     this.results = response.data;
@@ -140,7 +141,7 @@ export default {
                 .catch((error) => {
                     this.searching = false;
                     this.error = error.toString();
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         moreContext(index, event) {
@@ -159,7 +160,7 @@ export default {
                 if (moreNode.innerHTML.length == 0) {
                     this.$http
                         .get(`${this.$dbUrl}/scripts/get_more_context.py`, {
-                            params: this.paramsFilter(localParams),
+                            params: paramsFilter(localParams),
                         })
                         .then((response) => {
                             let moreText = response.data;
@@ -173,7 +174,7 @@ export default {
                         .catch((error) => {
                             this.loading = false;
                             this.error = error.toString();
-                            this.debug(this, error);
+                            debug(this, error);
                         });
                 } else {
                     defaultNode.style.display = "none";

@@ -23,6 +23,7 @@ export default {
             localNames: {
                 en: "English",
                 fr: "Français",
+                es: "Español",
             },
         };
     },

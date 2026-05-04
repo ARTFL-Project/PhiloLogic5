@@ -186,17 +186,17 @@ describe("ResultsSummary", () => {
 
         const filterBtn = wrapper.find(".btn-link");
         if (filterBtn.exists()) {
-            expect(wrapper.vm.showFilteredWords).toBe(false);
+            expect(wrapper.find("#filter-list").exists()).toBe(false);
             await filterBtn.trigger("click");
             await nextTick();
-            expect(wrapper.vm.showFilteredWords).toBe(true);
+            expect(wrapper.find("#filter-list").exists()).toBe(true);
 
             // Close it
             const closeBtn = wrapper.find("#close-filter-list");
             if (closeBtn.exists()) {
                 await closeBtn.trigger("click");
                 await nextTick();
-                expect(wrapper.vm.showFilteredWords).toBe(false);
+                expect(wrapper.find("#filter-list").exists()).toBe(false);
             }
         }
     });

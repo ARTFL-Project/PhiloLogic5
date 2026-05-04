@@ -84,6 +84,14 @@
 <script>
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import {
+    buildBiblioCriteria,
+    copyObject,
+    debug,
+    isOnlyFacetChange,
+    paramsFilter,
+    paramsToRoute,
+} from "../utils.js";
 import BibliographyCriteria from "./BibliographyCriteria";
 
 export default {
@@ -149,7 +157,7 @@ export default {
         $route(newUrl, oldUrl) {
             let facetReports = ["concordance", "kwic", "bibliography"]
             if (facetReports.includes(this.formData.report)) {
-                if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
+                if (!isOnlyFacetChange(newUrl.query, oldUrl.query)) {
                     this.fetchSearchArgs();
                 }
             } else {
@@ -167,7 +175,7 @@ export default {
             } else {
                 this.queryArgs.queryTerm = "";
             }
-            this.queryArgs.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
+            this.queryArgs.biblio = buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
 
             if ("q" in queryParams) {
                 let method = queryParams.method;
@@ -205,7 +213,7 @@ export default {
             }
             this.$http
                 .get(`${this.$dbUrl}/scripts/get_term_groups.py`, {
-                    params: this.paramsFilter({ report: this.formData.report, ...this.$route.query }),
+                    params: paramsFilter({ report: this.formData.report, ...this.$route.query }),
                 })
                 .then((response) => {
                     this.mainStore.updateDescription({
@@ -220,7 +228,7 @@ export default {
                 .catch((error) => {
                     this.loading = false;
                     this.error = error.toString();
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         proximity() {
@@ -234,9 +242,9 @@ export default {
             }
             this.formData.start = "";
             this.formData.end = "";
-            let localParams = this.copyObject(this.formData);
+            let localParams = copyObject(this.formData);
             localParams[metadata] = "";
-            this.$router.push(this.paramsToRoute(localParams));
+            this.$router.push(paramsToRoute(localParams));
         },
         getQueryTerms(group, index) {
             this.groupIndexSelected = index;
@@ -246,7 +254,7 @@ export default {
                     params: {
                         q: group,
                         approximate: 0,
-                        ...this.paramsFilter(this.$route.query),
+                        ...paramsFilter(this.$route.query),
                     },
                 })
                 .then((response) => {
@@ -261,7 +269,7 @@ export default {
                 })
                 .catch((error) => {
                     this.error = error.toString();
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         closeTermsList() {
@@ -305,7 +313,7 @@ export default {
             this.words.splice(index, 1);
             this.wordListChanged = true;
             if (this.termGroupsCopy.length == 0) {
-                this.termGroupsCopy = this.copyObject(this.wordGroups);
+                this.termGroupsCopy = copyObject(this.wordGroups);
             }
             if (this.termGroupsCopy[groupIndex].indexOf(" NOT ") !== -1) {
                 // if there's already a NOT in the clause add an OR
@@ -318,10 +326,10 @@ export default {
             this.formData.approximate_ratio = "";
         },
         rerunQuery() {
-            this.$router.push(this.paramsToRoute({ ...this.formData, q: this.formData.q }));
+            this.$router.push(paramsToRoute({ ...this.formData, q: this.formData.q }));
         },
         removeTerm(index) {
-            let queryTermGroup = this.copyObject(this.description.termGroups);
+            let queryTermGroup = copyObject(this.description.termGroups);
             queryTermGroup.splice(index, 1);
             this.formData.q = queryTermGroup.join(" ");
             if (queryTermGroup.length === 0 && this.currentReport != "aggregation") {
@@ -338,7 +346,7 @@ export default {
                 ...this.description,
                 termGroups: queryTermGroup,
             });
-            this.$router.push(this.paramsToRoute({ ...this.formData }));
+            this.$router.push(paramsToRoute({ ...this.formData }));
         },
     },
 };

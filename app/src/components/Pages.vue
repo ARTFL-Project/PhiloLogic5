@@ -18,6 +18,7 @@
 <script>
 import { mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import { paramsToRoute } from "../utils.js";
 
 export default {
     name: "pages-component",
@@ -123,7 +124,7 @@ export default {
             this.pages = pageObject;
         },
         goToPage(start, end) {
-            let route = this.paramsToRoute({
+            let route = paramsToRoute({
                 ...this.formData,
                 start: start,
                 end: end,

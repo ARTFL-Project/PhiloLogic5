@@ -69,6 +69,7 @@ import gsap from "gsap";
 import { mapStores, mapWritableState } from "pinia";
 import { computed } from "vue";
 import { useMainStore } from "../stores/main";
+import { debug, isOnlyFacetChange, paramsFilter } from "../utils.js";
 import citations from "./Citations";
 import facets from "./Facets";
 import pages from "./Pages";
@@ -116,7 +117,7 @@ export default {
     },
     watch: {
         urlUpdate(newUrl, oldUrl) {
-            if (!this.isOnlyFacetChange(newUrl, oldUrl)) {
+            if (!isOnlyFacetChange(newUrl, oldUrl)) {
                 this.fetchResults();
             }
         },
@@ -129,7 +130,7 @@ export default {
             this.searching = true;
             this.$http
                 .get(`${this.$dbUrl}/reports/bibliography.py`, {
-                    params: this.paramsFilter(this.searchParams),
+                    params: paramsFilter(this.searchParams),
                 })
                 .then((response) => {
                     if (!this.philoConfig.dictionary_bibliography || response.data.doc_level) {
@@ -150,7 +151,7 @@ export default {
                     this.searching = false;
                     this.loading = false;
                     this.error = error.toString();
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         dictionaryBibliography(data) {

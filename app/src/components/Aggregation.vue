@@ -69,6 +69,7 @@
 <script>
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import { debug, deepEqual, paramsFilter, paramsToRoute } from "../utils.js";
 import citations from "./Citations";
 import ResultsSummary from "./ResultsSummary";
 
@@ -127,7 +128,7 @@ export default {
     methods: {
         fetchResults() {
             if (
-                this.deepEqual(
+                deepEqual(
                     { ...this.aggregationCache.query, start: "", end: "" },
                     { ...this.$route.query, start: "", end: "" }
                 )
@@ -142,7 +143,7 @@ export default {
                 this.searching = true;
                 this.$http
                     .get(`${this.$dbUrl}/reports/aggregation.py`, {
-                        params: this.paramsFilter({
+                        params: paramsFilter({
                             ...this.formData,
                         }),
                     })
@@ -166,7 +167,7 @@ export default {
                     })
                     .catch((error) => {
                         this.searching = false;
-                        this.debug(this, error);
+                        debug(this, error);
                     });
             }
         },
@@ -215,7 +216,7 @@ export default {
                     let link = "";
                     // workaround for broken NULL searches
                     if (queryParams[fieldToLink].length) {
-                        link = this.paramsToRoute({
+                        link = paramsToRoute({
                             ...queryParams,
                             report: "concordance",
                         });

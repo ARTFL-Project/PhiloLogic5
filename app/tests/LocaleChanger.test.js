@@ -23,18 +23,16 @@ describe("LocaleChanger", () => {
     });
 
     // --- @click="changeLocale(locale)" ---
-    it("has changeLocale method", () => {
-        const wrapper = mountLocaleChanger();
-        expect(typeof wrapper.vm.changeLocale).toBe("function");
-    });
-
-    it("changes locale on button click", async () => {
-        const wrapper = mountLocaleChanger();
-        const buttons = wrapper.findAll(".dropdown-item, button");
-        if (buttons.length > 1) {
-            await buttons[1].trigger("click");
-            await nextTick();
-            // Locale should change (stored in localStorage)
-        }
+    it("changes locale and writes to localStorage on dropdown-item click", async () => {
+        const i18n = createTestI18n();
+        const wrapper = mount(LocaleChanger, { global: { plugins: [i18n] } });
+        const items = wrapper.findAll(".dropdown-item");
+        // Test fixture i18n only has "en" loaded; pick the second locale if present, else assert single-locale fallback
+        const targetIndex = items.length > 1 ? 1 : 0;
+        await items[targetIndex].trigger("click");
+        await nextTick();
+        const expectedLocale = i18n.global.availableLocales[targetIndex];
+        expect(localStorage.getItem("lang")).toBe(expectedLocale);
+        expect(i18n.global.locale.value).toBe(expectedLocale);
     });
 });

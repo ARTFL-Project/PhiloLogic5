@@ -3,19 +3,8 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createTestPinia, createTestI18n, createTestConfig, createTestRouter, createMockHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
-import {
-    paramsFilter, paramsToRoute, paramsToUrlString, copyObject, saveToLocalStorage,
-    mergeResults, sortResults, deepEqual, dictionaryLookup, dateRangeHandler,
-    buildBiblioCriteria, extractSurfaceFromCollocate, debug, isOnlyFacetChange, buildTocTree,
-} from "../src/mixins.js";
 import aggregationFixture from "./fixtures/aggregation.json";
 import Aggregation from "../src/components/Aggregation.vue";
-
-const mixinMethods = {
-    paramsFilter, paramsToRoute, paramsToUrlString, copyObject, saveToLocalStorage,
-    mergeResults, sortResults, deepEqual, dictionaryLookup, dateRangeHandler,
-    buildBiblioCriteria, extractSurfaceFromCollocate, debug, isOnlyFacetChange, buildTocTree,
-};
 
 async function mountAggregation(overrides = {}) {
     const http = overrides.http || createMockHttp({ "aggregation.py": aggregationFixture });
@@ -45,7 +34,6 @@ async function mountAggregation(overrides = {}) {
         global: {
             plugins: [pinia, i18n, router],
             provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
-            mixins: [{ methods: mixinMethods }],
             stubs: {
                 ResultsSummary: { template: "<div class='results-summary-stub' />", props: ["groupLength"] },
                 Citations: { template: "<span class='citations-stub' />", props: ["citation", "resultNumber"] },

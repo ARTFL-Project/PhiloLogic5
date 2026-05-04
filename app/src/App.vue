@@ -48,6 +48,7 @@ import { defineAsyncComponent } from "vue";
 import Header from "./components/Header.vue";
 import ProgressSpinner from "./components/ProgressSpinner.vue";
 import { useMainStore } from "./stores/main";
+import { copyObject, debug, paramsToRoute } from "./utils.js";
 const SearchForm = defineAsyncComponent(() => import("./components/SearchForm.vue"));
 const AccessControl = defineAsyncComponent(() => import("./components/AccessControl.vue"));
 
@@ -259,7 +260,7 @@ export default {
             this.formDataUpdate();
         },
         formDataUpdate() {
-            let localParams = this.copyObject(this.defaultFieldValues);
+            let localParams = copyObject(this.defaultFieldValues);
             this.mainStore.updateFormData({
                 ...localParams,
                 ...this.$route.query,
@@ -282,8 +283,8 @@ export default {
                     key: "report",
                     value: "concordance",
                 });
-                this.debug(this, this.formData.report);
-                this.$router.push(this.paramsToRoute({ ...this.mainStore.formData }));
+                debug(this, this.formData.report);
+                this.$router.push(paramsToRoute({ ...this.mainStore.formData }));
             } else {
                 this.formData.report = this.$route.name;
             }

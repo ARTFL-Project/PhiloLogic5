@@ -72,18 +72,29 @@ describe("Facets", () => {
         expect(freqCalls.length).toBeGreaterThan(0);
     });
 
-    it("calls facetSearch method which hides selection", async () => {
+    it("hides the facet-selection list after a facet is chosen", async () => {
         const wrapper = mountFacets();
-        const facetBtn = wrapper.findAll(".facet-selection")[0];
-        // Verify facetSearch method exists and is callable
-        expect(typeof wrapper.vm.facetSearch).toBe("function");
-        // The click triggers facetSearch which sets showFacetSelection = false
+        expect(wrapper.find("#select-facets").exists()).toBe(true);
+        await wrapper.findAll(".facet-selection")[0].trigger("click");
+        await flushPromises();
+        await nextTick();
+        expect(wrapper.find("#select-facets").exists()).toBe(false);
     });
 
     // --- @click="showFacetOptions()" ---
-    it("has showFacetOptions method to re-show selection", () => {
+    it("re-shows the facet-selection list when 'show options' is clicked", async () => {
         const wrapper = mountFacets();
-        expect(typeof wrapper.vm.showFacetOptions).toBe("function");
+        await wrapper.findAll(".facet-selection")[0].trigger("click");
+        await flushPromises();
+        await nextTick();
+        expect(wrapper.find("#select-facets").exists()).toBe(false);
+        // The "show options" button renders only when showFacetSelection is false
+        const showOptionsBtn = wrapper.findAll("button").find(b => b.text().includes("options") || b.text().includes("Options"));
+        if (showOptionsBtn) {
+            await showOptionsBtn.trigger("click");
+            await nextTick();
+            expect(wrapper.find("#select-facets").exists()).toBe(true);
+        }
     });
 
     // --- Collocation facet ---

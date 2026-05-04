@@ -3,18 +3,7 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createTestPinia, createTestI18n, createTestConfig, createTestRouter, createMockHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
-import {
-    paramsFilter, paramsToRoute, paramsToUrlString, copyObject, saveToLocalStorage,
-    mergeResults, sortResults, deepEqual, dictionaryLookup, dateRangeHandler,
-    buildBiblioCriteria, extractSurfaceFromCollocate, debug, isOnlyFacetChange, buildTocTree,
-} from "../src/mixins.js";
 import SearchArguments from "../src/components/SearchArguments.vue";
-
-const mixinMethods = {
-    paramsFilter, paramsToRoute, paramsToUrlString, copyObject, saveToLocalStorage,
-    mergeResults, sortResults, deepEqual, dictionaryLookup, dateRangeHandler,
-    buildBiblioCriteria, extractSurfaceFromCollocate, debug, isOnlyFacetChange, buildTocTree,
-};
 
 async function mountSearchArguments(overrides = {}) {
     const http = overrides.http || createMockHttp({
@@ -40,7 +29,6 @@ async function mountSearchArguments(overrides = {}) {
         global: {
             plugins: [pinia, i18n, router],
             provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
-            mixins: [{ methods: mixinMethods }],
             stubs: {
                 BibliographyCriteria: { template: "<div class='biblio-criteria-stub' />" },
             },
@@ -97,7 +85,6 @@ describe("SearchArguments", () => {
         await flushPromises();
         await nextTick();
 
-        expect(wrapper.vm.showQueryTerms).toBe(true);
         expect(wrapper.find("#query-terms").exists()).toBe(true);
     });
 
@@ -113,7 +100,7 @@ describe("SearchArguments", () => {
 
         await wrapper.find("#query-terms .close").trigger("click");
         await nextTick();
-        expect(wrapper.vm.showQueryTerms).toBe(false);
+        expect(wrapper.find("#query-terms").exists()).toBe(false);
     });
 
     // --- @keydown="handleDialogKeydown" (Escape) ---
@@ -128,7 +115,7 @@ describe("SearchArguments", () => {
 
         await wrapper.find("#query-terms").trigger("keydown", { key: "Escape" });
         await nextTick();
-        expect(wrapper.vm.showQueryTerms).toBe(false);
+        expect(wrapper.find("#query-terms").exists()).toBe(false);
     });
 
     // --- @click="removeFromTermsList(word, groupIndexSelected)" ---
@@ -143,9 +130,16 @@ describe("SearchArguments", () => {
 
         const termCloseBtns = wrapper.findAll("#query-terms-list .close-pill");
         if (termCloseBtns.length > 0) {
+            // Re-run button is rendered v-if="wordListChanged" — should not be present yet
+            const rerunBefore = wrapper.findAll("button").filter(b => b.text().includes("rerun") || b.text().includes("Rerun"));
+            expect(rerunBefore.length).toBe(0);
+
             await termCloseBtns[0].trigger("click");
             await nextTick();
-            expect(wrapper.vm.wordListChanged).toBe(true);
+
+            // After removal, the re-run button should appear
+            const rerunAfter = wrapper.findAll("button").filter(b => b.text().includes("rerun") || b.text().includes("Rerun"));
+            expect(rerunAfter.length).toBeGreaterThan(0);
         }
     });
 

@@ -70,6 +70,7 @@ export function paramsFilter(formValues) {
 
     return localFormData;
 }
+
 export function paramsToRoute(formValues) {
     let report;
     if (
@@ -82,15 +83,16 @@ export function paramsToRoute(formValues) {
     } else {
         report = formValues.report;
     }
-    let localFormData = this.paramsFilter(formValues);
+    let localFormData = paramsFilter(formValues);
     let routeObject = {
         path: `/${report}`,
         query: localFormData,
     };
     return routeObject;
 }
+
 export function paramsToUrlString(params) {
-    let filteredParams = this.paramsFilter(params);
+    let filteredParams = paramsFilter(params);
     let queryParams = [];
     for (let param in filteredParams) {
         queryParams.push(
@@ -99,9 +101,11 @@ export function paramsToUrlString(params) {
     }
     return queryParams.join("&");
 }
+
 export function copyObject(objectToCopy) {
     return JSON.parse(JSON.stringify(objectToCopy));
 }
+
 export function saveToLocalStorage(urlString, results) {
     try {
         sessionStorage[urlString] = JSON.stringify(results);
@@ -118,6 +122,7 @@ export function saveToLocalStorage(urlString, results) {
         }
     }
 }
+
 export function mergeResults(fullResults, newData, sortKey) {
     if (
         typeof fullResults === "undefined" ||
@@ -136,12 +141,13 @@ export function mergeResults(fullResults, newData, sortKey) {
             }
         }
     }
-    let sortedList = this.sortResults(fullResults, sortKey);
+    let sortedList = sortResults(fullResults, sortKey);
     return {
         sorted: sortedList,
         unsorted: fullResults,
     };
 }
+
 export function sortResults(fullResults, sortKey) {
     let sortedList = [];
     for (let key in fullResults) {
@@ -162,6 +168,7 @@ export function sortResults(fullResults, sortKey) {
     }
     return sortedList;
 }
+
 export function deepEqual(x, y) {
     const ok = Object.keys,
         tx = typeof x,
@@ -171,7 +178,8 @@ export function deepEqual(x, y) {
               ok(x).every((key) => deepEqual(x[key], y[key]))
         : x === y;
 }
-export function dictionaryLookup(event, year) {
+
+export function dictionaryLookup(event, year, philoConfig) {
     if (event.key === "d") {
         var selection = window.getSelection().toString();
         var century = parseInt(year.slice(0, year.length - 2));
@@ -180,7 +188,7 @@ export function dictionaryLookup(event, year) {
             range = "";
         }
         var link =
-            this.$philoConfig.dictionary_lookup +
+            philoConfig.dictionary_lookup +
             "?docyear=" +
             range +
             "&strippedhw=" +
@@ -256,7 +264,7 @@ export function buildBiblioCriteria(philoConfig, query, formData) {
     }
     for (let k in queryArgs) {
         if (config.available_metadata.indexOf(k) >= 0) {
-            if (this.report == "time_series" && k == "year") {
+            if (formData.report == "time_series" && k == "year") {
                 continue;
             }
             let v = queryArgs[k];
@@ -290,7 +298,8 @@ export function extractSurfaceFromCollocate(words) {
 }
 
 export function debug(component, message) {
-    console.log(`MESSAGE FROM ${component.$options.name}:`, message);
+    const name = component?.$options?.name ?? "unknown";
+    console.log(`MESSAGE FROM ${name}:`, message);
 }
 
 export function isOnlyFacetChange(newUrl, oldUrl) {
@@ -354,21 +363,3 @@ export function buildTocTree(elements) {
 
     return tree;
 }
-
-export default {
-    paramsFilter,
-    paramsToRoute,
-    paramsToUrlString,
-    copyObject,
-    saveToLocalStorage,
-    mergeResults,
-    sortResults,
-    deepEqual,
-    dictionaryLookup,
-    dateRangeHandler,
-    buildBiblioCriteria,
-    extractSurfaceFromCollocate,
-    debug,
-    isOnlyFacetChange,
-    buildTocTree,
-};

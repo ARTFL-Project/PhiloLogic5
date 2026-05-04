@@ -378,6 +378,7 @@ import { inject, reactive } from "vue";
 import { useRoute } from "vue-router";
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import { copyObject, dateRangeHandler, paramsToRoute } from "../utils.js";
 import { useAutocomplete } from "../composables/useAutocomplete";
 import MetadataFields from "./MetadataFields.vue";
 import SearchTips from "./SearchTips";
@@ -469,12 +470,12 @@ export default {
                     }
                 }
             } else {
-                metadataInForm = this.copyObject(this.metadataDisplay);
+                metadataInForm = copyObject(this.metadataDisplay);
             }
             if (!this.dictionary) {
                 return metadataInForm;
             } else {
-                let localMetadataDisplay = this.copyObject(metadataInForm);
+                let localMetadataDisplay = copyObject(metadataInForm);
                 localMetadataDisplay.splice(this.headIndex, 1);
                 return localMetadataDisplay;
             }
@@ -698,7 +699,7 @@ export default {
             let metadataSelected = Object.fromEntries(
                 Object.entries(this.metadataChoiceSelected).map(([key, val]) => [key, val])
             );
-            this.metadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.metadataValues)
+            this.metadataValues = dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.metadataValues)
             this.clearAutoCompletePopup();
             if (this.currentReport == 'collocation' && this.formData.colloc_within == "sent") {
                 this.mainStore.updateFormDataField({
@@ -716,7 +717,7 @@ export default {
             }
 
             this.$router.push(
-                this.paramsToRoute({
+                paramsToRoute({
                     ...this.formData,
                     ...this.metadataValues,
                     ...metadataChoices,

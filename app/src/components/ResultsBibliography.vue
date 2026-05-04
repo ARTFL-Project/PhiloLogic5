@@ -47,6 +47,7 @@ import { mapWritableState } from "pinia";
 import variables from "../assets/styles/theme.module.scss";
 import { useMainStore } from "../stores/main";
 import citations from "./Citations";
+import { copyObject, paramsToUrlString } from "../utils.js";
 
 export default {
     name: "ResultsBibliography",
@@ -86,7 +87,7 @@ export default {
                         uniqueResults[uniqueResults.length - 1].count++;
                         continue;
                     }
-                    result = this.copyObject(result);
+                    result = copyObject(result);
                     let citation = [];
                     for (let i = 0; i < result.citation.length; i++) {
                         if (result.citation[i].object_type == objectLevel) {
@@ -106,7 +107,7 @@ export default {
     },
     methods: {
         buildLink(title) {
-            return this.paramsToUrlString({
+            return paramsToUrlString({
                 ...this.formData,
                 title: `"${title}"`,
                 start: 1,

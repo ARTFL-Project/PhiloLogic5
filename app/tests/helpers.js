@@ -6,23 +6,6 @@ import { createPinia, setActivePinia } from "pinia";
 import { createRouter, createMemoryHistory } from "vue-router";
 import { vi } from "vitest";
 import en from "../src/locales/en.json";
-import {
-    paramsFilter,
-    paramsToRoute,
-    paramsToUrlString,
-    copyObject,
-    saveToLocalStorage,
-    mergeResults,
-    sortResults,
-    deepEqual,
-    dictionaryLookup,
-    dateRangeHandler,
-    buildBiblioCriteria,
-    extractSurfaceFromCollocate,
-    debug,
-    isOnlyFacetChange,
-    buildTocTree,
-} from "../src/mixins.js";
 
 /** Create a fresh i18n instance with English messages */
 export function createTestI18n() {
@@ -140,25 +123,6 @@ export function createTestRouter(route = {}) {
     return router;
 }
 
-/** The mixin methods that App.vue registers globally */
-const mixinMethods = {
-    paramsFilter,
-    paramsToRoute,
-    paramsToUrlString,
-    copyObject,
-    saveToLocalStorage,
-    mergeResults,
-    sortResults,
-    deepEqual,
-    dictionaryLookup,
-    dateRangeHandler,
-    buildBiblioCriteria,
-    extractSurfaceFromCollocate,
-    debug,
-    isOnlyFacetChange,
-    buildTocTree,
-};
-
 /** Common global config for mounting components */
 export function createGlobalConfig(overrides = {}) {
     const pinia = createTestPinia();
@@ -174,7 +138,6 @@ export function createGlobalConfig(overrides = {}) {
             $dbUrl: "/testdb",
             $philoConfig: config,
         },
-        mixins: [{ methods: mixinMethods }],
         stubs: {
             "router-link": { template: '<a><slot /></a>', props: ["to"] },
             "router-view": { template: "<div />" },

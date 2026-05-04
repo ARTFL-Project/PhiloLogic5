@@ -360,6 +360,15 @@ import { inject, reactive } from "vue";
 import { useRoute } from "vue-router";
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import {
+    buildBiblioCriteria,
+    copyObject,
+    dateRangeHandler,
+    debug,
+    extractSurfaceFromCollocate,
+    paramsFilter,
+    paramsToRoute,
+} from "../utils.js";
 import { useAutocomplete } from "../composables/useAutocomplete";
 import BibliographyCriteria from "./BibliographyCriteria";
 import MetadataFields from "./MetadataFields.vue";
@@ -484,7 +493,7 @@ export default {
         this.formData.report = "collocation";
         this.currentReport = "collocation";
         this.buildMetadata(this.searchableMetadata);
-        this.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
+        this.biblio = buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
         this.collocMethod = this.$route.query.collocation_method || 'frequency';
 
         switch (this.collocMethod) {
@@ -525,7 +534,7 @@ export default {
                 if (newUrl.query.collocation_method === 'compare') {
                     this.restoreComparedMetadataFromUrl();
                 }
-                this.biblio = this.buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
+                this.biblio = buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
             }
         },
         searchableMetadata: {
@@ -541,7 +550,7 @@ export default {
                 this.searching = false;
                 return;
             }
-            this.localFormData = this.copyObject(this.formData);
+            this.localFormData = copyObject(this.formData);
             this.relativeFrequencies = {};
             this.searching = true;
             this.fetchComplete = false; // Reset fetch completion status
@@ -570,7 +579,7 @@ export default {
             }
             this.$http
                 .get(`${this.$dbUrl}/reports/collocation.py`, {
-                    params: this.paramsFilter(this.formData),
+                    params: paramsFilter(this.formData),
                 })
                 .then((response) => {
                     this.resultsLength = response.data.results_length;
@@ -578,13 +587,13 @@ export default {
                     this.collocatesFilePath = response.data.file_path;
                     this.searching = false;
                     if (this.resultsLength) {
-                        this.sortedList = this.extractSurfaceFromCollocate(response.data.collocates);
+                        this.sortedList = extractSurfaceFromCollocate(response.data.collocates);
                         this.checkCollocationMethod();
                     }
                 })
                 .catch((error) => {
                     this.searching = false;
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         setCollocationMethod(method, updateUrl = true) {
@@ -640,7 +649,7 @@ export default {
                 method = "proxy"
             }
             this.$router.push(
-                this.paramsToRoute({
+                paramsToRoute({
                     ...this.formData,
                     report: "concordance",
                     q: q,
@@ -656,7 +665,7 @@ export default {
                 method = "proxy"
             }
             this.$router.push(
-                this.paramsToRoute({
+                paramsToRoute({
                     ...this.comparedMetadataValues,
                     report: "concordance",
                     q: q,
@@ -718,7 +727,7 @@ export default {
                 delete urlParams.time_series_interval;
             }
 
-            const routeParams = this.paramsToRoute(urlParams);
+            const routeParams = paramsToRoute(urlParams);
             this.$router.push(routeParams);
         },
         getNonEmptyComparedMetadata() {
@@ -753,7 +762,7 @@ export default {
             this.wholeCorpus = Object.keys(this.comparedMetadataValues).length === 0;
             this.collocMethod = 'compare';
             this.updateCollocationUrl();
-            this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
+            this.comparedMetadataValues = dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
             let params = {
                 q: this.formData.q,
                 colloc_filter_choice: this.formData.colloc_filter_choice,
@@ -768,24 +777,24 @@ export default {
             this.otherCollocates = [];
             this.$http
                 .get(`${this.$dbUrl}/reports/collocation.py`, {
-                    params: this.paramsFilter(params),
+                    params: paramsFilter(params),
                 })
                 .then((response) => {
                     this.compareSearching = false;
                     if (response.data.results_length) {
-                        this.otherCollocates = this.extractSurfaceFromCollocate(response.data.collocates);
+                        this.otherCollocates = extractSurfaceFromCollocate(response.data.collocates);
                         this.comparativeCollocations(response.data.file_path);
                     }
                 })
                 .catch((error) => {
                     this.compareSearching = false;
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         comparativeCollocations(otherFilePath) {
             this.comparativeSearchStarted = true;
-            this.comparedMetadataValues = this.dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
-            this.otherBiblio = this.buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
+            this.comparedMetadataValues = dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
+            this.otherBiblio = buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
             this.overRepresented = [];
             this.underRepresented = [];
             this.$http.get(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
@@ -795,11 +804,11 @@ export default {
                     whole_corpus: this.wholeCorpus,
                 },
             }).then((response) => {
-                this.overRepresented = this.extractSurfaceFromCollocate(response.data.top);
-                this.underRepresented = this.extractSurfaceFromCollocate(response.data.bottom);
+                this.overRepresented = extractSurfaceFromCollocate(response.data.top);
+                this.underRepresented = extractSurfaceFromCollocate(response.data.bottom);
                 this.relativeFrequencies = { top: this.overRepresented, bottom: this.underRepresented };
             }).catch((error) => {
-                this.debug(this, error);
+                debug(this, error);
             });
         },
         similarCollocDistributions(field) {
@@ -824,7 +833,7 @@ export default {
                     this.getMostSimilarCollocDistribution(response.data.file_path);
                 }).catch((error) => {
                     this.similarSearching = false;
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         getMostSimilarCollocDistribution(filePath) {
@@ -840,7 +849,7 @@ export default {
                 this.similarSearching = false
             }).catch((error) => {
                 this.similarSearching = false;
-                this.debug(this, error);
+                debug(this, error);
             });
         },
         similarToComparative(field) {
@@ -852,11 +861,11 @@ export default {
             }).then((response) => {
                 this.comparedMetadataValues[this.similarFieldSelected] = field
                 this.collocMethod = "compare";
-                this.otherCollocates = this.extractSurfaceFromCollocate(response.data.collocates);
+                this.otherCollocates = extractSurfaceFromCollocate(response.data.collocates);
                 this.wholeCorpus = false
                 this.comparativeCollocations(response.data.file_path)
             }).catch((error) => {
-                this.debug(this, error);
+                debug(this, error);
             });
         },
         getCollocatesOverTime() {
@@ -866,7 +875,7 @@ export default {
             this.updateCollocationUrl();
             const interval = parseInt(this.timeSeriesInterval);
             let params = {
-                ...this.paramsFilter(this.formData),
+                ...paramsFilter(this.formData),
                 time_series_interval: interval,
                 map_field: "year",
             };
@@ -896,7 +905,7 @@ export default {
                 this.collocationTimeSeries(response.data.file_path, 0);
             }).catch((error) => {
                 this.searching = false;
-                this.debug(this, error);
+                debug(this, error);
             });
         },
         collocationTimeSeries(filePath, periodNumber) {
@@ -913,8 +922,8 @@ export default {
                     const year = period.year;
                     const interval = parseInt(this.timeSeriesInterval);
 
-                    const frequent = this.extractSurfaceFromCollocate(period.collocates.frequent || []);
-                    const distinctive = this.extractSurfaceFromCollocate(period.collocates.distinctive || []);
+                    const frequent = extractSurfaceFromCollocate(period.collocates.frequent || []);
+                    const distinctive = extractSurfaceFromCollocate(period.collocates.distinctive || []);
 
                     this.collocationTimePeriods[periodNumber] = {
                         year: year,
@@ -931,7 +940,7 @@ export default {
                     this.collocationTimeSeries(filePath, periodNumber);
                 }
             }).catch((error) => {
-                this.debug(this, error);
+                debug(this, error);
             });
         },
 
@@ -957,7 +966,7 @@ export default {
                     method = "proxy_unordered"
                 }
                 this.$router.push(
-                    this.paramsToRoute({
+                    paramsToRoute({
                         ...this.formData,
                         report: "concordance",
                         q: q,

@@ -5,23 +5,6 @@ import { createPinia } from "pinia";
 import { createApp } from "vue";
 import vueScrollTo from "vue-scrollto";
 import App from "./App.vue";
-import {
-    buildBiblioCriteria,
-    buildTocTree,
-    copyObject,
-    dateRangeHandler,
-    debug,
-    deepEqual,
-    dictionaryLookup,
-    extractSurfaceFromCollocate,
-    isOnlyFacetChange,
-    mergeResults,
-    paramsFilter,
-    paramsToRoute,
-    paramsToUrlString,
-    saveToLocalStorage,
-    sortResults,
-} from "./mixins.js";
 import router from "./router";
 
 import appConfig from "../appConfig.json";
@@ -42,25 +25,6 @@ axios
         app.provide("$philoConfig", response.data);
         app.use(router);
         app.use(pinia);
-        app.mixin({
-            methods: {
-                paramsFilter,
-                paramsToRoute,
-                paramsToUrlString,
-                copyObject,
-                saveToLocalStorage,
-                mergeResults,
-                sortResults,
-                deepEqual,
-                dictionaryLookup,
-                dateRangeHandler,
-                buildBiblioCriteria,
-                extractSurfaceFromCollocate,
-                debug,
-                isOnlyFacetChange,
-                buildTocTree,
-            },
-        });
         app.directive("scroll", {
             mounted: function (el, binding) {
                 el.scrollHandler = function (evt) {

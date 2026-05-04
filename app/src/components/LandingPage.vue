@@ -143,6 +143,7 @@
 <script>
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import { debug, paramsToRoute } from "../utils.js";
 import citations from "./Citations";
 
 export default {
@@ -286,7 +287,7 @@ export default {
                     this.loading = false;
                 })
                 .catch((error) => {
-                    this.debug(this, error);
+                    debug(this, error);
                     this.loading = false;
                 });
         },
@@ -297,7 +298,7 @@ export default {
                     this.bibliography = response.data;
                 })
                 .catch((error) => {
-                    this.debug(this, error);
+                    debug(this, error);
                     this.loading = false;
                 });
         },
@@ -330,7 +331,7 @@ export default {
 
                         // workaround for broken NULL searches
                         if (queryParams[citation.field].length) {
-                            link = this.paramsToRoute({
+                            link = paramsToRoute({
                                 ...queryParams,
                                 report: "concordance",
                             });

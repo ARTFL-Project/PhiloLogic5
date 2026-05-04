@@ -3,18 +3,7 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createTestPinia, createTestI18n, createTestConfig, createTestRouter, createMockHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
-import {
-    paramsFilter, paramsToRoute, paramsToUrlString, copyObject, saveToLocalStorage,
-    mergeResults, sortResults, deepEqual, dictionaryLookup, dateRangeHandler,
-    buildBiblioCriteria, extractSurfaceFromCollocate, debug, isOnlyFacetChange, buildTocTree,
-} from "../src/mixins.js";
 import TableOfContents from "../src/components/TableOfContents.vue";
-
-const mixinMethods = {
-    paramsFilter, paramsToRoute, paramsToUrlString, copyObject, saveToLocalStorage,
-    mergeResults, sortResults, deepEqual, dictionaryLookup, dateRangeHandler,
-    buildBiblioCriteria, extractSurfaceFromCollocate, debug, isOnlyFacetChange, buildTocTree,
-};
 
 const tocFixture = {
     toc: [
@@ -29,7 +18,7 @@ async function mountTableOfContents(overrides = {}) {
     const http = overrides.http || createMockHttp({ "table_of_contents.py": tocFixture });
     const pinia = createTestPinia();
     const i18n = createTestI18n();
-    const config = createTestConfig();
+    const config = createTestConfig(overrides.philoConfig);
     const router = createTestRouter({
         name: "tableOfContents",
         path: "/navigate/1/table-of-contents",
@@ -47,7 +36,6 @@ async function mountTableOfContents(overrides = {}) {
         global: {
             plugins: [pinia, i18n, router],
             provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
-            mixins: [{ methods: mixinMethods }],
             stubs: {
                 Citations: { template: "<span class='citations-stub' />" },
                 ProgressSpinner: { template: "<div class='spinner-stub' />" },
@@ -81,18 +69,25 @@ describe("TableOfContents", () => {
     });
 
     // --- @click="toggleHeader()" ---
-    it("has toggleHeader method", async () => {
-        const wrapper = await mountTableOfContents();
+    it("toggles the TEI header section on button click", async () => {
+        const http = createMockHttp({
+            "table_of_contents.py": tocFixture,
+            "get_header.py": { header: "<div><p>TEI Header</p></div>" },
+        });
+        const wrapper = await mountTableOfContents({ http, philoConfig: { header_in_toc: true } });
         await flushPromises();
-        expect(typeof wrapper.vm.toggleHeader).toBe("function");
-    });
-
-    it("toggles showHeader state", async () => {
-        const wrapper = await mountTableOfContents();
-        await flushPromises();
-        const initial = wrapper.vm.showHeader;
-        wrapper.vm.toggleHeader();
         await nextTick();
-        expect(wrapper.vm.showHeader).toBe(!initial);
+
+        // Initially closed
+        expect(wrapper.find("#tei-header").exists()).toBe(false);
+
+        await wrapper.find("#show-header").trigger("click");
+        await flushPromises();
+        await nextTick();
+        expect(wrapper.find("#tei-header").exists()).toBe(true);
+
+        await wrapper.find("#show-header").trigger("click");
+        await nextTick();
+        expect(wrapper.find("#tei-header").exists()).toBe(false);
     });
 });

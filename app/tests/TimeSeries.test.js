@@ -62,7 +62,8 @@ describe("TimeSeries", () => {
         await relativeBtn.trigger("click");
         await nextTick();
 
-        expect(wrapper.vm.frequencyType).toBe("relative_time");
+        expect(buttons[1].classes()).toContain("active");
+        expect(buttons[0].classes()).not.toContain("active");
     });
 
     it("toggles back to absolute frequency on button click", async () => {
@@ -77,7 +78,8 @@ describe("TimeSeries", () => {
         await buttons[0].trigger("click");
         await nextTick();
 
-        expect(wrapper.vm.frequencyType).toBe("absolute_time");
+        expect(buttons[0].classes()).toContain("active");
+        expect(buttons[1].classes()).not.toContain("active");
     });
 
     it("sets active class on selected frequency button", async () => {

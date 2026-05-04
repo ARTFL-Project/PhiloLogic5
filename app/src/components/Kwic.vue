@@ -125,6 +125,7 @@ import gsap from "gsap";
 import { mapStores, mapWritableState } from "pinia";
 import { computed } from "vue";
 import { useMainStore } from "../stores/main";
+import { debug, isOnlyFacetChange, paramsFilter, paramsToRoute } from "../utils.js";
 import facets from "./Facets";
 import pages from "./Pages";
 import ResultsSummary from "./ResultsSummary";
@@ -268,7 +269,7 @@ export default {
     },
     watch: {
         urlUpdate(newUrl, oldUrl) {
-            if (!this.isOnlyFacetChange(newUrl, oldUrl)) {
+            if (!isOnlyFacetChange(newUrl, oldUrl)) {
                 if (this._abortController) {
                     this._abortController.abort();
                 }
@@ -359,7 +360,7 @@ export default {
                 this.searching = true;
                 this.$http
                     .get(`${this.$dbUrl}/reports/kwic.py`, {
-                        params: this.paramsFilter(this.searchParams),
+                        params: paramsFilter(this.searchParams),
                     })
                     .then((response) => {
                         this.results = response.data;
@@ -374,7 +375,7 @@ export default {
                     .catch((error) => {
                         this.searching = false;
                         this.error = error.toString();
-                        this.debug(this, error);
+                        debug(this, error);
                     });
             } else {
                 if (this.formData.start == "") {
@@ -388,7 +389,7 @@ export default {
             this.searching = true;
             this.runningTotal = 0;
 
-            const params = new URLSearchParams(this.paramsFilter({ ...this.formData }));
+            const params = new URLSearchParams(paramsFilter({ ...this.formData }));
             const url = `${this.$dbUrl}/scripts/get_sorted_kwic.py?${params}`;
 
             if (this._abortController) {
@@ -444,7 +445,7 @@ export default {
                 }
             } catch (e) {
                 if (e.name === "AbortError") return;
-                this.debug(this, e);
+                debug(this, e);
             } finally {
                 this.searching = false;
                 this._abortController = null;
@@ -461,7 +462,7 @@ export default {
         },
         sortResults() {
             this.results.results = [];
-            this.$router.push(this.paramsToRoute({ ...this.formData }));
+            this.$router.push(paramsToRoute({ ...this.formData }));
         },
         dicoLookup() { },
         onBeforeEnter(el) {

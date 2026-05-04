@@ -90,6 +90,7 @@ import { Bar } from 'vue-chartjs';
 import { mapStores, mapWritableState } from "pinia";
 import cssVariables from "../assets/styles/theme.module.scss";
 import { useMainStore } from "../stores/main";
+import { copyObject, debug, mergeResults, paramsFilter, paramsToRoute } from "../utils.js";
 import ResultsSummary from "./ResultsSummary";
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
@@ -440,7 +441,7 @@ export default {
                 value: year,
             });
             this.$router.push(
-                this.paramsToRoute({
+                paramsToRoute({
                     ...this.formData,
                     report: "concordance",
                     start_date: "",
@@ -471,15 +472,15 @@ export default {
             }
 
             this.dateLabels = dateList;
-            this.absoluteCounts = this.copyObject(zeros);
-            this.relativeCounts = this.copyObject(zeros);
+            this.absoluteCounts = copyObject(zeros);
+            this.relativeCounts = copyObject(zeros);
             this.dateCounts = {};
             this.selectedBarIndex = 0; // Reset selection
 
             this.$http
                 .get(`${this.$dbUrl}/reports/time_series.py`, {
                     params: {
-                        ...this.paramsFilter({ ...this.formData }),
+                        ...paramsFilter({ ...this.formData }),
                         start_date: this.startDate,
                         year_interval: this.formData.year_interval,
                     },
@@ -494,13 +495,13 @@ export default {
                     this.searching = false;
                 })
                 .catch((response) => {
-                    this.debug(this, response);
+                    debug(this, response);
                     this.searching = false;
                 });
         },
 
         renderTimeSeries(absoluteCount) {
-            var allResults = this.mergeResults(undefined, absoluteCount, "label");
+            var allResults = mergeResults(undefined, absoluteCount, "label");
 
             for (let i = 0; i < allResults.sorted.length; i += 1) {
                 var date = allResults.sorted[i].label;

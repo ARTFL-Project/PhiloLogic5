@@ -92,14 +92,13 @@
 </template>
 <script>
 import { mapStores, mapWritableState } from "pinia";
-import mixins from "../mixins";
 import { useMainStore } from "../stores/main";
+import { buildTocTree, debug } from "../utils.js";
 import citations from "./Citations";
 import ProgressSpinner from "./ProgressSpinner";
 
 export default {
     name: "tableOfContents",
-    mixins: [mixins],
     components: {
         citations,
         ProgressSpinner,
@@ -113,7 +112,7 @@ export default {
         ]),
         ...mapStores(useMainStore),
         processedTocElements() {
-            return this.buildTocTree(this.tocElements);
+            return buildTocTree(this.tocElements);
         }
     },
     data() {
@@ -146,7 +145,7 @@ export default {
                 })
                 .catch((error) => {
                     this.searching = false;
-                    this.debug(this, error);
+                    debug(this, error);
                 });
         },
         toggleHeader() {
@@ -164,7 +163,7 @@ export default {
                             this.showHeader = true;
                         })
                         .catch((error) => {
-                            this.debug(this, error);
+                            debug(this, error);
                         });
                 } else {
                     this.headerButton = this.$t('toc.hideHeader');

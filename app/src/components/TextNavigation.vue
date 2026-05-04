@@ -158,13 +158,12 @@ import { Popover } from "bootstrap";
 import GLightbox from 'glightbox';
 import 'glightbox/dist/css/glightbox.css';
 import { mapStores, mapWritableState } from "pinia";
-import mixins from "../mixins";
 import { useMainStore } from "../stores/main";
+import { buildTocTree, debug, deepEqual, paramsToUrlString } from "../utils.js";
 import citations from "./Citations";
 
 export default {
     name: "textNavigation",
-    mixins: [mixins],
     components: {
         citations
     },
@@ -186,7 +185,7 @@ export default {
         },
         processedTocElements() {
             const elementsToDisplay = this.tocElements.elements.slice(this.start, this.end);
-            return this.buildTocTree(elementsToDisplay);
+            return buildTocTree(elementsToDisplay);
         },
         tocHeight() {
             return `max-height: ${window.innerHeight - 200}`;
@@ -292,7 +291,7 @@ export default {
                 navigationParams.start_byte = this.formData.start_byte;
                 navigationParams.end_byte = this.formData.end_byte;
             }
-            let urlQuery = `${byteString}&${this.paramsToUrlString(navigationParams)}`;
+            let urlQuery = `${byteString}&${paramsToUrlString(navigationParams)}`;
             this.timeToRender = new Date().getTime();
             this.$http
                 .get(`${this.$dbUrl}/reports/navigation.py?${urlQuery}`)
@@ -306,7 +305,7 @@ export default {
                         this.highlight = false;
                     }
 
-                    if (!this.deepEqual(response.data.imgs, {})) {
+                    if (!deepEqual(response.data.imgs, {})) {
                         this.insertPageLinks(response.data.imgs);
                         this.insertInlineImgs(response.data.imgs);
                     }
@@ -498,7 +497,7 @@ export default {
                     });
                 })
                 .catch((error) => {
-                    this.debug(this, error);
+                    debug(this, error);
                     this.loading = false;
                 });
         },
@@ -622,7 +621,7 @@ export default {
                         tocButton.classList.remove("disabled");
                     })
                     .catch((error) => {
-                        this.debug(this, error);
+                        debug(this, error);
                     });
             } else {
                 this.start = this.tocElements.start;

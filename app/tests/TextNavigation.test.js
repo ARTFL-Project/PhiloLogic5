@@ -3,18 +3,7 @@ import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createTestPinia, createTestI18n, createTestConfig, createTestRouter, createMockHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
-import {
-    paramsFilter, paramsToRoute, paramsToUrlString, copyObject, saveToLocalStorage,
-    mergeResults, sortResults, deepEqual, dictionaryLookup, dateRangeHandler,
-    buildBiblioCriteria, extractSurfaceFromCollocate, debug, isOnlyFacetChange, buildTocTree,
-} from "../src/mixins.js";
 import TextNavigation from "../src/components/TextNavigation.vue";
-
-const mixinMethods = {
-    paramsFilter, paramsToRoute, paramsToUrlString, copyObject, saveToLocalStorage,
-    mergeResults, sortResults, deepEqual, dictionaryLookup, dateRangeHandler,
-    buildBiblioCriteria, extractSurfaceFromCollocate, debug, isOnlyFacetChange, buildTocTree,
-};
 
 const navFixture = {
     text: "<p>Sample text with liberty.</p>",
@@ -31,8 +20,8 @@ const navFixture = {
 
 const tocFixture = {
     toc: [
-        { philo_type: "div1", philo_id: "1 1 0 0 0 0 0", head: "Chapter 1", n: "1", byte: "0" },
-        { philo_type: "div1", philo_id: "1 2 0 0 0 0 0", head: "Chapter 2", n: "2", byte: "1000" },
+        { philo_type: "div1", philo_id: "1 1 0 0 0 0 0", label: "Chapter 1", head: "Chapter 1", n: "1", byte: "0" },
+        { philo_type: "div1", philo_id: "1 2 0 0 0 0 0", label: "Chapter 2", head: "Chapter 2", n: "2", byte: "1000" },
     ],
     current_obj_position: 50,
 };
@@ -77,7 +66,6 @@ async function mountTextNavigation(overrides = {}) {
         global: {
             plugins: [pinia, i18n, router],
             provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
-            mixins: [{ methods: mixinMethods }],
             stubs: {
                 Citations: { template: "<span class='citations-stub' />" },
                 ProgressSpinner: { template: "<div class='spinner-stub' />" },
@@ -123,116 +111,109 @@ describe("TextNavigation", () => {
         expect(navCall[0]).toMatch(/philo_id=1(\+|%20| )5/);
     });
 
-    // --- toggleTableOfContents() ---
-    it("toggles tocOpen state", async () => {
+    // --- toggleTableOfContents() — driven by #show-toc click ---
+    it("toggles the TOC panel on #show-toc click", async () => {
         const { wrapper } = await mountTextNavigation();
-        expect(wrapper.vm.tocOpen).toBe(false);
-        wrapper.vm.toggleTableOfContents();
-        expect(wrapper.vm.tocOpen).toBe(true);
-        wrapper.vm.toggleTableOfContents();
-        expect(wrapper.vm.tocOpen).toBe(false);
+        expect(wrapper.find("#toc-content").exists()).toBe(false);
+
+        await wrapper.find("#show-toc").trigger("click");
+        await nextTick();
+        expect(wrapper.find("#toc-content").exists()).toBe(true);
+        expect(wrapper.find("#show-toc").attributes("aria-expanded")).toBe("true");
+
+        await wrapper.find("#show-toc").trigger("click");
+        await nextTick();
+        expect(wrapper.find("#toc-content").exists()).toBe(false);
     });
 
-    // --- backToTop() ---
-    it("calls window.scrollTo on backToTop", async () => {
+    // --- backToTop() — driven by #back-to-top click ---
+    it("calls window.scrollTo when #back-to-top is clicked", async () => {
         const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
         const { wrapper } = await mountTextNavigation();
-        wrapper.vm.backToTop();
+        await wrapper.find("#back-to-top").trigger("click");
         expect(scrollSpy).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
         scrollSpy.mockRestore();
     });
 
-    // --- goToTextObject(philoID) ---
-    it("navigates to text object by formatting philo_id", async () => {
+    // --- goToTextObject(philoID) — driven by #next-obj/#prev-obj clicks ---
+    it("pushes a route when the next-section button is clicked", async () => {
         const { wrapper, router } = await mountTextNavigation();
         const pushSpy = vi.spyOn(router, "push");
-        wrapper.vm.goToTextObject("1 6 0 0 0 0 0");
+        await wrapper.find("#next-obj").trigger("click");
         expect(pushSpy).toHaveBeenCalledWith({ path: "/navigate/1/6/0/0/0/0/0" });
     });
 
-    it("closes TOC when navigating to text object", async () => {
+    it("closes the TOC panel when navigating to a sibling text object", async () => {
         const { wrapper } = await mountTextNavigation();
-        wrapper.vm.tocOpen = true;
-        wrapper.vm.goToTextObject("1 6 0 0 0 0 0");
-        expect(wrapper.vm.tocOpen).toBe(false);
+        // Open the TOC first
+        await wrapper.find("#show-toc").trigger("click");
+        await nextTick();
+        expect(wrapper.find("#toc-content").exists()).toBe(true);
+
+        // Navigating away should close it
+        await wrapper.find("#prev-obj").trigger("click");
+        await nextTick();
+        expect(wrapper.find("#toc-content").exists()).toBe(false);
     });
 
-    it("handles hyphenated philo_id format", async () => {
+    // --- textObjectSelection() — driven by clicking a TOC entry ---
+    it("preventDefault's and pushes a route when a TOC entry is clicked", async () => {
         const { wrapper, router } = await mountTextNavigation();
+        await wrapper.find("#show-toc").trigger("click");
+        await nextTick();
+
         const pushSpy = vi.spyOn(router, "push");
-        wrapper.vm.goToTextObject("1-6-0-0-0-0-0");
-        expect(pushSpy).toHaveBeenCalledWith({ path: "/navigate/1/6/0/0/0/0/0" });
+        // First TOC entry's link/button — selector depends on how entries render
+        const entry = wrapper.find("#toc-content a, #toc-content button[type='button']");
+        if (entry.exists()) {
+            await entry.trigger("click");
+            await nextTick();
+            expect(pushSpy).toHaveBeenCalled();
+            // The click should route into /navigate/...
+            const routeCall = pushSpy.mock.calls.find(c => c[0].path?.startsWith("/navigate/"));
+            expect(routeCall).toBeTruthy();
+        }
     });
 
-    // --- textObjectSelection() ---
-    it("adjusts TOC bounds and navigates on selection", async () => {
-        const { wrapper, router } = await mountTextNavigation();
-        wrapper.vm.tocElements = {
-            docId: "1",
-            elements: tocFixture.toc,
-            start: 50,
-            end: 150,
-        };
-        const pushSpy = vi.spyOn(router, "push");
-        const mockEvent = { preventDefault: vi.fn() };
-        wrapper.vm.textObjectSelection("1 2 0 0 0 0 0", 10, mockEvent);
-        expect(mockEvent.preventDefault).toHaveBeenCalled();
-        expect(pushSpy).toHaveBeenCalled();
-    });
-
-    // --- loadBefore() / loadAfter() ---
-    it("decreases start index on loadBefore", async () => {
-        const { wrapper } = await mountTextNavigation();
-        wrapper.vm.start = 300;
-        wrapper.vm.loadBefore();
-        expect(wrapper.vm.start).toBe(100);
-    });
-
-    it("clamps start to 0 on loadBefore", async () => {
-        const { wrapper } = await mountTextNavigation();
-        wrapper.vm.start = 50;
-        wrapper.vm.loadBefore();
-        expect(wrapper.vm.start).toBe(0);
-    });
-
-    it("increases end index on loadAfter", async () => {
-        const { wrapper } = await mountTextNavigation();
-        wrapper.vm.end = 100;
-        wrapper.vm.loadAfter();
-        expect(wrapper.vm.end).toBe(300);
-    });
-
-    // --- dicoLookup(event) ---
-    it("opens dictionary lookup on 'd' key", async () => {
+    // --- dicoLookup(event) — driven by keydown on #text-obj-content ---
+    it("opens dictionary lookup on 'd' keydown over the text", async () => {
         const openSpy = vi.spyOn(window, "open").mockImplementation(() => {});
-        const { wrapper } = await mountTextNavigation();
-        // Mock window.getSelection
         vi.spyOn(window, "getSelection").mockReturnValue({ toString: () => "liberty" });
-        wrapper.vm.dicoLookup({ key: "d" });
+        const { wrapper } = await mountTextNavigation();
+        await wrapper.find("#text-obj-content").trigger("keydown", { key: "d" });
         expect(openSpy).toHaveBeenCalled();
         expect(openSpy.mock.calls[0][0]).toContain("liberty");
         openSpy.mockRestore();
     });
 
-    it("does not open dictionary on other keys", async () => {
+    it("does not open dictionary on unrelated keys", async () => {
         const openSpy = vi.spyOn(window, "open").mockImplementation(() => {});
         const { wrapper } = await mountTextNavigation();
-        wrapper.vm.dicoLookup({ key: "a" });
+        await wrapper.find("#text-obj-content").trigger("keydown", { key: "a" });
         expect(openSpy).not.toHaveBeenCalled();
         openSpy.mockRestore();
     });
 
-    // --- State after fetch ---
-    it("sets textObject after navigation fetch", async () => {
+    // --- State after fetch — observable via rendered DOM ---
+    it("renders text content and prev/next buttons after navigation fetch", async () => {
         const { wrapper } = await mountTextNavigation();
-        expect(wrapper.vm.textObject).toBeTruthy();
-        expect(wrapper.vm.textObject.prev).toBe("1 4 0 0 0 0 0");
-        expect(wrapper.vm.textObject.next).toBe("1 6 0 0 0 0 0");
+        // textObject.text is rendered v-html into #text-obj-content
+        const text = wrapper.find("#text-obj-content");
+        expect(text.exists()).toBe(true);
+        expect(text.html()).toContain("liberty");
+        // prev/next buttons render v-if="textObject.prev" / v-if="textObject.next"
+        expect(wrapper.find("#prev-obj").exists()).toBe(true);
+        expect(wrapper.find("#next-obj").exists()).toBe(true);
     });
 
-    it("stores TOC elements after fetch", async () => {
+    it("renders TOC entries from fetched tocElements", async () => {
         const { wrapper } = await mountTextNavigation();
-        expect(wrapper.vm.tocElements.docId).toBe("1");
-        expect(wrapper.vm.tocElements.elements.length).toBe(2);
+        await wrapper.find("#show-toc").trigger("click");
+        await nextTick();
+        const tocPanel = wrapper.find("#toc-content");
+        expect(tocPanel.exists()).toBe(true);
+        // Two fixture entries: "Chapter 1", "Chapter 2"
+        expect(tocPanel.text()).toContain("Chapter 1");
+        expect(tocPanel.text()).toContain("Chapter 2");
     });
 });

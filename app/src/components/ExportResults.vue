@@ -82,6 +82,7 @@
 <script>
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import { paramsToUrlString } from "../utils.js";
 
 export default {
     name: "ExportResults",
@@ -107,7 +108,7 @@ export default {
 
                 this.$http
                     .get(
-                        `${this.$dbUrl}/scripts/export_results.py?${this.paramsToUrlString({
+                        `${this.$dbUrl}/scripts/export_results.py?${paramsToUrlString({
                             ...this.formData,
                             filter_html: filterHtml.toString(),
                             output_format: format,
@@ -117,7 +118,7 @@ export default {
                     .then((response) => {
                         let text = "";
                         let element = document.createElement("a");
-                        let filename = `${this.paramsToUrlString({ ...this.formData })}.${format}`;
+                        let filename = `${paramsToUrlString({ ...this.formData })}.${format}`;
                         if (format == "json") {
                             text = JSON.stringify(response.data);
                         } else if (format == "csv") {

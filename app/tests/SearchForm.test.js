@@ -139,13 +139,16 @@ describe("SearchForm", () => {
     it("shows tips label on hover", async () => {
         const wrapper = mountSearchForm();
         const tipsBtn = wrapper.find(".btn-outline-info");
+        // Pre-hover: button shows "?" placeholder, not the localized tips text
+        expect(tipsBtn.text()).toContain("?");
+
         await tipsBtn.trigger("mouseover");
         await nextTick();
-        expect(wrapper.vm.showTips).toBe(true);
+        expect(tipsBtn.text()).not.toContain("?");
 
         await tipsBtn.trigger("mouseleave");
         await nextTick();
-        expect(wrapper.vm.showTips).toBe(false);
+        expect(tipsBtn.text()).toContain("?");
     });
 
     // --- @input="onChange('q')" autocomplete ---
@@ -165,7 +168,8 @@ describe("SearchForm", () => {
         const input = wrapper.find("#query-term-input");
         await input.trigger("keyup.escape");
         await nextTick();
-        expect(wrapper.vm.autoCompleteResults.q.length).toBe(0);
+        // The autocomplete <ul> is rendered v-if results.length > 0 — it should not be present
+        expect(wrapper.find("#autocomplete-q").exists()).toBe(false);
     });
 
     // --- @change="toggleApproximate" ---

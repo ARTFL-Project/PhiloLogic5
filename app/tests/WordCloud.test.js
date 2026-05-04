@@ -34,6 +34,7 @@ async function mountWordCloud(props = {}) {
     const wrapper = mount(WordCloud, {
         props: { wordWeights: [], clickHandler: vi.fn(), label: "test", ...props },
         global: { plugins: [i18n] },
+        attachTo: document.body,  // required for focus management to be observable
     });
     await nextTick();
     return wrapper;
@@ -72,36 +73,36 @@ describe("WordCloud", () => {
     // --- @keydown="handleKeydown($event, word, index)" ---
     it("navigates to next word on ArrowRight", async () => {
         const wrapper = await mountWordCloud({ wordWeights: sampleWords });
-        const firstWord = wrapper.findAll(".cloud-word")[0];
-        await firstWord.trigger("keydown", { key: "ArrowRight" });
+        const buttons = wrapper.findAll(".cloud-word");
+        await buttons[0].trigger("keydown", { key: "ArrowRight" });
         await nextTick();
-        expect(wrapper.vm.selectedWordIndex).toBe(1);
+        expect(document.activeElement).toBe(buttons[1].element);
     });
 
     it("navigates to previous word on ArrowLeft", async () => {
         const wrapper = await mountWordCloud({ wordWeights: sampleWords });
-        wrapper.vm.selectedWordIndex = 2;
-        const lastWord = wrapper.findAll(".cloud-word")[2];
-        await lastWord.trigger("keydown", { key: "ArrowLeft" });
+        const buttons = wrapper.findAll(".cloud-word");
+        // The handler reads the v-for index from the event target, so triggering
+        // on buttons[2] is sufficient — no need to pre-set selected state.
+        await buttons[2].trigger("keydown", { key: "ArrowLeft" });
         await nextTick();
-        expect(wrapper.vm.selectedWordIndex).toBe(1);
+        expect(document.activeElement).toBe(buttons[1].element);
     });
 
     it("navigates to first word on Home", async () => {
         const wrapper = await mountWordCloud({ wordWeights: sampleWords });
-        wrapper.vm.selectedWordIndex = 2;
-        const word = wrapper.findAll(".cloud-word")[2];
-        await word.trigger("keydown", { key: "Home" });
+        const buttons = wrapper.findAll(".cloud-word");
+        await buttons[2].trigger("keydown", { key: "Home" });
         await nextTick();
-        expect(wrapper.vm.selectedWordIndex).toBe(0);
+        expect(document.activeElement).toBe(buttons[0].element);
     });
 
     it("navigates to last word on End", async () => {
         const wrapper = await mountWordCloud({ wordWeights: sampleWords });
-        const word = wrapper.findAll(".cloud-word")[0];
-        await word.trigger("keydown", { key: "End" });
+        const buttons = wrapper.findAll(".cloud-word");
+        await buttons[0].trigger("keydown", { key: "End" });
         await nextTick();
-        expect(wrapper.vm.selectedWordIndex).toBe(2);
+        expect(document.activeElement).toBe(buttons[2].element);
     });
 
     it("calls click handler on Enter key", async () => {

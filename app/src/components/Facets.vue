@@ -218,6 +218,16 @@
 <script>
 import { mapStores, mapWritableState } from "pinia";
 import { useMainStore } from "../stores/main";
+import {
+    copyObject,
+    debug,
+    extractSurfaceFromCollocate,
+    isOnlyFacetChange,
+    paramsFilter,
+    paramsToRoute,
+    paramsToUrlString,
+    saveToLocalStorage,
+} from "../utils.js";
 import ProgressSpinner from "./ProgressSpinner";
 
 export default {
@@ -272,7 +282,7 @@ export default {
             }
 
             // Handle facet state changes - either showing, hiding, or switching facets
-            if (!this.isOnlyFacetChange(newUrl.query, oldUrl.query)) {
+            if (!isOnlyFacetChange(newUrl.query, oldUrl.query)) {
                 // Clear facet data when query changes (not just facet selection)
                 this.facetResults = [];
                 this.fullResults = {};
@@ -334,20 +344,20 @@ export default {
         facetSearch(facetObj) {
             switch (facetObj.type) {
                 case "facet":
-                    this.$router.push(this.paramsToRoute({
+                    this.$router.push(paramsToRoute({
                         ...this.formData,
                         facet: facetObj.facet,
                         relative_frequency: false
                     }));
                     break;
                 case "collocationFacet":
-                    this.$router.push(this.paramsToRoute({
+                    this.$router.push(paramsToRoute({
                         ...this.formData,
                         facet: 'collocation',
                     }));
                     break;
                 case "property":
-                    this.$router.push(this.paramsToRoute({
+                    this.$router.push(paramsToRoute({
                         ...this.formData,
                         facet: 'property',
                         word_property: facetObj.facet
@@ -374,17 +384,17 @@ export default {
 
             let urlString
             if (facetObj.type === "facet") {
-                urlString = this.paramsToUrlString({
+                urlString = paramsToUrlString({
                     ...this.formData,
                     frequency_field: facetObj.alias,
                 });
             } else if (facetObj.type === "collocationFacet") {
-                urlString = this.paramsToUrlString({
+                urlString = paramsToUrlString({
                     ...this.formData,
                     report: "collocation",
                 });
             } else if (facetObj.type === "property") {
-                urlString = this.paramsToUrlString({
+                urlString = paramsToUrlString({
                     ...this.formData,
                     word_property: facetObj.facet,
                 });
@@ -398,7 +408,7 @@ export default {
                         this.facetResults = this.fullResults.absolute;
                     }
                 } else if (facetObj.type === "collocationFacet") {
-                    this.facetResults = this.extractSurfaceFromCollocate(this.fullResults.slice(0, 100));
+                    this.facetResults = extractSurfaceFromCollocate(this.fullResults.slice(0, 100));
                 } else {
                     this.facetResults = this.fullResults.slice(0, 100);
                 }
@@ -406,7 +416,7 @@ export default {
                 this.showFacetSelection = false;
             } else {
                 this.loading = true;
-                let queryParams = this.copyObject(this.formData);
+                let queryParams = copyObject(this.formData);
                 if (facetObj.type === "facet") {
                     queryParams.frequency_field = facetObj.facet;
                     this.fetchFrequencyFacet(facetObj, queryParams);
@@ -421,7 +431,7 @@ export default {
         },
         fetchFrequencyFacet(facet, queryParams) {
             this.$http.get(`${this.$dbUrl}/scripts/get_frequency.py`, {
-                params: this.paramsFilter(queryParams)
+                params: paramsFilter(queryParams)
             }).then((response) => {
                 this.fullResults = {
                     absolute: response.data.results,
@@ -435,53 +445,53 @@ export default {
                 }
                 this.loading = false;
                 this.showFacetResults = true;
-                let urlString = this.paramsToUrlString({
+                let urlString = paramsToUrlString({
                     ...queryParams,
                     frequency_field: this.selectedFacet.alias,
                 });
-                this.saveToLocalStorage(urlString, this.fullResults);
+                saveToLocalStorage(urlString, this.fullResults);
             }).catch((error) => {
-                this.debug(this, error);
+                debug(this, error);
                 this.loading = false;
             });
         },
         fetchCollocationFacet(facet, queryParams) {
             this.$http.get(`${this.$dbUrl}/reports/collocation.py`, {
-                params: this.paramsFilter(queryParams)
+                params: paramsFilter(queryParams)
             }).then((response) => {
                 if (response.data.results_length) {
-                    this.facetResults = this.extractSurfaceFromCollocate(
+                    this.facetResults = extractSurfaceFromCollocate(
                         response.data.collocates.slice(0, 100)
                     );
                     this.fullResults = response.data.collocates;
                     this.showFacetResults = true;
                 }
                 this.loading = false;
-                let urlString = this.paramsToUrlString({
+                let urlString = paramsToUrlString({
                     ...queryParams,
                     report: "collocation",
                 });
-                this.saveToLocalStorage(urlString, this.fullResults);
+                saveToLocalStorage(urlString, this.fullResults);
             }).catch((error) => {
                 this.loading = false;
-                this.debug(this, error);
+                debug(this, error);
             });
         },
         fetchPropertyFacet(facet, queryParams) {
             this.$http.get(`${this.$dbUrl}/scripts/get_word_property_count.py`, {
-                params: this.paramsFilter(queryParams)
+                params: paramsFilter(queryParams)
             }).then((response) => {
                 this.facetResults = response.data.results.slice(0, 100);
                 this.fullResults = response.data.results;
                 this.loading = false;
                 this.showFacetResults = true;
-                let urlString = this.paramsToUrlString({
+                let urlString = paramsToUrlString({
                     ...queryParams,
                     word_property: facet.facet,
                 });
-                this.saveToLocalStorage(urlString, this.fullResults);
+                saveToLocalStorage(urlString, this.fullResults);
             }).catch((error) => {
-                this.debug(this, error);
+                debug(this, error);
                 this.loading = false;
             });
         },
@@ -501,7 +511,7 @@ export default {
         },
         updateFacetUrl() {
             if (this.selectedFacet && this.selectedFacet.facet) {
-                const routeParams = this.paramsToRoute({
+                const routeParams = paramsToRoute({
                     ...this.formData,
                     facet: this.selectedFacet.facet,
                     relative_frequency: this.showingRelativeFrequencies ? 'true' : 'false',
@@ -541,7 +551,7 @@ export default {
             }
         },
         collocationToConcordance(word) {
-            let routeParams = this.paramsToRoute({
+            let routeParams = paramsToRoute({
                 ...this.formData,
                 q: `${this.formData.q} "${word}"`,
                 method: "sentence",
@@ -561,7 +571,7 @@ export default {
             this.formData.start = "";
             this.formData.end = "";
             this.formData.report = "concordance";
-            this.$router.push(this.paramsToRoute({ ...this.formData }));
+            this.$router.push(paramsToRoute({ ...this.formData }));
         },
         showFacetOptions() {
             this.showFacetSelection = true;
@@ -569,9 +579,9 @@ export default {
         toggleFrequencies() {
             this.showingRelativeFrequencies = !this.showingRelativeFrequencies;
             if (this.showingRelativeFrequencies) {
-                this.$router.push(this.paramsToRoute({ ...this.formData, facet: this.selectedFacet.facet, relative_frequency: "true" }));
+                this.$router.push(paramsToRoute({ ...this.formData, facet: this.selectedFacet.facet, relative_frequency: "true" }));
             } else {
-                this.$router.push(this.paramsToRoute({ ...this.formData, facet: this.selectedFacet.facet, relative_frequency: "false" }));
+                this.$router.push(paramsToRoute({ ...this.formData, facet: this.selectedFacet.facet, relative_frequency: "false" }));
             }
         },
         hideFacets(skipRouterPush = false) {
@@ -581,7 +591,7 @@ export default {
             this.facetResults = [];
             this.fullResults = {};
             if (!skipRouterPush) {
-                let routeParams = this.paramsToRoute({
+                let routeParams = paramsToRoute({
                     ...this.formData,
                 })
                 delete routeParams.query.facet;
@@ -597,7 +607,7 @@ export default {
                 key: this.selectedFacet.facet,
                 value: metadataValue,
             });
-            let routeParams = this.paramsToRoute({
+            let routeParams = paramsToRoute({
                 ...this.formData,
                 start: "0",
                 end: "0",
