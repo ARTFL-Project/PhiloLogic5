@@ -10,6 +10,9 @@ function mountCollocation(overrides = {}) {
     const http = overrides.http || createMockHttp({
         "collocation.py": collocationFixture,
         "comparative_collocations.py": { top: [["power", 100], ["free", 80]], bottom: [["own", 50]] },
+        // Default time-series mock terminates the recursive poll on first call.
+        // Tests that need multi-period results should pass their own http override.
+        "collocation_time_series.py": { period: { year: 1800, collocates: { frequent: [], distinctive: [] } }, done: true },
     });
     const global = createGlobalConfig({
         http,

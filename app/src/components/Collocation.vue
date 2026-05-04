@@ -9,7 +9,7 @@
             <label for="colloc-method-mobile-select" class="form-label fw-bold">
                 {{ $t('collocation.methodSelectionTabs') }}
             </label>
-            <select class="form-select" id="colloc-method-mobile-select" v-model="collocMethod"
+            <select class="form-select" id="colloc-method-mobile-select" v-model="mode"
                 @change="handleMobileMethodChange" :disabled="isInvalidCollocationQuery"
                 :aria-label="$t('collocation.methodSelectionTabs')">
                 <option value="frequency">{{ $t("collocation.collocation") }}</option>
@@ -25,42 +25,42 @@
                 :aria-label="$t('collocation.methodSelectionTabs')">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="frequency-tab" data-bs-toggle="tab"
-                        :class="{ active: collocMethod === 'frequency' }" data-bs-target="#frequency-tab-pane"
-                        type="button" role="tab" :aria-selected="collocMethod === 'frequency'"
-                        :disabled="isInvalidCollocationQuery" @click="!isInvalidCollocationQuery && getFrequency()">
+                        :class="{ active: mode === 'frequency' }" data-bs-target="#frequency-tab-pane"
+                        type="button" role="tab" :aria-selected="mode === 'frequency'"
+                        :disabled="isInvalidCollocationQuery" @click="!isInvalidCollocationQuery && setMode('frequency')">
                         {{ $t("collocation.collocation") }}
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="compare-tab" data-bs-toggle="tab"
-                        :class="{ active: collocMethod === 'compare' }" data-bs-target="#compare-tab-pane" type="button"
-                        role="tab" :aria-selected="collocMethod === 'compare'" :disabled="isInvalidCollocationQuery"
-                        @click="!isInvalidCollocationQuery && toggleCompare()">
+                        :class="{ active: mode === 'compare' }" data-bs-target="#compare-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'compare'" :disabled="isInvalidCollocationQuery"
+                        @click="!isInvalidCollocationQuery && setMode('compare')">
                         {{ $t("collocation.compareTo") }}
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="similar-tab" data-bs-toggle="tab"
-                        :class="{ active: collocMethod === 'similar' }" data-bs-target="#similar-tab-pane" type="button"
-                        role="tab" :aria-selected="collocMethod === 'similar'" :disabled="isInvalidCollocationQuery"
-                        @click="!isInvalidCollocationQuery && toggleSimilar()">
+                        :class="{ active: mode === 'similar' }" data-bs-target="#similar-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'similar'" :disabled="isInvalidCollocationQuery"
+                        @click="!isInvalidCollocationQuery && setMode('similar')">
                         {{ $t("collocation.similarUsage") }}
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="time-series-tab" data-bs-toggle="tab"
-                        :class="{ active: collocMethod === 'timeSeries' }" data-bs-target="#time-series-tab-pane"
-                        type="button" role="tab" :aria-selected="collocMethod === 'timeSeries'"
-                        :disabled="isInvalidCollocationQuery" @click="!isInvalidCollocationQuery && toggleTimeSeries()">
+                        :class="{ active: mode === 'timeSeries' }" data-bs-target="#time-series-tab-pane"
+                        type="button" role="tab" :aria-selected="mode === 'timeSeries'"
+                        :disabled="isInvalidCollocationQuery" @click="!isInvalidCollocationQuery && setMode('timeSeries')">
                         {{ $t("collocation.timeSeries") }}
                     </button>
                 </li>
             </ul>
         </div>
-        <results-summary :description="results.description" :filter-list="filterList" :colloc-method="collocMethod"
-            v-if="collocMethod === 'frequency'" style="margin-top:0 !important;"></results-summary>
+        <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
+            v-if="mode === 'frequency'" style="margin-top:0 !important;"></results-summary>
         <div role="region" :aria-label="$t('collocation.collocationResults')">
-            <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod == 'compare'"
+            <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="mode == 'compare'"
                 role="region" :aria-label="$t('collocation.compareTo')">
                 <div class="row">
                     <!-- Primary corpus criteria -->
@@ -115,7 +115,7 @@
                     </button>
                 </div>
             </div>
-            <div class="card mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'similar'">
+            <div class="card mx-2 p-3" style="border-top-width: 0;" v-if="mode === 'similar'">
                 <div class="d-flex align-items-center flex-wrap mt-2">
                     <label for="similarity-field-select" class="me-2 fw-bold">
                         {{ $t("collocation.compareBy") }}
@@ -123,8 +123,8 @@
                     <div class="btn-group" style="width: fit-content;" role="group">
                         <button class="btn btn-secondary dropdown-toggle" type="button" id="similarity-field-select"
                             data-bs-toggle="dropdown" aria-expanded="false"
-                            :aria-label="`${$t('collocation.compareBy')}: ${this.similarFieldSelected || $t('collocation.selectField')}`">
-                            {{ this.similarFieldSelected || $t('collocation.selectField') }}
+                            :aria-label="`${$t('collocation.compareBy')}: ${similarFieldSelected || $t('collocation.selectField')}`">
+                            {{ similarFieldSelected || $t('collocation.selectField') }}
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="similarity-field-select">
                             <li v-for="field in fieldsToCompare" :key="field.value">
@@ -148,7 +148,7 @@
                     <progress-spinner class="px-2" :progress="progressPercent" />
                 </div>
             </div>
-            <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="collocMethod === 'timeSeries'">
+            <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="mode === 'timeSeries'">
                 <bibliography-criteria :biblio="biblio" :query-report="formData.report"
                     :results-length="resultsLength"></bibliography-criteria>
                 <div class="input-group mt-2">
@@ -166,7 +166,7 @@
             </div>
 
             <!-- Results below -->
-            <div class="row my-3 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && collocMethod == 'frequency'">
+            <div class="row my-3 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && mode == 'frequency'">
                 <div class="col-12 col-sm-4">
                     <div class="card shadow-sm">
                         <table class="table table-borderless caption-top"
@@ -194,12 +194,12 @@
                 </div>
                 <div class="col-12 col-sm-8">
                     <div class="card shadow-sm">
-                        <word-cloud v-if="collocMethod == 'frequency' && sortedList.length > 0"
+                        <word-cloud v-if="mode == 'frequency' && sortedList.length > 0"
                             :word-weights="sortedList" label="frequency" :click-handler="collocateClick"></word-cloud>
                     </div>
                 </div>
             </div>
-            <div v-if="collocMethod === 'compare'">
+            <div v-if="mode === 'compare'">
                 <div class="card shadow-sm mx-2 my-3 p-2" v-if="comparativeSearchStarted">
                     <div class="row mt-2">
                         <div class="col-6" id="primary-biblio">
@@ -270,7 +270,7 @@
                     </div>
                 </div>
             </div>
-            <div v-if="collocMethod == 'similar'" class="mx-2" style="margin-bottom: 6rem;">
+            <div v-if="mode == 'similar'" class="mx-2" style="margin-bottom: 6rem;">
                 <div class="card" v-if="similarDistributions.length > 0" role="region"
                     :aria-label="$t('collocation.similarUsageResults')">
                     <h2 class="visually-hidden">{{ $t('collocation.similarUsageResults') }}</h2>
@@ -303,7 +303,7 @@
                     </ul>
                 </div>
             </div>
-            <div v-if="collocMethod == 'timeSeries'" class="mx-2 my-3">
+            <div v-if="mode == 'timeSeries'" class="mx-2 my-3">
                 <div v-if="searching" role="status" aria-live="polite" aria-atomic="true"
                     :aria-label="$t('common.loading')">
                     {{ $t('collocation.similarCollocGatheringMessage') }}...
@@ -355,14 +355,14 @@
     </div>
 </template>
 
-<script>
-import { inject, reactive } from "vue";
-import { useRoute } from "vue-router";
-import { mapStores, mapWritableState } from "pinia";
+<script setup>
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import {
     buildBiblioCriteria,
-    copyObject,
     dateRangeHandler,
     debug,
     extractSurfaceFromCollocate,
@@ -376,609 +376,543 @@ import ProgressSpinner from "./ProgressSpinner";
 import ResultsSummary from "./ResultsSummary";
 import WordCloud from "./WordCloud.vue";
 
-export default {
-    name: "collocation-report",
-    components: {
-        ResultsSummary, WordCloud, BibliographyCriteria, ProgressSpinner, MetadataFields
-    },
-    setup() {
-        const $http = inject("$http");
-        const $dbUrl = inject("$dbUrl");
-        const $philoConfig = inject("$philoConfig");
-        const route = useRoute();
+// ── Injects, route, router, store, i18n ──────────────────────────────────────
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const router = useRouter();
+const { t } = useI18n();
+const store = useMainStore();
+const {
+    formData,
+    currentReport,
+    resultsLength,
+    searching,
+    searchableMetadata,
+} = storeToRefs(store);
 
-        const comparedMetadataValues = reactive({});
+// ── Autocomplete (composable) ────────────────────────────────────────────────
+const comparedMetadataValues = reactive({});
+const autocomplete = useAutocomplete({
+    http: $http,
+    dbUrl: $dbUrl,
+    philoConfig,
+    metadataValues: comparedMetadataValues,
+    route,
+});
+const {
+    autoCompleteResults,
+    arrowCounters,
+    autoCompletePosition,
+    onArrowDown,
+    onArrowUp,
+    onEnter,
+    onChange: autocompleteOnChange,
+    setMetadataResult,
+    clearAutoCompletePopup,
+} = autocomplete;
 
-        const autocomplete = useAutocomplete({
-            http: $http,
-            dbUrl: $dbUrl,
-            philoConfig: $philoConfig,
-            metadataValues: comparedMetadataValues,
-            route,
+// ── Shared state ─────────────────────────────────────────────────────────────
+const mode = ref("frequency");
+const results = ref({});
+const filterList = ref([]);
+const biblio = ref({});
+const sortedList = ref([]);
+const collocatesFilePath = ref("");
+const relativeFrequencies = ref({});
+
+// ── Metadata helpers ─────────────────────────────────────────────────────────
+const metadataDisplay = ref([]);
+const metadataInputStyle = ref([]);
+const metadataChoiceValues = ref([]);
+const metadataChoiceChecked = ref({});
+const metadataChoiceSelected = ref({});
+const dateType = reactive({});
+const dateRange = reactive({});
+
+function buildMetadata(metadata) {
+    metadataDisplay.value = metadata.display;
+    metadataInputStyle.value = metadata.inputStyle;
+    metadataChoiceValues.value = metadata.choiceValues;
+    for (const field in metadataInputStyle.value) {
+        dateType[field] = "exact";
+        dateRange[field] = { start: "", end: "" };
+    }
+}
+
+// ── Computed ─────────────────────────────────────────────────────────────────
+const fieldsToCompare = computed(() => {
+    return philoConfig.collocation_fields_to_compare.map(field => ({
+        label: philoConfig.metadata_aliases[field] || field,
+        value: field,
+    }));
+});
+
+const isInvalidCollocationQuery = computed(() => {
+    if (!formData.value.q) return false;
+    let query = formData.value.q.trim();
+    // Remove quoted tokens, lemma/attribute queries
+    query = query.replace(/"[^"]*"/g, "").replace(/\S+:\S+/g, "");
+    // Split by OR operators and filter them out
+    let parts = query.split(/\s*(\||OR)\s*/i).filter(p => p.trim() && !p.match(/^\|$|^OR$/i));
+    // Remove NOT patterns
+    parts = parts.map(p => p.replace(/\s+NOT\s+\S+/gi, ""));
+    // Check for multiple consecutive words
+    return parts.some(p => p.trim().split(/\s+/).filter(w => w.length > 0).length > 1);
+});
+
+// ── Shared collocate handlers ────────────────────────────────────────────────
+function collocateCleanup(collocate) {
+    if (collocate.surfaceForm.startsWith("lemma:") || collocate.surfaceForm.search(/\w+:.*/) !== -1) {
+        return `${formData.value.q} ${collocate.surfaceForm}`;
+    }
+    return `${formData.value.q} "${collocate.surfaceForm}"`;
+}
+
+function concordanceMethod() {
+    return formData.value.colloc_within === "n" ? "proxy" : "sentence";
+}
+
+function collocateClick(item) {
+    router.push(
+        paramsToRoute({
+            ...formData.value,
+            report: "concordance",
+            q: collocateCleanup(item),
+            method: concordanceMethod(),
+            cooc_order: "no",
+        })
+    );
+}
+
+function otherCollocateClick(item) {
+    router.push(
+        paramsToRoute({
+            ...comparedMetadataValues,
+            report: "concordance",
+            q: collocateCleanup(item),
+            method: concordanceMethod(),
+            cooc_order: "no",
+        })
+    );
+}
+
+// ── URL + mode coordination ──────────────────────────────────────────────────
+function getNonEmptyComparedMetadata() {
+    const out = {};
+    for (const [field, value] of Object.entries(comparedMetadataValues)) {
+        if (value && value !== "") {
+            out[`compare_${field}`] = value;
+        }
+    }
+    return out;
+}
+
+// Clear in place to preserve the reactive reference (other code holds it).
+function clearComparedMetadata() {
+    for (const key of Object.keys(comparedMetadataValues)) {
+        delete comparedMetadataValues[key];
+    }
+}
+
+function restoreComparedMetadataFromUrl() {
+    clearComparedMetadata();
+    for (const [key, value] of Object.entries(route.query)) {
+        if (key.startsWith("compare_")) {
+            comparedMetadataValues[key.substring(8)] = value;
+        }
+    }
+}
+
+function updateCollocationUrl() {
+    const urlParams = {
+        ...formData.value,
+        collocation_method: mode.value,
+    };
+    if (mode.value === "similar" && similarFieldSelected.value) {
+        urlParams.similarity_by = similarFieldSelected.value;
+        delete urlParams.time_series_interval;
+    }
+    if (mode.value === "timeSeries") {
+        urlParams.time_series_interval = timeSeriesInterval.value;
+        delete urlParams.similarity_by;
+    }
+    if (mode.value === "compare") {
+        Object.assign(urlParams, getNonEmptyComparedMetadata());
+        delete urlParams.similarity_by;
+        delete urlParams.time_series_interval;
+    }
+    router.push(paramsToRoute(urlParams));
+}
+
+function setMode(newMode, { updateUrl = true } = {}) {
+    mode.value = newMode;
+    if (updateUrl) updateCollocationUrl();
+}
+
+function handleMobileMethodChange() {
+    setMode(mode.value, { updateUrl: false });
+}
+
+// ── Primary fetch (shared by frequency / compare / similar entry paths) ──────
+function updateCollocation() {
+    if (isInvalidCollocationQuery.value) {
+        searching.value = false;
+        return;
+    }
+    $http.get(`${$dbUrl}/reports/collocation.py`, { params: paramsFilter(formData.value) })
+        .then((response) => {
+            resultsLength.value = response.data.results_length;
+            filterList.value = response.data.filter_list;
+            collocatesFilePath.value = response.data.file_path;
+            searching.value = false;
+            if (resultsLength.value) {
+                sortedList.value = extractSurfaceFromCollocate(response.data.collocates);
+                runPostFetchModeAction();
+            }
+        })
+        .catch((error) => {
+            searching.value = false;
+            debug({ $options: { name: "collocation-report" } }, error);
         });
+}
 
-        return {
-            comparedMetadataValues,
-            autoCompleteResults: autocomplete.autoCompleteResults,
-            arrowCounters: autocomplete.arrowCounters,
-            autoCompletePosition: autocomplete.autoCompletePosition,
-            onArrowDown: autocomplete.onArrowDown,
-            onArrowUp: autocomplete.onArrowUp,
-            onEnter: autocomplete.onEnter,
-            autocompleteOnChange: autocomplete.onChange,
-            setMetadataResult: autocomplete.setMetadataResult,
-            clearAutoCompletePopup: autocomplete.clearAutoCompletePopup,
-        };
-    },
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "currentReport",
-            "resultsLength",
-            "searching",
-            "urlUpdate",
-            "accessAuthorized",
-            "searchableMetadata"
-        ]),
-        ...mapStores(useMainStore),
-        fieldsToCompare() {
-            let fields = []
-            for (let field of this.philoConfig.collocation_fields_to_compare) {
-                fields.push({ label: this.philoConfig.metadata_aliases[field] || field, value: field })
+// After the primary fetch completes, similar/compare modes need a follow-up fetch.
+function runPostFetchModeAction() {
+    mode.value = route.query.collocation_method || "frequency";
+    if (mode.value === "similar") {
+        setMode("similar", { updateUrl: false });
+        similarCollocDistributions({ value: route.query.similarity_by });
+    } else if (mode.value === "compare") {
+        getOtherCollocates();
+    }
+}
+
+function fetchResults() {
+    if (isInvalidCollocationQuery.value) {
+        searching.value = false;
+        return;
+    }
+    relativeFrequencies.value = {};
+    searching.value = true;
+    overRepresented.value = [];
+    underRepresented.value = [];
+    comparativeSearchStarted.value = false;
+    similarDistributions.value = [];
+    collocationTimePeriods.value = [];
+    similarFieldSelected.value = "";
+    updateCollocation();
+}
+
+// ── Mode: compare ────────────────────────────────────────────────────────────
+const otherCollocates = ref([]);
+const otherBiblio = ref({});
+const overRepresented = ref([]);
+const underRepresented = ref([]);
+const compareSearching = ref(false);
+const comparativeSearchStarted = ref(false);
+const wholeCorpus = ref(false);
+
+function getOtherCollocates() {
+    wholeCorpus.value = Object.keys(comparedMetadataValues).length === 0;
+    setMode("compare");
+    Object.assign(
+        comparedMetadataValues,
+        dateRangeHandler(metadataInputStyle.value, dateRange, dateType, comparedMetadataValues),
+    );
+    const params = {
+        q: formData.value.q,
+        colloc_filter_choice: formData.value.colloc_filter_choice,
+        colloc_within: formData.value.colloc_within,
+        filter_frequency: formData.value.filter_frequency,
+        q_attribute: formData.value.q_attribute || "",
+        q_attribute_value: formData.value.q_attribute_value || "",
+        ...comparedMetadataValues,
+    };
+    comparativeSearchStarted.value = true;
+    compareSearching.value = true;
+    otherCollocates.value = [];
+    $http.get(`${$dbUrl}/reports/collocation.py`, { params: paramsFilter(params) })
+        .then((response) => {
+            compareSearching.value = false;
+            if (response.data.results_length) {
+                otherCollocates.value = extractSurfaceFromCollocate(response.data.collocates);
+                comparativeCollocations(response.data.file_path);
             }
-            return fields
-        },
-        isInvalidCollocationQuery() {
-            if (!this.formData.q) return false;
-            let query = this.formData.q.trim();
-            // Remove quoted tokens, lemma/attribute queries
-            query = query.replace(/"[^"]*"/g, '').replace(/\S+:\S+/g, '');
-            // Split by OR operators and filter them out
-            let parts = query.split(/\s*(\||OR)\s*/i).filter(p => p.trim() && !p.match(/^\|$|^OR$/i));
-            // Remove NOT patterns
-            parts = parts.map(p => p.replace(/\s+NOT\s+\S+/gi, ''));
-            // Check for multiple consecutive words
-            return parts.some(p => p.trim().split(/\s+/).filter(w => w.length > 0).length > 1);
-        }
-
-    },
-    inject: ["$http"],
-    provide() {
-        return {
-            results: this.results.results,
-        };
-    },
-    data() {
-        return {
-            philoConfig: this.$philoConfig,
-            results: {},
-            filterList: [],
-            searchParams: {},
-            biblio: {},
-            sortedList: [],
-            collocatesFilePath: "",
-            showFilteredWords: false,
-            collocCloudWords: [],
-            collocMethod: "frequency",
-            relativeFrequencies: {},
-            overRepresented: [],
-            underRepresented: [],
-            loading: false,
-            metadataDisplay: [],
-            metadataInputStyle: [],
-            metadataChoiceValues: [],
-            metadataChoiceChecked: {},
-            metadataChoiceSelected: {},
-            dateType: {},
-            dateRange: {},
-            otherCollocates: [],
-            otherBiblio: {},
-            comparedTo: "wholeCorpus",
-            compareSearching: false,
-            comparativeSearchStarted: false,
-            otherDone: false,
-            fieldValuesToCompare: [],
-            similarDistributions: [],
-            cachedDistributions: "",
-            similarFieldSelected: "",
-            similarSearchProgress: "",
-            similarSearching: false,
-            timeSeriesInterval: 10,
-            collocationTimePeriods: [],
-            progressPercent: 0,
-            distinctiveView: 'prev', // Default to showing comparison with previous period
-        };
-    },
-    created() {
-        this.formData.report = "collocation";
-        this.currentReport = "collocation";
-        this.buildMetadata(this.searchableMetadata);
-        this.biblio = buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
-        this.collocMethod = this.$route.query.collocation_method || 'frequency';
-
-        switch (this.collocMethod) {
-            case "frequency":
-                this.fetchResults();
-                break;
-            case "similar":
-                this.toggleSimilar(false);
-                this.fetchResults();
-                break;
-            case "timeSeries":
-                this.toggleTimeSeries(false);
-                this.timeSeriesInterval = this.$route.query.time_series_interval || 10;
-                this.getCollocatesOverTime();
-                break;
-            case "compare":
-                this.toggleCompare(false);
-                this.restoreComparedMetadataFromUrl();
-                this.fetchResults();
-                break;
-        }
-    },
-    mounted() {
-        this.$nextTick(() => {
-            document.addEventListener("click", () => {
-                this.clearAutoCompletePopup();
-            });
+        })
+        .catch((error) => {
+            compareSearching.value = false;
+            debug({ $options: { name: "collocation-report" } }, error);
         });
-    },
-    watch: {
-        $route(newUrl, oldUrl) {
-            if (this.$route.name == "collocation") {
-                this.fetchResults();
-                if (newUrl.query.collocation_method != oldUrl.query.collocation_method) {
-                    this.setCollocationMethod(newUrl.query.collocation_method || 'frequency', false);
-                }
-                // Restore compared metadata if in compare mode
-                if (newUrl.query.collocation_method === 'compare') {
-                    this.restoreComparedMetadataFromUrl();
-                }
-                this.biblio = buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
-            }
+}
+
+function comparativeCollocations(otherFilePath) {
+    comparativeSearchStarted.value = true;
+    Object.assign(
+        comparedMetadataValues,
+        dateRangeHandler(metadataInputStyle.value, dateRange, dateType, comparedMetadataValues),
+    );
+    otherBiblio.value = buildBiblioCriteria(philoConfig, comparedMetadataValues, comparedMetadataValues);
+    overRepresented.value = [];
+    underRepresented.value = [];
+    $http.get(`${$dbUrl}/scripts/comparative_collocations.py`, {
+        params: {
+            primary_file_path: collocatesFilePath.value,
+            other_file_path: otherFilePath,
+            whole_corpus: wholeCorpus.value,
         },
-        searchableMetadata: {
-            handler: function (newVal, oldVal) {
-                this.buildMetadata(newVal)
-            },
-            deep: true,
+    }).then((response) => {
+        overRepresented.value = extractSurfaceFromCollocate(response.data.top);
+        underRepresented.value = extractSurfaceFromCollocate(response.data.bottom);
+        relativeFrequencies.value = { top: overRepresented.value, bottom: underRepresented.value };
+    }).catch((error) => {
+        debug({ $options: { name: "collocation-report" } }, error);
+    });
+}
+
+// ── Mode: similar ────────────────────────────────────────────────────────────
+const similarDistributions = ref([]);
+const cachedDistributions = ref("");
+const similarFieldSelected = ref("");
+const similarSearchProgress = ref("");
+const similarSearching = ref(false);
+
+function similarCollocDistributions(field) {
+    similarFieldSelected.value = field.value;
+    similarSearching.value = true;
+    similarSearchProgress.value = t("collocation.similarCollocGatheringMessage");
+    similarDistributions.value = [];
+    setMode("similar");
+    $http.get(`${$dbUrl}/reports/collocation.py`, {
+        params: {
+            q: formData.value.q,
+            colloc_filter_choice: formData.value.colloc_filter_choice,
+            colloc_within: formData.value.colloc_within,
+            filter_frequency: formData.value.filter_frequency,
+            map_field: field.value,
+            q_attribute: formData.value.q_attribute || "",
+            q_attribute_value: formData.value.q_attribute_value || "",
+        },
+    }).then((response) => {
+        getMostSimilarCollocDistribution(response.data.file_path);
+    }).catch((error) => {
+        similarSearching.value = false;
+        debug({ $options: { name: "collocation-report" } }, error);
+    });
+}
+
+function getMostSimilarCollocDistribution(filePath) {
+    similarSearchProgress.value = t("collocation.similarCollocCompareMessage");
+    $http.get(`${$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
+        params: {
+            primary_file_path: collocatesFilePath.value,
+            file_path: filePath,
+        },
+    }).then((response) => {
+        similarDistributions.value = response.data.similar || [];
+        cachedDistributions.value = filePath;
+        similarSearching.value = false;
+    }).catch((error) => {
+        similarSearching.value = false;
+        debug({ $options: { name: "collocation-report" } }, error);
+    });
+}
+
+function similarToComparative(field) {
+    $http.get(`${$dbUrl}/scripts/get_collocate_distribution.py`, {
+        params: { file_path: cachedDistributions.value, field },
+    }).then((response) => {
+        // Reset compare metadata before applying the chosen similar result —
+        // any leftover values from a previous compare run would otherwise
+        // silently scope the comparison.
+        clearComparedMetadata();
+        comparedMetadataValues[similarFieldSelected.value] = field;
+        mode.value = "compare";
+        otherCollocates.value = extractSurfaceFromCollocate(response.data.collocates);
+        wholeCorpus.value = false;
+        comparativeCollocations(response.data.file_path);
+    }).catch((error) => {
+        debug({ $options: { name: "collocation-report" } }, error);
+    });
+}
+
+// ── Mode: timeSeries ─────────────────────────────────────────────────────────
+const timeSeriesInterval = ref(10);
+const collocationTimePeriods = ref([]);
+const progressPercent = ref(0);
+
+function getCollocatesOverTime() {
+    collocationTimePeriods.value = [];
+    searching.value = true;
+    setMode("timeSeries");
+    const interval = parseInt(timeSeriesInterval.value);
+    const params = {
+        ...paramsFilter(formData.value),
+        time_series_interval: interval,
+        map_field: "year",
+    };
+
+    // Expand year range by one interval on each side for context
+    if (formData.value.year) {
+        const yearParts = formData.value.year.split("-");
+        if (yearParts.length === 2) {
+            const [startYear, endYear] = yearParts;
+            if (startYear && endYear) {
+                params.year = `${parseInt(startYear) - interval}-${parseInt(endYear) + interval}`;
+            } else if (startYear) {
+                params.year = `${parseInt(startYear) - interval}-`;
+            } else if (endYear) {
+                params.year = `-${parseInt(endYear) + interval}`;
+            }
+        } else if (yearParts[0]) {
+            const year = parseInt(yearParts[0]);
+            params.year = `${year - interval}-${year + interval}`;
         }
-    },
-    methods: {
-        fetchResults() {
-            if (this.isInvalidCollocationQuery) {
-                this.searching = false;
-                return;
-            }
-            this.localFormData = copyObject(this.formData);
-            this.relativeFrequencies = {};
-            this.searching = true;
-            this.fetchComplete = false; // Reset fetch completion status
-            this.overRepresented = [];
-            this.underRepresented = [];
-            this.other_corpus_metadata = {};
-            this.comparativeSearchStarted = false
-            this.similarDistributions = []
-            this.collocationTimePeriods = []
-            this.similarFieldSelected = ""
-            this.updateCollocation();
+    }
+
+    $http.get(`${$dbUrl}/reports/collocation.py`, { params }).then((response) => {
+        searching.value = false;
+        collocationTimeSeries(response.data.file_path, 0);
+    }).catch((error) => {
+        searching.value = false;
+        debug({ $options: { name: "collocation-report" } }, error);
+    });
+}
+
+function collocationTimeSeries(filePath, periodNumber) {
+    collocationTimePeriods.value[periodNumber] = { year: periodNumber, done: false };
+    $http.get(`${$dbUrl}/scripts/collocation_time_series.py`, {
+        params: {
+            file_path: filePath,
+            year_interval: timeSeriesInterval.value,
+            period_number: periodNumber,
         },
-        buildMetadata(metadata) {
-            this.metadataDisplay = metadata.display;
-            this.metadataInputStyle = metadata.inputStyle;
-            this.metadataChoiceValues = metadata.choiceValues;
-            for (let metadata in this.metadataInputStyle) {
-                this.dateType[metadata] = "exact";
-                this.dateRange[metadata] = { start: "", end: "" };
-            }
-        },
-        updateCollocation() {
-            if (this.isInvalidCollocationQuery) {
-                this.searching = false;
-                return;
-            }
-            this.$http
-                .get(`${this.$dbUrl}/reports/collocation.py`, {
-                    params: paramsFilter(this.formData),
-                })
-                .then((response) => {
-                    this.resultsLength = response.data.results_length;
-                    this.filterList = response.data.filter_list;
-                    this.collocatesFilePath = response.data.file_path;
-                    this.searching = false;
-                    if (this.resultsLength) {
-                        this.sortedList = extractSurfaceFromCollocate(response.data.collocates);
-                        this.checkCollocationMethod();
-                    }
-                })
-                .catch((error) => {
-                    this.searching = false;
-                    debug(this, error);
-                });
-        },
-        setCollocationMethod(method, updateUrl = true) {
-            switch (method) {
-                case 'compare':
-                    this.toggleCompare(updateUrl);
-                    break;
-                case 'similar':
-                    this.toggleSimilar(updateUrl);
-                    break;
-                case 'timeSeries':
-                    this.toggleTimeSeries(updateUrl);
-                    this.getCollocatesOverTime()
-                    break;
-                default:
-                    this.getFrequency(updateUrl);
-                    break;
-            }
-        },
-        handleMobileMethodChange() {
-            this.setCollocationMethod(this.collocMethod, false);
-        },
-        checkCollocationMethod() {
-            this.collocMethod = this.$route.query.collocation_method || 'frequency';
-            switch (this.collocMethod) {
-                case "frequency":
-                    break;
-                case "similar":
-                    this.toggleSimilar(false);
-                    this.similarCollocDistributions({ value: this.$route.query.similarity_by });
-                    break;
-                case "compare":
-                    this.getOtherCollocates();
-                    break;
-            }
-        },
-        collocateCleanup(collocate) {
-            let q
-            if (collocate.surfaceForm.startsWith("lemma:")) {
-                q = `${this.formData.q} ${collocate.surfaceForm}`;
-            } else if (collocate.surfaceForm.search(/\w+:.*/) != -1) {
-                q = `${this.formData.q} ${collocate.surfaceForm}`;
-            }
-            else {
-                q = `${this.formData.q} "${collocate.surfaceForm}"`;
-            }
-            return q
-        },
-        collocateClick(item) {
-            let q = this.collocateCleanup(item)
-            let method = "sentence"
-            if (this.formData.colloc_within == "n") {
-                method = "proxy"
-            }
-            this.$router.push(
-                paramsToRoute({
-                    ...this.formData,
-                    report: "concordance",
-                    q: q,
-                    method: method,
-                    cooc_order: "no"
-                })
-            );
-        },
-        otherCollocateClick(item) {
-            let q = this.collocateCleanup(item)
-            let method = "sentence"
-            if (this.formData.colloc_within == "n") {
-                method = "proxy"
-            }
-            this.$router.push(
-                paramsToRoute({
-                    ...this.comparedMetadataValues,
-                    report: "concordance",
-                    q: q,
-                    method: method,
-                    cooc_order: "no"
-                })
-            );
-        },
-        getFrequency(updateUrl = false) {
-            this.collocMethod = "frequency";
-            if (updateUrl) {
-                this.updateCollocationUrl();
-            }
-        },
-        toggleCompare(updateUrl = false) {
-            this.collocMethod = "compare";
-            if (updateUrl) {
-                this.updateCollocationUrl();
-            }
-        },
-        toggleSimilar(updateUrl = false) {
-            this.collocMethod = "similar";
-            if (updateUrl) {
-                this.updateCollocationUrl();
-            }
-        },
-        toggleTimeSeries(updateUrl = false) {
-            this.collocMethod = "timeSeries";
-            if (updateUrl) {
-                this.updateCollocationUrl();
-            }
-        },
-        checkCollocationStateFromUrl() {
-            this.collocMethod = this.$route.query.collocation_method || 'frequency';
-            if (this.collocMethod === "similar") {
-                this.similarFieldSelected = this.$route.query.similarity_by
-            }
-        },
-        updateCollocationUrl() {
-            let urlParams = {
-                ...this.formData,
-                collocation_method: this.collocMethod,
+    }).then((response) => {
+        if (response.data.period) {
+            const period = response.data.period;
+            const year = period.year;
+            const interval = parseInt(timeSeriesInterval.value);
+            collocationTimePeriods.value[periodNumber] = {
+                year,
+                frequent: extractSurfaceFromCollocate(period.collocates.frequent || []),
+                distinctive: extractSurfaceFromCollocate(period.collocates.distinctive || []),
+                periodYear: `${year}-${year + interval}`,
+                showDistinctive: true,
+                done: true,
             };
+        }
+        if (!response.data.done) {
+            collocationTimeSeries(filePath, periodNumber + 1);
+        }
+    }).catch((error) => {
+        debug({ $options: { name: "collocation-report" } }, error);
+    });
+}
 
-            // Add method-specific parameters
-            if (this.collocMethod === 'similar' && this.similarFieldSelected) {
-                urlParams.similarity_by = this.similarFieldSelected;
-                delete urlParams.time_series_interval;
-            }
-            if (this.collocMethod === 'timeSeries') {
-                urlParams.time_series_interval = this.timeSeriesInterval;
-                delete urlParams.similarity_by;
-            }
-            if (this.collocMethod === 'compare') {
-                // Add comparative metadata parameters with compare_ prefix
-                const compareParams = this.getNonEmptyComparedMetadata();
-                Object.assign(urlParams, compareParams);
-                delete urlParams.similarity_by;
-                delete urlParams.time_series_interval;
-            }
+function collocateTimeSeriesClick(period) {
+    return (item) => {
+        const method = formData.value.colloc_within === "n" ? "proxy_unordered" : "sentence_unordered";
+        router.push(
+            paramsToRoute({
+                ...formData.value,
+                report: "concordance",
+                q: collocateCleanup(item),
+                method,
+                year: period,
+            })
+        );
+    };
+}
 
-            const routeParams = paramsToRoute(urlParams);
-            this.$router.push(routeParams);
-        },
-        getNonEmptyComparedMetadata() {
-            const nonEmptyMetadata = {};
+// ── Watchers ─────────────────────────────────────────────────────────────────
+// View-only params don't affect the primary collocation results — they only
+// switch which panel is rendered or feed mode-specific secondary fetches.
+// Changing only these (e.g. clicking a tab) must NOT trigger a re-search.
+function isViewOnlyParam(key) {
+    return (
+        key === "collocation_method" ||
+        key === "similarity_by" ||
+        key === "time_series_interval" ||
+        key.startsWith("compare_")
+    );
+}
 
-            // Add all non-empty values from comparedMetadataValues with compare_ prefix
-            for (const [field, value] of Object.entries(this.comparedMetadataValues)) {
-                if (value && value !== '') {
-                    nonEmptyMetadata[`compare_${field}`] = value;
-                }
-            }
+function shouldRefetchOnQueryChange(newQuery, oldQuery) {
+    const allKeys = new Set([...Object.keys(newQuery), ...Object.keys(oldQuery)]);
+    for (const key of allKeys) {
+        if (newQuery[key] === oldQuery[key]) continue;
+        if (!isViewOnlyParam(key)) return true;
+    }
+    return false;
+}
 
-            return nonEmptyMetadata;
-        },
-        restoreComparedMetadataFromUrl() {
-            const urlParams = this.$route.query;
+watch(
+    () => route.query,
+    (newQuery, oldQuery = {}) => {
+        if (route.name !== "collocation") return;
 
-            // Clear existing values in-place to preserve reactive reference
-            for (const key of Object.keys(this.comparedMetadataValues)) {
-                delete this.comparedMetadataValues[key];
-            }
+        // Sync mode + biblio cheaply on every route change.
+        const newMode = newQuery.collocation_method || "frequency";
+        if (newMode !== mode.value) mode.value = newMode;
+        if (newMode === "compare") restoreComparedMetadataFromUrl();
+        biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
 
-            // Process compare_ prefixed parameters
-            for (const [key, value] of Object.entries(urlParams)) {
-                if (key.startsWith('compare_')) {
-                    const field = key.substring(8); // Remove 'compare_' prefix
-                    this.comparedMetadataValues[field] = value;
-                }
-            }
-        },
-        getOtherCollocates() {
-            this.wholeCorpus = Object.keys(this.comparedMetadataValues).length === 0;
-            this.collocMethod = 'compare';
-            this.updateCollocationUrl();
-            this.comparedMetadataValues = dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
-            let params = {
-                q: this.formData.q,
-                colloc_filter_choice: this.formData.colloc_filter_choice,
-                colloc_within: this.formData.colloc_within,
-                filter_frequency: this.formData.filter_frequency,
-                q_attribute: this.formData.q_attribute || "",
-                q_attribute_value: this.formData.q_attribute_value || "",
-                ...this.comparedMetadataValues,
-            };
-            this.comparativeSearchStarted = true;
-            this.compareSearching = true;
-            this.otherCollocates = [];
-            this.$http
-                .get(`${this.$dbUrl}/reports/collocation.py`, {
-                    params: paramsFilter(params),
-                })
-                .then((response) => {
-                    this.compareSearching = false;
-                    if (response.data.results_length) {
-                        this.otherCollocates = extractSurfaceFromCollocate(response.data.collocates);
-                        this.comparativeCollocations(response.data.file_path);
-                    }
-                })
-                .catch((error) => {
-                    this.compareSearching = false;
-                    debug(this, error);
-                });
-        },
-        comparativeCollocations(otherFilePath) {
-            this.comparativeSearchStarted = true;
-            this.comparedMetadataValues = dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.comparedMetadataValues)
-            this.otherBiblio = buildBiblioCriteria(this.$philoConfig, this.comparedMetadataValues, this.comparedMetadataValues)
-            this.overRepresented = [];
-            this.underRepresented = [];
-            this.$http.get(`${this.$dbUrl}/scripts/comparative_collocations.py`, {
-                params: {
-                    primary_file_path: this.collocatesFilePath,
-                    other_file_path: otherFilePath,
-                    whole_corpus: this.wholeCorpus,
-                },
-            }).then((response) => {
-                this.overRepresented = extractSurfaceFromCollocate(response.data.top);
-                this.underRepresented = extractSurfaceFromCollocate(response.data.bottom);
-                this.relativeFrequencies = { top: this.overRepresented, bottom: this.underRepresented };
-            }).catch((error) => {
-                debug(this, error);
-            });
-        },
-        similarCollocDistributions(field) {
-            this.similarFieldSelected = field.value;
-            this.similarSearching = true;
-            this.similarSearchProgress = this.$t("collocation.similarCollocGatheringMessage");
-            this.similarDistributions = [];
-            this.collocMethod = 'similar';
-            this.updateCollocationUrl();
-            this.$http
-                .get(`${this.$dbUrl}/reports/collocation.py`, {
-                    params: {
-                        q: this.formData.q,
-                        colloc_filter_choice: this.formData.colloc_filter_choice,
-                        colloc_within: this.formData.colloc_within,
-                        filter_frequency: this.formData.filter_frequency,
-                        map_field: field.value,
-                        q_attribute: this.formData.q_attribute || "",
-                        q_attribute_value: this.formData.q_attribute_value || "",
-                    }
-                }).then((response) => {
-                    this.getMostSimilarCollocDistribution(response.data.file_path);
-                }).catch((error) => {
-                    this.similarSearching = false;
-                    debug(this, error);
-                });
-        },
-        getMostSimilarCollocDistribution(filePath) {
-            this.similarSearchProgress = this.$t("collocation.similarCollocCompareMessage")
-            this.$http.get(`${this.$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
-                params: {
-                    primary_file_path: this.collocatesFilePath,
-                    file_path: filePath,
-                },
-            }).then((response) => {
-                this.similarDistributions = response.data.similar
-                this.cachedDistributions = filePath
-                this.similarSearching = false
-            }).catch((error) => {
-                this.similarSearching = false;
-                debug(this, error);
-            });
-        },
-        similarToComparative(field) {
-            this.$http.get(`${this.$dbUrl}/scripts/get_collocate_distribution.py`, {
-                params: {
-                    file_path: this.cachedDistributions,
-                    field: field
-                }
-            }).then((response) => {
-                this.comparedMetadataValues[this.similarFieldSelected] = field
-                this.collocMethod = "compare";
-                this.otherCollocates = extractSurfaceFromCollocate(response.data.collocates);
-                this.wholeCorpus = false
-                this.comparativeCollocations(response.data.file_path)
-            }).catch((error) => {
-                debug(this, error);
-            });
-        },
-        getCollocatesOverTime() {
-            this.collocationTimePeriods = [];
-            this.searching = true;
-            this.collocMethod = 'timeSeries';
-            this.updateCollocationUrl();
-            const interval = parseInt(this.timeSeriesInterval);
-            let params = {
-                ...paramsFilter(this.formData),
-                time_series_interval: interval,
-                map_field: "year",
-            };
+        // Bail out if only the view changed (tab click, similarity dropdown
+        // selection, time-series interval, etc.). Primary results stay valid;
+        // mode-specific secondary fetches are user-triggered via their buttons.
+        if (!shouldRefetchOnQueryChange(newQuery, oldQuery)) return;
 
-            // Handle year range: expand by one interval on each side for context
-            if (this.formData.year) {
-                const yearParts = this.formData.year.split('-');
-                if (yearParts.length === 2) {
-                    const [startYear, endYear] = yearParts;
-                    if (startYear && endYear) {
-                        params.year = `${parseInt(startYear) - interval}-${parseInt(endYear) + interval}`;
-                    } else if (startYear) {
-                        params.year = `${parseInt(startYear) - interval}-`;
-                    } else if (endYear) {
-                        params.year = `-${parseInt(endYear) + interval}`;
-                    }
-                } else if (yearParts[0]) {
-                    const year = parseInt(yearParts[0]);
-                    params.year = `${year - interval}-${year + interval}`;
-                }
-            }
+        // Real search params changed — refetch the right path for the active mode.
+        if (newMode === "timeSeries") {
+            getCollocatesOverTime();
+        } else {
+            fetchResults();  // .then() runs runPostFetchModeAction for similar/compare
+        }
+    }
+);
 
-            this.$http.get(`${this.$dbUrl}/reports/collocation.py`, {
-                params: params
-            }).then((response) => {
-                this.searching = false;
-                this.collocationTimeSeries(response.data.file_path, 0);
-            }).catch((error) => {
-                this.searching = false;
-                debug(this, error);
-            });
-        },
-        collocationTimeSeries(filePath, periodNumber) {
-            this.collocationTimePeriods[periodNumber] = { year: periodNumber, done: false }
-            this.$http.get(`${this.$dbUrl}/scripts/collocation_time_series.py`, {
-                params: {
-                    file_path: filePath,
-                    year_interval: this.timeSeriesInterval,
-                    period_number: periodNumber
-                }
-            }).then((response) => {
-                if (response.data.period) {
-                    const period = response.data.period;
-                    const year = period.year;
-                    const interval = parseInt(this.timeSeriesInterval);
+watch(searchableMetadata, (newVal) => buildMetadata(newVal), { deep: true });
 
-                    const frequent = extractSurfaceFromCollocate(period.collocates.frequent || []);
-                    const distinctive = extractSurfaceFromCollocate(period.collocates.distinctive || []);
+// ── Lifecycle: register and tear down the global click listener ──────────────
+// (Fixes the leak in the previous Options-API implementation, which never
+// removed this listener — every Collocation mount accumulated another one.)
+function onDocumentClick() {
+    clearAutoCompletePopup();
+}
+onMounted(() => {
+    document.addEventListener("click", onDocumentClick);
+});
+onBeforeUnmount(() => {
+    document.removeEventListener("click", onDocumentClick);
+});
 
-                    this.collocationTimePeriods[periodNumber] = {
-                        year: year,
-                        frequent: frequent,
-                        distinctive: distinctive,
-                        periodYear: `${year}-${year + interval}`,
-                        showDistinctive: true,  // Default to showing distinctive collocates
-                        done: true
-                    };
-                }
+// ── Initial dispatch (replaces created()) ────────────────────────────────────
+formData.value.report = "collocation";
+currentReport.value = "collocation";
+buildMetadata(searchableMetadata.value);
+biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
+mode.value = route.query.collocation_method || "frequency";
 
-                if (!response.data.done) {
-                    periodNumber += 1;
-                    this.collocationTimeSeries(filePath, periodNumber);
-                }
-            }).catch((error) => {
-                debug(this, error);
-            });
-        },
-
-        getDistinctiveCollocates(period) {
-            if (!period) {
-                console.log('Period is null/undefined');  // Debug missing period
-                return [];
-            }
-            const result = this.distinctiveView === 'prev' ?
-                period.distinctive_prev :
-                period.distinctive_next;
-            console.log('Distinctive collocates for period:', {
-                view: this.distinctiveView,
-                result: result
-            });  // Debug result
-            return result;
-        },
-        collocateTimeSeriesClick(period) {
-            let localClick = (item) => {
-                let q = this.collocateCleanup(item)
-                let method = "sentence_unordered"
-                if (this.formData.colloc_within == "n") {
-                    method = "proxy_unordered"
-                }
-                this.$router.push(
-                    paramsToRoute({
-                        ...this.formData,
-                        report: "concordance",
-                        q: q,
-                        method: method,
-                        year: period
-                    })
-                );
-            }
-            return localClick
-        },
-    },
-};
+switch (mode.value) {
+    case "frequency":
+        fetchResults();
+        break;
+    case "similar":
+        setMode("similar", { updateUrl: false });
+        fetchResults();
+        break;
+    case "timeSeries":
+        setMode("timeSeries", { updateUrl: false });
+        timeSeriesInterval.value = route.query.time_series_interval || 10;
+        getCollocatesOverTime();
+        break;
+    case "compare":
+        setMode("compare", { updateUrl: false });
+        restoreComparedMetadataFromUrl();
+        fetchResults();
+        break;
+}
 </script>
 
 <style lang="scss" scoped>
