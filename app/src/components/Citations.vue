@@ -22,18 +22,15 @@
         </span>
     </cite>
 </template>
-<script>
-export default {
-    name: "citations-generator",
-    props: {
-        citation: Array | Object,
-        separator: String,
-        resultNumber: {
-            type: [String, Number],
-            default: ""
-        }
+<script setup>
+defineProps({
+    citation: [Array, Object],
+    separator: String,
+    resultNumber: {
+        type: [String, Number],
+        default: "",
     },
-};
+});
 </script>
 <style scoped lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;

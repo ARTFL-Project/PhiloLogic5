@@ -159,10 +159,7 @@
         </div>
     </div>
 </template>
-<script>
-export default {
-    name: "SearchTips",
-};
+<script setup>
 </script>
 <style lang="scss" scoped>
 @use "../assets/styles/theme.module.scss" as theme;

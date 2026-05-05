@@ -143,84 +143,66 @@
     </header>
 </template>
 
-<script>
+<script setup>
+import { computed, inject, reactive, watch } from "vue";
+import { useRoute } from "vue-router";
 import citations from "./Citations";
 import LocaleChanger from "./LocaleChanger.vue";
-export default {
-    name: "Header-component",
-    components: { citations, LocaleChanger },
-    inject: ["$http"],
-    data() {
-        return {
-            philoConfig: this.$philoConfig,
-            date: this.getDate(),
-            docCitation: { citation: [], link: this.$philoConfig.academic_citation.link },
-        };
-    },
-    created() {
-        this.getDocCitation();
-    },
-    watch: {
-        $route() {
-            this.getDocCitation();
-        },
-    },
-    computed: {
-        hasActionsRow() {
-            return this.philoConfig.academic_citation.collection.length > 0 || this.philoConfig.report_error_link.length > 0;
-        },
-    },
-    methods: {
-        getDate() {
-            let today = new Date();
-            let months = [
-                "January",
-                "February",
-                "March",
-                "April",
-                "May",
-                "June",
-                "July",
-                "August",
-                "September",
-                "October",
-                "November",
-                "December",
-            ];
-            let month = months[today.getMonth()];
-            return `${today.getDate()} ${month}, ${today.getFullYear()}`;
-        },
-        getDocCitation() {
-            let textObjectURL = this.$route.params;
-            if ("pathInfo" in textObjectURL) {
-                let philoID = textObjectURL.pathInfo.split("/").join(" ");
-                this.$http
-                    .get(`${this.$dbUrl}/scripts/get_academic_citation.py?philo_id=${philoID}`)
-                    .then((response) => {
-                        this.docCitation.citation = response.data.citation;
-                        this.docCitation.link = response.data.link;
-                    });
-            } else {
-                this.docCitation.citation = [];
-            }
-        },
-        stripHtmlTags(html) {
-            if (!html) return '';
-            // Create a temporary element to extract text content
-            const div = document.createElement('div');
-            div.innerHTML = html;
-            return div.textContent || div.innerText || '';
-        },
-        skipToMainContent() {
-            // Find the main content element and scroll to it
-            const mainContent = document.getElementById('main-content');
-            if (mainContent) {
-                mainContent.scrollIntoView({ behavior: 'smooth' });
-                mainContent.focus({ preventScroll: true });
-            }
-        },
-    },
-};
+
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+
+const docCitation = reactive({
+    citation: [],
+    link: philoConfig.academic_citation.link,
+});
+
+const hasActionsRow = computed(() =>
+    philoConfig.academic_citation.collection.length > 0 ||
+    philoConfig.report_error_link.length > 0
+);
+
+const date = (() => {
+    const today = new Date();
+    const months = [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December",
+    ];
+    return `${today.getDate()} ${months[today.getMonth()]}, ${today.getFullYear()}`;
+})();
+
+function getDocCitation() {
+    if ("pathInfo" in route.params) {
+        const philoID = route.params.pathInfo.split("/").join(" ");
+        $http
+            .get(`${$dbUrl}/scripts/get_academic_citation.py?philo_id=${philoID}`)
+            .then((response) => {
+                docCitation.citation = response.data.citation;
+                docCitation.link = response.data.link;
+            });
+    } else {
+        docCitation.citation = [];
+    }
+}
+
+function stripHtmlTags(html) {
+    if (!html) return "";
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    return div.textContent || div.innerText || "";
+}
+
+function skipToMainContent() {
+    const mainContent = document.getElementById("main-content");
+    if (mainContent) {
+        mainContent.scrollIntoView({ behavior: "smooth" });
+        mainContent.focus({ preventScroll: true });
+    }
+}
+
+watch(() => route.params, getDocCitation, { immediate: true });
 </script>
 
 <style lang="scss" scoped>

@@ -56,26 +56,19 @@
         </div>
     </div>
 </template>
-<script>
-export default {
-    name: "BibliographyCriteria",
-    props: {
-        biblio: Object,
-        queryReport: String,
-        resultsLength: Number,
-        start_date: [String, Number, null],
-        end_date: [String, Number, null],
-        removeMetadata: Function || null,
-    },
-    computed: {
-        removable() {
-            if (typeof this.removeMetadata === "function") {
-                return true
-            }
-            return false
-        },
-    }
-}
+<script setup>
+import { computed } from "vue";
+
+const props = defineProps({
+    biblio: Object,
+    queryReport: String,
+    resultsLength: Number,
+    start_date: [String, Number],
+    end_date: [String, Number],
+    removeMetadata: Function,
+});
+
+const removable = computed(() => typeof props.removeMetadata === "function");
 </script>
 <style scoped lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;
