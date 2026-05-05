@@ -79,72 +79,56 @@
     </div>
 </template>
 
-<script>
-import { mapStores, mapWritableState } from "pinia";
+<script setup>
+import { inject } from "vue";
+import { storeToRefs } from "pinia";
 import { useMainStore } from "../stores/main";
 import { paramsToUrlString } from "../utils.js";
 
-export default {
-    name: "ExportResults",
-    computed: {
-        ...mapWritableState(useMainStore, ["formData"]),
-        ...mapStores(useMainStore)
-    },
-    inject: ["$http"],
-    data() {
-        const store = useMainStore();
-        return {
-            store
-        };
-    },
-    methods: {
-        getResults(format, filterHtml, event) {
-            // Add loading state to the specific button that was clicked
-            const clickedButton = event ? event.target : null;
-            if (clickedButton) {
-                clickedButton.disabled = true;
-                const originalHTML = clickedButton.innerHTML;
-                clickedButton.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>Exporting ${format.toUpperCase()}...`;
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const store = useMainStore();
+const { formData } = storeToRefs(store);
 
-                this.$http
-                    .get(
-                        `${this.$dbUrl}/scripts/export_results.py?${paramsToUrlString({
-                            ...this.formData,
-                            filter_html: filterHtml.toString(),
-                            output_format: format,
-                            report: "",
-                        })}&report=${this.formData.report}`
-                    )
-                    .then((response) => {
-                        let text = "";
-                        let element = document.createElement("a");
-                        let filename = `${paramsToUrlString({ ...this.formData })}.${format}`;
-                        if (format == "json") {
-                            text = JSON.stringify(response.data);
-                        } else if (format == "csv") {
-                            text = response.data;
-                        }
-                        element.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(text));
-                        element.setAttribute("download", filename);
-                        element.style.display = "none";
-                        document.body.appendChild(element);
-                        element.click();
-                        document.body.removeChild(element);
-                    })
-                    .catch((error) => {
-                        console.error('Export failed:', error);
-                    })
-                    .finally(() => {
-                        // Reset button state
-                        if (clickedButton) {
-                            clickedButton.disabled = false;
-                            clickedButton.innerHTML = originalHTML;
-                        }
-                    });
-            }
-        },
-    },
-};
+function getResults(format, filterHtml, event) {
+    const clickedButton = event ? event.target : null;
+    if (!clickedButton) return;
+
+    clickedButton.disabled = true;
+    const originalHTML = clickedButton.innerHTML;
+    clickedButton.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>Exporting ${format.toUpperCase()}...`;
+
+    $http
+        .get(
+            `${$dbUrl}/scripts/export_results.py?${paramsToUrlString({
+                ...formData.value,
+                filter_html: filterHtml.toString(),
+                output_format: format,
+                report: "",
+            })}&report=${formData.value.report}`
+        )
+        .then((response) => {
+            let text = "";
+            const filename = `${paramsToUrlString({ ...formData.value })}.${format}`;
+            if (format == "json") text = JSON.stringify(response.data);
+            else if (format == "csv") text = response.data;
+
+            const element = document.createElement("a");
+            element.setAttribute("href", "data:text/plain;charset=utf-8," + encodeURIComponent(text));
+            element.setAttribute("download", filename);
+            element.style.display = "none";
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+        })
+        .catch((error) => {
+            console.error("Export failed:", error);
+        })
+        .finally(() => {
+            clickedButton.disabled = false;
+            clickedButton.innerHTML = originalHTML;
+        });
+}
 </script>
 
 <style scoped>

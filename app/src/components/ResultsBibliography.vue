@@ -42,80 +42,62 @@
     </div>
 </template>
 
-<script>
-import { mapWritableState } from "pinia";
-import variables from "../assets/styles/theme.module.scss";
+<script setup>
+import { computed, inject, onMounted, unref } from "vue";
+import { storeToRefs } from "pinia";
 import { useMainStore } from "../stores/main";
 import citations from "./Citations";
 import { copyObject, paramsToUrlString } from "../utils.js";
 
-export default {
-    name: "ResultsBibliography",
-    components: { citations },
-    inject: ["results"],
-    mounted() {
-        // Fix accessibility issue: remove aria-hidden when modal is shown
-        const modal = document.getElementById("results-bibliography");
-        if (modal && modal.closest('.modal')) {
-            modal.closest('.modal').removeAttribute('aria-hidden');
+const results = inject("results");
+const store = useMainStore();
+const { formData } = storeToRefs(store);
+
+const uniquedResults = computed(() => {
+    // The provider may be a ref or a plain value depending on the parent
+    // (Concordance/Bibliography/Kwic provide via computed; Aggregation via plain).
+    const list = unref(results);
+    if (
+        typeof list === "undefined" ||
+        typeof list[0] === "undefined" ||
+        typeof list[0].citation === "undefined"
+    ) {
+        return [];
+    }
+    // TODO: We should provide the object level of hits. This is a HACK.
+    const objectLevel = list[0].citation[0].object_type;
+    const uniqueResults = [];
+    let previousPhiloId = "";
+    for (const original of list) {
+        if (original.metadata_fields[`philo_${objectLevel}_id`] === previousPhiloId) {
+            uniqueResults[uniqueResults.length - 1].count++;
+            continue;
         }
-    },
-    computed: {
-        ...mapWritableState(useMainStore, ["formData"]),
-        themeColors() {
-            return {
-                linkColor: variables.linkColor,
-                buttonColor: variables.buttonColor,
-                cardHeaderColor: variables.cardHeaderColor,
-                headerColor: variables.headerColor,
-                color: variables.color
-            };
-        },
-        uniquedResults() {
-            //TODO: We should provide the object level of hits. This is a HACK.
-            if (
-                typeof this.results != "undefined" &&
-                typeof this.results[0] != "undefined" &&
-                typeof this.results[0].citation != "undefined"
-            ) {
-                // time series sends a results object which is incompatible
-                let objectLevel = this.results[0].citation[0].object_type;
-                let uniqueResults = [];
-                let previousPhiloId = "";
-                for (let result of this.results) {
-                    if (result.metadata_fields[`philo_${objectLevel}_id`] == previousPhiloId) {
-                        uniqueResults[uniqueResults.length - 1].count++;
-                        continue;
-                    }
-                    result = copyObject(result);
-                    let citation = [];
-                    for (let i = 0; i < result.citation.length; i++) {
-                        if (result.citation[i].object_type == objectLevel) {
-                            citation.push(result.citation[i]);
-                        }
-                    }
-                    result.citation = citation;
-                    result.count = 1;
-                    uniqueResults.push(result);
-                    previousPhiloId = result.metadata_fields[`philo_${objectLevel}_id`];
-                }
-                return uniqueResults;
-            } else {
-                return [];
-            }
-        },
-    },
-    methods: {
-        buildLink(title) {
-            return paramsToUrlString({
-                ...this.formData,
-                title: `"${title}"`,
-                start: 1,
-                end: this.formData.results_per_page,
-            });
-        },
-    },
-};
+        const result = copyObject(original);
+        result.citation = result.citation.filter(c => c.object_type === objectLevel);
+        result.count = 1;
+        uniqueResults.push(result);
+        previousPhiloId = result.metadata_fields[`philo_${objectLevel}_id`];
+    }
+    return uniqueResults;
+});
+
+function buildLink(title) {
+    return paramsToUrlString({
+        ...formData.value,
+        title: `"${title}"`,
+        start: 1,
+        end: formData.value.results_per_page,
+    });
+}
+
+onMounted(() => {
+    // Remove aria-hidden when modal is shown (accessibility fix)
+    const modal = document.getElementById("results-bibliography");
+    if (modal && modal.closest(".modal")) {
+        modal.closest(".modal").removeAttribute("aria-hidden");
+    }
+});
 </script>
 
 <style scoped lang="scss">

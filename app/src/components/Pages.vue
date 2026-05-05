@@ -15,124 +15,79 @@
         </div>
     </nav>
 </template>
-<script>
-import { mapWritableState } from "pinia";
+<script setup>
+import { ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
 import { useMainStore } from "../stores/main";
 import { paramsToRoute } from "../utils.js";
 
-export default {
-    name: "pages-component",
-    computed: {
-        ...mapWritableState(useMainStore, ["formData", "resultsLength", "totalResultsDone", "urlUpdate"]),
-    },
-    data() {
-        return { pages: [] };
-    },
-    watch: {
-        totalResultsDone(done) {
-            if (done) {
-                this.buildPages();
-            }
-        },
-        urlUpdate() {
-            this.buildPages();
-        },
-    },
-    methods: {
-        buildPages() {
-            let start = parseInt(this.$route.query.start);
-            let resultsPerPage = parseInt(this.formData.results_per_page) || 25;
-            let resultsLength = this.resultsLength;
+const route = useRoute();
+const router = useRouter();
+const store = useMainStore();
+const { formData, resultsLength, totalResultsDone, urlUpdate } = storeToRefs(store);
 
-            // first find out what page we are on currently.
-            let currentPage = Math.floor(start / resultsPerPage) + 1 || 1;
+const pages = ref([]);
 
-            // then how many total pages the query has
-            let totalPages = Math.floor(resultsLength / resultsPerPage);
-            let remainder = resultsLength % resultsPerPage;
-            if (remainder !== 0) {
-                totalPages += 1;
-            }
-            totalPages = totalPages || 1;
+function buildPages() {
+    const start = parseInt(route.query.start);
+    const resultsPerPage = parseInt(formData.value.results_per_page) || 25;
+    const total = resultsLength.value;
 
-            // construct the list of page numbers we will output.
-            let pages = [];
-            // up to four previous pages
-            let prev = currentPage - 4;
-            while (prev < currentPage) {
-                if (prev > 0) {
-                    pages.push(prev);
-                }
-                prev += 1;
-            }
-            // the current page
-            pages.push(currentPage);
-            // up to five following pages
-            let next = currentPage + 5;
-            while (next > currentPage) {
-                if (next < totalPages) {
-                    pages.push(next);
-                }
-                next -= 1;
-            }
-            // first and last if not already there
-            if (pages[0] !== 1) {
-                pages.unshift(1);
-            }
-            if (pages[-1] !== totalPages) {
-                pages.push(totalPages);
-            }
-            pages.sort(function (a, b) {
-                return a - b;
-            });
+    // Current page from start offset
+    const currentPage = Math.floor(start / resultsPerPage) + 1 || 1;
 
-            // now we construct the actual links from the page numbers
-            let pageObject = [];
-            let lastPageName = "";
-            let pageEnd, pageStart, active;
-            for (let page of pages) {
-                pageStart = page * resultsPerPage - resultsPerPage + 1;
-                pageEnd = page * resultsPerPage;
-                if (page === currentPage) {
-                    active = "active";
-                } else {
-                    active = "";
-                }
-                pageStart = resultsPerPage * (page - 1) + 1;
-                pageEnd = pageStart + resultsPerPage - 1;
-                if (pageEnd > resultsLength) {
-                    pageEnd = resultsLength;
-                }
-                if (page === 1 && pages.length > 1) {
-                    page = "First";
-                }
-                if (page === totalPages) {
-                    page = "Last";
-                }
-                if (page == lastPageName) {
-                    continue;
-                }
-                lastPageName = page;
-                pageObject.push({
-                    display: page,
-                    active: active,
-                    start: pageStart.toString(),
-                    end: pageEnd.toString(),
-                    range: `${pageStart}-${pageEnd}`,
-                });
-            }
-            this.pages = pageObject;
-        },
-        goToPage(start, end) {
-            let route = paramsToRoute({
-                ...this.formData,
-                start: start,
-                end: end,
-            });
-            return this.$router.push(route);
-        },
-    },
-};
+    // Total page count (rounded up)
+    let totalPages = Math.floor(total / resultsPerPage);
+    if (total % resultsPerPage !== 0) totalPages += 1;
+    totalPages = totalPages || 1;
+
+    // Build the page-number list: up to 4 previous, current, up to 5 following
+    const pageNumbers = [];
+    for (let prev = currentPage - 4; prev < currentPage; prev += 1) {
+        if (prev > 0) pageNumbers.push(prev);
+    }
+    pageNumbers.push(currentPage);
+    for (let next = currentPage + 5; next > currentPage; next -= 1) {
+        if (next < totalPages) pageNumbers.push(next);
+    }
+    if (pageNumbers[0] !== 1) pageNumbers.unshift(1);
+    if (pageNumbers[-1] !== totalPages) pageNumbers.push(totalPages);
+    pageNumbers.sort((a, b) => a - b);
+
+    // Build display objects
+    const pageObjects = [];
+    let lastPageName = "";
+    for (let page of pageNumbers) {
+        const pageStart = resultsPerPage * (page - 1) + 1;
+        let pageEnd = pageStart + resultsPerPage - 1;
+        if (pageEnd > total) pageEnd = total;
+        const active = page === currentPage ? "active" : "";
+
+        if (page === 1 && pageNumbers.length > 1) page = "First";
+        if (page === totalPages) page = "Last";
+        if (page == lastPageName) continue;
+        lastPageName = page;
+
+        pageObjects.push({
+            display: page,
+            active,
+            start: pageStart.toString(),
+            end: pageEnd.toString(),
+            range: `${pageStart}-${pageEnd}`,
+        });
+    }
+    pages.value = pageObjects;
+}
+
+function goToPage(start, end) {
+    return router.push(paramsToRoute({ ...formData.value, start, end }));
+}
+
+watch(totalResultsDone, (done) => {
+    if (done) buildPages();
+});
+watch(urlUpdate, buildPages);
 </script>
 <style scoped lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;

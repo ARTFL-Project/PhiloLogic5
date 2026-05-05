@@ -166,6 +166,10 @@ export const useMainStore = defineStore("main", {
             this.resultsLength = payload;
         },
 
+        toggleFacets() {
+            this.showFacets = !this.showFacets;
+        },
+
         updateStartEndDate(payload) {
             this.formData = {
                 ...this.formData,

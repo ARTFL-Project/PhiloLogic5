@@ -1,5 +1,5 @@
 <template>
-    <div class="word-cloud-container" role="region" :aria-label="wordCloudAriaLabel"
+    <div ref="rootRef" class="word-cloud-container" role="region" :aria-label="wordCloudAriaLabel"
         aria-describedby="word-cloud-instructions">
         <!-- Instructions for screen readers -->
         <div :id="`word-cloud-instructions-${label}`" class="visually-hidden">
@@ -20,236 +20,191 @@
     </div>
 </template>
 
-<script>
+<script setup>
+import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import variables from "../assets/styles/theme.module.scss";
 
-export default {
-    name: 'WordCloud',
-    props: {
-        wordWeights: {
-            type: Array,
-            required: true,
-            default: () => []
-        },
-        clickHandler: {
-            type: Function,
-            required: true
-        },
-        label: {
-            type: String,
-            required: false,
-            default: 'default'
-        }
-    },
-    computed: {
-        wordCloudAriaLabel() {
-            const wordCount = this.collocCloudWords.length;
-            return this.$t("wordCloud.ariaLabel", { count: wordCount });
-        },
+const props = defineProps({
+    wordWeights: { type: Array, required: true, default: () => [] },
+    clickHandler: { type: Function, required: true },
+    label: { type: String, required: false, default: "default" },
+});
 
-        statusMessage() {
-            if (this.collocCloudWords.length === 0) {
-                return this.$t("wordCloud.noWords");
-            }
-            return this.$t("wordCloud.wordsLoaded", { count: this.collocCloudWords.length });
-        },
+const { t } = useI18n();
 
-        colorCodes() {
-            let r, g, b;
+const rootRef = ref(null);
+const collocCloudWords = ref([]);
+const cloudColor = ref(variables.color || "#8e3232");
+const selectedWordIndex = ref(0);
 
-            // Use theme color with fallback
-            const color = this.cloudColor || variables.color || '#8e3232';
+const wordCloudAriaLabel = computed(() =>
+    t("wordCloud.ariaLabel", { count: collocCloudWords.value.length })
+);
 
-            // Check if the color is in RGB format
-            const rgbMatch = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+const statusMessage = computed(() => {
+    if (collocCloudWords.value.length === 0) return t("wordCloud.noWords");
+    return t("wordCloud.wordsLoaded", { count: collocCloudWords.value.length });
+});
 
-            if (rgbMatch) {
-                r = parseInt(rgbMatch[1]);
-                g = parseInt(rgbMatch[2]);
-                b = parseInt(rgbMatch[3]);
-            } else {
-                // Parse as hex
-                if (color.length == 4) {
-                    r = parseInt("0x" + color[1] + color[1]);
-                    g = parseInt("0x" + color[2] + color[2]);
-                    b = parseInt("0x" + color[3] + color[3]);
-                } else if (color.length == 7) {
-                    r = parseInt("0x" + color[1] + color[2]);
-                    g = parseInt("0x" + color[3] + color[4]);
-                    b = parseInt("0x" + color[5] + color[6]);
-                }
-            }
+const colorCodes = computed(() => {
+    let r, g, b;
+    const color = cloudColor.value || variables.color || "#8e3232";
+    const rgbMatch = color.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
 
-            let colorCodes = {};
-            var step = 0.03;
-            for (let i = 0; i < 21; i += 1) {
-                let rLocal = Math.max(0, Math.round(r - r * step * i));
-                let gLocal = Math.max(0, Math.round(g - g * step * i));
-                let bLocal = Math.max(0, Math.round(b - b * step * i));
-                let opacityStep = i * 0.03;
-                // Start at 0.82 to meet WCAG AA contrast requirement (4.5:1)
-                colorCodes[i] = `rgba(${rLocal}, ${gLocal}, ${bLocal}, ${0.82 + opacityStep})`;
-            }
-            return colorCodes;
-        }
-    },
-    data() {
+    if (rgbMatch) {
+        r = parseInt(rgbMatch[1]);
+        g = parseInt(rgbMatch[2]);
+        b = parseInt(rgbMatch[3]);
+    } else if (color.length === 4) {
+        r = parseInt("0x" + color[1] + color[1]);
+        g = parseInt("0x" + color[2] + color[2]);
+        b = parseInt("0x" + color[3] + color[3]);
+    } else if (color.length === 7) {
+        r = parseInt("0x" + color[1] + color[2]);
+        g = parseInt("0x" + color[3] + color[4]);
+        b = parseInt("0x" + color[5] + color[6]);
+    }
+
+    const codes = {};
+    const step = 0.03;
+    for (let i = 0; i < 21; i += 1) {
+        const rLocal = Math.max(0, Math.round(r - r * step * i));
+        const gLocal = Math.max(0, Math.round(g - g * step * i));
+        const bLocal = Math.max(0, Math.round(b - b * step * i));
+        // Start at 0.82 to meet WCAG AA contrast requirement (4.5:1)
+        codes[i] = `rgba(${rLocal}, ${gLocal}, ${bLocal}, ${0.82 + i * 0.03})`;
+    }
+    return codes;
+});
+
+function buildWordCloud() {
+    if (!props.wordWeights || props.wordWeights.length === 0) return;
+
+    const lowestValue = props.wordWeights[props.wordWeights.length - 1].count;
+    const highestValue = props.wordWeights[0].count;
+    const coeff = (highestValue - lowestValue) / 20;
+
+    const adjustWeight = (count) => parseInt(Math.round((count - lowestValue) / coeff));
+
+    const weightedWordList = props.wordWeights.map((wordObject) => {
+        const adjustedWeight = adjustWeight(wordObject.count);
         return {
-            collocCloudWords: [],
-            cloudColor: variables.color || '#8e3232', // Use theme color with fallback
-            selectedWordIndex: 0
+            collocate: wordObject.collocate,
+            surfaceForm: wordObject.surfaceForm,
+            weight: 1.1 + adjustedWeight / 10,
+            color: colorCodes.value[adjustedWeight],
+            originalCount: wordObject.count,
+            adjustedWeight,
+        };
+    });
+    weightedWordList.sort((a, b) => a.collocate.localeCompare(b.collocate));
+    collocCloudWords.value = weightedWordList;
+    selectedWordIndex.value = 0;
+}
+
+function getWordCloudStyle(word) {
+    return `font-size: ${word.weight}rem; color: ${word.color}`;
+}
+
+function getOriginalCount(word) {
+    return word.originalCount || 0;
+}
+
+function getSignificanceLevel(word) {
+    const weight = word.adjustedWeight || 0;
+    if (weight >= 15) return t("wordCloud.veryHigh");
+    if (weight >= 10) return t("wordCloud.high");
+    if (weight >= 5) return t("wordCloud.medium");
+    return t("wordCloud.low");
+}
+
+function getWordAriaLabel(word) {
+    return t("wordCloud.wordAriaLabel", {
+        word: word.collocate,
+        frequency: getOriginalCount(word),
+        significance: getSignificanceLevel(word),
+    });
+}
+
+function getWordTitle(word) {
+    return t("wordCloud.wordTooltip", {
+        word: word.collocate,
+        frequency: getOriginalCount(word),
+    });
+}
+
+function announceToScreenReader(message) {
+    const announcer = document.createElement("div");
+    announcer.setAttribute("aria-live", "assertive");
+    announcer.setAttribute("aria-atomic", "true");
+    announcer.className = "visually-hidden";
+    announcer.textContent = message;
+    document.body.appendChild(announcer);
+
+    setTimeout(() => {
+        if (document.body.contains(announcer)) {
+            document.body.removeChild(announcer);
         }
-    },
-    mounted() {
-        this.buildWordCloud();
-    },
-    watch: {
-        wordWeights: function () {
-            this.buildWordCloud();
-        }
-    },
-    methods: {
-        buildWordCloud() {
-            if (!this.wordWeights || this.wordWeights.length === 0) {
-                return;
+    }, 1000);
+}
+
+function announceWordSelection(word) {
+    announceToScreenReader(getWordAriaLabel(word));
+}
+
+function handleKeydown(event, word, index) {
+    const words = collocCloudWords.value;
+    let newIndex = index;
+
+    switch (event.key) {
+        case "ArrowRight":
+            newIndex = (index + 1) % words.length;
+            event.preventDefault();
+            break;
+        case "ArrowLeft":
+            newIndex = (index - 1 + words.length) % words.length;
+            event.preventDefault();
+            break;
+        case "ArrowDown":
+            // Move to next "row" (approximate)
+            newIndex = Math.min(index + 5, words.length - 1);
+            event.preventDefault();
+            break;
+        case "ArrowUp":
+            // Move to previous "row" (approximate)
+            newIndex = Math.max(index - 5, 0);
+            event.preventDefault();
+            break;
+        case "Home":
+            newIndex = 0;
+            event.preventDefault();
+            break;
+        case "End":
+            newIndex = words.length - 1;
+            event.preventDefault();
+            break;
+        case "Enter":
+        case " ":
+            props.clickHandler(word);
+            event.preventDefault();
+            return;
+    }
+
+    if (newIndex !== index) {
+        selectedWordIndex.value = newIndex;
+        nextTick(() => {
+            const wordButtons = rootRef.value?.querySelectorAll(".cloud-word");
+            if (wordButtons && wordButtons[newIndex]) {
+                wordButtons[newIndex].focus();
+                announceWordSelection(words[newIndex]);
             }
-            let lowestValue = this.wordWeights[this.wordWeights.length - 1].count;
-            let higestValue = this.wordWeights[0].count;
-            let diff = higestValue - lowestValue;
-            let coeff = diff / 20;
-
-            var adjustWeight = function (count) {
-                let adjustedCount = count - lowestValue;
-                let adjustedWeight = Math.round(adjustedCount / coeff);
-                adjustedWeight = parseInt(adjustedWeight);
-                return adjustedWeight;
-            };
-
-            let weightedWordList = [];
-            for (let wordObject of this.wordWeights) {
-                let adjustedWeight = adjustWeight(wordObject.count);
-                weightedWordList.push({
-                    collocate: wordObject.collocate,
-                    surfaceForm: wordObject.surfaceForm,
-                    weight: 1.1 + adjustedWeight / 10,
-                    color: this.colorCodes[adjustedWeight],
-                    originalCount: wordObject.count,
-                    adjustedWeight: adjustedWeight
-                });
-            }
-            weightedWordList.sort(function (a, b) {
-                return a.collocate.localeCompare(b.collocate);
-            });
-            this.collocCloudWords = weightedWordList;
-            this.selectedWordIndex = 0;
-        },
-
-        getWordCloudStyle(word) {
-            return `font-size: ${word.weight}rem; color: ${word.color}`;
-        },
-
-        getWordAriaLabel(word) {
-            const frequency = this.getOriginalCount(word);
-            const significance = this.getSignificanceLevel(word);
-            return this.$t("wordCloud.wordAriaLabel", {
-                word: word.collocate,
-                frequency: frequency,
-                significance: significance
-            });
-        },
-
-        getWordTitle(word) {
-            const frequency = this.getOriginalCount(word);
-            return this.$t("wordCloud.wordTooltip", {
-                word: word.collocate,
-                frequency: frequency
-            });
-        },
-
-        getOriginalCount(word) {
-            return word.originalCount || 0;
-        },
-
-        getSignificanceLevel(word) {
-            const weight = word.adjustedWeight || 0;
-            if (weight >= 15) return this.$t("wordCloud.veryHigh");
-            if (weight >= 10) return this.$t("wordCloud.high");
-            if (weight >= 5) return this.$t("wordCloud.medium");
-            return this.$t("wordCloud.low");
-        },
-
-        handleKeydown(event, word, index) {
-            const words = this.collocCloudWords;
-            let newIndex = index;
-
-            switch (event.key) {
-                case 'ArrowRight':
-                    newIndex = (index + 1) % words.length;
-                    event.preventDefault();
-                    break;
-                case 'ArrowLeft':
-                    newIndex = (index - 1 + words.length) % words.length;
-                    event.preventDefault();
-                    break;
-                case 'ArrowDown':
-                    // Move to next "row" (approximate)
-                    newIndex = Math.min(index + 5, words.length - 1);
-                    event.preventDefault();
-                    break;
-                case 'ArrowUp':
-                    // Move to previous "row" (approximate)
-                    newIndex = Math.max(index - 5, 0);
-                    event.preventDefault();
-                    break;
-                case 'Home':
-                    newIndex = 0;
-                    event.preventDefault();
-                    break;
-                case 'End':
-                    newIndex = words.length - 1;
-                    event.preventDefault();
-                    break;
-                case 'Enter':
-                case ' ':
-                    this.clickHandler(word);
-                    event.preventDefault();
-                    return;
-            }
-
-            // Focus the new word
-            if (newIndex !== index) {
-                this.selectedWordIndex = newIndex;
-                this.$nextTick(() => {
-                    const wordButtons = this.$el.querySelectorAll('.cloud-word');
-                    if (wordButtons[newIndex]) {
-                        wordButtons[newIndex].focus();
-                        this.announceWordSelection(words[newIndex]);
-                    }
-                });
-            }
-        },
-
-        announceWordSelection(word) {
-            const announcement = this.getWordAriaLabel(word);
-            this.announceToScreenReader(announcement);
-        },
-
-        announceToScreenReader(message) {
-            const announcer = document.createElement('div');
-            announcer.setAttribute('aria-live', 'assertive');
-            announcer.setAttribute('aria-atomic', 'true');
-            announcer.className = 'visually-hidden';
-            announcer.textContent = message;
-            document.body.appendChild(announcer);
-
-            setTimeout(() => {
-                if (document.body.contains(announcer)) {
-                    document.body.removeChild(announcer);
-                }
-            }, 1000);
-        }
+        });
     }
 }
+
+watch(() => props.wordWeights, buildWordCloud);
+onMounted(buildWordCloud);
 </script>
 
 <style lang="scss" scoped>

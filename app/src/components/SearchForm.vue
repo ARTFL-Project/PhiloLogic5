@@ -373,475 +373,432 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
     </div>
 </template>
 
-<script>
-import { inject, reactive } from "vue";
-import { useRoute } from "vue-router";
-import { mapStores, mapWritableState } from "pinia";
+<script setup>
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import { copyObject, dateRangeHandler, paramsToRoute } from "../utils.js";
 import { useAutocomplete } from "../composables/useAutocomplete";
-import MetadataFields from "./MetadataFields.vue";
-import SearchTips from "./SearchTips";
-import ProgressSpinner from "./ProgressSpinner";
-export default {
-    name: "SearchForm",
-    components: {
-        MetadataFields,
-        SearchTips,
-        ProgressSpinner,
+import MetadataFields from "./MetadataFields.vue";  // eslint-disable-line no-unused-vars
+import SearchTips from "./SearchTips";  // eslint-disable-line no-unused-vars
+import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
+
+// ── Injects, route, router, store, i18n ──────────────────────────────────────
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const router = useRouter();
+const { t } = useI18n();
+const store = useMainStore();
+const {
+    formData,
+    searching,
+    currentReport,
+    metadataUpdate,
+    searchableMetadata,
+} = storeToRefs(store);
+
+// ── Autocomplete (composable) ────────────────────────────────────────────────
+const metadataValues = reactive({});
+const autocomplete = useAutocomplete({
+    http: $http,
+    dbUrl: $dbUrl,
+    philoConfig,
+    metadataValues,
+    route,
+    onSelect(field, value) {
+        store.updateFormDataField({ key: field, value });
     },
-    setup() {
-        const $http = inject("$http");
-        const $dbUrl = inject("$dbUrl");
-        const $philoConfig = inject("$philoConfig");
-        const route = useRoute();
-        const store = useMainStore();
+});
+// Add "q" to the shared reactive objects for query term autocomplete
+autocomplete.autoCompleteResults.q = [];
+autocomplete.arrowCounters.q = -1;
+const {
+    autoCompleteResults,
+    arrowCounters,
+    autoCompletePosition,
+    onArrowDown,
+    onArrowUp,
+    clearAutoCompletePopup,
+    onChange: metadataOnChange,
+    setMetadataResult,
+} = autocomplete;
 
-        const metadataValues = reactive({});
+// ── Local state ──────────────────────────────────────────────────────────────
+const dictionary = philoConfig.dictionary;
+const metadataInputStyle = philoConfig.metadata_input_style;
+const reports = philoConfig.search_reports;
+const wordAttributes = philoConfig.word_attributes;
+const approximateValues = [
+    { text: t("searchForm.similarity", { n: 90 }), value: "90" },
+    { text: t("searchForm.similarity", { n: 80 }), value: "80" },
+];
+const methodOptions = [
+    { text: t("searchForm.within"), value: "proxy" },
+    { text: t("searchForm.withinExactly"), value: "exact_cooc" },
+    { text: t("common.sameSentence"), value: "sentence" },
+];
+const collocationOptions = ref([
+    { text: t("searchForm.mostFrequentTerms"), value: "frequency" },
+    { text: t("searchForm.stopwords"), value: "stopwords" },
+]);
+const aggregationOptions = philoConfig.aggregation_config.map((f) => ({
+    text: philoConfig.metadata_aliases[f.field] || f.field.charAt(0).toUpperCase() + f.field.slice(1),
+    value: f.field,
+}));
 
-        const autocomplete = useAutocomplete({
-            http: $http,
-            dbUrl: $dbUrl,
-            philoConfig: $philoConfig,
-            metadataValues,
-            route,
-            onSelect(field, value) {
-                store.updateFormDataField({ key: field, value });
-            },
+const headIndex = ref(0);
+const formOpen = ref(false);
+const approximateSelected = ref(false);
+const coocOrder = ref(true);
+const metadataDisplay = ref([]);
+const metadataChoiceValues = reactive({});
+const metadataChoiceChecked = reactive({});
+const metadataChoiceSelected = reactive({});
+const selectedSortValues = ref("rowid");  // eslint-disable-line no-unused-vars
+const showTips = ref(false);
+const queryTermTyped = ref(route.query.q || formData.value.q || "");
+const dateType = reactive({});
+const dateRange = reactive({});
+const attributeSelected = ref("");
+const wordAttributeSelected = ref("");
+const collocFilteringSelected = ref({ text: "", value: "" });
+
+// Internal handle (not reactive — just a setTimeout id)
+let qTimeout = null;
+let onDocumentClick = null;
+
+// ── Computed ─────────────────────────────────────────────────────────────────
+const statFieldSelected = computed(() => getLoadedStatField());  // eslint-disable-line no-unused-vars
+
+const sortValues = computed(() => {
+    const values = [{ value: "rowid", text: "select" }];
+    for (const fields of philoConfig.concordance_biblio_sorting) {
+        const label = fields.map((f) => philoConfig.metadata_aliases[f] || f);
+        values.push({ text: label.join(", "), value: fields });
+    }
+    return values;
+});
+
+const metadataDisplayFiltered = computed(() => {
+    let metadataInForm;
+    if (currentReport.value === "time_series") {
+        metadataInForm = metadataDisplay.value.filter(
+            (f) => philoConfig.time_series_year_field !== f.value
+        );
+    } else {
+        metadataInForm = copyObject(metadataDisplay.value);
+    }
+    if (!dictionary) return metadataInForm;
+    const localMetadataDisplay = copyObject(metadataInForm);
+    localMetadataDisplay.splice(headIndex.value, 1);
+    return localMetadataDisplay;
+});
+
+// ── Form sync helpers ────────────────────────────────────────────────────────
+function updateInputData() {
+    queryTermTyped.value = formData.value.q || "";
+    for (const field of philoConfig.metadata) {
+        const style = philoConfig.metadata_input_style[field];
+        if (style === "text") {
+            metadataValues[field] = formData.value[field];
+        } else if (style === "dropdown") {
+            metadataChoiceSelected[field] = formData.value[field];
+        } else if (style === "checkbox") {
+            metadataChoiceChecked[field] = formData.value[field].split(" | ");
+        }
+    }
+}
+
+function getLoadedStatField() {
+    const queryParam = formData.value?.group_by;
+    if (!queryParam) return "";
+    return (
+        philoConfig.metadata_aliases[queryParam] ||
+        queryParam.charAt(0).toUpperCase() + queryParam.slice(1)
+    );
+}
+
+// ── Toggle handlers ──────────────────────────────────────────────────────────
+function toggleCoocOrder() {           // eslint-disable-line no-unused-vars
+    coocOrder.value = !coocOrder.value;
+}
+
+function toggleApproximate() {         // eslint-disable-line no-unused-vars
+    approximateSelected.value = !approximateSelected.value;
+    store.updateFormDataField({
+        key: "approximate_ratio",
+        value: approximateSelected.value ? "90" : "",
+    });
+}
+
+function toggleForm() {
+    formOpen.value = !formOpen.value;
+}
+
+function selectApproximate(approximateValue) {     // eslint-disable-line no-unused-vars
+    store.updateFormDataField({ key: "approximate_ratio", value: approximateValue });
+}
+
+// ── Submit / reset / report change ───────────────────────────────────────────
+function onSubmit() {                  // eslint-disable-line no-unused-vars
+    formData.value.report = currentReport.value;
+    formOpen.value = false;
+    const metadataChoices = Object.fromEntries(
+        Object.entries(metadataChoiceChecked).map(([key, val]) => [key, val.join(" | ")])
+    );
+    const metadataSelected = Object.fromEntries(
+        Object.entries(metadataChoiceSelected).map(([key, val]) => [key, val])
+    );
+    // dateRangeHandler mutates metadataValues in place — no reassignment.
+    dateRangeHandler(metadataInputStyle, dateRange, dateType, metadataValues);
+    clearAutoCompletePopup();
+
+    if (currentReport.value === "collocation" && formData.value.colloc_within === "sent") {
+        store.updateFormDataField({ key: "method_arg", value: "" });
+    }
+    store.updateFormDataField({
+        key: "colloc_filter_choice",
+        value: collocFilteringSelected.value.value,
+    });
+    if (
+        formData.value.colloc_filter_choice === "frequency" ||
+        formData.value.colloc_filter_choice === "stopwords"
+    ) {
+        attributeSelected.value = "";
+        wordAttributeSelected.value = "";
+    }
+
+    router.push(
+        paramsToRoute({
+            ...formData.value,
+            ...metadataValues,
+            ...metadataChoices,
+            ...metadataSelected,
+            q: queryTermTyped.value.trim(),
+            start: "",
+            end: "",
+            byte: "",
+            start_date: formData.value.start_date,
+            end_date: formData.value.end_date,
+            q_attribute: attributeSelected.value,
+            q_attribute_value: wordAttributeSelected.value,
+            method_arg: formData.value.method_arg,
+        })
+    );
+}
+
+function onReset() {                   // eslint-disable-line no-unused-vars
+    store.resetFormDataToDefaults();
+    for (const field of philoConfig.metadata) {
+        metadataValues[field] = "";
+    }
+    queryTermTyped.value = "";
+    for (const m in metadataInputStyle) {
+        if (metadataInputStyle[m] === "date" || metadataInputStyle[m] === "int") {
+            dateType[m] = "exact";
+            dateRange[m] = { start: "", end: "" };
+        }
+    }
+}
+
+function reportChange(report) {        // eslint-disable-line no-unused-vars
+    formData.value.report = report === "landing_page" ? philoConfig.search_reports[0] : report;
+    if (report === "collocation") {
+        store.updateFormDataField({
+            key: "colloc_filter_choice",
+            value: philoConfig.stopwords.length > 0 ? "stopwords" : "frequency",
         });
+    }
+    currentReport.value = report;
+    if (!formOpen.value) toggleForm();
+}
 
-        // Add "q" to the shared reactive objects for query term autocomplete
-        autocomplete.autoCompleteResults.q = [];
-        autocomplete.arrowCounters.q = -1;
-
-        return {
-            metadataValues,
-            autoCompleteResults: autocomplete.autoCompleteResults,
-            arrowCounters: autocomplete.arrowCounters,
-            autoCompletePosition: autocomplete.autoCompletePosition,
-            onArrowDown: autocomplete.onArrowDown,
-            onArrowUp: autocomplete.onArrowUp,
-            clearAutoCompletePopup: autocomplete.clearAutoCompletePopup,
-            metadataOnChange: autocomplete.onChange,
-            setMetadataResult: autocomplete.setMetadataResult,
-        };
-    },
-    inject: ["$http"],
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "searching",
-            "currentReport",
-            "metadataUpdate",
-            "searchableMetadata"
-        ]),
-        ...mapStores(useMainStore),
-
-        statFieldSelected() {
-            return this.getLoadedStatField();
-        },
-
-        sortValues() {
-            let sortValues = [
-                {
-                    value: "rowid",
-                    text: "select",
-                },
-            ];
-            for (let fields of this.$philoConfig.concordance_biblio_sorting) {
-                let label = [];
-                for (let field of fields) {
-                    if (field in this.$philoConfig.metadata_aliases) {
-                        label.push(this.$philoConfig.metadata_aliases[field]);
-                    } else {
-                        label.push(field);
-                    }
-                }
-                sortValues.push({ text: label.join(", "), value: fields });
-            }
-            return sortValues;
-        },
-        metadataDisplayFiltered() {
-            let metadataInForm = [];
-            if (this.currentReport == "time_series") {
-                for (let metadataField of this.metadataDisplay) {
-                    if (this.$philoConfig.time_series_year_field !== metadataField.value) {
-                        metadataInForm.push(metadataField);
-                    }
-                }
-            } else {
-                metadataInForm = copyObject(this.metadataDisplay);
-            }
-            if (!this.dictionary) {
-                return metadataInForm;
-            } else {
-                let localMetadataDisplay = copyObject(metadataInForm);
-                localMetadataDisplay.splice(this.headIndex, 1);
-                return localMetadataDisplay;
-            }
-        },
-    },
-    data() {
-        // Access store directly during data() method
-        const store = useMainStore();
-
-        return {
-            dictionary: this.$philoConfig.dictionary,
-            metadataInputStyle: this.$philoConfig.metadata_input_style,
-            headIndex: 0,
-            formOpen: false,
-            approximateValues: [
-                { text: this.$t("searchForm.similarity", { n: 90 }), value: "90" },
-                { text: this.$t("searchForm.similarity", { n: 80 }), value: "80" },
-            ],
-            approximateSelected: false,
-            coocOrder: true,
-            methodOptions: [
-                { text: this.$t("searchForm.within"), value: "proxy" },
-                { text: this.$t("searchForm.withinExactly"), value: "exact_cooc" },
-                { text: this.$t("common.sameSentence"), value: "sentence" },
-            ],
-            metadataDisplay: [],
-            metadataChoiceValues: {},
-            metadataChoiceChecked: {},
-            metadataChoiceSelected: {},
-            collocationOptions: [
-                { text: this.$t("searchForm.mostFrequentTerms"), value: "frequency" },
-                { text: this.$t("searchForm.stopwords"), value: "stopwords" },
-            ],
-            selectedSortValues: "rowid",
-            aggregationOptions: this.$philoConfig.aggregation_config.map((f) => ({
-                text: this.$philoConfig.metadata_aliases[f.field] || f.field.charAt(0).toUpperCase() + f.field.slice(1),
-                value: f.field,
-            })),
-            showTips: false,
-            queryTermTyped: this.$route.query.q || store.formData.q || "",
-            dateType: {},
-            dateRange: {},
-            reports: this.$philoConfig.search_reports,
-            wordAttributes: this.$philoConfig.word_attributes,
-            attributeSelected: "",
-            wordAttributeSelected: "",
-            collocFilteringSelected: { text: "", value: "" },
-        };
-    },
-    watch: {
-        // call again the method if the route changes
-        $route: "updateInputData",
-        metadataUpdate(metadata) {
-            for (let field of metadata) {
-                if (this.$philoConfig.metadata_input_style[field] == "text") {
-                    this.metadataValues[field] = metadata[field];
-                } else if (this.$philoConfig.metadata_input_style[field] == "dropdown") {
-                    this.metadataChoiceSelected[field] = metadata[field];
-                } else if (this.$philoConfig.metadata_input_style[field] == "checkbox") {
-                    this.metadataChoiceChecked[field] = metadata[field].split(" | ");
-                }
-            }
-            for (let metadataField of this.$philoConfig.metadata) {
-                this.autoCompleteResults[metadataField] = [];
-                this.arrowCounters[metadataField] = -1;
-            }
-        },
-        coocOrder(newValue) {
-            this.mainStore.updateFormDataField({
-                key: "cooc_order",
-                value: newValue ? "yes" : "no"
-            });
-        },
-        'formData.cooc_order': {
-            immediate: true,
-            handler(newValue) {
-                this.coocOrder = newValue === "yes";
-            }
-        },
-        approximateSelected(newValue) {
-            this.mainStore.updateFormDataField({
-                key: "approximate",
-                value: newValue ? "yes" : "no"
-            });
-        },
-        'formData.approximate': {
-            immediate: true,
-            handler(newValue) {
-                this.approximateSelected = newValue === "yes";
-            }
-        }
-    },
-    created() {
-        for (let metadataField of this.$philoConfig.metadata) {
-            let metadataObj = {
-                label: metadataField[0].toUpperCase() + metadataField.slice(1),
-                value: metadataField,
-                example: this.$philoConfig.search_examples[metadataField],
-            };
-            if (metadataField in this.$philoConfig.metadata_aliases) {
-                metadataObj.label = this.$philoConfig.metadata_aliases[metadataField];
-            }
-            this.metadataDisplay.push(metadataObj);
-            if (this.formData[metadataField] != "") {
-                if (["text", "date", "int"].includes(this.$philoConfig.metadata_input_style[metadataField])) {
-                    this.metadataValues[metadataField] = this.formData[metadataField];
-                } else if (this.$philoConfig.metadata_input_style[metadataField] == "checkbox") {
-                    this.metadataChoiceChecked[metadataField] = this.formData[metadataField].split(" | ");
-                }
-            }
-            if (metadataField == "head") {
-                this.headIndex = this.metadataDisplay.length - 1;
-            }
-            if (this.$philoConfig.metadata_input_style[metadataField] == "dropdown") {
-                this.metadataChoiceSelected[metadataField] = this.formData[metadataField] || "";
-            }
-        }
-        for (let metadata in this.$philoConfig.metadata_choice_values) {
-            this.metadataChoiceValues[metadata] = [];
-            let choiceValue = this.$philoConfig.metadata_choice_values[metadata];
-            for (let i = 0; i < choiceValue.length; i++) {
-                let quotedValue = choiceValue[i].value;
-                this.metadataChoiceValues[metadata].push({
-                    text: choiceValue[i].label,
-                    value: quotedValue,
-                });
-            }
-        }
-        for (let metadata in this.metadataInputStyle) {
-            this.dateType[metadata] = "exact";
-            this.dateRange[metadata] = { start: "", end: "" };
-        }
-        if (Object.keys(this.$philoConfig.word_attributes).length > 0) {
-            // place the word attribute option at the second position
-            this.collocationOptions.splice(1, 0, { text: this.$t("searchForm.selectAttribute"), value: "attribute" })
-            // let attributeSelected = Object.keys(this.$philoConfig.word_attributes)[0];
-            // this.attributeSelected = this.$philoConfig.word_property_aliases[attributeSelected] || attributeSelected;
-        }
-        if (this.formData.colloc_filter_choice && this.formData.colloc_filter_choice.length > 0) {
-            for (let collocFilter of this.collocationOptions) {
-                if (collocFilter.value == this.formData.colloc_filter_choice) {
-                    this.collocFilteringSelected = collocFilter;
-                    if (this.collocFilteringSelected.value == "attribute") {
-                        this.attributeSelected = this.$philoConfig.word_property_aliases[this.$route.query.q_attribute] || this.$route.query.q_attribute;
-                        this.wordAttributeSelected = this.$route.query.q_attribute_value;
-                    }
-                    break
-                }
-            }
-        }
-        if (this.collocFilteringSelected.value == "") {
-            if (this.$philoConfig.stopwords.length > 0) {
-                this.collocFilteringSelected = this.collocationOptions.find(option => option.value === "stopwords"); // Find stopwords
-            } else {
-                this.collocFilteringSelected = this.collocationOptions.find(option => option.value === "frequency"); // Find frequency
-            }
-        }
-        this.searchableMetadata = { display: this.metadataDisplay, choiceValues: this.metadataChoiceValues, inputStyle: this.metadataInputStyle };
-    },
-    mounted() {
-
-        // Initialize queryTermTyped with formData.q if it's not already set from route
-        if (!this.queryTermTyped && this.formData?.q) {
-            this.queryTermTyped = this.formData.q;
-        }
-
-        this.$nextTick(() => {
-            document.addEventListener("click", () => {
-                this.clearAutoCompletePopup();
-            });
-        });
-    },
-    methods: {
-        toggleCoocOrder() {
-            this.coocOrder = !this.coocOrder;
-        },
-        toggleApproximate() {
-            this.approximateSelected = !this.approximateSelected;
-            if (!this.approximateSelected) {
-                this.mainStore.updateFormDataField({
-                    key: "approximate_ratio",
-                    value: ""
-                });
-            } else {
-                this.mainStore.updateFormDataField({
-                    key: "approximate_ratio",
-                    value: "90"
-                });
-            }
-        },
-        updateInputData() {
-            this.queryTermTyped = this.formData.q || "";
-            for (let field of this.$philoConfig.metadata) {
-                if (this.$philoConfig.metadata_input_style[field] == "text") {
-                    this.metadataValues[field] = this.formData[field];
-                } else if (this.$philoConfig.metadata_input_style[field] == "dropdown") {
-                    this.metadataChoiceSelected[field] = this.formData[field];
-                } else if (this.$philoConfig.metadata_input_style[field] == "checkbox") {
-                    this.metadataChoiceChecked[field] = this.formData[field].split(" | ");
-                }
-            }
-        },
-        getLoadedStatField() {
-            let queryParam = this.formData?.group_by;
-            if (queryParam) {
-                return (
-                    this.$philoConfig.metadata_aliases[queryParam] ||
-                    queryParam.charAt(0).toUpperCase() + queryParam.slice(1)
-                );
-            }
-            return "";
-        },
-        onSubmit() {
-            this.formData.report = this.currentReport;
-            this.formOpen = false;
-            let metadataChoices = Object.fromEntries(
-                Object.entries(this.metadataChoiceChecked).map(([key, val]) => [key, val.join(" | ")])
-            );
-            let metadataSelected = Object.fromEntries(
-                Object.entries(this.metadataChoiceSelected).map(([key, val]) => [key, val])
-            );
-            // dateRangeHandler mutates metadataValues in place; no reassignment
-            // (which would break the reactive proxy from setup()).
-            dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.metadataValues);
-            this.clearAutoCompletePopup();
-            if (this.currentReport == 'collocation' && this.formData.colloc_within == "sent") {
-                this.mainStore.updateFormDataField({
-                    key: "method_arg",
-                    value: ""
-                });
-            }
-            this.mainStore.updateFormDataField({
-                key: "colloc_filter_choice",
-                value: this.collocFilteringSelected.value
-            });
-            if (this.formData.colloc_filter_choice == "frequency" || this.formData.colloc_filter_choice == "stopwords") {
-                this.attributeSelected = "";
-                this.wordAttributeSelected = "";
-            }
-
-            this.$router.push(
-                paramsToRoute({
-                    ...this.formData,
-                    ...this.metadataValues,
-                    ...metadataChoices,
-                    ...metadataSelected,
-                    q: this.queryTermTyped.trim(),
-                    start: "",
-                    end: "",
-                    byte: "",
-                    start_date: this.formData.start_date,
-                    end_date: this.formData.end_date,
-                    q_attribute: this.attributeSelected,
-                    q_attribute_value: this.wordAttributeSelected,
-                    method_arg: this.formData.method_arg
+// ── Autocomplete handlers (q + metadata fan-out) ────────────────────────────
+function onChange(field) {              // eslint-disable-line no-unused-vars
+    if (field !== "q") {
+        metadataOnChange(field);
+        return;
+    }
+    if (!philoConfig.autocomplete.includes(field)) return;
+    if (qTimeout) clearTimeout(qTimeout);
+    qTimeout = setTimeout(() => {
+        const currentQueryTerm = route.query.q;
+        if (
+            queryTermTyped.value.replace('"', "").length > 1 &&
+            queryTermTyped.value !== currentQueryTerm
+        ) {
+            $http
+                .get(`${$dbUrl}/scripts/autocomplete_term.py`, {
+                    params: { term: queryTermTyped.value },
                 })
-            );
-        },
-        onReset() {
-            this.mainStore.resetFormDataToDefaults();
-            for (let field of this.$philoConfig.metadata) {
-                this.metadataValues[field] = "";
-            }
-            this.queryTermTyped = "";
-            for (let metadata in this.metadataInputStyle) {
-                if (this.metadataInputStyle[metadata] == "date" || this.metadataInputStyle[metadata] == "int") {
-                    this.dateType[metadata] = "exact";
-                    this.dateRange[metadata] = { start: "", end: "" };
-                }
-            }
-            this.$nextTick(() => {
-                this.show = true;
-            });
-        },
-        reportChange(report) {
-            if (report === "landing_page") {
-                this.formData.report = this.$philoConfig.search_reports[0];
-            } else {
-                this.formData.report = report;
-            }
+                .then((response) => {
+                    autoCompleteResults.q = response.data;
+                });
+        }
+    }, 200);
+}
 
-            if (report === "collocation") {
-                if (this.$philoConfig.stopwords.length > 0) {
-                    this.mainStore.updateFormDataField({
-                        key: "colloc_filter_choice",
-                        value: "stopwords"
-                    });
-                } else {
-                    this.mainStore.updateFormDataField({
-                        key: "colloc_filter_choice",
-                        value: "frequency"
-                    });
-                }
-            }
-            this.currentReport = report;
+function onEnter(field) {               // eslint-disable-line no-unused-vars
+    const result = autoCompleteResults[field][arrowCounters[field]];
+    setResult(result, field);
+}
 
-            if (!this.formOpen) {
-                this.toggleForm();
+function setResult(inputString, field) {
+    if (field !== "q") {
+        setMetadataResult(inputString, field);
+        return;
+    }
+    if (typeof inputString !== "undefined") {
+        const inputGroup = inputString.replace(/<[^>]+>/g, "").split(/(\s*\|\s*|\s*OR\s*|\s+|\s*NOT\s*)/);
+        let lastInput = inputGroup.pop();
+        if (lastInput.match(/"/)) {
+            if (lastInput.startsWith('"')) lastInput = lastInput.slice(1);
+            if (lastInput.endsWith('"')) lastInput = lastInput.slice(0, -1);
+        }
+        // word property autocomplete (no quotes) vs regular term (quoted)
+        queryTermTyped.value = lastInput.includes(":")
+            ? `${inputGroup.join("")}${lastInput}`
+            : `${inputGroup.join("")}"${lastInput.trim()}"`;
+    }
+    autoCompleteResults.q = [];
+    arrowCounters.q = -1;
+}
+
+// ── Watchers ─────────────────────────────────────────────────────────────────
+watch(() => route.fullPath, updateInputData);
+
+watch(metadataUpdate, (metadata) => {
+    for (const field of metadata) {
+        const style = philoConfig.metadata_input_style[field];
+        if (style === "text") {
+            metadataValues[field] = metadata[field];
+        } else if (style === "dropdown") {
+            metadataChoiceSelected[field] = metadata[field];
+        } else if (style === "checkbox") {
+            metadataChoiceChecked[field] = metadata[field].split(" | ");
+        }
+    }
+    for (const m of philoConfig.metadata) {
+        autoCompleteResults[m] = [];
+        arrowCounters[m] = -1;
+    }
+});
+
+// Two-way sync for cooc_order / approximate between local UI state and store
+watch(coocOrder, (newValue) => {
+    store.updateFormDataField({ key: "cooc_order", value: newValue ? "yes" : "no" });
+});
+watch(
+    () => formData.value.cooc_order,
+    (newValue) => { coocOrder.value = newValue === "yes"; },
+    { immediate: true }
+);
+
+watch(approximateSelected, (newValue) => {
+    store.updateFormDataField({ key: "approximate", value: newValue ? "yes" : "no" });
+});
+watch(
+    () => formData.value.approximate,
+    (newValue) => { approximateSelected.value = newValue === "yes"; },
+    { immediate: true }
+);
+
+// ── Lifecycle ────────────────────────────────────────────────────────────────
+onMounted(() => {
+    // Initialize queryTermTyped with formData.q if not set from route
+    if (!queryTermTyped.value && formData.value?.q) {
+        queryTermTyped.value = formData.value.q;
+    }
+
+    // Global click listener to clear autocomplete popup. Captured in a named
+    // function (not an arrow-on-the-fly) so we can remove it on unmount.
+    nextTick(() => {
+        onDocumentClick = () => clearAutoCompletePopup();
+        document.addEventListener("click", onDocumentClick);
+    });
+});
+
+onBeforeUnmount(() => {
+    if (onDocumentClick) {
+        document.removeEventListener("click", onDocumentClick);
+    }
+    if (qTimeout) clearTimeout(qTimeout);
+});
+
+// ── Initial dispatch (replaces created()) ────────────────────────────────────
+for (const metadataField of philoConfig.metadata) {
+    const metadataObj = {
+        label: philoConfig.metadata_aliases[metadataField] ||
+            metadataField[0].toUpperCase() + metadataField.slice(1),
+        value: metadataField,
+        example: philoConfig.search_examples[metadataField],
+    };
+    metadataDisplay.value.push(metadataObj);
+
+    if (formData.value[metadataField] !== "") {
+        const style = philoConfig.metadata_input_style[metadataField];
+        if (["text", "date", "int"].includes(style)) {
+            metadataValues[metadataField] = formData.value[metadataField];
+        } else if (style === "checkbox") {
+            metadataChoiceChecked[metadataField] = formData.value[metadataField].split(" | ");
+        }
+    }
+    if (metadataField === "head") {
+        headIndex.value = metadataDisplay.value.length - 1;
+    }
+    if (philoConfig.metadata_input_style[metadataField] === "dropdown") {
+        metadataChoiceSelected[metadataField] = formData.value[metadataField] || "";
+    }
+}
+
+for (const metadata in philoConfig.metadata_choice_values) {
+    metadataChoiceValues[metadata] = philoConfig.metadata_choice_values[metadata].map((c) => ({
+        text: c.label,
+        value: c.value,
+    }));
+}
+
+for (const m in metadataInputStyle) {
+    dateType[m] = "exact";
+    dateRange[m] = { start: "", end: "" };
+}
+
+if (Object.keys(philoConfig.word_attributes).length > 0) {
+    // Place word attribute option at the second position
+    collocationOptions.value.splice(1, 0, {
+        text: t("searchForm.selectAttribute"),
+        value: "attribute",
+    });
+}
+
+if (formData.value.colloc_filter_choice && formData.value.colloc_filter_choice.length > 0) {
+    for (const collocFilter of collocationOptions.value) {
+        if (collocFilter.value === formData.value.colloc_filter_choice) {
+            collocFilteringSelected.value = collocFilter;
+            if (collocFilteringSelected.value.value === "attribute") {
+                attributeSelected.value =
+                    philoConfig.word_property_aliases[route.query.q_attribute] ||
+                    route.query.q_attribute;
+                wordAttributeSelected.value = route.query.q_attribute_value;
             }
-        },
-        toggleForm() {
-            if (!this.formOpen) {
-                this.formOpen = true;
-            } else {
-                this.formOpen = false;
-            }
-        },
-        selectApproximate(approximateValue) {
-            this.mainStore.updateFormDataField({
-                key: "approximate_ratio",
-                value: approximateValue
-            });
-        },
-        onChange(field) {
-            if (field === "q") {
-                if (!this.$philoConfig.autocomplete.includes(field)) return;
-                if (this.qTimeout) clearTimeout(this.qTimeout);
-                this.qTimeout = setTimeout(() => {
-                    let currentQueryTerm = this.$route.query.q;
-                    if (
-                        this.queryTermTyped.replace('"', "").length > 1 &&
-                        this.queryTermTyped != currentQueryTerm
-                    ) {
-                        this.$http
-                            .get(`${this.$dbUrl}/scripts/autocomplete_term.py`, {
-                                params: { term: this.queryTermTyped },
-                            })
-                            .then((response) => {
-                                this.autoCompleteResults.q = response.data;
-                            });
-                    }
-                }, 200);
-            } else {
-                this.metadataOnChange(field);
-            }
-        },
-        onEnter(field) {
-            let result = this.autoCompleteResults[field][this.arrowCounters[field]];
-            this.setResult(result, field);
-        },
-        setResult(inputString, field) {
-            if (field === "q") {
-                if (typeof inputString != "undefined") {
-                    let inputGroup = inputString.replace(/<[^>]+>/g, "").split(/(\s*\|\s*|\s*OR\s*|\s+|\s*NOT\s*)/);
-                    let lastInput = inputGroup.pop();
-                    if (lastInput.match(/"/)) {
-                        if (lastInput.startsWith('"')) {
-                            lastInput = lastInput.slice(1);
-                        }
-                        if (lastInput.endsWith('"')) {
-                            lastInput = lastInput.slice(0, lastInput.length - 1);
-                        }
-                    }
-                    if (lastInput.includes(":")) { // word property autocomplete
-                        this.queryTermTyped = `${inputGroup.join("")}${lastInput}`; // No quotes
-                    } else {
-                        this.queryTermTyped = `${inputGroup.join("")}"${lastInput.trim()}"`;
-                    }
-                }
-                this.autoCompleteResults.q = [];
-                this.arrowCounters.q = -1;
-            } else {
-                this.setMetadataResult(inputString, field);
-            }
-        },
-    },
+            break;
+        }
+    }
+}
+
+if (collocFilteringSelected.value.value === "") {
+    const fallback = philoConfig.stopwords.length > 0 ? "stopwords" : "frequency";
+    collocFilteringSelected.value = collocationOptions.value.find((o) => o.value === fallback);
+}
+
+searchableMetadata.value = {
+    display: metadataDisplay.value,
+    choiceValues: metadataChoiceValues,
+    inputStyle: metadataInputStyle,
 };
 </script>
 

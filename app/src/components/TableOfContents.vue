@@ -90,105 +90,95 @@
         </div>
     </div>
 </template>
-<script>
-import { mapStores, mapWritableState } from "pinia";
+<script setup>
+import { computed, inject, ref, useTemplateRef } from "vue";
+import { useRoute } from "vue-router";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import { buildTocTree, debug } from "../utils.js";
-import citations from "./Citations";
+import Citations from "./Citations";
 import ProgressSpinner from "./ProgressSpinner";
 
-export default {
-    name: "tableOfContents",
-    components: {
-        citations,
-        ProgressSpinner,
-    },
-    inject: ["$http"],
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "textNavigationCitation",
-            "searching"
-        ]),
-        ...mapStores(useMainStore),
-        processedTocElements() {
-            return buildTocTree(this.tocElements);
-        }
-    },
-    data() {
-        return {
-            philoConfig: this.$philoConfig,
-            displayLimit: 200,
-            teiHeader: "",
-            tocObject: {},
-            tocElements: [],
-            showHeader: false,
-            headerButton: this.$t('toc.showHeader'),
-            isLoading: false,
-        };
-    },
-    created() {
-        this.fetchToC();
-    },
-    methods: {
-        fetchToC() {
-            this.searching = true;
-            this.$http
-                .get(`${this.$dbUrl}/reports/table_of_contents.py`, {
-                    params: { philo_id: this.$route.params.pathInfo },
-                })
-                .then((response) => {
-                    this.searching = false;
-                    this.tocObject = response.data;
-                    this.tocElements = response.data.toc;
-                    this.textNavigationCitation = response.data.citation;
-                })
-                .catch((error) => {
-                    this.searching = false;
-                    debug(this, error);
-                });
-        },
-        toggleHeader() {
-            if (!this.showHeader) {
-                if (this.teiHeader.length == 0) {
-                    this.$http
-                        .get(`${this.$dbUrl}/scripts/get_header.py`, {
-                            params: {
-                                philo_id: this.$route.params.pathInfo,
-                            },
-                        })
-                        .then((response) => {
-                            this.teiHeader = response.data;
-                            this.headerButton = this.$t('toc.hideHeader');
-                            this.showHeader = true;
-                        })
-                        .catch((error) => {
-                            debug(this, error);
-                        });
-                } else {
-                    this.headerButton = this.$t('toc.hideHeader');
-                    this.showHeader = true;
-                }
-            } else {
-                this.headerButton = this.$t('toc.showHeader');
-                this.showHeader = false;
-            }
-        },
-        handleScroll() {
-            const tocContent = this.$refs.tocContent;
-            if (!tocContent) return;
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const { t } = useI18n();
+const store = useMainStore();
+const { textNavigationCitation, searching } = storeToRefs(store);
 
-            const scrollPosition = tocContent.getBoundingClientRect().bottom - 200;
-            if (scrollPosition < window.innerHeight && !this.isLoading && this.displayLimit < this.processedTocElements.length) {
-                this.isLoading = true;
-                setTimeout(() => {
-                    this.displayLimit += 200;
-                    this.isLoading = false;
-                }, 100);
-            }
-        },
-    },
-};
+const tocContent = useTemplateRef("tocContent");
+const displayLimit = ref(200);
+const teiHeader = ref("");
+const tocObject = ref({});
+const tocElements = ref([]);
+const showHeader = ref(false);
+const headerButton = ref(t("toc.showHeader"));
+const isLoading = ref(false);
+
+const processedTocElements = computed(() => buildTocTree(tocElements.value));
+
+function fetchToC() {
+    searching.value = true;
+    $http
+        .get(`${$dbUrl}/reports/table_of_contents.py`, {
+            params: { philo_id: route.params.pathInfo },
+        })
+        .then((response) => {
+            searching.value = false;
+            tocObject.value = response.data;
+            tocElements.value = response.data.toc;
+            textNavigationCitation.value = response.data.citation;
+        })
+        .catch((error) => {
+            searching.value = false;
+            debug({ $options: { name: "tableOfContents" } }, error);
+        });
+}
+
+function toggleHeader() {
+    if (showHeader.value) {
+        headerButton.value = t("toc.showHeader");
+        showHeader.value = false;
+        return;
+    }
+    if (teiHeader.value.length === 0) {
+        $http
+            .get(`${$dbUrl}/scripts/get_header.py`, {
+                params: { philo_id: route.params.pathInfo },
+            })
+            .then((response) => {
+                teiHeader.value = response.data;
+                headerButton.value = t("toc.hideHeader");
+                showHeader.value = true;
+            })
+            .catch((error) => {
+                debug({ $options: { name: "tableOfContents" } }, error);
+            });
+    } else {
+        headerButton.value = t("toc.hideHeader");
+        showHeader.value = true;
+    }
+}
+
+function handleScroll() {
+    if (!tocContent.value) return;
+    const scrollPosition = tocContent.value.getBoundingClientRect().bottom - 200;
+    if (
+        scrollPosition < window.innerHeight &&
+        !isLoading.value &&
+        displayLimit.value < processedTocElements.value.length
+    ) {
+        isLoading.value = true;
+        setTimeout(() => {
+            displayLimit.value += 200;
+            isLoading.value = false;
+        }, 100);
+    }
+}
+
+fetchToC();
 </script>
 <style scoped lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;

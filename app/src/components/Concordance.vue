@@ -60,157 +60,117 @@
     </div>
 </template>
 
-<script>
-import gsap from "gsap";
-import { mapStores, mapWritableState } from "pinia";
-import { computed } from "vue";
+<script setup>
+import { computed, inject, provide, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
+import { useFadeTransition } from "../composables/useFadeTransition";
 import { debug, isOnlyFacetChange, paramsFilter } from "../utils.js";
-import citations from "./Citations";
-import facets from "./Facets";
-import pages from "./Pages";
-import ResultsSummary from "./ResultsSummary";
+import Citations from "./Citations";  // eslint-disable-line no-unused-vars
+import Facets from "./Facets";  // eslint-disable-line no-unused-vars
+import Pages from "./Pages";  // eslint-disable-line no-unused-vars
+import ResultsSummary from "./ResultsSummary";  // eslint-disable-line no-unused-vars
 
-export default {
-    name: "concordance-report",
-    components: {
-        citations,
-        ResultsSummary,
-        facets,
-        pages,
-    },
-    inject: ["$http"],
-    provide() {
-        return {
-            results: computed(() => this.results.results),
-        };
-    },
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "resultsLength",
-            "searching",
-            "currentReport",
-            "description",
-            "showFacets",
-            "urlUpdate",
-            "totalResultsDone"
-        ]),
-        ...mapStores(useMainStore),
-    },
-    data() {
-        return {
-            philoConfig: this.$philoConfig,
-            results: { description: { end: 0 }, results: [] },
-            searchParams: {},
-            unbindUrlUpdate: null,
-            start: 1,
-        };
-    },
-    created() {
-        this.formData.report = "concordance";
-        this.currentReport = "concordance";
-        this.fetchResults();
-    },
-    watch: {
-        urlUpdate(newUrl, oldUrl) {
-            console.log(newUrl.q, oldUrl.q);
-            if (!isOnlyFacetChange(newUrl, oldUrl)) {
-                this.fetchResults();
-            }
-        },
-    },
-    methods: {
-        fetchResults() {
-            this.totalResultsDone = false;
-            this.results = { description: { end: 0 } };
-            this.searchParams = { ...this.formData };
-            this.searching = true;
-            this.$http
-                .get(`${this.$dbUrl}/reports/concordance.py`, {
-                    params: paramsFilter(this.searchParams),
-                })
-                .then((response) => {
-                    this.results = response.data;
-                    this.mainStore.updateResultsLength(parseInt(response.data.results_length));
-                    if (response.data.query_done) {
-                        this.totalResultsDone = true;
-                    }
-                    this.searching = false;
-                })
-                .catch((error) => {
-                    this.searching = false;
-                    this.error = error.toString();
-                    debug(this, error);
-                });
-        },
-        moreContext(index, event) {
-            let button = event.target.closest("button");
-            let textSpan = button.querySelector(".more-text");
-            let icon = button.querySelector(".more-icon");
-            let defaultNode = document.getElementsByClassName("default-length")[index];
-            let moreNode = document.getElementsByClassName("more-length")[index];
-            let resultNumber = this.results.description.start + index - 1;
-            let localParams = { hit_num: resultNumber, ...this.searchParams };
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const { t } = useI18n();
+const store = useMainStore();
+const {
+    formData,
+    searching,
+    currentReport,
+    urlUpdate,
+    showFacets,
+    totalResultsDone,
+} = storeToRefs(store);
 
-            const isExpanded = textSpan.innerHTML == this.$t("concordance.less") ||
-                icon.classList.contains("bi-dash-square");
+const results = ref({ description: { end: 0 }, results: [] });
+const searchParams = ref({});
 
-            if (!isExpanded) {
-                if (moreNode.innerHTML.length == 0) {
-                    this.$http
-                        .get(`${this.$dbUrl}/scripts/get_more_context.py`, {
-                            params: paramsFilter(localParams),
-                        })
-                        .then((response) => {
-                            let moreText = response.data;
-                            moreNode.innerHTML = moreText;
-                            defaultNode.style.display = "none";
-                            moreNode.style.display = "block";
-                            textSpan.innerHTML = this.$t("concordance.less");
-                            icon.classList.remove("bi-plus-square");
-                            icon.classList.add("bi-dash-square");
-                        })
-                        .catch((error) => {
-                            this.loading = false;
-                            this.error = error.toString();
-                            debug(this, error);
-                        });
-                } else {
-                    defaultNode.style.display = "none";
-                    moreNode.style.display = "block";
-                    textSpan.innerHTML = this.$t("concordance.less");
-                    icon.classList.remove("bi-plus-square");
-                    icon.classList.add("bi-dash-square");
-                }
-            } else {
-                defaultNode.style.display = "block";
-                moreNode.style.display = "none";
-                textSpan.innerHTML = this.$t("concordance.more");
-                icon.classList.remove("bi-dash-square");
-                icon.classList.add("bi-plus-square");
-            }
-        },
-        dicoLookup() { },
-        toggleFacets() {
-            if (this.showFacets) {
-                this.showFacets = false;
-            } else {
-                this.showFacets = true;
-            }
-        },
-        onBeforeEnter(el) {
-            el.style.opacity = 0;
-        },
-        onEnter(el, done) {
-            gsap.to(el, {
-                opacity: 1,
-                delay: el.dataset.index * 0.015,
-                onComplete: done,
+const { beforeEnter: onBeforeEnter, enter: onEnter } = useFadeTransition();
+
+provide("results", computed(() => results.value.results));
+
+function fetchResults() {
+    totalResultsDone.value = false;
+    results.value = { description: { end: 0 } };
+    searchParams.value = { ...formData.value };
+    searching.value = true;
+    $http
+        .get(`${$dbUrl}/reports/concordance.py`, {
+            params: paramsFilter(searchParams.value),
+        })
+        .then((response) => {
+            results.value = response.data;
+            store.updateResultsLength(parseInt(response.data.results_length));
+            if (response.data.query_done) totalResultsDone.value = true;
+            searching.value = false;
+        })
+        .catch((error) => {
+            searching.value = false;
+            debug({ $options: { name: "concordance-report" } }, error);
+        });
+}
+
+function moreContext(index, event) {
+    const button = event.target.closest("button");
+    const textSpan = button.querySelector(".more-text");
+    const icon = button.querySelector(".more-icon");
+    const defaultNode = document.getElementsByClassName("default-length")[index];
+    const moreNode = document.getElementsByClassName("more-length")[index];
+    const resultNumber = results.value.description.start + index - 1;
+    const localParams = { hit_num: resultNumber, ...searchParams.value };
+
+    const isExpanded =
+        textSpan.innerHTML === t("concordance.less") ||
+        icon.classList.contains("bi-dash-square");
+
+    if (isExpanded) {
+        defaultNode.style.display = "block";
+        moreNode.style.display = "none";
+        textSpan.innerHTML = t("concordance.more");
+        icon.classList.remove("bi-dash-square");
+        icon.classList.add("bi-plus-square");
+        return;
+    }
+
+    const showMore = () => {
+        defaultNode.style.display = "none";
+        moreNode.style.display = "block";
+        textSpan.innerHTML = t("concordance.less");
+        icon.classList.remove("bi-plus-square");
+        icon.classList.add("bi-dash-square");
+    };
+
+    if (moreNode.innerHTML.length === 0) {
+        $http
+            .get(`${$dbUrl}/scripts/get_more_context.py`, {
+                params: paramsFilter(localParams),
+            })
+            .then((response) => {
+                moreNode.innerHTML = response.data;
+                showMore();
+            })
+            .catch((error) => {
+                debug({ $options: { name: "concordance-report" } }, error);
             });
-        },
-    },
-};
+    } else {
+        showMore();
+    }
+}
+
+// Template binds @keyup="dicoLookup(...)" but the original implementation was
+// empty. Kept as a stub until a real implementation exists.
+function dicoLookup() {}
+
+watch(urlUpdate, (newUrl, oldUrl) => {
+    if (!isOnlyFacetChange(newUrl, oldUrl)) fetchResults();
+});
+
+formData.value.report = "concordance";
+currentReport.value = "concordance";
+fetchResults();
 </script>
 
 <style>

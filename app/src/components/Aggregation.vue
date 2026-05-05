@@ -66,175 +66,154 @@
         </div>
     </div>
 </template>
-<script>
-import { mapStores, mapWritableState } from "pinia";
+<script setup>
+import { computed, inject, provide, ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import { debug, deepEqual, paramsFilter, paramsToRoute } from "../utils.js";
 import citations from "./Citations";
 import ResultsSummary from "./ResultsSummary";
 
-export default {
-    name: "aggregation-report",
-    components: { citations, ResultsSummary },
-    inject: ["$http"],
-    provide() {
-        return {
-            results: this.aggregationResults,
-        };
-    },
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "resultsLength",
-            "aggregationCache",
-            "searching",
-            "currentReport",
-            "urlUpdate"
-        ]),
-        ...mapStores(useMainStore),
-        statsConfig() {
-            for (let fieldObject of this.$philoConfig.aggregation_config) {
-                if (fieldObject.field == this.$route.query.group_by) {
-                    return fieldObject;
-                }
-            }
-            return null;
-        },
-    },
-    data() {
-        return {
-            loading: false,
-            aggregationResults: [],
-            lastResult: 50,
-            infiniteId: 0,
-            groupedByField: this.$route.query.group_by,
-            breakUpFields: [],
-            breakUpFieldName: "",
-        };
-    },
-    created() {
-        this.formData.report = "aggregation";
-        this.currentReport = "aggregation";
-        this.fetchResults();
-    },
-    watch: {
-        urlUpdate() {
-            if (this.formData.report == "aggregation") {
-                this.groupedByField = this.$route.query.group_by;
-                this.fetchResults();
-            }
-        },
-    },
-    methods: {
-        fetchResults() {
-            if (
-                deepEqual(
-                    { ...this.aggregationCache.query, start: "", end: "" },
-                    { ...this.$route.query, start: "", end: "" }
-                )
-            ) {
-                this.aggregationResults = this.aggregationCache.results;
-                this.breakUpFields = this.aggregationResults.map((results) => ({
-                    show: false,
-                    results: results.break_up_field,
-                }));
-                this.resultsLength = this.aggregationCache.totalResults;
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const { t } = useI18n();
+const store = useMainStore();
+const {
+    formData,
+    resultsLength,
+    aggregationCache,
+    searching,
+    currentReport,
+    urlUpdate,
+} = storeToRefs(store);
+
+const aggregationResults = ref([]);
+const lastResult = ref(50);
+const infiniteId = ref(0);
+const groupedByField = ref(route.query.group_by);
+const breakUpFields = ref([]);
+const breakUpFieldName = ref("");
+
+const statsConfig = computed(() => {
+    for (const fieldObject of philoConfig.aggregation_config) {
+        if (fieldObject.field === route.query.group_by) return fieldObject;
+    }
+    return null;
+});
+
+provide("results", aggregationResults);
+
+function fetchResults() {
+    if (
+        deepEqual(
+            { ...aggregationCache.value.query, start: "", end: "" },
+            { ...route.query, start: "", end: "" }
+        )
+    ) {
+        aggregationResults.value = aggregationCache.value.results;
+        breakUpFields.value = aggregationResults.value.map((r) => ({
+            show: false,
+            results: r.break_up_field,
+        }));
+        resultsLength.value = aggregationCache.value.totalResults;
+        return;
+    }
+
+    searching.value = true;
+    $http
+        .get(`${$dbUrl}/reports/aggregation.py`, {
+            params: paramsFilter({ ...formData.value }),
+        })
+        .then((response) => {
+            infiniteId.value += 1;
+            aggregationResults.value = Object.freeze(buildStatResults(response.data.results));
+            lastResult.value = 50;
+            breakUpFields.value = aggregationResults.value.map((r) => ({
+                show: false,
+                results: r.break_up_field,
+                limit: 1000,
+            }));
+            const aliasName =
+                philoConfig.metadata_aliases[response.data.break_up_field] ||
+                response.data.break_up_field;
+            breakUpFieldName.value = aliasName ? aliasName.toLowerCase() : "";
+            resultsLength.value = response.data.total_results;
+            searching.value = false;
+        })
+        .catch((error) => {
+            searching.value = false;
+            debug({ $options: { name: "aggregation-report" } }, error);
+        });
+}
+
+function handleFullResultsScroll() {
+    const scrollPosition =
+        document.getElementById("aggregation-results").getBoundingClientRect().bottom - 200;
+    if (scrollPosition < window.innerHeight) {
+        lastResult.value += 50;
+    }
+}
+
+function buildStatResults(results) {
+    return results.map((result) => {
+        result.citation = buildCitationObject(
+            groupedByField.value,
+            statsConfig.value.field_citation,
+            result.metadata_fields
+        );
+        return result;
+    });
+}
+
+function buildCitationObject(fieldToLink, citationObject, metadataFields) {
+    const out = [];
+    for (const citation of citationObject) {
+        let label = metadataFields[citation.field];
+        if ((label == null || label.length === 0) && citation.field !== fieldToLink) {
+            continue;
+        }
+        if (citation.field === fieldToLink) {
+            const queryParams = { ...formData.value, start: "0", end: "25" };
+            if (label == null || label.length === 0) {
+                // Should be NULL, but that's broken in the philo lib
+                queryParams[fieldToLink] = "";
+                label = t("common.na");
             } else {
-                this.searching = true;
-                this.$http
-                    .get(`${this.$dbUrl}/reports/aggregation.py`, {
-                        params: paramsFilter({
-                            ...this.formData,
-                        }),
-                    })
-                    .then((response) => {
-                        this.infiniteId += 1;
-                        this.aggregationResults = Object.freeze(this.buildStatResults(response.data.results));
-                        this.lastResult = 50;
-                        this.breakUpFields = this.aggregationResults.map((results) => ({
-                            show: false,
-                            results: results.break_up_field,
-                            limit: 1000,
-                        }));
-                        this.breakUpFieldName =
-                            this.$philoConfig.metadata_aliases[response.data.break_up_field] ||
-                            response.data.break_up_field;
-                        if (typeof this.breakUpFieldName != "undefined" || this.breakUpFieldName != null) {
-                            this.breakUpFieldName = this.breakUpFieldName.toLowerCase();
-                        }
-                        this.resultsLength = response.data.total_results;
-                        this.searching = false;
-                    })
-                    .catch((error) => {
-                        this.searching = false;
-                        debug(this, error);
-                    });
+                queryParams[fieldToLink] = `"${label}"`;
             }
-        },
-        handleFullResultsScroll() {
-            let scrollPosition = document.getElementById("aggregation-results").getBoundingClientRect().bottom - 200;
-            if (scrollPosition < window.innerHeight) {
-                this.lastResult += 50;
+            if (fieldToLink !== groupedByField.value) {
+                queryParams[groupedByField.value] = `"${metadataFields[groupedByField.value]}"`;
             }
-        },
-        buildStatResults(results) {
-            let resultsWithCiteObject = [];
-            for (let result of results) {
-                result.citation = this.buildCitationObject(
-                    this.groupedByField,
-                    this.statsConfig.field_citation,
-                    result.metadata_fields
-                );
-                resultsWithCiteObject.push(result);
-            }
-            return resultsWithCiteObject;
-        },
-        buildCitationObject(fieldToLink, citationObject, metadataFields) {
-            let citations = [];
-            for (let citation of citationObject) {
-                let label = metadataFields[citation.field];
-                if (label == null || label.length == 0) {
-                    if (citation["field"] != fieldToLink) {
-                        continue;
-                    }
-                }
-                if (citation["field"] == fieldToLink) {
-                    let queryParams = {
-                        ...this.formData,
-                        start: "0",
-                        end: "25",
-                    };
-                    if (label == null || label.length == 0) {
-                        queryParams[fieldToLink] = ""; // Should be NULL, but that's broken in the philo lib
-                        label = this.$t("common.na");
-                    } else {
-                        queryParams[fieldToLink] = `"${label}"`;
-                    }
-                    if (fieldToLink != this.groupedByField) {
-                        queryParams[this.groupedByField] = `"${metadataFields[this.groupedByField]}"`;
-                    }
-                    let link = "";
-                    // workaround for broken NULL searches
-                    if (queryParams[fieldToLink].length) {
-                        link = paramsToRoute({
-                            ...queryParams,
-                            report: "concordance",
-                        });
-                        citations.push({ ...citation, href: link, label: label });
-                    } else {
-                        citations.push({ ...citation, href: "", label: label });
-                    }
-                } else {
-                    citations.push({ ...citation, href: "", label: label });
-                }
-            }
-            return citations;
-        },
-        toggleBreakUp(resultIndex) {
-            this.breakUpFields[resultIndex].show = !this.breakUpFields[resultIndex].show;
-        },
-    },
-};
+            // workaround for broken NULL searches
+            const href = queryParams[fieldToLink].length
+                ? paramsToRoute({ ...queryParams, report: "concordance" })
+                : "";
+            out.push({ ...citation, href, label });
+        } else {
+            out.push({ ...citation, href: "", label });
+        }
+    }
+    return out;
+}
+
+function toggleBreakUp(resultIndex) {
+    breakUpFields.value[resultIndex].show = !breakUpFields.value[resultIndex].show;
+}
+
+watch(urlUpdate, () => {
+    if (formData.value.report === "aggregation") {
+        groupedByField.value = route.query.group_by;
+        fetchResults();
+    }
+});
+
+formData.value.report = "aggregation";
+currentReport.value = "aggregation";
+fetchResults();
 </script>
 <style scoped lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;

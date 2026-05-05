@@ -81,8 +81,11 @@
         </div>
     </div>
 </template>
-<script>
-import { mapStores, mapWritableState } from "pinia";
+<script setup>
+import { computed, inject, nextTick, reactive, ref, useTemplateRef, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import {
     buildBiblioCriteria,
@@ -92,264 +95,224 @@ import {
     paramsFilter,
     paramsToRoute,
 } from "../utils.js";
-import BibliographyCriteria from "./BibliographyCriteria";
+import BibliographyCriteria from "./BibliographyCriteria";  // eslint-disable-line no-unused-vars
 
-export default {
-    name: "searchArguments",
-    components: {
-        BibliographyCriteria,
-    },
-    props: ["resultStart", "resultEnd"],
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "currentReport",
-            "resultsLength",
-            "description"
-        ]),
-        ...mapStores(useMainStore),
-        wordGroups() {
-            return this.description.termGroups;
-        },
-        collocationFilter() {
-            if (this.formData.colloc_filter_choice == 'attribute') {
-                return {
-                    attrib: this.formData.q_attribute,
-                    value: this.formData.q_attribute_value,
-                };
-            } else {
-                return false
-            }
-        },
-        exactPhrase() {
-            let querySplit = this.formData.q.split(" ");
-            if (this.formData.q.split('"').length - 1 == 2 && querySplit.length > 1) {
-                let lastWord = querySplit.pop();
-                let firstWord = querySplit.shift();
-                if (firstWord.startsWith('"') && lastWord.endsWith('"')) {
-                    return true;
-                }
-            }
-            return false
-        },
-    },
-    inject: ["$http"],
-    data() {
+const props = defineProps(["resultStart", "resultEnd"]);
+
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const router = useRouter();
+const { t } = useI18n();
+const store = useMainStore();
+const { formData, currentReport, description } = storeToRefs(store);
+
+const closeButton = useTemplateRef("closeButton");
+const queryTermsDialog = useTemplateRef("queryTermsDialog");
+
+const currentWordQuery = ref(typeof route.query.q === "undefined" ? "" : route.query.q);
+const queryArgs = reactive({});
+const words = ref([]);
+const wordListChanged = ref(false);
+const queryReport = ref(route.name);
+const termGroupsCopy = ref([]);
+const showQueryTerms = ref(false);
+const groupIndexSelected = ref(null);
+const termGroupButtons = ref({});
+const triggerButtonIndex = ref(null);
+
+const wordGroups = computed(() => description.value.termGroups);
+
+const collocationFilter = computed(() => {
+    if (formData.value.colloc_filter_choice === "attribute") {
         return {
-            currentWordQuery: typeof this.$route.query.q == "undefined" ? "" : this.$route.query.q,
-            queryArgs: {},
-            words: [],
-            wordListChanged: false,
-            restart: false,
-            queryReport: this.$route.name,
-            termGroupsCopy: [],
-            showQueryTerms: false,
-            groupIndexSelected: null,
-            termGroupButtons: {},
-            triggerButtonIndex: null,
+            attrib: formData.value.q_attribute,
+            value: formData.value.q_attribute_value,
         };
-    },
-    created() {
-        this.fetchSearchArgs();
-    },
-    watch: {
-        // call again the method if the route changes
-        $route(newUrl, oldUrl) {
-            let facetReports = ["concordance", "kwic", "bibliography"]
-            if (facetReports.includes(this.formData.report)) {
-                if (!isOnlyFacetChange(newUrl.query, oldUrl.query)) {
-                    this.fetchSearchArgs();
-                }
-            } else {
-                this.fetchSearchArgs();
-            }
-        }
-    },
-    methods: {
-        fetchSearchArgs() {
-            this.queryReport = this.$route.name;
-            this.currentWordQuery = typeof this.$route.query.q == "undefined" ? "" : this.$route.query.q;
-            let queryParams = { ...this.formData };
-            if ("q" in queryParams) {
-                this.queryArgs.queryTerm = queryParams.q;
-            } else {
-                this.queryArgs.queryTerm = "";
-            }
-            this.queryArgs.biblio = buildBiblioCriteria(this.$philoConfig, this.$route.query, this.formData)
+    }
+    return false;
+});
 
-            if ("q" in queryParams) {
-                let method = queryParams.method;
-                if (typeof method === "undefined") {
-                    method = "proxy";
-                }
-                if (queryParams.q.split(" ").length > 1) {
-                    if (method === "proxy") {
-                        if (typeof queryParams.method_arg !== "undefined" || queryParams.method_arg) {
-                            this.queryArgs.proximity = this.$t("searchArgs.withinProximity", {
-                                n: queryParams.method_arg,
-                            });
-                        } else {
-                            this.queryArgs.proximity = "";
-                        }
-                    } else if (method === "exac_cooc") {
-                        if (typeof queryParams.method_arg !== "undefined" || queryParams.arg_phrase) {
-                            this.queryArgs.proximity = this.$t("searchArgs.withinExactlyProximity", {
-                                n: queryParams.arg_phrase,
-                            });
-                        } else {
-                            this.queryArgs.proximity = "";
-                        }
-                    } else if (method === "sentence") {
-                        this.queryArgs.proximity = this.$t("searchArgs.sameSentence");
-                    }
-                } else {
-                    this.queryArgs.proximity = "";
-                }
+const exactPhrase = computed(() => {
+    const q = formData.value.q;
+    const querySplit = q.split(" ");
+    if (q.split('"').length - 1 === 2 && querySplit.length > 1) {
+        const firstWord = querySplit.shift();
+        const lastWord = querySplit.pop();
+        return firstWord.startsWith('"') && lastWord.endsWith('"');
+    }
+    return false;
+});
+
+function fetchSearchArgs() {
+    queryReport.value = route.name;
+    currentWordQuery.value = typeof route.query.q === "undefined" ? "" : route.query.q;
+    const queryParams = { ...formData.value };
+    queryArgs.queryTerm = "q" in queryParams ? queryParams.q : "";
+    queryArgs.biblio = buildBiblioCriteria(philoConfig, route.query, formData.value);
+
+    if ("q" in queryParams) {
+        const method = queryParams.method || "proxy";
+        if (queryParams.q.split(" ").length > 1) {
+            if (method === "proxy") {
+                queryArgs.proximity = (typeof queryParams.method_arg !== "undefined" || queryParams.method_arg)
+                    ? t("searchArgs.withinProximity", { n: queryParams.method_arg })
+                    : "";
+            } else if (method === "exac_cooc") {
+                queryArgs.proximity = (typeof queryParams.method_arg !== "undefined" || queryParams.arg_phrase)
+                    ? t("searchArgs.withinExactlyProximity", { n: queryParams.arg_phrase })
+                    : "";
+            } else if (method === "sentence") {
+                queryArgs.proximity = t("searchArgs.sameSentence");
             }
-            if (queryParams.approximate == "yes") {
-                this.queryArgs.approximate = true;
-            } else {
-                this.queryArgs.approximate = false;
-            }
-            this.$http
-                .get(`${this.$dbUrl}/scripts/get_term_groups.py`, {
-                    params: paramsFilter({ report: this.formData.report, ...this.$route.query }),
-                })
-                .then((response) => {
-                    this.mainStore.updateDescription({
-                        ...this.description,
-                        start: this.resultStart,
-                        end: this.resultEnd,
-                        results_per_page: this.formData.results_per_page,
-                        termGroups: response.data.term_groups,
-                    });
-                    this.originalQuery = response.data.original_query;
-                })
-                .catch((error) => {
-                    this.loading = false;
-                    this.error = error.toString();
-                    debug(this, error);
-                });
-        },
-        proximity() {
-            return this.$t("searchArgs.withinProximity", {
-                n: this.formData.method_arg,
+        } else {
+            queryArgs.proximity = "";
+        }
+    }
+    queryArgs.approximate = queryParams.approximate === "yes";
+
+    $http
+        .get(`${$dbUrl}/scripts/get_term_groups.py`, {
+            params: paramsFilter({ report: formData.value.report, ...route.query }),
+        })
+        .then((response) => {
+            store.updateDescription({
+                ...description.value,
+                start: props.resultStart,
+                end: props.resultEnd,
+                results_per_page: formData.value.results_per_page,
+                termGroups: response.data.term_groups,
             });
-        },
-        removeMetadata(metadata) {
-            if (this.formData.q.length == 0 && this.currentReport != "aggregation") {
-                this.formData.report = "bibliography";
-            }
-            this.formData.start = "";
-            this.formData.end = "";
-            let localParams = copyObject(this.formData);
-            localParams[metadata] = "";
-            this.$router.push(paramsToRoute(localParams));
-        },
-        getQueryTerms(group, index) {
-            this.groupIndexSelected = index;
-            this.triggerButtonIndex = index;
-            this.$http
-                .get(`${this.$dbUrl}/scripts/get_query_terms.py`, {
-                    params: {
-                        q: group,
-                        approximate: 0,
-                        ...paramsFilter(this.$route.query),
-                    },
-                })
-                .then((response) => {
-                    this.words = response.data;
-                    this.showQueryTerms = true;
-                    // Focus the close button when dialog opens
-                    this.$nextTick(() => {
-                        if (this.$refs.closeButton) {
-                            this.$refs.closeButton.focus();
-                        }
-                    });
-                })
-                .catch((error) => {
-                    this.error = error.toString();
-                    debug(this, error);
-                });
-        },
-        closeTermsList() {
-            this.showQueryTerms = false;
-            // Return focus to the trigger button
-            this.$nextTick(() => {
-                const triggerButton = this.termGroupButtons[this.triggerButtonIndex];
-                if (triggerButton) {
-                    triggerButton.focus();
-                }
+        })
+        .catch((error) => {
+            debug({ $options: { name: "searchArguments" } }, error);
+        });
+}
+
+function removeMetadata(metadata) {
+    if (formData.value.q.length === 0 && currentReport.value !== "aggregation") {
+        formData.value.report = "bibliography";
+    }
+    formData.value.start = "";
+    formData.value.end = "";
+    const localParams = copyObject(formData.value);
+    localParams[metadata] = "";
+    router.push(paramsToRoute(localParams));
+}
+
+function getQueryTerms(group, index) {
+    groupIndexSelected.value = index;
+    triggerButtonIndex.value = index;
+    $http
+        .get(`${$dbUrl}/scripts/get_query_terms.py`, {
+            params: {
+                q: group,
+                approximate: 0,
+                ...paramsFilter(route.query),
+            },
+        })
+        .then((response) => {
+            words.value = response.data;
+            showQueryTerms.value = true;
+            nextTick(() => {
+                if (closeButton.value) closeButton.value.focus();
             });
-        },
-        handleDialogKeydown(event) {
-            // Close on Escape
-            if (event.key === 'Escape') {
-                this.closeTermsList();
-                return;
-            }
-            // Focus trapping on Tab
-            if (event.key === 'Tab') {
-                const dialog = this.$refs.queryTermsDialog;
-                if (!dialog) return;
-                const focusableElements = dialog.querySelectorAll(
-                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-                );
-                const firstElement = focusableElements[0];
-                const lastElement = focusableElements[focusableElements.length - 1];
-                if (event.shiftKey && document.activeElement === firstElement) {
-                    // Shift+Tab on first element: wrap to last
-                    event.preventDefault();
-                    lastElement.focus();
-                } else if (!event.shiftKey && document.activeElement === lastElement) {
-                    // Tab on last element: wrap to first
-                    event.preventDefault();
-                    firstElement.focus();
-                }
-            }
-        },
-        removeFromTermsList(word, groupIndex) {
-            var index = this.words.indexOf(word);
-            this.words.splice(index, 1);
-            this.wordListChanged = true;
-            if (this.termGroupsCopy.length == 0) {
-                this.termGroupsCopy = copyObject(this.wordGroups);
-            }
-            if (this.termGroupsCopy[groupIndex].indexOf(" NOT ") !== -1) {
-                // if there's already a NOT in the clause add an OR
-                this.termGroupsCopy[groupIndex] += " | " + word.trim();
-            } else {
-                this.termGroupsCopy[groupIndex] += " NOT " + word.trim();
-            }
-            this.formData.q = this.termGroupsCopy.join(" ");
-            this.formData.approximate = "no";
-            this.formData.approximate_ratio = "";
-        },
-        rerunQuery() {
-            this.$router.push(paramsToRoute({ ...this.formData, q: this.formData.q }));
-        },
-        removeTerm(index) {
-            let queryTermGroup = copyObject(this.description.termGroups);
-            queryTermGroup.splice(index, 1);
-            this.formData.q = queryTermGroup.join(" ");
-            if (queryTermGroup.length === 0 && this.currentReport != "aggregation") {
-                this.formData.report = "bibliography";
-            }
-            this.formData.start = 0;
-            this.formData.end = 0;
-            if (queryTermGroup.length == 1) {
-                this.formData.method = "proxy";
-                this.formData.method_arg = "";
-                this.formData.arg_phrase = "";
-            }
-            this.mainStore.updateDescription({
-                ...this.description,
-                termGroups: queryTermGroup,
-            });
-            this.$router.push(paramsToRoute({ ...this.formData }));
-        },
-    },
-};
+        })
+        .catch((error) => {
+            debug({ $options: { name: "searchArguments" } }, error);
+        });
+}
+
+function closeTermsList() {
+    showQueryTerms.value = false;
+    nextTick(() => {
+        const triggerButton = termGroupButtons.value[triggerButtonIndex.value];
+        if (triggerButton) triggerButton.focus();
+    });
+}
+
+function handleDialogKeydown(event) {
+    if (event.key === "Escape") {
+        closeTermsList();
+        return;
+    }
+    if (event.key === "Tab") {
+        const dialog = queryTermsDialog.value;
+        if (!dialog) return;
+        const focusable = dialog.querySelectorAll(
+            'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+}
+
+function removeFromTermsList(word, groupIndex) {
+    const index = words.value.indexOf(word);
+    words.value.splice(index, 1);
+    wordListChanged.value = true;
+    if (termGroupsCopy.value.length === 0) {
+        termGroupsCopy.value = copyObject(wordGroups.value);
+    }
+    if (termGroupsCopy.value[groupIndex].indexOf(" NOT ") !== -1) {
+        // already a NOT in the clause: add an OR
+        termGroupsCopy.value[groupIndex] += " | " + word.trim();
+    } else {
+        termGroupsCopy.value[groupIndex] += " NOT " + word.trim();
+    }
+    formData.value.q = termGroupsCopy.value.join(" ");
+    formData.value.approximate = "no";
+    formData.value.approximate_ratio = "";
+}
+
+function rerunQuery() {
+    router.push(paramsToRoute({ ...formData.value, q: formData.value.q }));
+}
+
+function proximity() {
+    return t("searchArgs.withinProximity", { n: formData.value.method_arg });
+}
+
+function removeTerm(index) {
+    const queryTermGroup = copyObject(description.value.termGroups);
+    queryTermGroup.splice(index, 1);
+    formData.value.q = queryTermGroup.join(" ");
+    if (queryTermGroup.length === 0 && currentReport.value !== "aggregation") {
+        formData.value.report = "bibliography";
+    }
+    formData.value.start = 0;
+    formData.value.end = 0;
+    if (queryTermGroup.length === 1) {
+        formData.value.method = "proxy";
+        formData.value.method_arg = "";
+        formData.value.arg_phrase = "";
+    }
+    store.updateDescription({ ...description.value, termGroups: queryTermGroup });
+    router.push(paramsToRoute({ ...formData.value }));
+}
+
+watch(
+    () => route.fullPath,
+    (newPath, oldPath) => {
+        const newQuery = router.resolve(newPath).query;
+        const oldQuery = router.resolve(oldPath || "").query;
+        if (["concordance", "kwic", "bibliography"].includes(formData.value.report)) {
+            if (!isOnlyFacetChange(newQuery, oldQuery)) fetchSearchArgs();
+        } else {
+            fetchSearchArgs();
+        }
+    }
+);
+
+fetchSearchArgs();
 </script>
 <style scoped lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;

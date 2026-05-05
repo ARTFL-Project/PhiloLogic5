@@ -79,42 +79,35 @@
         </div>
     </div>
 </template>
-<script>
+<script setup>
 import { inject, reactive, ref } from "vue";
 
-export default {
-    props: ["clientIp", "domainName"],
-    setup() {
-        let accessDenied = ref(false);
-        let incorrectLogin = ref(false);
-        let accessInput = reactive({ username: "", password: "" });
-        let http = inject("$http");
-        let dbUrl = inject("$dbUrl");
+defineProps(["clientIp", "domainName"]);
 
-        function submit() {
-            http.get(
-                `${dbUrl}/scripts/access_request.py?username=${encodeURIComponent(
-                    accessInput.username
-                )}&password=${encodeURIComponent(accessInput.password)}`
-            ).then((response) => {
-                let authorization = response.data;
-                if (authorization.access) {
-                    location.reload();
-                } else {
-                    incorrectLogin.value = true;
-                }
-            });
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+
+const accessDenied = ref(false);
+const incorrectLogin = ref(false);
+const accessInput = reactive({ username: "", password: "" });
+
+function submit() {
+    $http.get(
+        `${$dbUrl}/scripts/access_request.py?username=${encodeURIComponent(accessInput.username)}&password=${encodeURIComponent(accessInput.password)}`
+    ).then((response) => {
+        if (response.data.access) {
+            location.reload();
+        } else {
+            incorrectLogin.value = true;
         }
+    });
+}
 
-        function reset() {
-            accessInput.username = "";
-            accessInput.password = "";
-            incorrectLogin.value = false;
-        }
-
-        return { accessDenied, accessInput, incorrectLogin, submit, reset };
-    },
-};
+function reset() {
+    accessInput.username = "";
+    accessInput.password = "";
+    incorrectLogin.value = false;
+}
 </script>
 <style scoped>
 code {

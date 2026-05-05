@@ -120,370 +120,277 @@
     </div>
 </template>
 
-<script>
-import gsap from "gsap";
-import { mapStores, mapWritableState } from "pinia";
-import { computed } from "vue";
+<script setup>
+import { computed, inject, onBeforeUnmount, provide, ref, watch } from "vue";
+import { useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
+import { useFadeTransition } from "../composables/useFadeTransition";
 import { debug, isOnlyFacetChange, paramsFilter, paramsToRoute } from "../utils.js";
-import facets from "./Facets";
-import pages from "./Pages";
-import ResultsSummary from "./ResultsSummary";
+import Facets from "./Facets";  // eslint-disable-line no-unused-vars
+import Pages from "./Pages";  // eslint-disable-line no-unused-vars
+import ResultsSummary from "./ResultsSummary";  // eslint-disable-line no-unused-vars
 
-export default {
-    name: "kwic-report",
-    components: {
-        ResultsSummary,
-        facets,
-        pages,
-    },
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "resultsLength",
-            "searching",
-            "currentReport",
-            "description",
-            "sortedKwicCache",
-            "urlUpdate",
-            "showFacets",
-            "totalResultsDone"
-        ]),
-        ...mapStores(useMainStore),
-        first_kwic_sorting_option: {
-            get() {
-                return this.formData.first_kwic_sorting_option;
-            },
-            set(value) {
-                this.formData.first_kwic_sorting_option = value;
-            }
-        },
-        second_kwic_sorting_option: {
-            get() {
-                return this.formData.second_kwic_sorting_option;
-            },
-            set(value) {
-                this.formData.second_kwic_sorting_option = value;
-            }
-        },
-        third_kwic_sorting_option: {
-            get() {
-                return this.formData.third_kwic_sorting_option;
-            },
-            set(value) {
-                this.formData.third_kwic_sorting_option = value;
-            }
-        },
-        sortingFields() {
-            let sortingFields = [
-                {
-                    label: this.$t("common.none"),
-                    field: "",
-                },
-                {
-                    label: this.$t("kwic.searchedTerms"),
-                    field: "q",
-                },
-                {
-                    label: this.$t("kwic.wordsLeft"),
-                    field: "left",
-                },
-                {
-                    label: this.$t("kwic.wordsRight"),
-                    field: "right",
-                },
-            ];
-            for (let field of this.philoConfig.kwic_metadata_sorting_fields) {
-                if (field in this.philoConfig.metadata_aliases) {
-                    let label = this.philoConfig.metadata_aliases[field];
-                    sortingFields.push({
-                        label: label,
-                        field: field,
-                    });
-                } else {
-                    sortingFields.push({
-                        label: field[0].toUpperCase() + field.slice(1),
-                        field: field,
-                    });
-                }
-            }
-            return [sortingFields, sortingFields, sortingFields];
-        },
-        sortKeys() {
-            let sortKeys = {
-                q: this.$t("kwic.searchedTerms"),
-                left: this.$t("kwic.wordsLeft"),
-                right: this.$t("kwic.wordsRight"),
-            };
-            for (let field of this.philoConfig.kwic_metadata_sorting_fields) {
-                if (field in this.philoConfig.metadata_aliases) {
-                    let label = this.philoConfig.metadata_aliases[field];
-                    sortKeys[field] = label;
-                } else {
-                    sortKeys[field] = field[0].toUpperCase() + field.slice(1);
-                }
-            }
-            return sortKeys;
-        },
-        sortingSelection() {
-            let sortingSelection = [
-                this.first_kwic_sorting_option !== "" ? this.sortKeys[this.first_kwic_sorting_option] : this.$t("kwic.firstLabel"),
-                this.second_kwic_sorting_option !== "" ? this.sortKeys[this.second_kwic_sorting_option] : this.$t("kwic.secondLabel"),
-                this.third_kwic_sorting_option !== "" ? this.sortKeys[this.third_kwic_sorting_option] : this.$t("kwic.thirdLabel")
-            ];
-            return sortingSelection;
-        },
-        sortingLabels() {
-            return [
-                this.$t("kwic.firstLabel"),
-                this.$t("kwic.secondLabel"),
-                this.$t("kwic.thirdLabel")
-            ];
-        },
-    },
-    inject: ["$http"],
-    provide() {
-        return {
-            results: computed(() => this.results.results),
-        };
-    },
-    data() {
-        return {
-            philoConfig: this.$philoConfig,
-            results: { description: { end: 0 } },
-            searchParams: {},
-            sortedResults: [],
-            loading: false,
-            runningTotal: 0,
-        };
-    },
-    created() {
-        this.formData.report = "kwic";
-        this.currentReport = "kwic";
-        this.fetchResults();
-    },
-    beforeUnmount() {
-        if (this._abortController) {
-            this._abortController.abort();
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const router = useRouter();
+const { t } = useI18n();
+const store = useMainStore();
+const {
+    formData,
+    resultsLength,
+    searching,
+    currentReport,
+    urlUpdate,
+    showFacets,
+    totalResultsDone,
+} = storeToRefs(store);
+
+const results = ref({ description: { end: 0 } });
+const searchParams = ref({});
+const runningTotal = ref(0);
+
+const { beforeEnter: onBeforeEnter, enter: onEnter } = useFadeTransition(0.0075);
+
+provide("results", computed(() => results.value.results));
+
+// AbortController for the streaming sorted-KWIC fetch. Held as a module-scope
+// `let` (not a ref) since its identity isn't needed reactively — we just need
+// to keep a handle to abort on unmount or query change.
+let abortController = null;
+
+// ── Sort options (writable computeds proxy formData) ─────────────────────────
+const first_kwic_sorting_option = computed({
+    get: () => formData.value.first_kwic_sorting_option,
+    set: (value) => { formData.value.first_kwic_sorting_option = value; },
+});
+const second_kwic_sorting_option = computed({
+    get: () => formData.value.second_kwic_sorting_option,
+    set: (value) => { formData.value.second_kwic_sorting_option = value; },
+});
+const third_kwic_sorting_option = computed({
+    get: () => formData.value.third_kwic_sorting_option,
+    set: (value) => { formData.value.third_kwic_sorting_option = value; },
+});
+
+const sortingFields = computed(() => {
+    const fields = [
+        { label: t("common.none"), field: "" },
+        { label: t("kwic.searchedTerms"), field: "q" },
+        { label: t("kwic.wordsLeft"), field: "left" },
+        { label: t("kwic.wordsRight"), field: "right" },
+    ];
+    for (const field of philoConfig.kwic_metadata_sorting_fields) {
+        const label = field in philoConfig.metadata_aliases
+            ? philoConfig.metadata_aliases[field]
+            : field[0].toUpperCase() + field.slice(1);
+        fields.push({ label, field });
+    }
+    return [fields, fields, fields];
+});
+
+const sortKeys = computed(() => {
+    const keys = {
+        q: t("kwic.searchedTerms"),
+        left: t("kwic.wordsLeft"),
+        right: t("kwic.wordsRight"),
+    };
+    for (const field of philoConfig.kwic_metadata_sorting_fields) {
+        keys[field] = field in philoConfig.metadata_aliases
+            ? philoConfig.metadata_aliases[field]
+            : field[0].toUpperCase() + field.slice(1);
+    }
+    return keys;
+});
+
+const sortingSelection = computed(() => [
+    first_kwic_sorting_option.value !== ""
+        ? sortKeys.value[first_kwic_sorting_option.value]
+        : t("kwic.firstLabel"),
+    second_kwic_sorting_option.value !== ""
+        ? sortKeys.value[second_kwic_sorting_option.value]
+        : t("kwic.secondLabel"),
+    third_kwic_sorting_option.value !== ""
+        ? sortKeys.value[third_kwic_sorting_option.value]
+        : t("kwic.thirdLabel"),
+]);
+
+const sortingLabels = computed(() => [
+    t("kwic.firstLabel"),
+    t("kwic.secondLabel"),
+    t("kwic.thirdLabel"),
+]);
+
+// ── KWIC view helpers ────────────────────────────────────────────────────────
+function buildFullCitation(metadataField) {
+    let biblioFields = philoConfig.kwic_bibliography_fields;
+    if (typeof biblioFields === "undefined" || biblioFields.length === 0) {
+        biblioFields = philoConfig.metadata.slice(0, 2);
+        biblioFields.push("head");
+    }
+    const out = [];
+    for (const f of biblioFields) {
+        if (f in metadataField) {
+            const value = metadataField[f] || "";
+            if (value.length > 0) out.push(value);
         }
-    },
-    watch: {
-        urlUpdate(newUrl, oldUrl) {
-            if (!isOnlyFacetChange(newUrl, oldUrl)) {
-                if (this._abortController) {
-                    this._abortController.abort();
-                }
-                this.fetchResults();
-            }
-        },
-    },
-    methods: {
-        buildFullCitation(metadataField) {
-            let citationList = [];
-            let biblioFields = this.philoConfig.kwic_bibliography_fields;
-            if (typeof biblioFields === "undefined" || biblioFields.length === 0) {
-                biblioFields = this.philoConfig.metadata.slice(0, 2);
-                biblioFields.push("head");
-            }
-            for (var i = 0; i < biblioFields.length; i++) {
-                if (biblioFields[i] in metadataField) {
-                    var biblioField = metadataField[biblioFields[i]] || "";
-                    if (biblioField.length > 0) {
-                        citationList.push(biblioField);
-                    }
-                }
-            }
-            if (citationList.length > 0) {
-                return citationList.join(", ");
-            } else {
-                return "NA";
-            }
-        },
-        filteredKwic(results) {
-            let filteredResults = [];
-            if (typeof results != "undefined" && Object.keys(results).length) {
-                for (let resultObject of results) {
-                    resultObject.fullBiblio = this.buildFullCitation(resultObject.metadata_fields);
-                    resultObject.shortBiblio = resultObject.fullBiblio.slice(0, 30);
-                    filteredResults.push(resultObject);
-                }
-            }
-            return filteredResults;
-        },
-        showFullBiblio(event) {
-            let target = event.currentTarget.querySelector(".full-biblio");
-            target.classList.add("show");
-        },
-        hideFullBiblio(event) {
-            let target = event.currentTarget.querySelector(".full-biblio");
-            target.classList.remove("show");
-        },
-        getSortingAriaLabel(index) {
-            const current = this.sortingSelection[index];
-            if (index === 0) {
-                return this.$t('kwic.firstSortingCriteria', { current });
-            } else if (index === 1) {
-                return this.$t('kwic.secondSortingCriteria', { current });
-            } else {
-                return this.$t('kwic.thirdSortingCriteria', { current });
-            }
-        },
-        updateSortingSelection(index, selection) {
-            if (index === 0) {
-                if (selection.label == this.$t("common.none")) {
-                    this.first_kwic_sorting_option = "";
-                } else {
-                    this.first_kwic_sorting_option = selection.field;
-                }
-            } else if (index == 1) {
-                if (selection.label == this.$t("common.none")) {
-                    this.second_kwic_sorting_option = "";
-                } else {
-                    this.second_kwic_sorting_option = selection.field;
-                }
-            } else {
-                if (selection.label == this.$t("common.none")) {
-                    this.third_kwic_sorting_option = "";
-                } else {
-                    this.third_kwic_sorting_option = selection.field;
-                }
-            }
-        },
-        fetchResults() {
-            this.totalResultsDone = false;
-            this.results = { description: { end: 0 }, results: [] };
-            this.searchParams = { ...this.formData };
-            const hasSorting = this.first_kwic_sorting_option !== "" ||
-                this.second_kwic_sorting_option !== "" ||
-                this.third_kwic_sorting_option !== "";
-            if (!hasSorting) {
-                this.searching = true;
-                this.$http
-                    .get(`${this.$dbUrl}/reports/kwic.py`, {
-                        params: paramsFilter(this.searchParams),
-                    })
-                    .then((response) => {
-                        this.results = response.data;
-                        this.resultsLength = response.data.results_length;
-                        this.runningTotal = response.data.results_length;
-                        this.results.description = response.data.description;
-                        if (response.data.query_done) {
-                            this.totalResultsDone = true;
-                        }
-                        this.searching = false;
-                    })
-                    .catch((error) => {
-                        this.searching = false;
-                        this.error = error.toString();
-                        debug(this, error);
-                    });
-            } else {
-                if (this.formData.start == "") {
-                    this.formData.start = "0";
-                    this.formData.end = this.formData.results_per_page;
-                }
-                this.fetchSortedResults();
-            }
-        },
-        async fetchSortedResults() {
-            this.searching = true;
-            this.runningTotal = 0;
+    }
+    return out.length > 0 ? out.join(", ") : "NA";
+}
 
-            const params = new URLSearchParams(paramsFilter({ ...this.formData }));
-            const url = `${this.$dbUrl}/scripts/get_sorted_kwic.py?${params}`;
+function filteredKwic(rawResults) {
+    if (typeof rawResults === "undefined" || !Object.keys(rawResults).length) return [];
+    return rawResults.map((resultObject) => {
+        resultObject.fullBiblio = buildFullCitation(resultObject.metadata_fields);
+        resultObject.shortBiblio = resultObject.fullBiblio.slice(0, 30);
+        return resultObject;
+    });
+}
 
-            if (this._abortController) {
-                this._abortController.abort();
+function showFullBiblio(event) {
+    event.currentTarget.querySelector(".full-biblio").classList.add("show");
+}
+
+function hideFullBiblio(event) {
+    event.currentTarget.querySelector(".full-biblio").classList.remove("show");
+}
+
+function initializePos(index) {
+    const start = results.value.description.start;
+    const currentPos = start + index;
+    const currentPosLength = currentPos.toString().length;
+    const endPos = start + parseInt(formData.value.results_per_page) || 25;
+    const endPosLength = endPos.toString().length;
+    const spaces = endPosLength - currentPosLength + 1;
+    return currentPos + "." + Array(spaces).join("&nbsp");
+}
+
+// ── Sort UI handlers ─────────────────────────────────────────────────────────
+function getSortingAriaLabel(index) {
+    const current = sortingSelection.value[index];
+    if (index === 0) return t("kwic.firstSortingCriteria", { current });
+    if (index === 1) return t("kwic.secondSortingCriteria", { current });
+    return t("kwic.thirdSortingCriteria", { current });
+}
+
+function updateSortingSelection(index, selection) {
+    const value = selection.label === t("common.none") ? "" : selection.field;
+    if (index === 0) first_kwic_sorting_option.value = value;
+    else if (index === 1) second_kwic_sorting_option.value = value;
+    else third_kwic_sorting_option.value = value;
+}
+
+function sortResults() {
+    results.value.results = [];
+    router.push(paramsToRoute({ ...formData.value }));
+}
+
+// ── Fetch path ───────────────────────────────────────────────────────────────
+async function fetchSortedResults() {
+    searching.value = true;
+    runningTotal.value = 0;
+
+    const params = new URLSearchParams(paramsFilter({ ...formData.value }));
+    const url = `${$dbUrl}/scripts/get_sorted_kwic.py?${params}`;
+
+    if (abortController) abortController.abort();
+    abortController = new AbortController();
+
+    const applyData = (data) => {
+        if (data.progress) {
+            runningTotal.value = data.progress.hits_done;
+            resultsLength.value = data.progress.total;
+        } else {
+            results.value = data;
+            resultsLength.value = data.results_length;
+            runningTotal.value = data.results_length;
+        }
+    };
+
+    try {
+        const response = await fetch(url, { signal: abortController.signal });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                if (!line.trim()) continue;
+                applyData(JSON.parse(line));
             }
-            this._abortController = new AbortController();
+        }
 
-            try {
-                const response = await fetch(url, {
-                    signal: this._abortController.signal,
-                });
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
+        if (buffer.trim()) applyData(JSON.parse(buffer));
+    } catch (e) {
+        if (e.name === "AbortError") return;
+        debug({ $options: { name: "kwic-report" } }, e);
+    } finally {
+        searching.value = false;
+        abortController = null;
+    }
+}
 
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = "";
+function fetchResults() {
+    totalResultsDone.value = false;
+    results.value = { description: { end: 0 }, results: [] };
+    searchParams.value = { ...formData.value };
+    const hasSorting =
+        first_kwic_sorting_option.value !== "" ||
+        second_kwic_sorting_option.value !== "" ||
+        third_kwic_sorting_option.value !== "";
 
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
+    if (hasSorting) {
+        if (formData.value.start === "") {
+            formData.value.start = "0";
+            formData.value.end = formData.value.results_per_page;
+        }
+        fetchSortedResults();
+        return;
+    }
 
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\n");
-                    buffer = lines.pop();
+    searching.value = true;
+    $http
+        .get(`${$dbUrl}/reports/kwic.py`, { params: paramsFilter(searchParams.value) })
+        .then((response) => {
+            results.value = response.data;
+            resultsLength.value = response.data.results_length;
+            runningTotal.value = response.data.results_length;
+            results.value.description = response.data.description;
+            if (response.data.query_done) totalResultsDone.value = true;
+            searching.value = false;
+        })
+        .catch((error) => {
+            searching.value = false;
+            debug({ $options: { name: "kwic-report" } }, error);
+        });
+}
 
-                    for (const line of lines) {
-                        if (!line.trim()) continue;
-                        const data = JSON.parse(line);
-                        if (data.progress) {
-                            this.runningTotal = data.progress.hits_done;
-                            this.resultsLength = data.progress.total;
-                        } else {
-                            this.results = data;
-                            this.resultsLength = data.results_length;
-                            this.runningTotal = data.results_length;
-                        }
-                    }
-                }
+watch(urlUpdate, (newUrl, oldUrl) => {
+    if (!isOnlyFacetChange(newUrl, oldUrl)) {
+        if (abortController) abortController.abort();
+        fetchResults();
+    }
+});
 
-                // Process any remaining buffer content
-                if (buffer.trim()) {
-                    const data = JSON.parse(buffer);
-                    if (data.progress) {
-                        this.runningTotal = data.progress.hits_done;
-                        this.resultsLength = data.progress.total;
-                    } else {
-                        this.results = data;
-                        this.resultsLength = data.results_length;
-                        this.runningTotal = data.results_length;
-                    }
-                }
-            } catch (e) {
-                if (e.name === "AbortError") return;
-                debug(this, e);
-            } finally {
-                this.searching = false;
-                this._abortController = null;
-            }
-        },
-        initializePos(index) {
-            let start = this.results.description.start;
-            let currentPos = start + index;
-            let currentPosLength = currentPos.toString().length;
-            let endPos = start + parseInt(this.formData.results_per_page) || 25;
-            let endPosLength = endPos.toString().length;
-            let spaces = endPosLength - currentPosLength + 1;
-            return currentPos + "." + Array(spaces).join("&nbsp");
-        },
-        sortResults() {
-            this.results.results = [];
-            this.$router.push(paramsToRoute({ ...this.formData }));
-        },
-        dicoLookup() { },
-        onBeforeEnter(el) {
-            el.style.opacity = 0;
-        },
-        onEnter(el, done) {
-            gsap.to(el, {
-                opacity: 1,
-                delay: el.dataset.index * 0.0075,
-                onComplete: done,
-            });
-        },
-        toggleFacets() {
-            if (this.showFacets) {
-                this.showFacets = false;
-            } else {
-                this.showFacets = true;
-            }
-        },
-    },
-};
+onBeforeUnmount(() => {
+    if (abortController) abortController.abort();
+});
+
+formData.value.report = "kwic";
+currentReport.value = "kwic";
+fetchResults();
 </script>
 
 <style scoped lang="scss">

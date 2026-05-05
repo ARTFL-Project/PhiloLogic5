@@ -216,7 +216,7 @@
                 <div class="col-12" :class="showFacets && $philoConfig.facets.length > 0 ?
                     (formData.report === 'kwic' ? 'col-md-8 col-xl-9' : 'col-md-9 col-xl-9') : ''">
                     <div class="d-flex justify-content-end">
-                        <button type="button" class="btn btn-secondary btn-sm" @click="toggleFacets()"
+                        <button type="button" class="btn btn-secondary btn-sm" @click="store.toggleFacets()"
                             :aria-label="$t('common.showFacetsLabel')">
                             {{ $t("common.showFacets") }}
                         </button>
@@ -227,14 +227,15 @@
     </div>
 </template>
 
-<script>
+<script setup>
 import { Modal } from "bootstrap";
-import ExportResults from "./ExportResults";
-import ProgressSpinner from "./ProgressSpinner";
-import ResultsBibliography from "./ResultsBibliography";
-import searchArguments from "./SearchArguments";
-
-import { mapStores, mapWritableState } from "pinia";
+import { computed, inject, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
+import ExportResults from "./ExportResults";  // eslint-disable-line no-unused-vars
+import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
+import ResultsBibliography from "./ResultsBibliography";  // eslint-disable-line no-unused-vars
+import SearchArguments from "./SearchArguments";  // eslint-disable-line no-unused-vars
 import { useMainStore } from "../stores/main";
 import {
     debug,
@@ -245,270 +246,215 @@ import {
     paramsToUrlString,
 } from "../utils.js";
 
-export default {
-    name: "ResultsSummary",
-    components: {
-        searchArguments,
-        ResultsBibliography,
-        ExportResults,
-        ProgressSpinner
-    },
-    props: ["description", "filterList", "groupLength"],
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "currentReport",
-            "resultsLength",
-            "aggregationCache",
-            "totalResultsDone",
-            "showFacets",
-            "searching"
-        ]),
-        ...mapStores(useMainStore),
-        colloc_filter_choice() {
-            return this.formData.colloc_filter_choice;
-        },
-        filter_frequency() {
-            return this.formData.filter_frequency;
-        },
-        splitFilterList: function () {
-            if (!this.filterList || this.filterList.length === 0) {
-                return [];
-            }
-            let arrayLength = this.filterList.length;
-            let chunkSize = arrayLength / 5;
-            let splittedList = [];
-            for (let index = 0; index < arrayLength; index += chunkSize) {
-                let myChunk = this.filterList.slice(index, index + chunkSize);
-                splittedList.push(myChunk);
-            }
-            return splittedList;
-        },
-    },
-    inject: ["$http"],
-    data() {
-        // Access store directly during data() method
-        const store = useMainStore();
+const props = defineProps(["description", "filterList", "groupLength"]);
 
-        return {
-            facets: this.$philoConfig.facets,
-            fieldSummary: this.$philoConfig.results_summary,
-            hits: "",
-            descriptionStart: 1,
-            descriptionEnd: store.formData.results_per_page,
-            statsDescription: [],
-            resultsPerPage: 0,
-            hitlistStatsDone: false,
-            showBiblio: false,
-            groupByLabel:
-                this.$route.query.group_by in this.$philoConfig.metadata_aliases
-                    ? this.$philoConfig.metadata_aliases[this.$route.query.group_by]
-                    : this.$route.query.group_by,
-            showFilteredWords: false,
-            currentQuery: {},
-            resultsPerPageOptions: [25, 100, 500, 1000],
-        };
-    },
-    created() {
-        this.currentQuery = {
-            ...this.formData,
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const router = useRouter();
+const store = useMainStore();
+const {
+    formData,
+    resultsLength,
+    totalResultsDone,
+    showFacets,
+    searching,
+} = storeToRefs(store);
+
+const fieldSummary = philoConfig.results_summary;
+const hits = ref("");
+const descriptionStart = ref(1);
+const descriptionEnd = ref(formData.value.results_per_page);
+const statsDescription = ref([]);
+const hitlistStatsDone = ref(false);
+const groupByLabel = ref(
+    route.query.group_by in philoConfig.metadata_aliases
+        ? philoConfig.metadata_aliases[route.query.group_by]
+        : route.query.group_by
+);
+const showFilteredWords = ref(false);
+const currentQuery = ref({});
+const resultsPerPageOptions = [25, 100, 500, 1000];
+
+const splitFilterList = computed(() => {
+    if (!props.filterList || props.filterList.length === 0) return [];
+    const arrayLength = props.filterList.length;
+    const chunkSize = arrayLength / 5;
+    const splittedList = [];
+    for (let index = 0; index < arrayLength; index += chunkSize) {
+        splittedList.push(props.filterList.slice(index, index + chunkSize));
+    }
+    return splittedList;
+});
+
+function buildDescription() {
+    let start;
+    let end;
+    if (
+        typeof props.description === "undefined" ||
+        props.description.start === "" ||
+        props.description.start == 0
+    ) {
+        start = 1;
+        end = parseInt(formData.value.results_per_page);
+    } else {
+        start = props.description.start || route.query.start || 1;
+        end = formData.value.end || parseInt(formData.value.results_per_page);
+    }
+    if (end > resultsLength.value) end = resultsLength.value;
+    const resultsPerPage = parseInt(formData.value.results_per_page);
+    if (resultsLength.value && end <= resultsPerPage && end <= resultsLength.value) {
+        descriptionStart.value = start;
+        descriptionEnd.value = end;
+    } else if (resultsLength.value) {
+        descriptionStart.value = start;
+        descriptionEnd.value = resultsPerPage > resultsLength.value ? resultsLength.value : end;
+    }
+}
+
+function updateTotalResults() {
+    // If the report response already provided the final count, skip the extra request
+    if (totalResultsDone.value) {
+        hits.value = buildDescription();
+        return;
+    }
+    const params = { ...formData.value };
+    if (formData.value.report === "time_series") {
+        const start = formData.value.start_date || philoConfig.time_series_start_end_date.start_date;
+        const end = formData.value.end_date || philoConfig.time_series_start_end_date.end_date;
+        params.year = `${start}-${end}`;
+    }
+    totalResultsDone.value = false;
+    $http
+        .get(`${$dbUrl}/scripts/get_total_results.py`, { params: paramsFilter(params) })
+        .then((response) => {
+            resultsLength.value = response.data;
+            hits.value = buildDescription();
+            totalResultsDone.value = true;
+        })
+        .catch((error) => {
+            debug({ $options: { name: "ResultsSummary" } }, error);
+        });
+}
+
+function getHitListStats() {
+    hitlistStatsDone.value = false;
+    $http
+        .get(`${$dbUrl}/scripts/get_hitlist_stats.py`, {
+            params: paramsFilter({ ...formData.value }),
+        })
+        .then((response) => {
+            hitlistStatsDone.value = true;
+            const out = [];
+            for (const stat of response.data.stats) {
+                const label = stat.field in philoConfig.metadata_aliases
+                    ? philoConfig.metadata_aliases[stat.field].toLowerCase()
+                    : stat.field;
+                let link = "";
+                if (stat.link_field) {
+                    link = paramsToUrlString({
+                        ...formData.value,
+                        report: "aggregation",
+                        start: "",
+                        end: "",
+                        group_by: "",
+                    });
+                    if (link.length === 0) link = "/aggregation?";
+                }
+                out.push({ label, field: stat.field, count: stat.count, link });
+            }
+            statsDescription.value = out;
+        })
+        .catch((error) => {
+            debug({ $options: { name: "ResultsSummary" } }, error);
+        });
+}
+
+function updateDescriptions() {
+    const modalEl = document.getElementById("results-bibliography");
+    if (modalEl) {
+        Modal.getOrCreateInstance(modalEl).hide();
+    }
+    buildDescription();
+    // For reports that set searching/totalResultsDone (concordance/kwic/bibliography),
+    // defer updateTotalResults + getHitListStats until the report response arrives
+    // (via the `searching` watcher below). This avoids blocking extra Gunicorn workers
+    // with hits.finish() calls while the main request is still in flight.
+    if (!["concordance", "kwic", "bibliography"].includes(formData.value.report)) {
+        updateTotalResults();
+    }
+}
+
+function switchReport(reportName) {
+    formData.value.report = reportName;
+    formData.value.results_per_page = 25;
+    router.push(paramsToRoute({ ...formData.value }));
+}
+
+function switchResultsPerPage(number) {
+    formData.value.results_per_page = parseInt(number);
+    router.push(
+        paramsToRoute({ ...formData.value, results_per_page: number, start: "1", end: number })
+    );
+}
+
+function toggleFilterList(event) {
+    event.preventDefault();
+    showFilteredWords.value = !showFilteredWords.value;
+}
+
+
+watch(
+    () => route.fullPath,
+    (newPath, oldPath) => {
+        const newQuery = router.resolve(newPath).query;
+        const oldQuery = router.resolve(oldPath || "").query;
+        if (["concordance", "kwic", "bibliography"].includes(formData.value.report)) {
+            if (!isOnlyFacetChange(newQuery, oldQuery)) {
+                updateDescriptions();
+            }
+        } else {
+            updateDescriptions();
+        }
+    }
+);
+
+watch(searching, (newVal, oldVal) => {
+    // When a concordance/kwic/bibliography report response arrives (searching
+    // goes true→false), fire the deferred secondary requests. Other reports
+    // (collocation/time_series/aggregation) call updateTotalResults directly
+    // from updateDescriptions(), so skip them here.
+    if (
+        oldVal === true && newVal === false &&
+        ["concordance", "kwic", "bibliography"].includes(formData.value.report)
+    ) {
+        if (!totalResultsDone.value) updateTotalResults();
+        const newQuery = {
+            ...formData.value,
             start: "",
             end: "",
             first_kwic_sorting_option: "",
             second_kwic_sorting_option: "",
             third_kwic_sorting_option: "",
         };
-        this.updateDescriptions();
-    },
-    watch: {
-        $route(newUrl, oldUrl) {
-            let facetReports = ["concordance", "kwic", "bibliography"]
-            if (facetReports.includes(this.formData.report)) {
-                if (!isOnlyFacetChange(newUrl.query, oldUrl.query)) {
-                    this.updateDescriptions();
-                }
-            } else {
-                this.updateDescriptions();
-            }
-        },
-        searching(newVal, oldVal) {
-            // When a concordance/kwic/bibliography report response arrives (searching
-            // goes from true to false), fire the deferred secondary requests. By this
-            // time the search is usually done, so hits.finish() returns instantly.
-            // Other reports (collocation, time_series, aggregation) call
-            // updateTotalResults directly from updateDescriptions(), so skip them here.
-            if (oldVal === true && newVal === false
-                && ["concordance", "kwic", "bibliography"].includes(this.formData.report)) {
-                if (!this.totalResultsDone) {
-                    this.updateTotalResults();
-                }
-                let newQuery = {
-                    ...this.formData,
-                    start: "",
-                    end: "",
-                    first_kwic_sorting_option: "",
-                    second_kwic_sorting_option: "",
-                    third_kwic_sorting_option: "",
-                };
-                if (!deepEqual(newQuery, this.currentQuery) || Object.keys(this.statsDescription).length == 0) {
-                    this.getHitListStats();
-                    this.currentQuery = newQuery;
-                }
-                this.buildDescription();
-            }
-        },
-    },
-    methods: {
-        updateDescriptions() {
-            let modalEl = document.getElementById("results-bibliography");
-            if (modalEl) {
-                // hide modal if open
-                let modal = Modal.getOrCreateInstance(modalEl);
-                modal.hide();
-            }
-            this.buildDescription();
-            // For reports that set searching/totalResultsDone (concordance, kwic, bibliography),
-            // defer updateTotalResults and getHitListStats until the report response arrives
-            // (via the searching watcher below). This avoids blocking extra Gunicorn workers
-            // with hits.finish() calls while the main report request is still in flight.
-            if (!["concordance", "kwic", "bibliography"].includes(this.formData.report)) {
-                this.updateTotalResults();
-            }
-        },
-        buildDescription() {
-            let start;
-            let end;
-            if (
-                typeof this.description == "undefined" ||
-                this.description.start === "" ||
-                this.description.start == 0
-            ) {
-                start = 1;
-                end = parseInt(this.formData.results_per_page);
-            } else {
-                start = this.description.start || this.$route.query.start || 1;
-                end = this.formData.end || parseInt(this.formData.results_per_page);
-            }
-            if (end > this.resultsLength) {
-                end = this.resultsLength;
-            }
-            let resultsPerPage = parseInt(this.formData.results_per_page);
-            let description;
-            if (this.resultsLength && end <= resultsPerPage && end <= this.resultsLength) {
-                this.descriptionStart = start;
-                this.descriptionEnd = end;
-            } else if (this.resultsLength) {
-                if (resultsPerPage > this.resultsLength) {
-                    this.descriptionStart = start;
-                    this.descriptionEnd = this.resultsLength;
-                } else {
-                    this.descriptionStart = start;
-                    this.descriptionEnd = end;
-                }
-            }
-            return description;
-        },
-        updateTotalResults() {
-            // If the report response already provided the final count, skip the extra request
-            if (this.totalResultsDone) {
-                this.hits = this.buildDescription();
-                return;
-            }
-            let params = { ...this.formData };
-            if (this.formData.report == "time_series") {
-                params.year = `${this.formData.start_date || this.$philoConfig.time_series_start_end_date.start_date}-${this.formData.end_date || this.$philoConfig.time_series_start_end_date.end_date
-                    }`;
-            }
-            this.totalResultsDone = false;
-            this.$http
-                .get(`${this.$dbUrl}/scripts/get_total_results.py`, {
-                    params: paramsFilter(params),
-                })
-                .then((response) => {
-                    this.resultsLength = response.data;
-                    this.hits = this.buildDescription();
-                    this.totalResultsDone = true;
-                })
-                .catch((error) => {
-                    debug(this, error);
-                });
-        },
-        getHitListStats() {
-            this.hitlistStatsDone = false;
-            this.$http
-                .get(`${this.$dbUrl}/scripts/get_hitlist_stats.py`, {
-                    params: paramsFilter({ ...this.formData }),
-                })
-                .then((response) => {
-                    this.hitlistStatsDone = true;
-                    let statsDescription = [];
-                    for (let stat of response.data.stats) {
-                        let label = "";
-                        if (stat.field in this.$philoConfig.metadata_aliases) {
-                            label = this.$philoConfig.metadata_aliases[stat.field].toLowerCase();
-                        } else {
-                            label = stat.field;
-                        }
-                        let link = "";
-                        if (stat.link_field) {
-                            link = paramsToUrlString({
-                                ...this.formData,
-                                report: "aggregation",
-                                start: "",
-                                end: "",
-                                group_by: "",
-                            });
-                            if (link.length == 0) {
-                                link = "/aggregation?";
-                            }
-                        }
-                        statsDescription.push({
-                            label: label,
-                            field: stat.field,
-                            count: stat.count,
-                            link: link,
-                        });
-                    }
-                    this.statsDescription = statsDescription;
-                })
-                .catch((error) => {
-                    debug(this, error);
-                });
-        },
-        switchReport(reportName) {
-            this.formData.report = reportName;
-            this.first_kwic_sorting_option = "";
-            this.second_kwic_sorting_option = "";
-            this.third_kwic_sorting_option = "";
-            this.formData.results_per_page = 25;
-            this.$router.push(paramsToRoute({ ...this.formData }));
-        },
-        switchResultsPerPage(number) {
-            this.formData.results_per_page = parseInt(number);
-            this.$router.push(
-                paramsToRoute({ ...this.formData, results_per_page: number, start: "1", end: number })
-            );
-        },
-        showResultsBiblio() {
-            if (!this.showBiblio) {
-                this.showBiblio = true;
-            } else {
-                this.showBiblio = false;
-            }
-        },
-        toggleFilterList(event) {
-            event.preventDefault();
-            if (this.showFilteredWords == true) {
-                this.showFilteredWords = false;
-            } else {
-                this.showFilteredWords = true;
-            }
-        },
-        toggleFacets() {
-            this.showFacets = !this.showFacets;
-        },
-    },
+        if (!deepEqual(newQuery, currentQuery.value) || Object.keys(statsDescription.value).length === 0) {
+            getHitListStats();
+            currentQuery.value = newQuery;
+        }
+        buildDescription();
+    }
+});
+
+currentQuery.value = {
+    ...formData.value,
+    start: "",
+    end: "",
+    first_kwic_sorting_option: "",
+    second_kwic_sorting_option: "",
+    third_kwic_sorting_option: "",
 };
+updateDescriptions();
 </script>
 
 <style lang="scss" scoped>

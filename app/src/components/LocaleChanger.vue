@@ -15,25 +15,21 @@
         </div>
     </div>
 </template>
-<script>
-export default {
-    name: "locale-changer",
-    data() {
-        return {
-            localNames: {
-                en: "English",
-                fr: "Français",
-                es: "Español",
-            },
-        };
-    },
-    methods: {
-        changeLocale(locale) {
-            localStorage.setItem("lang", locale);
-            this.$i18n.locale = locale;
-        },
-    },
+<script setup>
+import { useI18n } from "vue-i18n";
+
+const { locale } = useI18n();
+
+const localNames = {
+    en: "English",
+    fr: "Français",
+    es: "Español",
 };
+
+function changeLocale(newLocale) {
+    localStorage.setItem("lang", newLocale);
+    locale.value = newLocale;
+}
 </script>
 <style lang="scss" scoped>
 @use "../assets/styles/theme.module.scss" as theme;

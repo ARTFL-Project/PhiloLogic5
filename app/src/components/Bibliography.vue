@@ -64,127 +64,95 @@
         </div>
     </div>
 </template>
-<script>
-import gsap from "gsap";
-import { mapStores, mapWritableState } from "pinia";
-import { computed } from "vue";
+<script setup>
+import { computed, inject, provide, ref, watch } from "vue";
+import { storeToRefs } from "pinia";
 import { useMainStore } from "../stores/main";
+import { useFadeTransition } from "../composables/useFadeTransition";
 import { debug, isOnlyFacetChange, paramsFilter } from "../utils.js";
 import citations from "./Citations";
 import facets from "./Facets";
 import pages from "./Pages";
 import ResultsSummary from "./ResultsSummary";
 
-export default {
-    name: "bibliography-report",
-    components: {
-        citations,
-        ResultsSummary,
-        facets,
-        pages,
-    },
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "description",
-            "currentReport",
-            "metadataUpdate",
-            "urlUpdate",
-            "showFacets",
-            "searching",
-            "resultsLength",
-            "totalResultsDone"
-        ]),
-        ...mapStores(useMainStore),
-    },
-    inject: ["$http"],
-    provide() {
-        return {
-            results: computed(() => this.results.results),
-        };
-    },
-    data() {
-        return {
-            philoConfig: this.$philoConfig,
-            results: {},
-            resultType: "doc",
-        };
-    },
-    created() {
-        this.formData.report = "bibliography";
-        this.currentReport = "bibliography";
-        this.fetchResults();
-    },
-    watch: {
-        urlUpdate(newUrl, oldUrl) {
-            if (!isOnlyFacetChange(newUrl, oldUrl)) {
-                this.fetchResults();
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const store = useMainStore();
+const {
+    formData,
+    currentReport,
+    urlUpdate,
+    showFacets,
+    searching,
+    totalResultsDone,
+} = storeToRefs(store);
+
+const results = ref({});
+const resultType = ref("doc");
+
+provide("results", computed(() => results.value.results));
+
+function fetchResults() {
+    totalResultsDone.value = false;
+    results.value = {};
+    searching.value = true;
+    $http
+        .get(`${$dbUrl}/reports/bibliography.py`, {
+            params: paramsFilter({ ...formData.value }),
+        })
+        .then((response) => {
+            if (!philoConfig.dictionary_bibliography || response.data.doc_level) {
+                results.value = response.data;
+                resultType.value = results.value.result_type;
+            } else {
+                results.value = dictionaryBibliography(response.data);
             }
-        },
-    },
-    methods: {
-        fetchResults() {
-            this.totalResultsDone = false;
-            this.results = {};
-            this.searchParams = { ...this.formData };
-            this.searching = true;
-            this.$http
-                .get(`${this.$dbUrl}/reports/bibliography.py`, {
-                    params: paramsFilter(this.searchParams),
-                })
-                .then((response) => {
-                    if (!this.philoConfig.dictionary_bibliography || response.data.doc_level) {
-                        this.results = response.data;
-                        this.resultType = this.results.result_type;
-                    } else {
-                        this.results = this.dictionaryBibliography(response.data);
-                    }
-                    if (response.data.results_length !== undefined) {
-                        this.mainStore.updateResultsLength(parseInt(response.data.results_length));
-                    }
-                    if (response.data.query_done) {
-                        this.totalResultsDone = true;
-                    }
-                    this.searching = false;
-                })
-                .catch((error) => {
-                    this.searching = false;
-                    this.loading = false;
-                    this.error = error.toString();
-                    debug(this, error);
-                });
-        },
-        dictionaryBibliography(data) {
-            let groupedResults = [];
-            let currentTitle = data.results[0].metadata_fields.title;
-            let titleGroup = [];
-            for (let i = 0; i < data.results.length; i += 1) {
-                if (data.results[i].metadata_fields.title !== currentTitle) {
-                    groupedResults.push(titleGroup);
-                    titleGroup = [];
-                    currentTitle = data.results[i].metadata_fields.title;
-                }
-                data.results[i].position = i + 1;
-                titleGroup.push(data.results[i]);
-                if (i + 1 == data.results.length) {
-                    groupedResults.push(titleGroup);
-                }
+            if (response.data.results_length !== undefined) {
+                store.updateResultsLength(parseInt(response.data.results_length));
             }
-            data.results = groupedResults;
-            return data;
-        },
-        beforeEnter: function (el) {
-            el.style.opacity = 0;
-        },
-        enter: function (el, done) {
-            gsap.to(el, {
-                opacity: 1,
-                delay: el.dataset.index * 0.015,
-                onComplete: done,
-            });
-        },
-    },
-};
+            if (response.data.query_done) {
+                totalResultsDone.value = true;
+            }
+            searching.value = false;
+        })
+        .catch((error) => {
+            searching.value = false;
+            debug({ $options: { name: "bibliography-report" } }, error);
+        });
+}
+
+function dictionaryBibliography(data) {
+    const groupedResults = [];
+    let currentTitle = data.results[0].metadata_fields.title;
+    let titleGroup = [];
+    for (let i = 0; i < data.results.length; i += 1) {
+        if (data.results[i].metadata_fields.title !== currentTitle) {
+            groupedResults.push(titleGroup);
+            titleGroup = [];
+            currentTitle = data.results[i].metadata_fields.title;
+        }
+        data.results[i].position = i + 1;
+        titleGroup.push(data.results[i]);
+        if (i + 1 === data.results.length) {
+            groupedResults.push(titleGroup);
+        }
+    }
+    data.results = groupedResults;
+    return data;
+}
+
+const { beforeEnter, enter } = useFadeTransition();
+
+watch(urlUpdate, (newUrl, oldUrl) => {
+    if (!isOnlyFacetChange(newUrl, oldUrl)) {
+        fetchResults();
+    }
+});
+
+formData.value.report = "bibliography";
+currentReport.value = "bibliography";
+fetchResults();
 </script>
 <style scoped>
 .citation-container {

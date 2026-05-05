@@ -122,7 +122,7 @@
                                 <li class="pt-1"
                                     v-for="(result, resultIndex) in group.results.slice(0, groupDisplay[groupIndex])"
                                     :key="resultIndex" role="listitem">
-                                    <citations :citation="buildCitationObject(result.metadata, citations)"
+                                    <citations :citation="buildCitationObject(result.metadata, citationList)"
                                         :result-number="resultIndex + 1"></citations>
                                     <span v-if="displayCount == 'true'">&nbsp;({{ result.count }})</span>
                                 </li>
@@ -140,220 +140,192 @@
         </div>
     </div>
 </template>
-<script>
-import { mapStores, mapWritableState } from "pinia";
+<script setup>
+import { inject, reactive, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import { debug, paramsToRoute } from "../utils.js";
-import citations from "./Citations";
+import Citations from "./Citations";  // eslint-disable-line no-unused-vars
 
-export default {
-    name: "landingPage",
-    components: {
-        citations,
-    },
-    computed: {
-        ...mapWritableState(useMainStore, ["formData", "accessAuthorized"]),
-        ...mapStores(useMainStore)
-    },
-    inject: ["$http"],
-    data() {
-        const store = useMainStore();
-        return {
-            store,
-            dictionary: this.$philoConfig.dictionary,
-            logo: this.$philoConfig.logo,
-            landingPageBrowsing: this.$philoConfig.landing_page_browsing,
-            defaultLandingPageBrowsing: this.$philoConfig.default_landing_page_browsing,
-            customLandingPage: "",
-            displayCount: true,
-            resultGroups: [],
-            contentType: "",
-            selectedField: "",
-            loading: false,
-            showDicoLetterRows: true,
-            volumeData: [],
-            dicoLetterRows: [],
-            citations: [],
-            groupDisplay: {},
-            bibliography: [],
-        };
-    },
-    created() {
-        if (this.landingPageBrowsing == "toc") {
-            this.$router.push("/navigate/1/table-of-contents");
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const router = useRouter();
+const { t } = useI18n();
+const store = useMainStore();
+const { formData } = storeToRefs(store);
+
+const dictionary = philoConfig.dictionary;
+const logo = philoConfig.logo;
+const landingPageBrowsing = philoConfig.landing_page_browsing;
+const defaultLandingPageBrowsing = philoConfig.default_landing_page_browsing;
+
+const customLandingPage = ref("");
+const displayCount = ref(true);
+const resultGroups = ref([]);
+const contentType = ref("");
+const selectedField = ref("");
+const loading = ref(false);
+const showDicoLetterRows = ref(true);
+const volumeData = ref([]);
+const dicoLetterRows = ref([]);
+const citationList = ref([]);
+const groupDisplay = reactive({});
+const bibliography = ref([]);
+
+function setupDictView() {
+    $http.get(`${$dbUrl}/scripts/get_bibliography.py?object_level=doc`).then((response) => {
+        volumeData.value.push(...response.data);
+    });
+
+    const dicoLetterRange = philoConfig.dico_letter_range;
+    let row = [];
+    let position = 0;
+    for (let i = 0; i < dicoLetterRange.length; i++) {
+        position++;
+        row.push({
+            letter: dicoLetterRange[i],
+            url: "bibliography&head=^" + dicoLetterRange[i] + ".*",
+        });
+        if (position === 4) {
+            dicoLetterRows.value.push(row);
+            row = [];
+            position = 0;
         }
-        if (!["simple", "default", "dictionary"].includes(this.landingPageBrowsing)) {
-            this.setupCustomPage();
-        } else if (this.dictionary) {
-            this.setupDictView();
-        } else if (this.landingPageBrowsing == "simple") {
-            this.getSimpleLandingPageData();
+    }
+    if (row.length) dicoLetterRows.value.push(row);
+    if (dicoLetterRows.value.length === 0) showDicoLetterRows.value = false;
+}
+
+function setupCustomPage() {
+    $http
+        .get(`${$dbUrl}/scripts/get_custom_landing_page.py`)
+        .then((response) => (customLandingPage.value = response.data));
+}
+
+function getContent(browseType, range) {
+    // Navigate to URL with query params instead of loading content directly
+    router.push({
+        path: "/landing",
+        query: {
+            browse: browseType.group_by_field,
+            range,
+            display_count: browseType.display_count,
+            is_range: browseType.is_range,
+        },
+    });
+}
+
+function loadContentFromUrl(browseType, range) {
+    selectedField.value = browseType.group_by_field;
+    loading.value = true;
+    $http
+        .get(`${$dbUrl}/scripts/get_landing_page_content.py`, {
+            params: {
+                group_by_field: browseType.group_by_field,
+                display_count: browseType.display_count,
+                is_range: browseType.is_range,
+                query: range,
+            },
+        })
+        .then((response) => {
+            for (const i in response.data.content) {
+                groupDisplay[i] = 100;
+            }
+            resultGroups.value = Object.freeze(response.data.content);
+            citationList.value = response.data.citations;
+            displayCount.value = response.data.display_count;
+            contentType.value = response.data.content_type;
+            loading.value = false;
+        })
+        .catch((error) => {
+            debug({ $options: { name: "landingPage" } }, error);
+            loading.value = false;
+        });
+}
+
+function handleUrlParameters() {
+    const { browse, range, display_count, is_range } = route.query;
+    if (browse && range) {
+        loadContentFromUrl(
+            {
+                group_by_field: browse,
+                display_count: display_count || "true",
+                is_range: is_range || "true",
+            },
+            range
+        );
+    }
+}
+
+function getSimpleLandingPageData() {
+    $http
+        .get(`${$dbUrl}/reports/bibliography.py`, { params: { simple_bibliography: "all" } })
+        .then((response) => {
+            bibliography.value = response.data;
+        })
+        .catch((error) => {
+            debug({ $options: { name: "landingPage" } }, error);
+            loading.value = false;
+        });
+}
+
+function buildCitationObject(metadataFields, citations) {
+    const out = [];
+    for (const citation of citations) {
+        let label = metadataFields[citation.field] || "";
+        if (!citation.link) {
+            out.push({ ...citation, href: "", label });
+            continue;
         }
-
-        // Handle URL parameters for direct linking
-        this.handleUrlParameters();
-    },
-    watch: {
-        $route() {
-            // Handle browser back/forward navigation
-            this.handleUrlParameters();
+        if (citation.field === "title") {
+            const docId = metadataFields.philo_id.split(" ")[0];
+            const link = philoConfig.skip_table_of_contents
+                ? `/navigate/${docId}`
+                : `/navigate/${docId}/table-of-contents`;
+            out.push({ ...citation, href: link, label: metadataFields.title });
+            continue;
         }
-    },
-    methods: {
-        setupDictView() {
-            this.$http.get(`${this.$dbUrl}/scripts/get_bibliography.py?object_level=doc`).then((response) => {
-                for (let i = 0; i < response.data.length; i++) {
-                    this.volumeData.push(response.data[i]);
-                }
-            });
+        const queryParams = { ...formData.value, start: "0", end: "25" };
+        if (label === "") {
+            queryParams[citation.field] = ""; // Should be NULL but that's broken in the philo lib
+            label = t("common.na");
+        } else {
+            queryParams[citation.field] = `"${label}"`;
+        }
+        // workaround for broken NULL searches
+        const href = queryParams[citation.field].length
+            ? paramsToRoute({ ...queryParams, report: "concordance" })
+            : "";
+        out.push({ ...citation, href, label });
+    }
+    return out;
+}
 
-            let dicoLetterRange = this.$philoConfig.dico_letter_range;
-            let row = [];
-            let position = 0;
-            for (var i = 0; i < dicoLetterRange.length; i++) {
-                position++;
-                row.push({
-                    letter: dicoLetterRange[i],
-                    url: "bibliography&head=^" + dicoLetterRange[i] + ".*",
-                });
-                if (position === 4) {
-                    this.dicoLetterRows.push(row);
-                    row = [];
-                    position = 0;
-                }
-            }
-            if (row.length) {
-                this.dicoLetterRows.push(row);
-            }
-            if (this.dicoLetterRows.length == 0) {
-                this.showDicoLetterRows = false;
-            }
-        },
-        setupCustomPage() {
-            this.$http
-                .get(`${this.$dbUrl}/scripts/get_custom_landing_page.py`)
-                .then((response) => (this.customLandingPage = response.data));
-        },
-        getContent(browseType, range) {
-            // Navigate to the URL with query parameters instead of just loading content
-            this.$router.push({
-                path: '/landing',
-                query: {
-                    browse: browseType.group_by_field,
-                    range: range,
-                    display_count: browseType.display_count,
-                    is_range: browseType.is_range
-                }
-            });
-        },
+function goToLetter(letter) {
+    router.push(`/bibliography?head=^${letter}.*`);
+}
 
-        // New method to handle URL parameters and load content
-        handleUrlParameters() {
-            const { browse, range, display_count, is_range } = this.$route.query;
+function seeAll(groupIndex) {
+    groupDisplay[groupIndex] = resultGroups.value[groupIndex].length;
+}
 
-            if (browse && range) {
-                // Reconstruct browseType object from URL parameters
-                const browseType = {
-                    group_by_field: browse,
-                    display_count: display_count || 'true',
-                    is_range: is_range || 'true'
-                };
+watch(() => route.fullPath, handleUrlParameters);
 
-                this.loadContentFromUrl(browseType, range);
-            }
-        },
-
-        // Extracted content loading logic
-        loadContentFromUrl(browseType, range) {
-            this.selectedField = browseType.group_by_field;
-            this.loading = true;
-            this.$http
-                .get(`${this.$dbUrl}/scripts/get_landing_page_content.py`, {
-                    params: {
-                        group_by_field: browseType.group_by_field,
-                        display_count: browseType.display_count,
-                        is_range: browseType.is_range,
-                        query: range,
-                    },
-                })
-                .then((response) => {
-                    for (let i in response.data.content) {
-                        this.groupDisplay[i] = 100;
-                    }
-                    this.resultGroups = Object.freeze(response.data.content);
-                    this.citations = response.data.citations;
-                    this.displayCount = response.data.display_count;
-                    this.contentType = response.data.content_type;
-                    this.loading = false;
-                })
-                .catch((error) => {
-                    debug(this, error);
-                    this.loading = false;
-                });
-        },
-        getSimpleLandingPageData() {
-            this.$http
-                .get(`${this.$dbUrl}/reports/bibliography.py`, { params: { simple_bibliography: "all" } })
-                .then((response) => {
-                    this.bibliography = response.data;
-                })
-                .catch((error) => {
-                    debug(this, error);
-                    this.loading = false;
-                });
-        },
-        buildCitationObject(metadataFields, citations) {
-            // Used because too many results are returned from server
-            let citationObject = [];
-            for (let citation of citations) {
-                let label = metadataFields[citation.field] || "";
-                if (citation.link) {
-                    let link = "";
-                    if (citation.field == "title") {
-                        if (this.$philoConfig.skip_table_of_contents) {
-                            link = `/navigate/${metadataFields.philo_id.split(" ")[0]}`;
-                        } else {
-                            link = `/navigate/${metadataFields.philo_id.split(" ")[0]}/table-of-contents`;
-                        }
-                        citationObject.push({ ...citation, href: link, label: metadataFields.title });
-                    } else {
-                        let queryParams = {
-                            ...this.formData,
-                            start: "0",
-                            end: "25",
-                        };
-                        if (label == "") {
-                            queryParams[citation.field] = ""; // Should be NULL, but that's broken in the philo lib
-                            label = this.$t("common.na");
-                        } else {
-                            queryParams[citation.field] = `"${label}"`;
-                        }
-
-                        // workaround for broken NULL searches
-                        if (queryParams[citation.field].length) {
-                            link = paramsToRoute({
-                                ...queryParams,
-                                report: "concordance",
-                            });
-                            citationObject.push({ ...citation, href: link, label: label });
-                        } else {
-                            citationObject.push({ ...citation, href: "", label: label });
-                        }
-                    }
-                } else {
-                    citationObject.push({ ...citation, href: "", label: label });
-                }
-            }
-            return citationObject;
-        },
-        goToLetter(letter) {
-            this.$router.push(`/bibliography?head=^${letter}.*`);
-        },
-        seeAll(groupIndex) {
-            this.groupDisplay[groupIndex] = this.resultGroups[groupIndex].length;
-        },
-    },
-};
+if (landingPageBrowsing === "toc") {
+    router.push("/navigate/1/table-of-contents");
+}
+if (!["simple", "default", "dictionary"].includes(landingPageBrowsing)) {
+    setupCustomPage();
+} else if (dictionary) {
+    setupDictView();
+} else if (landingPageBrowsing === "simple") {
+    getSimpleLandingPageData();
+}
+handleUrlParameters();
 </script>
 <style lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;

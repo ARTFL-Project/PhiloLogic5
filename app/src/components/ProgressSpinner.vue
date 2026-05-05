@@ -12,51 +12,33 @@
         </div>
     </div>
 </template>
-<script>
-export default {
-    name: 'ProgressSpinner',
-    data() {
-        return {
-            statusMessage: '',
-            announceTimeout: null
-        }
-    },
-    mounted() {
-        this.announceTimeout = setTimeout(() => {
-            this.statusMessage = (this.message || this.$t("common.loading")) + '...';
-        }, 100);
-    },
-    beforeUnmount() {
-        if (this.announceTimeout) {
-            clearTimeout(this.announceTimeout);
-        }
-    },
-    props: {
-        progress: {
-            default: 0
-        },
-        text: {
-            type: String,
-            default: ''
-        },
-        sm: {
-            type: Boolean,
-            default: false
-        },
-        lg: {
-            type: Boolean,
-            default: false
-        },
-        xl: {
-            type: Boolean,
-            default: false
-        },
-        message: {
-            type: String,
-            default: ''
-        }
-    },
-}
+<script setup>
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+
+const props = defineProps({
+    progress: { default: 0 },
+    text: { type: String, default: "" },
+    sm: { type: Boolean, default: false },
+    lg: { type: Boolean, default: false },
+    xl: { type: Boolean, default: false },
+    message: { type: String, default: "" },
+});
+
+const { t } = useI18n();
+
+const statusMessage = ref("");
+let announceTimeout = null;
+
+onMounted(() => {
+    announceTimeout = setTimeout(() => {
+        statusMessage.value = (props.message || t("common.loading")) + "...";
+    }, 100);
+});
+
+onBeforeUnmount(() => {
+    if (announceTimeout) clearTimeout(announceTimeout);
+});
 </script>
 
 <style lang="scss" scoped>

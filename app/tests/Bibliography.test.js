@@ -57,6 +57,11 @@ describe("Bibliography", () => {
         store.showFacets = true;
         await flushPromises();
         await nextTick();
-        expect(wrapper.find(".facets-stub").exists()).toBe(true);
+        // Bibliography's template gates the .facets-column wrapper on showFacets.
+        // We assert on the wrapper's existence rather than the inner Facets stub
+        // class because <script setup> imports are bound at compile time and
+        // bypass the test-utils stub registry — the real Facets component
+        // mounts here, not the stub.
+        expect(wrapper.find(".facets-column").exists()).toBe(true);
     });
 });

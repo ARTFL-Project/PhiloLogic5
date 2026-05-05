@@ -75,7 +75,7 @@
     </div>
 </template>
 
-<script>
+<script setup>
 import {
     BarElement,
     CategoryScale,
@@ -83,479 +83,368 @@ import {
     Legend,
     LinearScale,
     Title,
-    Tooltip
-} from 'chart.js';
-import { Bar } from 'vue-chartjs';
+    Tooltip,
+} from "chart.js";
+import { Bar } from "vue-chartjs";  // eslint-disable-line no-unused-vars
 
-import { mapStores, mapWritableState } from "pinia";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, useTemplateRef, watch } from "vue";
+import { useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
+import { useI18n } from "vue-i18n";
 import cssVariables from "../assets/styles/theme.module.scss";
 import { useMainStore } from "../stores/main";
 import { copyObject, debug, mergeResults, paramsFilter, paramsToRoute } from "../utils.js";
-import ResultsSummary from "./ResultsSummary";
+import ResultsSummary from "./ResultsSummary";  // eslint-disable-line no-unused-vars
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 
-export default {
-    name: "timeSeries",
-    components: {
-        ResultsSummary,
-        Bar,
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const router = useRouter();
+const { t } = useI18n();
+const store = useMainStore();
+const { formData, currentReport, searching, urlUpdate } = storeToRefs(store);
+
+const chartComponent = useTemplateRef("chartComponent");
+
+const frequencyType = ref("absolute_time");
+const absoluteCounts = ref([]);
+const relativeCounts = ref([]);
+const dateLabels = ref([]);
+const startDate = ref("");
+const endDate = ref("");
+const results = ref([]);
+const dateCounts = ref({});
+const selectedBarIndex = ref(0);
+const customTooltip = reactive({
+    visible: false,
+    title: "",
+    value: "",
+    style: {},
+});
+let tooltipHoverTimeout = null;
+let isMouseOverTooltip = false;
+
+const currentFrequencyLabel = computed(() =>
+    frequencyType.value === "absolute_time"
+        ? t("common.absoluteFrequency")
+        : t("common.relativeFrequency")
+);
+
+const chartAriaLabel = computed(() => {
+    const dataPoints = dateLabels.value.length;
+    const range = dataPoints > 0
+        ? `${dateLabels.value[0]} to ${dateLabels.value[dataPoints - 1]}`
+        : "";
+    return t("timeSeries.chartAriaLabel", {
+        type: currentFrequencyLabel.value,
+        range,
+        count: dataPoints,
+    });
+});
+
+const chartData = computed(() => {
+    const backgroundColor = cssVariables.color || "#8e3232";
+    return {
+        labels: dateLabels.value,
+        datasets: [{
+            label: currentFrequencyLabel.value,
+            backgroundColor,
+            hoverBackgroundColor: hexToRGBA(backgroundColor),
+            borderWidth: 1,
+            data: frequencyType.value === "absolute_time"
+                ? absoluteCounts.value
+                : relativeCounts.value,
+        }],
+    };
+});
+
+const chartOptions = computed(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: { display: false },
+        tooltip: {
+            enabled: false,
+            external: (context) => externalTooltipHandler(context),
+        },
     },
-    inject: ["$http"],
-    provide() {
-        return {
-            results: this.results.results,
-        };
+    scales: {
+        x: {
+            grid: { display: false },
+            title: { display: true, text: t("timeSeries.year") },
+        },
+        y: {
+            beginAtZero: true,
+            title: { display: true, text: currentFrequencyLabel.value },
+        },
     },
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "currentReport",
-            "searching",
-            "resultsLength",
-            "urlUpdate",
-            "accessAuthorized"
-        ]),
-        ...mapStores(useMainStore),
+    onClick: (event, elements) => {
+        if (elements.length > 0) navigateToYear(elements[0].index);
+    },
+}));
 
-        // Accessibility computed properties
-        chartAriaLabel() {
-            const dataPoints = this.dateLabels.length;
-            const range = this.dateLabels.length > 0 ?
-                `${this.dateLabels[0]} to ${this.dateLabels[this.dateLabels.length - 1]}` : '';
-            return this.$t("timeSeries.chartAriaLabel", {
-                type: this.currentFrequencyLabel,
-                range: range,
-                count: dataPoints
-            });
-        },
+function formatDateRange(label) {
+    if (formData.value.year_interval == 1) return label;
+    return `${label}-${parseInt(label) + parseInt(formData.value.year_interval) - 1}`;
+}
 
-        currentFrequencyLabel() {
-            return this.frequencyType === 'absolute_time' ?
-                this.$t("common.absoluteFrequency") :
-                this.$t("common.relativeFrequency");
-        },
+function getCurrentData(index) {
+    return frequencyType.value === "absolute_time"
+        ? absoluteCounts.value[index] || 0
+        : relativeCounts.value[index] || 0;
+}
 
-        // Chart data - computed property for reactivity
-        chartData() {
-            // Use theme color with fallback
-            const backgroundColor = cssVariables.color || '#8e3232';
+function getCurrentUnit() {
+    return frequencyType.value === "absolute_time"
+        ? t("timeSeries.occurrences")
+        : t("timeSeries.per1000Words");
+}
 
-            return {
-                labels: this.dateLabels,
-                datasets: [{
-                    label: this.currentFrequencyLabel,
-                    backgroundColor: backgroundColor,
-                    hoverBackgroundColor: this.hexToRGBA(backgroundColor),
-                    borderWidth: 1,
-                    data: this.frequencyType === 'absolute_time' ?
-                        this.absoluteCounts :
-                        this.relativeCounts,
-                }]
-            };
-        },
+function dismissTooltip() {
+    if (tooltipHoverTimeout) {
+        clearTimeout(tooltipHoverTimeout);
+        tooltipHoverTimeout = null;
+    }
+    customTooltip.visible = false;
+    isMouseOverTooltip = false;
+}
 
-        // Chart options - computed property
-        chartOptions() {
-            return {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        display: false,
-                    },
-                    tooltip: {
-                        enabled: false, // Disable default canvas tooltip
-                        external: (context) => this.externalTooltipHandler(context),
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: {
-                            display: false
-                        },
-                        title: {
-                            display: true,
-                            text: this.$t("timeSeries.year")
-                        }
-                    },
-                    y: {
-                        beginAtZero: true,
-                        title: {
-                            display: true,
-                            text: this.currentFrequencyLabel
-                        }
-                    }
-                },
-                onClick: (event, elements) => {
-                    if (elements.length > 0) {
-                        this.navigateToYear(elements[0].index);
-                    }
-                }
-            };
+function handleGlobalEscape(event) {
+    if (event.key === "Escape" && customTooltip.visible) {
+        dismissTooltip();
+        event.preventDefault();
+    }
+}
+
+function externalTooltipHandler(context) {
+    const { chart, tooltip } = context;
+
+    // Chart.js wants to hide tooltip (mouse left bar)
+    if (tooltip.opacity === 0) {
+        if (!isMouseOverTooltip) {
+            if (tooltipHoverTimeout) clearTimeout(tooltipHoverTimeout);
+            // Give user time to move mouse to tooltip
+            tooltipHoverTimeout = setTimeout(() => {
+                if (!isMouseOverTooltip) customTooltip.visible = false;
+                tooltipHoverTimeout = null;
+            }, 250);
         }
-    },
+        return;
+    }
 
-    data() {
-        return {
-            frequencyType: "absolute_time",
-            totalResults: 100,
-            absoluteCounts: [],
-            dateCounter: [],
-            relativeCounts: [],
-            dateLabels: [],
-            startDate: "",
-            endDate: "",
-            results: [],
-            dateCounts: {},
-            selectedBarIndex: 0, // For keyboard navigation
-            customTooltip: {
-                visible: false,
-                title: '',
-                value: '',
-                style: {}
-            },
-            tooltipHoverTimeout: null,
-            isMouseOverTooltip: false,
+    if (tooltipHoverTimeout) {
+        clearTimeout(tooltipHoverTimeout);
+        tooltipHoverTimeout = null;
+    }
+
+    if (tooltip.body) {
+        const dataIndex = tooltip.dataPoints[0].dataIndex;
+        customTooltip.title = formatDateRange(dateLabels.value[dataIndex]);
+        customTooltip.value = `${getCurrentData(dataIndex)} ${getCurrentUnit()}`;
+        customTooltip.visible = true;
+
+        const position = chart.canvas.getBoundingClientRect();
+        customTooltip.style = {
+            left: position.left + window.pageXOffset + tooltip.caretX + "px",
+            top: position.top + window.pageYOffset + tooltip.caretY + "px",
         };
-    },
-    mounted() {
-        this.formData.report = "time_series";
-        this.currentReport = "time_series";
-        this.fetchResults();
+    }
+}
 
-        // Add global escape key listener for dismissing tooltip
-        document.addEventListener('keydown', this.handleGlobalEscape);
-    },
-    beforeUnmount() {
-        // Clean up global escape key listener
-        document.removeEventListener('keydown', this.handleGlobalEscape);
-    },
-    watch: {
-        urlUpdate() {
-            if (this.formData.report == "time_series") {
-                this.fetchResults();
+function handleTooltipMouseEnter() {
+    isMouseOverTooltip = true;
+    if (tooltipHoverTimeout) {
+        clearTimeout(tooltipHoverTimeout);
+        tooltipHoverTimeout = null;
+    }
+}
+
+function handleTooltipMouseLeave() {
+    isMouseOverTooltip = false;
+    tooltipHoverTimeout = setTimeout(() => {
+        if (!isMouseOverTooltip) customTooltip.visible = false;
+        tooltipHoverTimeout = null;
+    }, 200);
+}
+
+function highlightBar(index) {
+    // vue-chartjs exposes the chart instance under different paths across versions
+    const chartInstance =
+        chartComponent.value?.chart ||
+        chartComponent.value?.$data?.chart ||
+        chartComponent.value?.chartInstance;
+    if (!chartInstance) return;
+
+    chartInstance.setActiveElements([{ datasetIndex: 0, index }]);
+    chartInstance.tooltip.setActiveElements([{ datasetIndex: 0, index }]);
+    chartInstance.update("none");
+}
+
+function handleChartKeydown(event) {
+    if (!dateLabels.value.length) return;
+
+    let newIndex = selectedBarIndex.value;
+    let shouldNavigate = false;
+
+    switch (event.key) {
+        case "ArrowLeft":
+            if (newIndex > 0) { newIndex--; shouldNavigate = true; }
+            event.preventDefault();
+            break;
+        case "ArrowRight":
+            if (newIndex < dateLabels.value.length - 1) { newIndex++; shouldNavigate = true; }
+            event.preventDefault();
+            break;
+        case "Enter":
+        case " ":
+            navigateToYear(selectedBarIndex.value);
+            event.preventDefault();
+            break;
+        case "Home":
+            newIndex = 0; shouldNavigate = true;
+            event.preventDefault();
+            break;
+        case "End":
+            newIndex = dateLabels.value.length - 1; shouldNavigate = true;
+            event.preventDefault();
+            break;
+        case "Escape":
+            dismissTooltip();
+            event.preventDefault();
+            break;
+    }
+
+    if (shouldNavigate) {
+        selectedBarIndex.value = newIndex;
+        highlightBar(newIndex);
+    }
+}
+
+function navigateToYear(index) {
+    const start = parseInt(dateLabels.value[index]);
+    const end = start + parseInt(formData.value.year_interval) - 1;
+    const year = start === end ? start.toString() : `${start}-${end}`;
+
+    store.updateFormDataField({ key: "year", value: year });
+    router.push(
+        paramsToRoute({
+            ...formData.value,
+            report: "concordance",
+            start_date: "",
+            end_date: "",
+            year_interval: "",
+        })
+    );
+}
+
+function fetchResults() {
+    if (formData.value.year_interval === "") {
+        formData.value.year_interval = philoConfig.time_series.interval;
+    }
+    formData.value.year_interval = parseInt(formData.value.year_interval);
+    frequencyType.value = "absolute_time";
+    searching.value = true;
+    startDate.value = parseInt(formData.value.start_date || philoConfig.time_series_start_end_date.start_date);
+    endDate.value = parseInt(formData.value.end_date || philoConfig.time_series_start_end_date.end_date);
+    store.updateStartEndDate({ startDate: startDate.value, endDate: endDate.value });
+
+    const dateList = [];
+    const zeros = [];
+    for (let i = startDate.value; i <= endDate.value; i += formData.value.year_interval) {
+        dateList.push(i);
+        zeros.push(0);
+    }
+    dateLabels.value = dateList;
+    absoluteCounts.value = copyObject(zeros);
+    relativeCounts.value = copyObject(zeros);
+    dateCounts.value = {};
+    selectedBarIndex.value = 0;
+
+    $http
+        .get(`${$dbUrl}/reports/time_series.py`, {
+            params: {
+                ...paramsFilter({ ...formData.value }),
+                start_date: startDate.value,
+                year_interval: formData.value.year_interval,
+            },
+        })
+        .then((response) => {
+            const data = response.data;
+            results.value = data;
+            for (const date in data.results.date_count) {
+                dateCounts.value[date] = data.results.date_count[date];
             }
-        },
-    },
-    methods: {
-        // Accessibility helper methods
-        formatDateRange(label, index) {
-            if (this.formData.year_interval == 1) {
-                return label;
-            } else {
-                return `${label}-${parseInt(label) + parseInt(this.formData.year_interval) - 1}`;
-            }
-        },
+            renderTimeSeries(data.results.absolute_count);
+            searching.value = false;
+        })
+        .catch((error) => {
+            debug({ $options: { name: "timeSeries" } }, error);
+            searching.value = false;
+        });
+}
 
-        getCurrentData(index) {
-            return this.frequencyType === 'absolute_time' ?
-                this.absoluteCounts[index] || 0 :
-                this.relativeCounts[index] || 0;
-        },
+function renderTimeSeries(absoluteCount) {
+    const allResults = mergeResults(undefined, absoluteCount, "label");
+    for (let i = 0; i < allResults.sorted.length; i += 1) {
+        const date = allResults.sorted[i].label;
+        const value = allResults.sorted[i].count;
+        absoluteCounts.value[i] = value;
+        const relative = Math.round((value / dateCounts.value[date]) * 10000 * 100) / 100;
+        relativeCounts.value[i] = isNaN(relative) ? 0 : relative;
+    }
+}
 
-        getCurrentUnit() {
-            return this.frequencyType === 'absolute_time' ?
-                this.$t("timeSeries.occurrences") :
-                this.$t("timeSeries.per1000Words");
-        },
+function announceToScreenReader(message) {
+    const announcer = document.createElement("div");
+    announcer.setAttribute("aria-live", "polite");
+    announcer.className = "visually-hidden";
+    announcer.textContent = message;
+    document.body.appendChild(announcer);
+    setTimeout(() => document.body.removeChild(announcer), 1000);
+}
 
-        // Keyboard navigation for chart
-        handleChartKeydown(event) {
-            if (!this.dateLabels.length) return;
+function toggleFrequency(newType) {
+    if (searching.value) return;
+    frequencyType.value = newType;
+    nextTick(() => {
+        announceToScreenReader(`Chart updated to show ${currentFrequencyLabel.value}`);
+    });
+}
 
-            let newIndex = this.selectedBarIndex;
-            let shouldNavigate = false;
+function hexToRGBA(h) {
+    if (!h) h = cssVariables.color || "#8e3232";
 
-            switch (event.key) {
-                case 'ArrowLeft':
-                    if (newIndex > 0) {
-                        newIndex--;
-                        shouldNavigate = true;
-                    }
-                    event.preventDefault();
-                    break;
-                case 'ArrowRight':
-                    if (newIndex < this.dateLabels.length - 1) {
-                        newIndex++;
-                        shouldNavigate = true;
-                    }
-                    event.preventDefault();
-                    break;
-                case 'Enter':
-                case ' ':
-                    this.navigateToYear(this.selectedBarIndex);
-                    event.preventDefault();
-                    break;
-                case 'Home':
-                    newIndex = 0;
-                    shouldNavigate = true;
-                    event.preventDefault();
-                    break;
-                case 'End':
-                    newIndex = this.dateLabels.length - 1;
-                    shouldNavigate = true;
-                    event.preventDefault();
-                    break;
-                case 'Escape':
-                    this.dismissTooltip();
-                    event.preventDefault();
-                    break;
-            }
+    let r = 0, g = 0, b = 0;
+    if (h.length === 4) {
+        r = "0x" + h[1] + h[1];
+        g = "0x" + h[2] + h[2];
+        b = "0x" + h[3] + h[3];
+    } else if (h.length === 7) {
+        r = "0x" + h[1] + h[2];
+        g = "0x" + h[3] + h[4];
+        b = "0x" + h[5] + h[6];
+    }
+    return `rgba(${+r}, ${+g}, ${+b}, .7)`;
+}
 
-            if (shouldNavigate) {
-                this.selectedBarIndex = newIndex;
-                this.highlightBar(newIndex);
-            }
-        },
+watch(urlUpdate, () => {
+    if (formData.value.report === "time_series") fetchResults();
+});
 
-        dismissTooltip() {
-            // Clear any pending hover timeout
-            if (this.tooltipHoverTimeout) {
-                clearTimeout(this.tooltipHoverTimeout);
-                this.tooltipHoverTimeout = null;
-            }
-            this.customTooltip.visible = false;
-            this.isMouseOverTooltip = false;
-        },
+onMounted(() => {
+    formData.value.report = "time_series";
+    currentReport.value = "time_series";
+    fetchResults();
+    document.addEventListener("keydown", handleGlobalEscape);
+});
 
-        handleGlobalEscape(event) {
-            if (event.key === 'Escape' && this.customTooltip.visible) {
-                this.dismissTooltip();
-                event.preventDefault();
-            }
-        },
+onBeforeUnmount(() => {
+    document.removeEventListener("keydown", handleGlobalEscape);
+});
 
-        externalTooltipHandler(context) {
-            const { chart, tooltip } = context;
-
-            // If Chart.js wants to hide tooltip (mouse left bar area)
-            if (tooltip.opacity === 0) {
-                // Keep tooltip visible if mouse is over it, otherwise start delayed hide
-                if (!this.isMouseOverTooltip) {
-                    // Clear any existing timeout
-                    if (this.tooltipHoverTimeout) {
-                        clearTimeout(this.tooltipHoverTimeout);
-                    }
-                    // Give user time to move mouse to tooltip
-                    this.tooltipHoverTimeout = setTimeout(() => {
-                        // Only hide if mouse is still not over tooltip
-                        if (!this.isMouseOverTooltip) {
-                            this.customTooltip.visible = false;
-                        }
-                        this.tooltipHoverTimeout = null;
-                    }, 250);
-                }
-                return;
-            }
-
-            // Cancel any pending hide timeout when showing new tooltip
-            if (this.tooltipHoverTimeout) {
-                clearTimeout(this.tooltipHoverTimeout);
-                this.tooltipHoverTimeout = null;
-            }
-
-            // Set tooltip data
-            if (tooltip.body) {
-                const dataIndex = tooltip.dataPoints[0].dataIndex;
-                const title = this.formatDateRange(this.dateLabels[dataIndex], dataIndex);
-                const value = this.getCurrentData(dataIndex);
-                const unit = this.getCurrentUnit();
-
-                this.customTooltip.title = title;
-                this.customTooltip.value = `${value} ${unit}`;
-                this.customTooltip.visible = true;
-
-                // Position the tooltip
-                const position = chart.canvas.getBoundingClientRect();
-                this.customTooltip.style = {
-                    left: position.left + window.pageXOffset + tooltip.caretX + 'px',
-                    top: position.top + window.pageYOffset + tooltip.caretY + 'px',
-                };
-            }
-        },
-
-        handleTooltipMouseEnter() {
-            // Mark that mouse is over tooltip
-            this.isMouseOverTooltip = true;
-
-            // Cancel any pending hide timeout when mouse enters tooltip
-            if (this.tooltipHoverTimeout) {
-                clearTimeout(this.tooltipHoverTimeout);
-                this.tooltipHoverTimeout = null;
-            }
-        },
-
-        handleTooltipMouseLeave() {
-            // Mark that mouse left tooltip
-            this.isMouseOverTooltip = false;
-
-            // Hide tooltip after delay only if mouse is not back on bar
-            this.tooltipHoverTimeout = setTimeout(() => {
-                if (!this.isMouseOverTooltip) {
-                    this.customTooltip.visible = false;
-                }
-                this.tooltipHoverTimeout = null;
-            }, 200);
-        },
-
-        highlightBar(index) {
-            // Try different ways to access the chart instance from vue-chartjs
-            let chartInstance = this.$refs.chartComponent?.chart;
-
-            if (!chartInstance) {
-                chartInstance = this.$refs.chartComponent?.$data?.chart;
-            }
-
-            if (!chartInstance) {
-                chartInstance = this.$refs.chartComponent?.chartInstance;
-            }
-
-            if (!chartInstance) {
-                return;
-            }
-
-            // Set active elements to show tooltip and hover effect
-            chartInstance.setActiveElements([{
-                datasetIndex: 0,
-                index: index
-            }]);
-
-            chartInstance.tooltip.setActiveElements([{
-                datasetIndex: 0,
-                index: index
-            }]);
-
-            chartInstance.update('none'); // Update without animation
-        },
-
-
-
-        navigateToYear(index) {
-            const startDate = parseInt(this.dateLabels[index]);
-            const endDate = startDate + parseInt(this.formData.year_interval) - 1;
-            const year = startDate === endDate ? startDate.toString() : `${startDate}-${endDate}`;
-
-            this.mainStore.updateFormDataField({
-                key: "year",
-                value: year,
-            });
-            this.$router.push(
-                paramsToRoute({
-                    ...this.formData,
-                    report: "concordance",
-                    start_date: "",
-                    end_date: "",
-                    year_interval: "",
-                })
-            );
-        },
-        fetchResults() {
-            if (this.formData.year_interval == "") {
-                this.formData.year_interval = this.$philoConfig.time_series.interval;
-            }
-            this.formData.year_interval = parseInt(this.formData.year_interval);
-            this.frequencyType = "absolute_time";
-            this.searching = true;
-            this.startDate = parseInt(this.formData.start_date || this.$philoConfig.time_series_start_end_date.start_date);
-            this.endDate = parseInt(this.formData.end_date || this.$philoConfig.time_series_start_end_date.end_date);
-            this.mainStore.updateStartEndDate({
-                startDate: this.startDate,
-                endDate: this.endDate,
-            });
-
-            var dateList = [];
-            var zeros = [];
-            for (let i = this.startDate; i <= this.endDate; i += this.formData.year_interval) {
-                dateList.push(i);
-                zeros.push(0);
-            }
-
-            this.dateLabels = dateList;
-            this.absoluteCounts = copyObject(zeros);
-            this.relativeCounts = copyObject(zeros);
-            this.dateCounts = {};
-            this.selectedBarIndex = 0; // Reset selection
-
-            this.$http
-                .get(`${this.$dbUrl}/reports/time_series.py`, {
-                    params: {
-                        ...paramsFilter({ ...this.formData }),
-                        start_date: this.startDate,
-                        year_interval: this.formData.year_interval,
-                    },
-                })
-                .then((results) => {
-                    var data = results.data;
-                    this.results = data;
-                    for (let date in data.results.date_count) {
-                        this.dateCounts[date] = data.results.date_count[date];
-                    }
-                    this.renderTimeSeries(data.results["absolute_count"]);
-                    this.searching = false;
-                })
-                .catch((response) => {
-                    debug(this, response);
-                    this.searching = false;
-                });
-        },
-
-        renderTimeSeries(absoluteCount) {
-            var allResults = mergeResults(undefined, absoluteCount, "label");
-
-            for (let i = 0; i < allResults.sorted.length; i += 1) {
-                var date = allResults.sorted[i].label;
-                var value = allResults.sorted[i].count;
-                this.absoluteCounts[i] = value;
-                this.relativeCounts[i] = Math.round((value / this.dateCounts[date]) * 10000 * 100) / 100;
-                if (isNaN(this.relativeCounts[i])) {
-                    this.relativeCounts[i] = 0;
-                }
-            }
-        },
-
-        toggleFrequency(frequencyType) {
-            if (this.searching) return; // Prevent toggle during loading
-
-            this.frequencyType = frequencyType;
-            this.$nextTick(() => {
-                const announcement = `Chart updated to show ${this.currentFrequencyLabel}`;
-                this.announceToScreenReader(announcement);
-            });
-        },
-
-        announceToScreenReader(message) {
-            const announcer = document.createElement('div');
-            announcer.setAttribute('aria-live', 'polite');
-            announcer.className = 'visually-hidden';
-            announcer.textContent = message;
-            document.body.appendChild(announcer);
-
-            setTimeout(() => {
-                document.body.removeChild(announcer);
-            }, 1000);
-        },
-
-        hexToRGBA(h) {
-            // Use theme color if h is undefined
-            if (!h) {
-                h = cssVariables.color || '#8e3232'; // Use theme color with fallback
-            }
-
-            let r = 0, g = 0, b = 0;
-            if (h.length == 4) {
-                r = "0x" + h[1] + h[1];
-                g = "0x" + h[2] + h[2];
-                b = "0x" + h[3] + h[3];
-            } else if (h.length == 7) {
-                r = "0x" + h[1] + h[2];
-                g = "0x" + h[3] + h[4];
-                b = "0x" + h[5] + h[6];
-            }
-            return "rgba(" + +r + "," + +g + "," + +b + ", .7)";
-        },
-    },
-};
+provide("results", computed(() => results.value.results));
 </script>
 
 <style scoped lang="scss">
