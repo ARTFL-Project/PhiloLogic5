@@ -679,8 +679,6 @@ export default {
             }
         },
         getLoadedStatField() {
-            console.log("DEBUG: formData in getLoadedStatField:", this.formData);
-            console.log("DEBUG: formData.group_by:", this.formData?.group_by);
             let queryParam = this.formData?.group_by;
             if (queryParam) {
                 return (
@@ -699,7 +697,9 @@ export default {
             let metadataSelected = Object.fromEntries(
                 Object.entries(this.metadataChoiceSelected).map(([key, val]) => [key, val])
             );
-            this.metadataValues = dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.metadataValues)
+            // dateRangeHandler mutates metadataValues in place; no reassignment
+            // (which would break the reactive proxy from setup()).
+            dateRangeHandler(this.metadataInputStyle, this.dateRange, this.dateType, this.metadataValues);
             this.clearAutoCompletePopup();
             if (this.currentReport == 'collocation' && this.formData.colloc_within == "sent") {
                 this.mainStore.updateFormDataField({
@@ -783,7 +783,6 @@ export default {
                 this.formOpen = false;
             }
         },
-        clearFormData() { },
         selectApproximate(approximateValue) {
             this.mainStore.updateFormDataField({
                 key: "approximate_ratio",
