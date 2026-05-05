@@ -376,7 +376,7 @@ import ProgressSpinner from "./ProgressSpinner";
 import ResultsSummary from "./ResultsSummary";
 import WordCloud from "./WordCloud.vue";
 
-// ── Injects, route, router, store, i18n ──────────────────────────────────────
+//  Injects, route, router, store, i18n
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const philoConfig = inject("$philoConfig");
@@ -392,7 +392,7 @@ const {
     searchableMetadata,
 } = storeToRefs(store);
 
-// ── Autocomplete (composable) ────────────────────────────────────────────────
+//  Autocomplete (composable)
 const comparedMetadataValues = reactive({});
 const autocomplete = useAutocomplete({
     http: $http,
@@ -413,7 +413,7 @@ const {
     clearAutoCompletePopup,
 } = autocomplete;
 
-// ── Shared state ─────────────────────────────────────────────────────────────
+//  Shared state ─
 const mode = ref("frequency");
 const results = ref({});
 const filterList = ref([]);
@@ -422,7 +422,7 @@ const sortedList = ref([]);
 const collocatesFilePath = ref("");
 const relativeFrequencies = ref({});
 
-// ── Metadata helpers ─────────────────────────────────────────────────────────
+//  Metadata helpers ─
 const metadataDisplay = ref([]);
 const metadataInputStyle = ref([]);
 const metadataChoiceValues = ref([]);
@@ -441,7 +441,7 @@ function buildMetadata(metadata) {
     }
 }
 
-// ── Computed ─────────────────────────────────────────────────────────────────
+//  Computed ─
 const fieldsToCompare = computed(() => {
     return philoConfig.collocation_fields_to_compare.map(field => ({
         label: philoConfig.metadata_aliases[field] || field,
@@ -462,7 +462,7 @@ const isInvalidCollocationQuery = computed(() => {
     return parts.some(p => p.trim().split(/\s+/).filter(w => w.length > 0).length > 1);
 });
 
-// ── Shared collocate handlers ────────────────────────────────────────────────
+//  Shared collocate handlers
 function collocateCleanup(collocate) {
     if (collocate.surfaceForm.startsWith("lemma:") || collocate.surfaceForm.search(/\w+:.*/) !== -1) {
         return `${formData.value.q} ${collocate.surfaceForm}`;
@@ -498,7 +498,7 @@ function otherCollocateClick(item) {
     );
 }
 
-// ── URL + mode coordination ──────────────────────────────────────────────────
+//  URL + mode coordination
 function getNonEmptyComparedMetadata() {
     const out = {};
     for (const [field, value] of Object.entries(comparedMetadataValues)) {
@@ -555,7 +555,7 @@ function handleMobileMethodChange() {
     setMode(mode.value, { updateUrl: false });
 }
 
-// ── Primary fetch (shared by frequency / compare / similar entry paths) ──────
+//  Primary fetch (shared by frequency / compare / similar entry paths)
 function updateCollocation() {
     if (isInvalidCollocationQuery.value) {
         searching.value = false;
@@ -605,7 +605,7 @@ function fetchResults() {
     updateCollocation();
 }
 
-// ── Mode: compare ────────────────────────────────────────────────────────────
+//  Mode: compare
 const otherCollocates = ref([]);
 const otherBiblio = ref({});
 const overRepresented = ref([]);
@@ -666,7 +666,7 @@ function comparativeCollocations(otherFilePath) {
     });
 }
 
-// ── Mode: similar ────────────────────────────────────────────────────────────
+//  Mode: similar
 const similarDistributions = ref([]);
 const cachedDistributions = ref("");
 const similarFieldSelected = ref("");
@@ -732,7 +732,7 @@ function similarToComparative(field) {
     });
 }
 
-// ── Mode: timeSeries ─────────────────────────────────────────────────────────
+//  Mode: timeSeries ─
 const timeSeriesInterval = ref(10);
 const collocationTimePeriods = ref([]);
 const progressPercent = ref(0);
@@ -820,7 +820,7 @@ function collocateTimeSeriesClick(period) {
     };
 }
 
-// ── Watchers ─────────────────────────────────────────────────────────────────
+//  Watchers ─
 // View-only params don't affect the primary collocation results — they only
 // switch which panel is rendered or feed mode-specific secondary fetches.
 // Changing only these (e.g. clicking a tab) must NOT trigger a re-search.
@@ -869,7 +869,7 @@ watch(
 
 watch(searchableMetadata, (newVal) => buildMetadata(newVal), { deep: true });
 
-// ── Lifecycle: register and tear down the global click listener ──────────────
+//  Lifecycle: register and tear down the global click listener
 function onDocumentClick() {
     clearAutoCompletePopup();
 }
@@ -880,7 +880,7 @@ onBeforeUnmount(() => {
     document.removeEventListener("click", onDocumentClick);
 });
 
-// ── Initial dispatch ────────────────────────────────────
+//  Initial dispatch
 formData.value.report = "collocation";
 currentReport.value = "collocation";
 buildMetadata(searchableMetadata.value);

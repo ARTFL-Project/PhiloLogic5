@@ -154,18 +154,18 @@
     </div>
 </template>
 <script setup>
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import { storeToRefs } from "pinia";
 import { Popover } from "bootstrap";
 import GLightbox from "glightbox";
 import "glightbox/dist/css/glightbox.css";
+import { storeToRefs } from "pinia";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import vueScrollTo from "vue-scrollto";
 import { useMainStore } from "../stores/main";
 import { buildTocTree, debug, deepEqual, paramsToUrlString } from "../utils.js";
 import citations from "./Citations";
 
-// ── Injects, route, router, store ────────────────────────────────────────────
+//  Injects, route, router, store
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const philoConfig = inject("$philoConfig");
@@ -183,7 +183,7 @@ const {
 
 const logError = (error) => debug({ $options: { name: "textNavigation" } }, error);
 
-// ── Reactive state ───────────────────────────────────────────────────────────
+//  Reactive state ─
 const textObject = ref({});
 const beforeObjImgs = ref([]);
 const afterObjImgs = ref([]);
@@ -203,7 +203,7 @@ const images = ref([]);
 const loading = ref(false);
 const textObjectURL = ref("");
 
-// ── Computed ─────────────────────────────────────────────────────────────────
+//  Computed ─
 const processedTocElements = computed(() =>
     buildTocTree(tocElements.value.elements.slice(start.value, end.value))
 );
@@ -212,7 +212,7 @@ const whiteSpace = computed(() =>
     philoConfig.respect_text_line_breaks ? "pre" : "normal"
 );
 
-// ── Image link handling ──────────────────────────────────────────────────────
+//  Image link handling
 function buildImageBucket(allImgs, currentObjImgs, before, after) {
     if (currentObjImgs.length === 0) return;
     const root = philoConfig.page_images_url_root;
@@ -248,7 +248,7 @@ function insertInlineImgs(imgObj) {
     buildImageBucket(imgObj.graphics, imgObj.current_graphic_img, beforeGraphicsImgs.value, afterGraphicsImgs.value);
 }
 
-// ── Post-render setup helpers (extracted from the fetchText().then() block) ──
+//  Post-render setup helpers (extracted from the fetchText().then() block)
 function setUpNotePopovers() {
     const notes = document.getElementsByClassName("note");
     if (notes.length === 0) return;
@@ -404,7 +404,7 @@ function scrollToTarget() {
     }
 }
 
-// ── Text fetch ───────────────────────────────────────────────────────────────
+//  Text fetch ─
 function fetchText() {
     searching.value = true;
     textObjectURL.value = route.params;
@@ -463,7 +463,7 @@ function fetchText() {
         });
 }
 
-// ── TOC fetch + scroll ───────────────────────────────────────────────────────
+//  TOC fetch + scroll ─
 function fetchToC() {
     tocPosition.value = "";
     const philoId = route.params.pathInfo.split("/").join(" ");
@@ -561,7 +561,7 @@ function toggleTableOfContents() {
     }
 }
 
-// ── Navigation handlers ──────────────────────────────────────────────────────
+//  Navigation handlers
 function backToTop() {
     window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -637,7 +637,7 @@ function dicoLookup(event) {
     window.open(link);
 }
 
-// ── Image gallery ────────────────────────────────────────────────────────────
+//  Image gallery
 function setUpGallery() {
     for (const imageType of ["page-image-link", "inline-img", "external-img"]) {
         Array.from(document.getElementsByClassName(imageType)).forEach((item) => {
@@ -674,7 +674,7 @@ function setUpGallery() {
     }
 }
 
-// ── Popover cleanup ──────────────────────────────────────────────────────────
+//  Popover cleanup
 function destroyPopovers() {
     document.querySelectorAll(".note, .note-ref").forEach((note) => {
         const popover = Popover.getInstance(note);
@@ -685,7 +685,7 @@ function destroyPopovers() {
     });
 }
 
-// ── Watcher ──────────────────────────────────────────────────────────────────
+//  Watcher
 watch(
     () => route.params,
     () => {
@@ -697,7 +697,7 @@ watch(
     }
 );
 
-// ── Lifecycle ────────────────────────────────────────────────────────────────
+//  Lifecycle
 onMounted(() => {
     const tocButton = document.querySelector("#show-toc");
     if (tocButton) {
@@ -714,7 +714,7 @@ onBeforeUnmount(() => {
     }
 });
 
-// ── Initial dispatch ─────────────────────────────────────────────────────────
+//  Initial dispatch ─
 formData.value.report = "textNavigation";
 fetchToC();
 fetchText();
