@@ -56,7 +56,8 @@
             "eslint:recommended"
         ],
         "rules": {
-            "no-console": "off"
+            "no-console": "off",
+            "vue/multi-word-component-names": "off"
         },
         "parserOptions": {
             "ecmaVersion": 12,

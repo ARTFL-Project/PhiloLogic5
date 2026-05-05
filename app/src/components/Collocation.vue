@@ -25,9 +25,9 @@
                 :aria-label="$t('collocation.methodSelectionTabs')">
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="frequency-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'frequency' }" data-bs-target="#frequency-tab-pane"
-                        type="button" role="tab" :aria-selected="mode === 'frequency'"
-                        :disabled="isInvalidCollocationQuery" @click="!isInvalidCollocationQuery && setMode('frequency')">
+                        :class="{ active: mode === 'frequency' }" data-bs-target="#frequency-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'frequency'" :disabled="isInvalidCollocationQuery"
+                        @click="!isInvalidCollocationQuery && setMode('frequency')">
                         {{ $t("collocation.collocation") }}
                     </button>
                 </li>
@@ -49,9 +49,9 @@
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="time-series-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'timeSeries' }" data-bs-target="#time-series-tab-pane"
-                        type="button" role="tab" :aria-selected="mode === 'timeSeries'"
-                        :disabled="isInvalidCollocationQuery" @click="!isInvalidCollocationQuery && setMode('timeSeries')">
+                        :class="{ active: mode === 'timeSeries' }" data-bs-target="#time-series-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'timeSeries'" :disabled="isInvalidCollocationQuery"
+                        @click="!isInvalidCollocationQuery && setMode('timeSeries')">
                         {{ $t("collocation.timeSeries") }}
                     </button>
                 </li>
@@ -60,8 +60,8 @@
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
             v-if="mode === 'frequency'" style="margin-top:0 !important;"></results-summary>
         <div role="region" :aria-label="$t('collocation.collocationResults')">
-            <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="mode == 'compare'"
-                role="region" :aria-label="$t('collocation.compareTo')">
+            <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="mode == 'compare'" role="region"
+                :aria-label="$t('collocation.compareTo')">
                 <div class="row">
                     <!-- Primary corpus criteria -->
                     <div class="col-12 col-md-6 mb-3 mb-md-0" role="region"
@@ -194,8 +194,8 @@
                 </div>
                 <div class="col-12 col-sm-8">
                     <div class="card shadow-sm">
-                        <word-cloud v-if="mode == 'frequency' && sortedList.length > 0"
-                            :word-weights="sortedList" label="frequency" :click-handler="collocateClick"></word-cloud>
+                        <word-cloud v-if="mode == 'frequency' && sortedList.length > 0" :word-weights="sortedList"
+                            label="frequency" :click-handler="collocateClick"></word-cloud>
                     </div>
                 </div>
             </div>
@@ -356,10 +356,11 @@
 </template>
 
 <script setup>
-import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
+import { computed, inject, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
+import { useAutocomplete } from "../composables/useAutocomplete";
 import { useMainStore } from "../stores/main";
 import {
     buildBiblioCriteria,
@@ -369,7 +370,6 @@ import {
     paramsFilter,
     paramsToRoute,
 } from "../utils.js";
-import { useAutocomplete } from "../composables/useAutocomplete";
 import BibliographyCriteria from "./BibliographyCriteria";
 import MetadataFields from "./MetadataFields.vue";
 import ProgressSpinner from "./ProgressSpinner";
@@ -617,10 +617,8 @@ const wholeCorpus = ref(false);
 function getOtherCollocates() {
     wholeCorpus.value = Object.keys(comparedMetadataValues).length === 0;
     setMode("compare");
-    Object.assign(
-        comparedMetadataValues,
-        dateRangeHandler(metadataInputStyle.value, dateRange, dateType, comparedMetadataValues),
-    );
+    // dateRangeHandler mutates comparedMetadataValues in place
+    dateRangeHandler(metadataInputStyle.value, dateRange, dateType, comparedMetadataValues);
     const params = {
         q: formData.value.q,
         colloc_filter_choice: formData.value.colloc_filter_choice,
@@ -649,10 +647,7 @@ function getOtherCollocates() {
 
 function comparativeCollocations(otherFilePath) {
     comparativeSearchStarted.value = true;
-    Object.assign(
-        comparedMetadataValues,
-        dateRangeHandler(metadataInputStyle.value, dateRange, dateType, comparedMetadataValues),
-    );
+    dateRangeHandler(metadataInputStyle.value, dateRange, dateType, comparedMetadataValues);
     otherBiblio.value = buildBiblioCriteria(philoConfig, comparedMetadataValues, comparedMetadataValues);
     overRepresented.value = [];
     underRepresented.value = [];
@@ -875,8 +870,6 @@ watch(
 watch(searchableMetadata, (newVal) => buildMetadata(newVal), { deep: true });
 
 // ── Lifecycle: register and tear down the global click listener ──────────────
-// (Fixes the leak in the previous Options-API implementation, which never
-// removed this listener — every Collocation mount accumulated another one.)
 function onDocumentClick() {
     clearAutoCompletePopup();
 }
@@ -887,7 +880,7 @@ onBeforeUnmount(() => {
     document.removeEventListener("click", onDocumentClick);
 });
 
-// ── Initial dispatch (replaces created()) ────────────────────────────────────
+// ── Initial dispatch ────────────────────────────────────
 formData.value.report = "collocation";
 currentReport.value = "collocation";
 buildMetadata(searchableMetadata.value);

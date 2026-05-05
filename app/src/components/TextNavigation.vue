@@ -153,700 +153,571 @@
         </div>
     </div>
 </template>
-<script>
+<script setup>
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { storeToRefs } from "pinia";
 import { Popover } from "bootstrap";
-import GLightbox from 'glightbox';
-import 'glightbox/dist/css/glightbox.css';
-import { mapStores, mapWritableState } from "pinia";
+import GLightbox from "glightbox";
+import "glightbox/dist/css/glightbox.css";
+import vueScrollTo from "vue-scrollto";
 import { useMainStore } from "../stores/main";
 import { buildTocTree, debug, deepEqual, paramsToUrlString } from "../utils.js";
 import citations from "./Citations";
 
-export default {
-    name: "textNavigation",
-    components: {
-        citations
-    },
-    inject: ["$http"],
-    computed: {
-        ...mapWritableState(useMainStore, [
-            "formData",
-            "textNavigationCitation",
-            "navBar",
-            "tocElements",
-            "byte",
-            "searching",
-            "accessAuthorized"
-        ]),
-        ...mapStores(useMainStore),
+// ── Injects, route, router, store ────────────────────────────────────────────
+const $http = inject("$http");
+const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const router = useRouter();
+const store = useMainStore();
+const {
+    formData,
+    textNavigationCitation,
+    navBar,
+    tocElements,
+    byte,
+    searching,
+} = storeToRefs(store);
 
-        tocElementsToDisplay: function () {
-            return this.tocElements.elements.slice(this.start, this.end);
-        },
-        processedTocElements() {
-            const elementsToDisplay = this.tocElements.elements.slice(this.start, this.end);
-            return buildTocTree(elementsToDisplay);
-        },
-        tocHeight() {
-            return `max-height: ${window.innerHeight - 200}`;
-        },
-        whiteSpace() {
-            if (this.$philoConfig.respect_text_line_breaks) {
-                return "pre";
-            }
-            return "normal";
-        },
-    },
-    data() {
-        const store = useMainStore();
-        return {
-            store,
-            philoConfig: this.$philoConfig,
-            textObject: {},
-            beforeObjImgs: [],
-            afterObjImgs: [],
-            beforeGraphicsImgs: [],
-            afterGraphicsImgs: [],
-            navbar: null,
-            loading: false,
-            tocOpen: false,
-            done: false,
-            authorized: true,
-            textRendered: false,
-            textObjectURL: "",
-            philoID: "",
-            highlight: false,
-            start: 0,
-            end: 0,
-            tocPosition: 0,
-            navButtonPosition: 0,
-            navBarVisible: false,
-            timeToRender: 0,
-            gallery: null,
-            images: [],
-            imageIndex: null
-        };
-    },
-    created() {
-        this.formData.report = "textNavigation";
-        this.fetchToC();
-        this.fetchText();
-    },
-    watch: {
-        $route() {
-            if (this.$route.name == "textNavigation") {
-                this.destroyPopovers();
-                this.fetchText();
-                this.fetchToC();
-            }
-        },
-    },
-    mounted() {
-        let tocButton = document.querySelector("#show-toc");
-        this.navButtonPosition = tocButton.getBoundingClientRect().top;
-    },
-    unmounted() {
-        if (this.gallery) {
-            this.gallery.close();
+const logError = (error) => debug({ $options: { name: "textNavigation" } }, error);
+
+// ── Reactive state ───────────────────────────────────────────────────────────
+const textObject = ref({});
+const beforeObjImgs = ref([]);
+const afterObjImgs = ref([]);
+const beforeGraphicsImgs = ref([]);
+const afterGraphicsImgs = ref([]);
+const tocOpen = ref(false);
+const philoID = ref("");
+const currentPhiloId = ref("");
+const highlight = ref(false);
+const start = ref(0);
+const end = ref(0);
+const tocPosition = ref(0);
+const navButtonPosition = ref(0);
+const navBarVisible = ref(false);
+const gallery = ref(null);
+const images = ref([]);
+const loading = ref(false);
+const textObjectURL = ref("");
+
+// ── Computed ─────────────────────────────────────────────────────────────────
+const processedTocElements = computed(() =>
+    buildTocTree(tocElements.value.elements.slice(start.value, end.value))
+);
+const tocHeight = computed(() => `max-height: ${window.innerHeight - 200}`);
+const whiteSpace = computed(() =>
+    philoConfig.respect_text_line_breaks ? "pre" : "normal"
+);
+
+// ── Image link handling ──────────────────────────────────────────────────────
+function buildImageBucket(allImgs, currentObjImgs, before, after) {
+    if (currentObjImgs.length === 0) return;
+    const root = philoConfig.page_images_url_root;
+    let beforeIndex = 0;
+    for (let i = 0; i < allImgs.length; i++) {
+        const img = allImgs[i];
+        if (currentObjImgs.indexOf(img[0]) === -1) {
+            const second = img.length === 2 ? img[1] : img[0];
+            before.push([`${root}/${img[0]}`, `${root}/${second}`]);
+        } else {
+            beforeIndex = i;
+            break;
         }
-        this.destroyPopovers();
-
-        // Clean up TOC scroll listener
-        const tocContent = document.getElementById('toc-content');
-        if (tocContent) {
-            tocContent.removeEventListener('scroll', this.handleTocScroll);
+    }
+    for (let i = beforeIndex; i < allImgs.length; i++) {
+        const img = allImgs[i];
+        if (currentObjImgs.indexOf(img[0]) === -1) {
+            const second = img.length === 2 ? img[1] : img[0];
+            after.push([`${root}/${img[0]}`, `${root}/${second}`]);
         }
-    },
-    methods: {
-        fetchText() {
-            this.searching = true;
-            this.textRendered = false;
-            this.textObjectURL = this.$route.params;
-            this.philoID = this.textObjectURL.pathInfo.split("/").join(" ");
+    }
+}
 
-            // Block doc-level rendering — redirect to table of contents
-            const nonZeroParts = this.philoID.split(" ").filter(n => n !== "0");
-            if (nonZeroParts.length <= 1) {
-                const docId = this.philoID.split(" ")[0];
-                this.$router.replace(`/navigate/${docId}/table-of-contents`);
-                return;
+function insertPageLinks(imgObj) {
+    beforeObjImgs.value = [];
+    afterObjImgs.value = [];
+    buildImageBucket(imgObj.all_imgs, imgObj.current_obj_img, beforeObjImgs.value, afterObjImgs.value);
+}
+
+function insertInlineImgs(imgObj) {
+    beforeGraphicsImgs.value = [];
+    afterGraphicsImgs.value = [];
+    buildImageBucket(imgObj.graphics, imgObj.current_graphic_img, beforeGraphicsImgs.value, afterGraphicsImgs.value);
+}
+
+// ── Post-render setup helpers (extracted from the fetchText().then() block) ──
+function setUpNotePopovers() {
+    const notes = document.getElementsByClassName("note");
+    if (notes.length === 0) return;
+    Array.from(notes).forEach((note, index) => {
+        const noteContent = note.nextElementSibling?.innerHTML;
+        if (!noteContent) return;
+        const noteId = `note-content-${index}`;
+        note.setAttribute("role", "button");
+        note.setAttribute("tabindex", "0");
+        note.setAttribute("aria-label", `Note ${note.textContent || index + 1}`);
+        note.setAttribute("aria-describedby", noteId);
+
+        const popoverInstance = new Popover(note, {
+            html: true,
+            content: noteContent,
+            trigger: "focus",
+            customClass: "custom-popover shadow-lg",
+        });
+        note.addEventListener("shown.bs.popover", () => {
+            const popoverElement = document.querySelector(".popover");
+            if (popoverElement) {
+                popoverElement.setAttribute("id", noteId);
+                popoverElement.setAttribute("role", "tooltip");
             }
-
-            let byteString = "";
-            if ("byte" in this.$route.query) {
-                this.byte = this.$route.query.byte;
-                if (typeof this.$route.query.byte == "object") {
-                    byteString = `byte=${this.byte.join("&byte=")}`;
-                } else {
-                    byteString = `byte=${this.byte}`;
-                }
-            } else {
-                this.byte = "";
+        });
+        note.addEventListener("keydown", (e) => {
+            if (e.key === "Escape") {
+                popoverInstance.hide();
+                note.focus();
             }
-            let navigationParams = {
-                report: "navigation",
-                philo_id: this.philoID,
-            };
-            if (this.formData.start_byte !== "") {
-                navigationParams.start_byte = this.formData.start_byte;
-                navigationParams.end_byte = this.formData.end_byte;
-            }
-            let urlQuery = `${byteString}&${paramsToUrlString(navigationParams)}`;
-            this.timeToRender = new Date().getTime();
-            this.$http
-                .get(`${this.$dbUrl}/reports/navigation.py?${urlQuery}`)
-                .then((response) => {
-                    this.textObject = response.data;
-                    this.textNavigationCitation = response.data.citation;
-                    this.navBar = true;
-                    if (this.byte.length > 0) {
-                        this.highlight = true;
-                    } else {
-                        this.highlight = false;
-                    }
+        });
+    });
+}
 
-                    if (!deepEqual(response.data.imgs, {})) {
-                        this.insertPageLinks(response.data.imgs);
-                        this.insertInlineImgs(response.data.imgs);
-                    }
-                    this.setUpNavBar();
-                    this.$nextTick(() => {
-                        // Handle inline notes if there are any
-                        let notes = document.getElementsByClassName("note");
-                        if (notes.length > 0) {
-                            Array.from(notes).forEach((note, index) => {
-                                let innerHTML = note.nextElementSibling.innerHTML;
-                                const noteId = `note-content-${index}`;
+function setUpNoteRefs() {
+    const noteRefs = document.getElementsByClassName("note-ref");
+    if (noteRefs.length === 0) return;
+    Array.from(noteRefs).forEach((noteRef, index) => {
+        const noteRefId = `note-ref-content-${index}`;
+        noteRef.setAttribute("role", "button");
+        noteRef.setAttribute("tabindex", "0");
+        noteRef.setAttribute("aria-label", `Note reference ${noteRef.textContent || index + 1}`);
+        noteRef.setAttribute("aria-describedby", noteRefId);
 
-                                // Add ARIA attributes for screen reader accessibility
-                                note.setAttribute('role', 'button');
-                                note.setAttribute('tabindex', '0');
-                                note.setAttribute('aria-label', `Note ${note.textContent || index + 1}`);
-                                note.setAttribute('aria-describedby', noteId);
-
-                                const popoverInstance = new Popover(note, {
-                                    html: true,
-                                    content: innerHTML,
-                                    trigger: "focus",
-                                    customClass: "custom-popover shadow-lg",
-                                });
-
-                                // Set ID on popover when it shows so aria-describedby works
-                                note.addEventListener('shown.bs.popover', () => {
-                                    const popoverElement = document.querySelector(`.popover`);
-                                    if (popoverElement) {
-                                        popoverElement.setAttribute('id', noteId);
-                                        popoverElement.setAttribute('role', 'tooltip');
-                                    }
-                                });
-
-                                // Allow Escape key to dismiss popover (WCAG 2.1 - Content on Focus)
-                                note.addEventListener('keydown', (e) => {
-                                    if (e.key === 'Escape') {
-                                        popoverInstance.hide();
-                                        note.focus();
-                                    }
-                                });
-                            });
-                        }
-
-                        // Handle ref notes if there are any
-                        let noteRefs = document.getElementsByClassName("note-ref");
-                        if (noteRefs.length > 0) {
-                            Array.from(noteRefs).forEach((noteRef, index) => {
-                                const noteRefId = `note-ref-content-${index}`;
-
-                                // Add ARIA attributes for screen reader accessibility
-                                noteRef.setAttribute('role', 'button');
-                                noteRef.setAttribute('tabindex', '0');
-                                noteRef.setAttribute('aria-label', `Note reference ${noteRef.textContent || index + 1}`);
-                                noteRef.setAttribute('aria-describedby', noteRefId);
-
-                                let getNotes = () => {
-                                    this.$http
-                                        .get(`${this.$dbUrl}/scripts/get_notes.py?`, {
-                                            params: {
-                                                target: noteRef.getAttribute("target"),
-                                                philo_id: this.$route.params.pathInfo.split("/").join(" "),
-                                            },
-                                        })
-                                        .then((response) => {
-                                            const popoverInstance = new Popover(noteRef, {
-                                                html: true,
-                                                content: response.data.text,
-                                                trigger: "focus",
-                                                customClass: "custom-popover shadow-lg",
-                                            });
-
-                                            // Set ID on popover when it shows so aria-describedby works
-                                            noteRef.addEventListener('shown.bs.popover', () => {
-                                                const popoverElement = document.querySelector(`.popover`);
-                                                if (popoverElement) {
-                                                    popoverElement.setAttribute('id', noteRefId);
-                                                    popoverElement.setAttribute('role', 'tooltip');
-                                                }
-                                            });
-
-                                            // Allow Escape key to dismiss popover (WCAG 2.1 - Content on Focus)
-                                            noteRef.addEventListener('keydown', (e) => {
-                                                if (e.key === 'Escape') {
-                                                    popoverInstance.hide();
-                                                    noteRef.focus();
-                                                }
-                                            });
-
-                                            noteRef.removeEventListener("click", getNotes);
-                                        });
-                                };
-                                noteRef.addEventListener("click", getNotes());
-                            });
-                        }
-
-                        // Add heading semantics to headword elements for accessibility
-                        let headwords = document.querySelectorAll(".philologic-fragment .headword");
-                        headwords.forEach((headword) => {
-                            let current = headword.parentElement;
-                            let headingDepth = 0;
-
-                            // Count parent divs that contain a .headword child
-                            while (current && current.className !== 'philologic-fragment') {
-                                if (current.tagName.toLowerCase() === 'div') {
-                                    // Check if this div has a direct child .headword (but not the one we're processing)
-                                    const divHeadword = current.querySelector(':scope > .headword');
-                                    if (divHeadword && divHeadword !== headword) {
-                                        headingDepth++;
-                                    }
-                                }
-                                current = current.parentElement;
-                            }
-
-                            // Level 2 is first heading, level 3+ for nested
-                            const level = headingDepth + 2;
-                            headword.setAttribute('role', 'heading');
-                            headword.setAttribute('aria-level', level);
-                        });
-
-                        let linkBack = document.getElementsByClassName("link-back");
-                        if (linkBack.length > 0) {
-                            Array.from(linkBack).forEach((el) => {
-                                if (el) {
-                                    var goToNote = () => {
-                                        let link = el.getAttribute("link");
-                                        this.$router.push(link);
-                                        el.removeEventListener("click", goToNote);
-                                    };
-                                    el.addEventListener("click", goToNote);
-                                }
-                            });
-                        }
-
-                        let innerSearchLinks = document.querySelectorAll("a[type='search']");
-                        if (innerSearchLinks.length > 0) {
-                            Array.from(innerSearchLinks).forEach((el) => {
-                                let metadata, metadataValue;
-                                [metadata, metadataValue] = el.getAttribute("target").split(":");
-                                el.href = `${this.$dbUrl.replace(
-                                    /\/+$/,
-                                    ""
-                                )}/bibliography?${metadata}=${metadataValue}`;
-                            });
-                        }
-
-                        // Scroll to highlight
-                        if (this.byte != "") {
-                            let element = document.getElementsByClassName("highlight")[0];
-                            let parent = element.parentElement;
-                            if (parent.classList.contains("note-content")) {
-                                let note = parent.previousSibling;
-                                this.$scrollTo(note, 250, {
-                                    easing: "ease-out",
-                                    offset: -150,
-                                    onDone: function () {
-                                        setTimeout(() => {
-                                            note.focus();
-                                        }, 500);
-                                    },
-                                });
-                            } else {
-                                this.$scrollTo(element, 250, {
-                                    easing: "ease-out",
-                                    offset: -150,
-                                });
-                            }
-                        } else if (this.formData.start_byte != "") {
-                            this.$scrollTo(document.querySelector(".passage-marker"), 250, {
-                                easing: "ease-out",
-                                offset: -150,
-                            });
-                        } else if (this.$route.hash) {
-                            // for note link back
-                            let note = document.getElementById(this.$route.hash.slice(1));
-                            this.$scrollTo(note, 250, {
-                                easing: "ease-out",
-                                offset: -250,
-                                onDone: () => {
-                                    setTimeout(() => {
-                                        note.focus();
-                                    }, 500);
-                                },
-                            });
-                        }
-
-                        this.setUpGallery();
-                        this.searching = false;
-                    });
-                })
-                .catch((error) => {
-                    debug(this, error);
-                    this.loading = false;
+        // Lazy: fetch the note's content on first focus only. The focus event
+        // that triggered this fetch already fired before the Popover existed,
+        // so we manually call .show() once it's constructed; subsequent focus
+        // cycles are handled by Bootstrap's trigger:"focus".
+        let initialized = false;
+        const initializePopover = () => {
+            if (initialized) return;
+            initialized = true;
+            $http.get(`${$dbUrl}/scripts/get_notes.py?`, {
+                params: {
+                    target: noteRef.getAttribute("target"),
+                    philo_id: route.params.pathInfo.split("/").join(" "),
+                },
+            }).then((response) => {
+                const popoverInstance = new Popover(noteRef, {
+                    html: true,
+                    content: response.data.text,
+                    trigger: "focus",
+                    customClass: "custom-popover shadow-lg",
                 });
-        },
-        insertPageLinks(imgObj) {
-            let currentObjImgs = imgObj.current_obj_img;
-            let allImgs = imgObj.all_imgs;
-            this.beforeObjImgs = [];
-            this.afterObjImgs = [];
-            if (currentObjImgs.length > 0) {
-                let beforeIndex = 0;
-                for (let i = 0; i < allImgs.length; i++) {
-                    let img = allImgs[i];
-                    if (currentObjImgs.indexOf(img[0]) === -1) {
-                        if (img.length == 2) {
-                            this.beforeObjImgs.push([
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                                `${this.philoConfig.page_images_url_root}/${img[1]}`,
-                            ]);
-                        } else {
-                            this.beforeObjImgs.push([
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                            ]);
-                        }
-                    } else {
-                        beforeIndex = i;
-                        break;
+                noteRef.addEventListener("shown.bs.popover", () => {
+                    const popoverElement = document.querySelector(".popover");
+                    if (popoverElement) {
+                        popoverElement.setAttribute("id", noteRefId);
+                        popoverElement.setAttribute("role", "tooltip");
                     }
-                }
-                for (let i = beforeIndex; i < allImgs.length; i++) {
-                    let img = allImgs[i];
-                    if (currentObjImgs.indexOf(img[0]) === -1) {
-                        if (img.length == 2) {
-                            this.afterObjImgs.push([
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                                `${this.philoConfig.page_images_url_root}/${img[1]}`,
-                            ]);
-                        } else {
-                            this.afterObjImgs.push([
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                            ]);
-                        }
-                    }
-                }
-            }
-        },
-        insertInlineImgs(imgObj) {
-            var currentObjImgs = imgObj.current_graphic_img;
-            var allImgs = imgObj.graphics;
-            var img;
-            this.beforeGraphicsImgs = [];
-            this.afterGraphicsImgs = [];
-            if (currentObjImgs.length > 0) {
-                var beforeIndex = 0;
-                for (let i = 0; i < allImgs.length; i++) {
-                    img = allImgs[i];
-                    if (currentObjImgs.indexOf(img[0]) === -1) {
-                        if (img.length == 2) {
-                            this.beforeGraphicsImgs.push([
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                                `${this.philoConfig.page_images_url_root}/${img[1]}`,
-                            ]);
-                        } else {
-                            this.beforeGraphicsImgs.push([
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                            ]);
-                        }
-                    } else {
-                        beforeIndex = i;
-                        break;
-                    }
-                }
-                for (let i = beforeIndex; i < allImgs.length; i++) {
-                    img = allImgs[i];
-                    if (currentObjImgs.indexOf(img[0]) === -1) {
-                        if (img.length == 2) {
-                            this.afterGraphicsImgs.push([
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                                `${this.philoConfig.page_images_url_root}/${img[1]}`,
-                            ]);
-                        } else {
-                            this.afterGraphicsImgs.push([
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                                `${this.philoConfig.page_images_url_root}/${img[0]}`,
-                            ]);
-                        }
-                    }
-                }
-            }
-        },
-        fetchToC() {
-            this.tocPosition = "";
-            var philoId = this.$route.params.pathInfo.split("/").join(" ");
-            let docId = philoId.split(" ")[0];
-            this.currentPhiloId = philoId;
-            if (docId !== this.tocElements.docId) {
-                this.$http
-                    .get(`${this.$dbUrl}/scripts/get_table_of_contents.py`, {
-                        params: {
-                            philo_id: this.currentPhiloId,
-                        },
-                    })
-                    .then((response) => {
-                        let tocElements = response.data.toc;
-                        this.start = response.data.current_obj_position - 100;
-                        if (this.start < 0) {
-                            this.start = 0;
-                        }
-                        this.end = response.data.current_obj_position + 100;
-
-                        this.tocElements = {
-                            docId: philoId.split(" ")[0],
-                            elements: tocElements,
-                            start: this.start,
-                            end: this.end,
-                        };
-                        let tocButton = document.querySelector("#show-toc");
-                        tocButton.removeAttribute("disabled");
-                        tocButton.classList.remove("disabled");
-                    })
-                    .catch((error) => {
-                        debug(this, error);
-                    });
-            } else {
-                this.start = this.tocElements.start;
-                this.end = this.tocElements.end;
-                this.$nextTick(function () {
-                    let tocButton = document.querySelector("#show-toc");
-                    tocButton.removeAttribute("disabled");
-                    tocButton.classList.remove("disabled");
                 });
-            }
-        },
-        setUpGallery() {
-            // Image Gallery handling
-            for (let imageType of ["page-image-link", "inline-img", "external-img"]) {
-                Array.from(document.getElementsByClassName(imageType)).forEach((item) => {
-                    item.addEventListener("click", (event) => {
-                        event.preventDefault();
-                        this.images = [...document.getElementsByClassName(imageType)].map(
-                            (item) => item.getAttribute("href") || item.getAttribute("src"))
-                        let imageIndex = Array.from(document.getElementsByClassName(imageType)).indexOf(event.target)
-                        this.gallery = GLightbox({
-                            elements: [...document.getElementsByClassName(imageType)].map(
-                                (item) => { return { href: item.getAttribute("href") || item.getAttribute("src"), type: "image" } }),
-                            openEffect: "fade", closeEffect: "fade", startAt: imageIndex
-                        })
-                        this.gallery.open()
-                        this.gallery.on('slide_changed', () => {
-                            // TODO: only create anchor tag the first time.
-                            let img = Array.from(document.getElementsByClassName(imageType))[
-                                this.gallery.getActiveSlideIndex()
-                            ].getAttribute("large-img");
-                            const newNode = document.createElement("a");
-                            newNode.style.cssText = `position: absolute; top: 20px; font-size: 15px; right: 70px; opacity: 0.7; border: solid; padding: 0px 5px; color: #fff !important`
-                            newNode.href = img
-                            newNode.id = "large-img-link"
-                            newNode.target = "_blank"
-                            newNode.innerHTML = "&nearr;"
-                            let closeBtn = document.getElementsByClassName("gclose")[0]
-                            closeBtn.parentNode.insertBefore(newNode, closeBtn)
-
-                        });
-                    });
+                noteRef.addEventListener("keydown", (e) => {
+                    if (e.key === "Escape") {
+                        popoverInstance.hide();
+                        noteRef.focus();
+                    }
                 });
-            }
-        },
-        loadBefore() {
-            // Store current first visible element to maintain position
-            if (this.tocElements.elements && this.start < this.tocElements.elements.length) {
-                var firstElement = this.tocElements.elements[this.start]?.philo_id;
-                if (firstElement) {
-                    this.tocPosition = firstElement;
+                // Show now if the user is still on this element; otherwise let
+                // the next focus event trigger it normally.
+                if (document.activeElement === noteRef) {
+                    popoverInstance.show();
                 }
-            }
-
-            // Load 200 more entries before current start
-            this.start -= 200;
-            if (this.start < 0) {
-                this.start = 0;
-            }
-        },
-        loadAfter() {
-            this.end += 200;
-        },
-        handleTocScroll() {
-            const tocContent = document.getElementById('toc-content');
-            if (!tocContent || !this.tocElements.elements) return;
-
-            const scrollTop = tocContent.scrollTop;
-            const scrollHeight = tocContent.scrollHeight;
-            const clientHeight = tocContent.clientHeight;
-
-            // Load previous entries when scrolled to within 100px of the top
-            if (scrollTop <= 100 && this.start > 0) {
-                const oldScrollHeight = scrollHeight;
-                this.loadBefore();
-
-                // Maintain scroll position after loading previous entries
-                this.$nextTick(() => {
-                    const newScrollHeight = tocContent.scrollHeight;
-                    const heightDifference = newScrollHeight - oldScrollHeight;
-                    tocContent.scrollTop = scrollTop + heightDifference;
-                });
-            }
-
-            // Load more entries when scrolled to within 100px of the bottom
-            if (scrollTop + clientHeight >= scrollHeight - 100 && this.end < this.tocElements.elements.length) {
-                this.loadAfter();
-            }
-        },
-        toggleTableOfContents() {
-            this.tocOpen = !this.tocOpen;
-            if (this.tocOpen) {
-                this.$nextTick(() => {
-                    const currentElement = this.$el.querySelector(".current-obj");
-                    if (currentElement) {
-                        currentElement.scrollIntoView({ behavior: "smooth", block: "center" });
-                        currentElement.focus();
-                    }
-
-                    // Add scroll listener for automatic loading with a slight delay
-                    setTimeout(() => {
-                        const tocContent = document.getElementById('toc-content');
-                        if (tocContent) {
-                            tocContent.addEventListener('scroll', this.handleTocScroll, { passive: true });
-                        }
-                    }, 100);
-                });
-            } else {
-                // Remove scroll listener when TOC is closed
-                const tocContent = document.getElementById('toc-content');
-                if (tocContent) {
-                    tocContent.removeEventListener('scroll', this.handleTocScroll);
-                }
-            }
-        },
-        backToTop() {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-        },
-        goToTextObject(philoID) {
-            philoID = philoID.split(/[- ]/).join("/");
-            if (this.tocOpen) {
-                this.tocOpen = false;
-            }
-            this.$router.push({ path: `/navigate/${philoID}` });
-        },
-        textObjectSelection(philoId, index, event) {
-            event.preventDefault();
-            let newStart = this.tocElements.start + index - 100;
-            if (newStart < 0) {
-                newStart = 0;
-            }
-            this.tocElements = {
-                ...this.tocElements,
-                start: newStart,
-                end: this.tocElements.end - index + 100,
-            };
-            this.goToTextObject(philoId);
-        },
-        setUpNavBar() {
-            // let prevButton = document.querySelector("#prev-obj");
-            // let nextButton = document.querySelector("#next-obj");
-            // if (this.textObject.next === "" || typeof this.textObject.next === "undefined") {
-            //     nextButton.classList.add("disabled");
-            // } else {
-            //     nextButton.removeAttribute("disabled");
-            //     nextButton.classList.remove("disabled");
-            // }
-            // if (this.textObject.prev === "" || typeof this.textObject.prev === "undefined") {
-            //     prevButton.classList.add("disabled");
-            // } else {
-            //     prevButton.removeAttribute("disabled");
-            //     prevButton.classList.remove("disabled");
-            // }
-            this.textObject = { ...this.textObject };
-        },
-        handleScroll() {
-            if (!this.navBarVisible) {
-                if (window.scrollY > this.navButtonPosition) {
-                    this.navBarVisible = true;
-                    let topBar = document.getElementById("toc-top-bar");
-                    topBar.style.top = 0;
-                    topBar.classList.add("visible", "shadow");
-                    let tocWrapper = document.getElementById("toc-wrapper");
-                    tocWrapper.style.top = "31px";
-                    let navButtons = document.getElementById("nav-buttons");
-                    navButtons.classList.add("visible");
-                    let reportError = document.getElementById("report-error");
-                    if (reportError != null) {
-                        reportError.classList.add("visible");
-                    }
-                }
-            } else if (window.scrollY < this.navButtonPosition) {
-                this.navBarVisible = false;
-                let topBar = document.getElementById("toc-top-bar");
-                topBar.style.top = "initial";
-                topBar.classList.remove("visible", "shadow");
-                let tocWrapper = document.getElementById("toc-wrapper");
-                tocWrapper.style.top = "0px";
-                let navButtons = document.getElementById("nav-buttons");
-                navButtons.style.top = "initial";
-                navButtons.classList.remove("visible");
-                let reportError = document.getElementById("report-error");
-                if (reportError != null) {
-                    reportError.classList.remove("visible");
-                }
-            }
-        },
-        dicoLookup(event) {
-            if (event.key === "d") {
-                let selection = window.getSelection().toString();
-                let link;
-                if (this.$philoConfig.dictionary_lookup.keywords) {
-                    link = `${this.philoConfig.dictionary_lookup.url_root}?${this.philoConfig.dictionary_lookup_keywords.selected_keyword}=${selection}&`;
-                    let keyValues = [];
-                    for (const [key, value] of Object.entries(
-                        this.philoConfig.dictionary_lookup_keywords.immutable_key_values
-                    )) {
-                        keyValues.push(`${key}=${value}`);
-                    }
-                    for (const [key, value] of Object.entries(
-                        this.philoConfig.dictionary_lookup_keywords.variable_key_values
-                    )) {
-                        let fieldValue = this.textObject.metadata_fields[value] || "";
-                        keyValues.push(`${key}=${fieldValue}`);
-                    }
-                    link += keyValues.join("&");
-                } else {
-                    link = `${this.philoConfig.dictionary_lookup.url_root}/${selection}`;
-                }
-                window.open(link);
-            }
-        },
-        destroyPopovers() {
-            document.querySelectorAll(".note, .note-ref").forEach((note) => {
-                let popover = Popover.getInstance(note);
-                if (popover != null) {
-                    Popover.getInstance(note).dispose();
-                }
-                // Remove all event listeners by cloning and replacing the node
-                const clone = note.cloneNode(true);
-                note.parentNode.replaceChild(clone, note);
             });
-        },
-    },
-};
+        };
+        noteRef.addEventListener("focus", initializePopover);
+    });
+}
+
+function setUpHeadingSemantics() {
+    const headwords = document.querySelectorAll(".philologic-fragment .headword");
+    headwords.forEach((headword) => {
+        let current = headword.parentElement;
+        let headingDepth = 0;
+        // Count parent divs that contain a .headword child (other than ours)
+        while (current && current.className !== "philologic-fragment") {
+            if (current.tagName.toLowerCase() === "div") {
+                const divHeadword = current.querySelector(":scope > .headword");
+                if (divHeadword && divHeadword !== headword) {
+                    headingDepth++;
+                }
+            }
+            current = current.parentElement;
+        }
+        headword.setAttribute("role", "heading");
+        headword.setAttribute("aria-level", headingDepth + 2);
+    });
+}
+
+function setUpInternalLinks() {
+    Array.from(document.getElementsByClassName("link-back")).forEach((el) => {
+        const goToNote = () => {
+            const link = el.getAttribute("link");
+            router.push(link);
+            el.removeEventListener("click", goToNote);
+        };
+        el.addEventListener("click", goToNote);
+    });
+
+    Array.from(document.querySelectorAll("a[type='search']")).forEach((el) => {
+        const [metadata, metadataValue] = el.getAttribute("target").split(":");
+        el.href = `${$dbUrl.replace(/\/+$/, "")}/bibliography?${metadata}=${metadataValue}`;
+    });
+}
+
+function scrollToTarget() {
+    if (byte.value !== "") {
+        const element = document.getElementsByClassName("highlight")[0];
+        if (!element) return;
+        const parent = element.parentElement;
+        if (parent.classList.contains("note-content")) {
+            const note = parent.previousSibling;
+            vueScrollTo.scrollTo(note, 250, {
+                easing: "ease-out",
+                offset: -150,
+                onDone: () => setTimeout(() => note.focus(), 500),
+            });
+        } else {
+            vueScrollTo.scrollTo(element, 250, { easing: "ease-out", offset: -150 });
+        }
+    } else if (formData.value.start_byte !== "") {
+        vueScrollTo.scrollTo(document.querySelector(".passage-marker"), 250, {
+            easing: "ease-out",
+            offset: -150,
+        });
+    } else if (route.hash) {
+        const note = document.getElementById(route.hash.slice(1));
+        if (!note) return;
+        vueScrollTo.scrollTo(note, 250, {
+            easing: "ease-out",
+            offset: -250,
+            onDone: () => setTimeout(() => note.focus(), 500),
+        });
+    }
+}
+
+// ── Text fetch ───────────────────────────────────────────────────────────────
+function fetchText() {
+    searching.value = true;
+    textObjectURL.value = route.params;
+    philoID.value = textObjectURL.value.pathInfo.split("/").join(" ");
+
+    // Block doc-level rendering — redirect to table of contents
+    const nonZeroParts = philoID.value.split(" ").filter((n) => n !== "0");
+    if (nonZeroParts.length <= 1) {
+        const docId = philoID.value.split(" ")[0];
+        router.replace(`/navigate/${docId}/table-of-contents`);
+        return;
+    }
+
+    let byteString = "";
+    if ("byte" in route.query) {
+        byte.value = route.query.byte;
+        byteString = typeof route.query.byte === "object"
+            ? `byte=${byte.value.join("&byte=")}`
+            : `byte=${byte.value}`;
+    } else {
+        byte.value = "";
+    }
+
+    const navigationParams = { report: "navigation", philo_id: philoID.value };
+    if (formData.value.start_byte !== "") {
+        navigationParams.start_byte = formData.value.start_byte;
+        navigationParams.end_byte = formData.value.end_byte;
+    }
+    const urlQuery = `${byteString}&${paramsToUrlString(navigationParams)}`;
+
+    $http.get(`${$dbUrl}/reports/navigation.py?${urlQuery}`)
+        .then((response) => {
+            textObject.value = response.data;
+            textNavigationCitation.value = response.data.citation;
+            navBar.value = true;
+            highlight.value = byte.value.length > 0;
+
+            if (!deepEqual(response.data.imgs, {})) {
+                insertPageLinks(response.data.imgs);
+                insertInlineImgs(response.data.imgs);
+            }
+
+            nextTick(() => {
+                setUpNotePopovers();
+                setUpNoteRefs();
+                setUpHeadingSemantics();
+                setUpInternalLinks();
+                scrollToTarget();
+                setUpGallery();
+                searching.value = false;
+            });
+        })
+        .catch((error) => {
+            logError(error);
+            loading.value = false;
+        });
+}
+
+// ── TOC fetch + scroll ───────────────────────────────────────────────────────
+function fetchToC() {
+    tocPosition.value = "";
+    const philoId = route.params.pathInfo.split("/").join(" ");
+    const docId = philoId.split(" ")[0];
+    currentPhiloId.value = philoId;
+
+    if (docId !== tocElements.value.docId) {
+        $http.get(`${$dbUrl}/scripts/get_table_of_contents.py`, {
+            params: { philo_id: currentPhiloId.value },
+        }).then((response) => {
+            const elements = response.data.toc;
+            start.value = Math.max(0, response.data.current_obj_position - 100);
+            end.value = response.data.current_obj_position + 100;
+            tocElements.value = {
+                docId,
+                elements,
+                start: start.value,
+                end: end.value,
+            };
+            const tocButton = document.querySelector("#show-toc");
+            if (tocButton) {
+                tocButton.removeAttribute("disabled");
+                tocButton.classList.remove("disabled");
+            }
+        }).catch(logError);
+    } else {
+        start.value = tocElements.value.start;
+        end.value = tocElements.value.end;
+        nextTick(() => {
+            const tocButton = document.querySelector("#show-toc");
+            if (tocButton) {
+                tocButton.removeAttribute("disabled");
+                tocButton.classList.remove("disabled");
+            }
+        });
+    }
+}
+
+function loadBefore() {
+    if (tocElements.value.elements && start.value < tocElements.value.elements.length) {
+        const firstElement = tocElements.value.elements[start.value]?.philo_id;
+        if (firstElement) tocPosition.value = firstElement;
+    }
+    start.value = Math.max(0, start.value - 200);
+}
+
+function loadAfter() {
+    end.value += 200;
+}
+
+function handleTocScroll() {
+    const tocContent = document.getElementById("toc-content");
+    if (!tocContent || !tocElements.value.elements) return;
+
+    const scrollTop = tocContent.scrollTop;
+    const scrollHeight = tocContent.scrollHeight;
+    const clientHeight = tocContent.clientHeight;
+
+    if (scrollTop <= 100 && start.value > 0) {
+        const oldScrollHeight = scrollHeight;
+        loadBefore();
+        nextTick(() => {
+            const newScrollHeight = tocContent.scrollHeight;
+            tocContent.scrollTop = scrollTop + (newScrollHeight - oldScrollHeight);
+        });
+    }
+
+    if (scrollTop + clientHeight >= scrollHeight - 100 && end.value < tocElements.value.elements.length) {
+        loadAfter();
+    }
+}
+
+function toggleTableOfContents() {
+    tocOpen.value = !tocOpen.value;
+    if (tocOpen.value) {
+        nextTick(() => {
+            const currentElement = document.querySelector(".current-obj");
+            if (currentElement) {
+                currentElement.scrollIntoView({ behavior: "smooth", block: "center" });
+                currentElement.focus();
+            }
+            // Slight delay so the panel finishes rendering before we attach
+            setTimeout(() => {
+                const tocContent = document.getElementById("toc-content");
+                if (tocContent) {
+                    tocContent.addEventListener("scroll", handleTocScroll, { passive: true });
+                }
+            }, 100);
+        });
+    } else {
+        const tocContent = document.getElementById("toc-content");
+        if (tocContent) {
+            tocContent.removeEventListener("scroll", handleTocScroll);
+        }
+    }
+}
+
+// ── Navigation handlers ──────────────────────────────────────────────────────
+function backToTop() {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function goToTextObject(philoIDArg) {
+    const path = philoIDArg.split(/[- ]/).join("/");
+    if (tocOpen.value) tocOpen.value = false;
+    router.push({ path: `/navigate/${path}` });
+}
+
+function textObjectSelection(philoId, index, event) {
+    event.preventDefault();
+    const newStart = Math.max(0, tocElements.value.start + index - 100);
+    tocElements.value = {
+        ...tocElements.value,
+        start: newStart,
+        end: tocElements.value.end - index + 100,
+    };
+    goToTextObject(philoId);
+}
+
+function handleScroll() {
+    if (!navBarVisible.value) {
+        if (window.scrollY > navButtonPosition.value) {
+            navBarVisible.value = true;
+            const topBar = document.getElementById("toc-top-bar");
+            topBar.style.top = 0;
+            topBar.classList.add("visible", "shadow");
+            const tocWrapper = document.getElementById("toc-wrapper");
+            tocWrapper.style.top = "31px";
+            const navButtons = document.getElementById("nav-buttons");
+            navButtons.classList.add("visible");
+            const reportError = document.getElementById("report-error");
+            if (reportError != null) reportError.classList.add("visible");
+        }
+    } else if (window.scrollY < navButtonPosition.value) {
+        navBarVisible.value = false;
+        const topBar = document.getElementById("toc-top-bar");
+        topBar.style.top = "initial";
+        topBar.classList.remove("visible", "shadow");
+        const tocWrapper = document.getElementById("toc-wrapper");
+        tocWrapper.style.top = "0px";
+        const navButtons = document.getElementById("nav-buttons");
+        navButtons.style.top = "initial";
+        navButtons.classList.remove("visible");
+        const reportError = document.getElementById("report-error");
+        if (reportError != null) reportError.classList.remove("visible");
+    }
+}
+
+function dicoLookup(event) {
+    if (event.key !== "d") return;
+    const selection = window.getSelection().toString();
+    let link;
+    if (philoConfig.dictionary_lookup.keywords) {
+        link = `${philoConfig.dictionary_lookup.url_root}?${philoConfig.dictionary_lookup_keywords.selected_keyword}=${selection}&`;
+        const keyValues = [];
+        for (const [key, value] of Object.entries(
+            philoConfig.dictionary_lookup_keywords.immutable_key_values
+        )) {
+            keyValues.push(`${key}=${value}`);
+        }
+        for (const [key, value] of Object.entries(
+            philoConfig.dictionary_lookup_keywords.variable_key_values
+        )) {
+            const fieldValue = textObject.value.metadata_fields[value] || "";
+            keyValues.push(`${key}=${fieldValue}`);
+        }
+        link += keyValues.join("&");
+    } else {
+        link = `${philoConfig.dictionary_lookup.url_root}/${selection}`;
+    }
+    window.open(link);
+}
+
+// ── Image gallery ────────────────────────────────────────────────────────────
+function setUpGallery() {
+    for (const imageType of ["page-image-link", "inline-img", "external-img"]) {
+        Array.from(document.getElementsByClassName(imageType)).forEach((item) => {
+            item.addEventListener("click", (event) => {
+                event.preventDefault();
+                const items = Array.from(document.getElementsByClassName(imageType));
+                images.value = items.map((it) => it.getAttribute("href") || it.getAttribute("src"));
+                const imageIndex = items.indexOf(event.target);
+                gallery.value = GLightbox({
+                    elements: items.map((it) => ({
+                        href: it.getAttribute("href") || it.getAttribute("src"),
+                        type: "image",
+                    })),
+                    openEffect: "fade",
+                    closeEffect: "fade",
+                    startAt: imageIndex,
+                });
+                gallery.value.open();
+                gallery.value.on("slide_changed", () => {
+                    // TODO: only create anchor tag the first time.
+                    const img = items[gallery.value.getActiveSlideIndex()].getAttribute("large-img");
+                    const newNode = document.createElement("a");
+                    newNode.style.cssText =
+                        "position: absolute; top: 20px; font-size: 15px; right: 70px; opacity: 0.7; border: solid; padding: 0px 5px; color: #fff !important";
+                    newNode.href = img;
+                    newNode.id = "large-img-link";
+                    newNode.target = "_blank";
+                    newNode.innerHTML = "&nearr;";
+                    const closeBtn = document.getElementsByClassName("gclose")[0];
+                    closeBtn.parentNode.insertBefore(newNode, closeBtn);
+                });
+            });
+        });
+    }
+}
+
+// ── Popover cleanup ──────────────────────────────────────────────────────────
+function destroyPopovers() {
+    document.querySelectorAll(".note, .note-ref").forEach((note) => {
+        const popover = Popover.getInstance(note);
+        if (popover != null) popover.dispose();
+        // Strip event listeners by cloning and replacing the node
+        const clone = note.cloneNode(true);
+        note.parentNode.replaceChild(clone, note);
+    });
+}
+
+// ── Watcher ──────────────────────────────────────────────────────────────────
+watch(
+    () => route.params,
+    () => {
+        if (route.name === "textNavigation") {
+            destroyPopovers();
+            fetchText();
+            fetchToC();
+        }
+    }
+);
+
+// ── Lifecycle ────────────────────────────────────────────────────────────────
+onMounted(() => {
+    const tocButton = document.querySelector("#show-toc");
+    if (tocButton) {
+        navButtonPosition.value = tocButton.getBoundingClientRect().top;
+    }
+});
+
+onBeforeUnmount(() => {
+    if (gallery.value) gallery.value.close();
+    destroyPopovers();
+    const tocContent = document.getElementById("toc-content");
+    if (tocContent) {
+        tocContent.removeEventListener("scroll", handleTocScroll);
+    }
+});
+
+// ── Initial dispatch ─────────────────────────────────────────────────────────
+formData.value.report = "textNavigation";
+fetchToC();
+fetchText();
 </script>
 <style lang="scss" scoped>
 @use "../assets/styles/theme.module.scss" as theme;
