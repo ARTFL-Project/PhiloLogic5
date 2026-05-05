@@ -41,10 +41,12 @@
     </footer>
 </template>
 
-<script>
+<script setup>
 import DOMPurify from "dompurify";
-import { mapStores, mapWritableState } from "pinia";
-import { defineAsyncComponent } from "vue";
+import { storeToRefs } from "pinia";
+import { defineAsyncComponent, inject, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import Header from "./components/Header.vue";
 import ProgressSpinner from "./components/ProgressSpinner.vue";
 import { useMainStore } from "./stores/main";
@@ -52,245 +54,134 @@ import { copyObject, debug, paramsToRoute } from "./utils.js";
 const SearchForm = defineAsyncComponent(() => import("./components/SearchForm.vue"));
 const AccessControl = defineAsyncComponent(() => import("./components/AccessControl.vue"));
 
-export default {
-    name: "app",
-    components: {
-        Header,
-        SearchForm,
-        AccessControl,
-        ProgressSpinner,
-    },
-    inject: ["$http"],
-    data() {
-        return {
-            initialLoad: true,
-            clientIp: "",
-            domainName: "",
-            accessAuthorized: true,
-            checkingAccess: false,
-        };
-    },
-    computed: {
-        ...mapWritableState(useMainStore, ["formData", "urlUpdate", "showFacets"]),
-        ...mapStores(useMainStore),
-        defaultFieldValues() {
-            let localFields = {
-                report: "home",
-                q: "",
-                method: "proxy",
-                cooc_order: "yes",
-                method_arg: "",
-                arg_phrase: "",
-                results_per_page: 25,
-                start: "",
-                end: "",
-                colloc_filter_choice: "",
-                colloc_within: "sent",
-                filter_frequency: 100,
-                approximate: "no",
-                approximate_ratio: 100,
-                start_date: "",
-                end_date: "",
-                year_interval: this.$philoConfig.time_series_interval,
-                sort_by: "rowid",
-                first_kwic_sorting_option: "",
-                second_kwic_sorting_option: "",
-                third_kwic_sorting_option: "",
-                start_byte: "",
-                end_byte: "",
-                group_by: this.$philoConfig.aggregation_config[0].field,
-            };
-            for (let field of this.$philoConfig.metadata) {
-                localFields[field] = "";
-            }
-            return localFields;
-        },
-        reportValues() {
-            let reportValues = {};
-            let commonFields = ["q", "approximate", "approximate_ratio", ...this.$philoConfig.metadata];
-            reportValues.concordance = new Set([
-                ...commonFields,
-                "method",
-                "cooc_order",
-                "method_arg",
-                "results_per_page",
-                "sort_by",
-                "hit_num",
-                "start",
-                "end",
-                "frequency_field",
-                "word_property"
-            ]);
-            reportValues.kwic = new Set([
-                ...commonFields,
-                "method",
-                "cooc_order",
-                "method_arg",
-                "results_per_page",
-                "first_kwic_sorting_option",
-                "second_kwic_sorting_option",
-                "third_kwic_sorting_option",
-                "start",
-                "end",
-                "frequency_field",
-                "word_property"
-            ]);
-            reportValues.collocation = new Set([...commonFields, "start", "colloc_filter_choice", "filter_frequency", "colloc_within", "method_arg", "q_attribute", "q_attribute_value"]);
-            reportValues.time_series = new Set([
-                ...commonFields,
-                "method",
-                "cooc_order",
-                "method_arg",
-                "start_date",
-                "end_date",
-                "year_interval",
-                "max_time",
-            ]);
-            reportValues.aggregation = new Set([...commonFields, "method", "cooc_order", "method_arg", "group_by"]);
-            return reportValues;
-        },
-    },
-    created() {
-        if (this.$philoConfig.valid_config) {
-            this.updateDocumentTitle(this.$route.name);
-            const html = document.documentElement;
+const $http = inject("$http");
+const philoConfig = inject("$philoConfig");
+const route = useRoute();
+const router = useRouter();
+const { locale: i18nLocale, t } = useI18n();
+const store = useMainStore();
+const { formData, urlUpdate, showFacets } = storeToRefs(store);
 
-            // Fix: Use dynamic locale instead of hardcoded 'sv'
-            const currentLocale = this.$i18n.locale || localStorage.getItem("lang") || "en";
-            html.setAttribute("lang", currentLocale);
-            this.$i18n.locale = currentLocale;
+const clientIp = ref("");
+const domainName = ref("");
+const accessAuthorized = ref(true);
+const checkingAccess = ref(false);
 
-            this.accessAuthorized = this.$philoConfig.access_control ? false : true;
-            let baseUrl = this.getBaseUrl();
-            if (this.$philoConfig.access_control) {
-                this.checkingAccess = true;
-                this.$http
-                    .get(`${baseUrl}/scripts/access_request.py`, {
-                        headers: {
-                            "Access-Control-Allow-Origin": "*",
-                        },
-                    })
-                    .then((response) => {
-                        this.accessAuthorized = response.data.access;
-                        if (this.accessAuthorized) {
-                            this.setupApp();
-                        } else {
-                            this.clientIp = response.data.incoming_address;
-                            this.domainName = response.data.domain_name;
-                        }
-                    })
-                    .finally(() => {
-                        this.checkingAccess = false;
-                    });
-            } else {
-                this.setupApp();
-            }
-        }
-        if (this.$philoConfig.facets.length < 1) {
-            this.showFacets = false;
-        }
-    },
-    watch: {
-        // call again the method if the route changes
-        $route(to) {
-            this.formDataUpdate();
-            this.updateDocumentTitle(to.name);
-        },
-        accessAuthorized(authorized) {
-            if (authorized) {
-                this.setupApp();
-            }
-        },
-    },
-    methods: {
-        toTitleCase(str) {
-            return str.replace(/\w\S*/g, (txt) => {
-                return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
-            });
-        },
-        updateDocumentTitle(routeName) {
-            if (!this.$philoConfig.valid_config) return;
+function toTitleCase(str) {
+    return str.replace(/\w\S*/g, (txt) =>
+        txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
+    );
+}
 
-            const titleCasedDbname = this.toTitleCase(DOMPurify.sanitize((this.$philoConfig.dbname)));
+function updateDocumentTitle(routeName) {
+    if (!philoConfig.valid_config) return;
 
-            // Define which routes should have their name in the title
-            const reportTypes = ['concordance', 'kwic', 'collocation', 'aggregation', 'time_series', 'bibliography'];
-            const pageTypes = ['textNavigation', 'tableOfContents'];
+    const titleCasedDbname = toTitleCase(DOMPurify.sanitize(philoConfig.dbname));
+    const reportTypes = ["concordance", "kwic", "collocation", "aggregation", "time_series", "bibliography"];
+    const pageTypes = ["textNavigation", "tableOfContents"];
 
-            if (routeName && reportTypes.includes(routeName)) {
-                // Get translated report name
-                let reportName;
-                if (routeName === 'bibliography') {
-                    reportName = this.$t('landingPage.bibliography');
+    if (routeName && reportTypes.includes(routeName)) {
+        const reportName = routeName === "bibliography"
+            ? t("landingPage.bibliography")
+            : t(`searchForm.${routeName}`);
+        document.title = t("common.documentTitleWithReport", {
+            dbname: titleCasedDbname,
+            report: reportName,
+        });
+    } else if (routeName && pageTypes.includes(routeName)) {
+        const pageName = t(`searchForm.${routeName}`);
+        const baseTitle = t("common.documentTitle", { dbname: titleCasedDbname });
+        document.title = `${baseTitle} - ${pageName}`;
+    } else {
+        document.title = `${t("common.documentTitle", { dbname: titleCasedDbname })} - ${t("landingPage.title")}`;
+    }
+}
+
+function getBaseUrl() {
+    let href = window.location.href;
+    for (const segment of [
+        "/landing", "/query", "/concordance", "/kwic", "/collocation",
+        "/aggregation", "/table-of-contents", "/navigate", "/time_series", "/bibliography",
+    ]) {
+        href = href.replace(new RegExp(`${segment}.*`), "");
+    }
+    return href;
+}
+
+function evaluateRoute() {
+    if (
+        formData.value.q && formData.value.q.length > 0 &&
+        route.name === "bibliography"
+    ) {
+        store.updateFormDataField({ key: "report", value: "concordance" });
+        debug({ $options: { name: "app" } }, formData.value.report);
+        router.push(paramsToRoute({ ...store.formData }));
+    } else {
+        formData.value.report = route.name;
+    }
+}
+
+function formDataUpdate() {
+    const localParams = copyObject(store.defaultFields);
+    store.updateFormData({ ...localParams, ...route.query });
+    if (!["textNavigation", "tableOfContents", "home"].includes(route.name)) {
+        evaluateRoute();
+        urlUpdate.value = route.query;
+    }
+}
+
+function setupApp() {
+    store.initFromConfig(philoConfig);
+    formDataUpdate();
+}
+
+// ── Initial dispatch (replaces created()) ────────────────────────────────────
+if (philoConfig.valid_config) {
+    updateDocumentTitle(route.name);
+
+    const currentLocale = i18nLocale.value || localStorage.getItem("lang") || "en";
+    document.documentElement.setAttribute("lang", currentLocale);
+    i18nLocale.value = currentLocale;
+
+    accessAuthorized.value = !philoConfig.access_control;
+    if (philoConfig.access_control) {
+        checkingAccess.value = true;
+        $http
+            .get(`${getBaseUrl()}/scripts/access_request.py`, {
+                headers: { "Access-Control-Allow-Origin": "*" },
+            })
+            .then((response) => {
+                accessAuthorized.value = response.data.access;
+                if (accessAuthorized.value) {
+                    setupApp();
                 } else {
-                    reportName = this.$t(`searchForm.${routeName}`);
+                    clientIp.value = response.data.incoming_address;
+                    domainName.value = response.data.domain_name;
                 }
-
-                document.title = this.$t('common.documentTitleWithReport', {
-                    dbname: titleCasedDbname,
-                    report: reportName
-                });
-            } else if (routeName && pageTypes.includes(routeName)) {
-                // For textNavigation and tableOfContents, append without "Report"
-                const pageName = this.$t(`searchForm.${routeName}`);
-                const baseTitle = this.$t('common.documentTitle', { dbname: titleCasedDbname });
-                document.title = `${baseTitle} - ${pageName}`;
-            } else {
-                document.title = `${this.$t('common.documentTitle', { dbname: titleCasedDbname })} - ${this.$t('landingPage.title')}`;
-            }
-        },
-        getBaseUrl() {
-            let href = window.location.href;
-            href = href.replace(/\/landing.*/, "");
-            href = href.replace(/\/query.*/, "");
-            href = href.replace(/\/concordance.*/, "");
-            href = href.replace(/\/kwic.*/, "");
-            href = href.replace(/\/collocation.*/, "");
-            href = href.replace(/\/aggregation.*/, "");
-            href = href.replace(/\/table-of-contents.*/, "");
-            href = href.replace(/\/navigate.*/, "");
-            href = href.replace(/\/time_series.*/, "");
-            href = href.replace(/\/bibliography.*/, "");
-            return href;
-        },
-
-        setupApp() {
-            this.mainStore.setDefaultFields(this.defaultFieldValues);
-            this.mainStore.setReportValues(this.reportValues);
-            this.formDataUpdate();
-        },
-        formDataUpdate() {
-            let localParams = copyObject(this.defaultFieldValues);
-            this.mainStore.updateFormData({
-                ...localParams,
-                ...this.$route.query,
+            })
+            .finally(() => {
+                checkingAccess.value = false;
             });
-            if (!["textNavigation", "tableOfContents", "home"].includes(this.$route.name)) {
-                this.evaluateRoute();
-                this.urlUpdate = this.$route.query;
-            }
-        },
-        evaluateRoute() {
-            if (this.$route.name == "bibliography") {
-                this.report = "bibliography";
-            }
-            if (
-                !["home", "textNavigation", "tableOfContents"].includes(this.$route.name) &&
-                this.formData.q && this.formData.q.length > 0 &&
-                this.$route.name == "bibliography"
-            ) {
-                this.mainStore.updateFormDataField({
-                    key: "report",
-                    value: "concordance",
-                });
-                debug(this, this.formData.report);
-                this.$router.push(paramsToRoute({ ...this.mainStore.formData }));
-            } else {
-                this.formData.report = this.$route.name;
-            }
-        },
-    },
-};
+    } else {
+        setupApp();
+    }
+}
+if (philoConfig.facets.length < 1) {
+    showFacets.value = false;
+}
+
+// ── Watchers ─────────────────────────────────────────────────────────────────
+watch(
+    () => route.fullPath,
+    () => {
+        formDataUpdate();
+        updateDocumentTitle(route.name);
+    }
+);
+
+watch(accessAuthorized, (authorized) => {
+    if (authorized) setupApp();
+});
 </script>
 
 <style lang="scss">

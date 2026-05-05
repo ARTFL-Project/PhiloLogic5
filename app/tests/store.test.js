@@ -24,12 +24,6 @@ describe("Main Store", () => {
         expect(store.formData.q).toBe("test");
     });
 
-    it("setDefaultFields merges into formData", () => {
-        store.setDefaultFields({ q: "default", report: "home" });
-        expect(store.formData.q).toBe("default");
-        expect(store.formData.method).toBe("proxy"); // preserved
-    });
-
     it("updateFormDataField updates a single field", () => {
         store.updateFormDataField({ key: "q", value: "new query" });
         expect(store.formData.q).toBe("new query");
@@ -42,12 +36,41 @@ describe("Main Store", () => {
         expect(store.formData.q).toBe(""); // preserved
     });
 
-    it("setReportValues stores report field sets", () => {
-        const reportValues = {
-            concordance: new Set(["q", "method"]),
-        };
-        store.setReportValues(reportValues);
+    const minimalConfig = {
+        time_series_interval: 10,
+        aggregation_config: [{ field: "author" }],
+        metadata: ["author", "title"],
+    };
+
+    it("initFromConfig populates defaultFields with config-derived values", () => {
+        store.initFromConfig(minimalConfig);
+        expect(store.defaultFields.report).toBe("home");
+        expect(store.defaultFields.method).toBe("proxy");
+        expect(store.defaultFields.year_interval).toBe(10);
+        expect(store.defaultFields.group_by).toBe("author");
+        expect(store.defaultFields.author).toBe("");
+        expect(store.defaultFields.title).toBe("");
+    });
+
+    it("initFromConfig populates reportValues with per-report whitelists", () => {
+        store.initFromConfig(minimalConfig);
         expect(store.reportValues.concordance.has("q")).toBe(true);
+        expect(store.reportValues.concordance.has("method")).toBe(true);
+        expect(store.reportValues.concordance.has("author")).toBe(true);
+        expect(store.reportValues.kwic.has("first_kwic_sorting_option")).toBe(true);
+        expect(store.reportValues.collocation.has("colloc_within")).toBe(true);
+        expect(store.reportValues.time_series.has("year_interval")).toBe(true);
+        expect(store.reportValues.aggregation.has("group_by")).toBe(true);
+    });
+
+    it("resetFormDataToDefaults applies defaultFields onto formData", () => {
+        store.initFromConfig(minimalConfig);
+        // Mutate formData away from defaults
+        store.formData.q = "something";
+        store.formData.method = "exact_cooc";
+        store.resetFormDataToDefaults();
+        expect(store.formData.q).toBe("");
+        expect(store.formData.method).toBe("proxy");
     });
 
     it("updateStartEndDate updates both date fields", () => {

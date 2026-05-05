@@ -735,7 +735,7 @@ export default {
             );
         },
         onReset() {
-            this.mainStore.setDefaultFields(this.$parent.defaultFieldValues);
+            this.mainStore.resetFormDataToDefaults();
             for (let field of this.$philoConfig.metadata) {
                 this.metadataValues[field] = "";
             }
