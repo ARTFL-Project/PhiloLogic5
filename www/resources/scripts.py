@@ -29,6 +29,7 @@ JSON_SCRIPTS = {
     "get_landing_page_content",
     "get_more_context",
     "get_notes",
+    "get_outlier_groups",
     "get_query_terms",
     "get_similar_collocate_distributions",
     "get_sorted_frequency",

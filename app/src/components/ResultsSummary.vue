@@ -111,16 +111,16 @@
                     <!-- Collocation filter section -->
                     <div v-if="formData.report === 'collocation'">
                         <div>
-                            <span>
+                            <span v-if="['frequency', 'stopwords'].includes(formData.colloc_filter_choice)">
                                 <span>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
-                                        v-if="colloc_filter_choice === 'frequency'"
-                                        :aria-label="$t('resultsSummary.commonWords', { n: filter_frequency }) + ' ' + $t('resultsSummary.filtered')"
+                                        v-if="formData.colloc_filter_choice === 'frequency'"
+                                        :aria-label="$t('resultsSummary.commonWords', { n: formData.filter_frequency }) + ' ' + $t('resultsSummary.filtered')"
                                         :aria-expanded="showFilteredWords" aria-controls="filter-list">
-                                        {{ $t("resultsSummary.commonWords", { n: filter_frequency }) }}
+                                        {{ $t("resultsSummary.commonWords", { n: formData.filter_frequency }) }}
                                     </button>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
-                                        v-if="colloc_filter_choice === 'stopwords'"
+                                        v-if="formData.colloc_filter_choice === 'stopwords'"
                                         :aria-label="$t('resultsSummary.commonStopwords') + ' ' + $t('resultsSummary.filtered')"
                                         :aria-expanded="showFilteredWords" aria-controls="filter-list">
                                         {{ $t("resultsSummary.commonStopwords") }}

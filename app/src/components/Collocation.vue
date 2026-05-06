@@ -165,11 +165,12 @@
                         $t('collocation.searchEvolution') }}</button>
             </div>
 
-            <!-- Results below -->
+            <!-- Results: collocate table, word cloud, distinctive-groups tabs -->
             <div class="row my-3 pe-1" style="padding: 0 0.5rem" v-if="resultsLength && mode == 'frequency'">
-                <div class="col-12 col-sm-4">
-                    <div class="card shadow-sm">
-                        <table class="table table-borderless caption-top"
+                <!-- Frequency table -->
+                <div class="col-12" :class="outlierPanels.length > 0 ? 'col-md-3 col-xl-2' : 'col-md-4 col-xl-3'">
+                    <div class="card shadow-sm collocate-table-card">
+                        <table class="table table-borderless caption-top mb-0"
                             aria-label="$t('collocation.collocatesTable')">
                             <caption class="visually-hidden">
                                 {{ $t('collocation.collocatesTableCaption') }}
@@ -181,7 +182,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr style="line-height: 1.75rem" v-for="(word, index) in sortedList"
+                                <tr style="line-height: 1.5rem" v-for="(word, index) in sortedList"
                                     :key="word.collocate" :tabindex="0" @click="collocateClick(word)"
                                     @keydown.enter="collocateClick(word)" @keydown.space.prevent="collocateClick(word)"
                                     :aria-label="`${word.collocate} ${word.count}`">
@@ -192,13 +193,78 @@
                         </table>
                     </div>
                 </div>
-                <div class="col-12 col-sm-8">
+
+                <!-- Word cloud -->
+                <div class="col-12" :class="outlierPanels.length > 0 ? 'col-md-5 col-xl-6' : 'col-md-8 col-xl-9'">
                     <div class="card shadow-sm">
                         <word-cloud v-if="mode == 'frequency' && sortedList.length > 0" :word-weights="sortedList"
                             label="frequency" :click-handler="collocateClick"></word-cloud>
                     </div>
                 </div>
+
+                <!-- Distinctive groups (outliers) — tabbed by configured field -->
+                <div v-if="outlierPanels.length > 0" class="col-12 col-md-4 mt-3 mt-md-0">
+                    <div class="card shadow-sm">
+                        <div class="card-header p-2">
+                            <h3 class="mb-0" aria-live="polite" aria-atomic="true">
+                                {{ activeOutlierLabel
+                                    ? $t('collocation.mostDistinctiveByField', { field: activeOutlierLabel })
+                                    : $t('collocation.distinctiveGroups') }}
+                            </h3>
+                        </div>
+                        <ul class="nav nav-tabs" id="distinctive-tabs" role="tablist"
+                            :aria-label="$t('collocation.distinctiveGroups')">
+                            <li v-for="panel in outlierPanels" :key="panel.field" class="nav-item" role="presentation">
+                                <button type="button" class="nav-link"
+                                    :class="{ active: panel.field === activeOutlierField }"
+                                    @click="activeOutlierField = panel.field" role="tab"
+                                    :aria-selected="panel.field === activeOutlierField"
+                                    :aria-controls="`distinctive-pane-${panel.field}`">
+                                    {{ panel.label }}
+                                </button>
+                            </li>
+                        </ul>
+
+                        <!-- Min-hits incrementer (shared across tabs) -->
+                        <div class="d-flex align-items-center px-3 pt-3 pb-1" style="gap: 0.5rem">
+                            <label for="min-hits-input" class="fw-bold mb-0 text-nowrap">
+                                {{ $t('collocation.minHitsLabel', { field: activeOutlierLabel }) }}
+                            </label>
+                            <input id="min-hits-input" type="number" class="form-control form-control-sm"
+                                style="width: 3.75rem" min="1" max="100" step="1" v-model.number="minHits"
+                                @input="onMinHitsChange" />
+                        </div>
+                        <div class="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
+                            {{ outlierStatus }}
+                        </div>
+
+                        <div class="tab-content">
+                            <div v-for="panel in outlierPanels" :key="panel.field"
+                                v-show="panel.field === activeOutlierField" :id="`distinctive-pane-${panel.field}`"
+                                role="tabpanel" :aria-label="$t('collocation.outlierResults', { field: panel.label })">
+                                <div v-if="panel.loading"
+                                    class="d-flex flex-column align-items-center justify-content-center py-4"
+                                    role="status" aria-live="polite" aria-atomic="true"
+                                    :aria-label="$t('collocation.gatheringOutliers', { field: panel.label })">
+                                    <progress-spinner :lg="true"
+                                        :message="$t('collocation.gatheringOutliers', { field: panel.label })" />
+                                    <p class="mt-3 mb-0 text-muted small" aria-hidden="true">
+                                        {{ $t('collocation.gatheringOutliers', { field: panel.label }) }}...
+                                    </p>
+                                </div>
+                                <GroupRanking v-else embedded :items="panel.items"
+                                    :explainer-label="$t('collocation.distinctiveCollocates')"
+                                    :select-aria-label-prefix="$t('collocation.compareTo')"
+                                    :score-aria-label="$t('collocation.score')"
+                                    :region-aria-label="$t('collocation.outlierResults', { field: panel.label })"
+                                    :format-score="(n) => n.toFixed(1)"
+                                    @select="(name) => onOutlierSelect(name, panel.field)" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
+
             <div v-if="mode === 'compare'">
                 <div class="card shadow-sm mx-2 my-3 p-2" v-if="comparativeSearchStarted">
                     <div class="row mt-2">
@@ -271,37 +337,11 @@
                 </div>
             </div>
             <div v-if="mode == 'similar'" class="mx-2" style="margin-bottom: 6rem;">
-                <div class="card" v-if="similarDistributions.length > 0" role="region"
-                    :aria-label="$t('collocation.similarUsageResults')">
-                    <h2 class="visually-hidden">{{ $t('collocation.similarUsageResults') }}</h2>
-                    <h3 class="sim-dist">
-                        {{ $t("collocation.similarUsagePattern") }}
-                    </h3>
-                    <ul class="list-group list-group-flush" :aria-label="$t('collocation.similarUsagePattern')">
-                        <li v-for="(item, index) in similarDistributions" :key="item[0]">
-                            <button type="button"
-                                class="list-group-item position-relative w-100 text-start border-0 pb-1"
-                                style="text-align: justify" @click="similarToComparative(item[0])"
-                                @keydown.enter="similarToComparative(item[0])"
-                                @keydown.space.prevent="similarToComparative(item[0])"
-                                :aria-label="`${$t('collocation.compareTo')} ${item[0]}, ${$t('collocation.count')}: ${item[1]}${item[2] && item[2].length > 0 ? ', ' + $t('collocation.sharedCollocates') + ': ' + item[2].join(', ') : ''}`">
-                                <span class="sim-metadata">{{ item[0] }}</span>
-                                <span class="badge text-bg-secondary position-absolute" style="right: 1rem; top: 0.5rem"
-                                    aria-hidden="true">
-                                    {{ item[1] }}
-                                </span>
-                                <br v-if="item[2] && item[2].length > 0">
-                                <small v-if="item[2] && item[2].length > 0"
-                                    style="font-size: 0.9em; color: #495057; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: calc(100% - 4rem)"
-                                    aria-hidden="true">
-                                    <strong>{{ $t("collocation.sharedCollocates") }}:</strong> {{ item[2].join(', ') }}
-                                </small>
-                            </button>
-                            <hr v-if="index < similarDistributions.length - 1" class="my-0"
-                                style="opacity: 1; border-color: rgba(0, 0, 0, 0.125);" aria-hidden="true">
-                        </li>
-                    </ul>
-                </div>
+                <GroupRanking :title="$t('collocation.similarUsagePattern')" :items="similarDistributions"
+                    :explainer-label="$t('collocation.sharedCollocates')"
+                    :select-aria-label-prefix="$t('collocation.compareTo')" :score-aria-label="$t('collocation.count')"
+                    :region-aria-label="$t('collocation.similarUsageResults')"
+                    :hidden-header="$t('collocation.similarUsageResults')" @select="similarToComparative" />
             </div>
             <div v-if="mode == 'timeSeries'" class="mx-2 my-3">
                 <div v-if="searching" role="status" aria-live="polite" aria-atomic="true"
@@ -371,6 +411,7 @@ import {
     paramsToRoute,
 } from "../utils.js";
 import BibliographyCriteria from "./BibliographyCriteria";
+import GroupRanking from "./GroupRanking.vue";
 import MetadataFields from "./MetadataFields.vue";
 import ProgressSpinner from "./ProgressSpinner";
 import ResultsSummary from "./ResultsSummary";
@@ -422,6 +463,15 @@ const sortedList = ref([]);
 const collocatesFilePath = ref("");
 const relativeFrequencies = ref({});
 
+//  Outlier groups (frequency mode follow-up)
+const outlierPanels = ref([]);
+const activeOutlierField = ref("");
+const minHits = ref(10);
+const outlierStatus = ref("");
+let outlierFetchToken = 0;
+let outlierRerankToken = 0;
+let minHitsDebounce = null;
+
 //  Metadata helpers ─
 const metadataDisplay = ref([]);
 const metadataInputStyle = ref([]);
@@ -447,6 +497,11 @@ const fieldsToCompare = computed(() => {
         label: philoConfig.metadata_aliases[field] || field,
         value: field,
     }));
+});
+
+const activeOutlierLabel = computed(() => {
+    const panel = outlierPanels.value.find((p) => p.field === activeOutlierField.value);
+    return panel ? panel.label : "";
 });
 
 const isInvalidCollocationQuery = computed(() => {
@@ -586,6 +641,8 @@ function runPostFetchModeAction() {
         similarCollocDistributions({ value: route.query.similarity_by });
     } else if (mode.value === "compare") {
         getOtherCollocates();
+    } else if (mode.value === "frequency") {
+        fetchOutliers();
     }
 }
 
@@ -602,6 +659,9 @@ function fetchResults() {
     similarDistributions.value = [];
     collocationTimePeriods.value = [];
     similarFieldSelected.value = "";
+    outlierPanels.value = [];
+    activeOutlierField.value = "";
+    outlierFetchToken++;
     updateCollocation();
 }
 
@@ -619,6 +679,10 @@ function getOtherCollocates() {
     setMode("compare");
     // dateRangeHandler mutates comparedMetadataValues in place
     dateRangeHandler(metadataInputStyle.value, dateRange, dateType, comparedMetadataValues);
+    // Refresh the right-hand biblio criteria up front -- comparativeCollocations
+    // would otherwise only update it after the round-trip, and not at all when
+    // the new filter has zero hits.
+    otherBiblio.value = buildBiblioCriteria(philoConfig, comparedMetadataValues, comparedMetadataValues);
     const params = {
         q: formData.value.q,
         colloc_filter_choice: formData.value.colloc_filter_choice,
@@ -664,6 +728,95 @@ function comparativeCollocations(otherFilePath) {
     }).catch((error) => {
         debug({ $options: { name: "collocation-report" } }, error);
     });
+}
+
+// Sequentially compute outlier groups for each field in collocation_fields_to_compare.
+// One field at a time so we don't pile up parallel map_field collocation requests.
+async function fetchOutliers() {
+    const fields = philoConfig.collocation_fields_to_compare || [];
+    const aliases = philoConfig.metadata_aliases || {};
+    const myToken = ++outlierFetchToken;
+
+    outlierPanels.value = fields.map((f) => ({
+        field: f,
+        label: aliases[f] || f,
+        items: [],
+        loading: true,
+        done: false,
+        filePath: "",
+    }));
+    if (fields.length > 0) activeOutlierField.value = fields[0];
+
+    for (let i = 0; i < outlierPanels.value.length; i++) {
+        if (myToken !== outlierFetchToken) return;
+        const panel = outlierPanels.value[i];
+        try {
+            const mapResp = await $http.get(`${$dbUrl}/reports/collocation.py`, {
+                params: {
+                    ...paramsFilter(formData.value),
+                    map_field: panel.field,
+                },
+            });
+            if (myToken !== outlierFetchToken) return;
+            panel.filePath = mapResp.data.file_path;
+            const outResp = await $http.get(`${$dbUrl}/scripts/get_outlier_groups.py`, {
+                params: { file_path: panel.filePath, min_hits: minHits.value },
+            });
+            if (myToken !== outlierFetchToken) return;
+            // Drop any items whose group_name is empty / whitespace (missing metadata).
+            panel.items = (outResp.data.outliers || []).filter(
+                (item) => item[0] && String(item[0]).trim() !== ""
+            );
+        } catch (error) {
+            debug({ $options: { name: "collocation-report" } }, error);
+        } finally {
+            if (myToken === outlierFetchToken) {
+                panel.loading = false;
+                panel.done = true;
+            }
+        }
+    }
+}
+
+// Re-rank outliers using the cached .npz files — cheap (~10ms per panel).
+// Skips panels whose primary cache build is still in flight; the cascade
+// will pick up the current minHits.value when it gets to them.
+async function rerankOutliers() {
+    const myToken = ++outlierRerankToken;
+    for (const panel of outlierPanels.value) {
+        if (myToken !== outlierRerankToken) return;
+        if (!panel.done || !panel.filePath) continue;
+        try {
+            const outResp = await $http.get(`${$dbUrl}/scripts/get_outlier_groups.py`, {
+                params: { file_path: panel.filePath, min_hits: minHits.value },
+            });
+            if (myToken !== outlierRerankToken) return;
+            panel.items = (outResp.data.outliers || []).filter(
+                (item) => item[0] && String(item[0]).trim() !== ""
+            );
+        } catch (error) {
+            debug({ $options: { name: "collocation-report" } }, error);
+        }
+    }
+    if (myToken === outlierRerankToken) {
+        outlierStatus.value = t("collocation.outliersUpdated", { value: minHits.value });
+    }
+}
+
+function onMinHitsChange() {
+    if (minHitsDebounce) clearTimeout(minHitsDebounce);
+    minHitsDebounce = setTimeout(rerankOutliers, 500);
+}
+
+function onOutlierSelect(name, field) {
+    clearComparedMetadata();
+    // Wrap in quotes so the metadata parser treats the full value as a single
+    // exact-match token. Unquoted names with commas, hyphens, or year ranges
+    // (e.g. "Mirabeau, ..., 1749-1791.") otherwise get tokenized into many TERMs
+    // plus spurious RANGE clauses, which is slow-to-impossible to evaluate.
+    const escaped = String(name).replace(/"/g, '\\"');
+    comparedMetadataValues[field] = `"${escaped}"`;
+    getOtherCollocates();
 }
 
 //  Mode: similar
@@ -722,7 +875,10 @@ function similarToComparative(field) {
         // any leftover values from a previous compare run would otherwise
         // silently scope the comparison.
         clearComparedMetadata();
-        comparedMetadataValues[similarFieldSelected.value] = field;
+        // Quote-wrap so MARC-formatted values (e.g. authors with commas/dashes/years)
+        // hit the metadata parser as a single exact-match QUOTE token.
+        const escaped = String(field).replace(/"/g, '\\"');
+        comparedMetadataValues[similarFieldSelected.value] = `"${escaped}"`;
         mode.value = "compare";
         otherCollocates.value = extractSurfaceFromCollocate(response.data.collocates);
         wholeCorpus.value = false;
@@ -918,6 +1074,17 @@ th {
     border-color: theme.$card-header-color !important;
 }
 
+.collocate-table-card {
+    max-height: clamp(20rem, 65vh, 48rem);
+    overflow-y: auto;
+}
+
+.collocate-table-card .table-header th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
 .table tbody tr {
     cursor: pointer;
     transition: all 0.2s ease;
@@ -1055,28 +1222,6 @@ input:focus::placeholder {
     cursor: not-allowed;
 }
 
-.sim-dist {
-    text-align: center;
-    font-variant: small-caps;
-    font-size: 1rem;
-    color: #fff;
-    background-color: theme.$link-color;
-    padding: 0.5rem;
-    margin-bottom: 0;
-}
-
-.sim-metadata {
-    display: inline-block;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: calc(100% - 4rem);
-    vertical-align: bottom;
-    padding-bottom: 0.15rem;
-    color: theme.$link-color;
-    font-weight: 500;
-}
-
 .colloc-cloud-title {
     text-align: center;
     background: theme.$link-color;
@@ -1105,10 +1250,6 @@ input:focus::placeholder {
     flex: 1;
 }
 
-.badge {
-    font-size: 0.75rem;
-}
-
 @media (min-width: 768px) {
     .compare-divider {
         border-left: solid 1px rgba(0, 0, 0, 0.176);
@@ -1119,39 +1260,6 @@ input:focus::placeholder {
     background-color: rgba(theme.$card-header-color, 0.05);
     border-color: theme.$card-header-color;
     color: #000;
-}
-
-// Similarity search list items - same hover effect as facets
-.list-group-item {
-    cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    transform: scale(1);
-}
-
-.list-group-item:hover {
-    transform: scale(1.01);
-    background-color: rgba(theme.$link-color, 0.15) !important;
-    border-color: rgba(theme.$link-color, 0.3) !important;
-    box-shadow: inset 0 0 8px rgba(theme.$link-color, 0.1);
-    z-index: 1;
-}
-
-.list-group-item:active {
-    transform: scale(0.98);
-    background-color: rgba(theme.$link-color, 0.2) !important;
-}
-
-.list-group-item:hover .badge {
-    background-color: theme.$link-color !important;
-    transform: scale(1.1);
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.list-group-item:focus {
-    outline: 2px solid theme.$link-color;
-    outline-offset: -2px;
-    box-shadow: inset 0 0 0 0.2rem rgba(theme.$link-color, 0.25);
-    z-index: 2;
 }
 
 .autocomplete-results {

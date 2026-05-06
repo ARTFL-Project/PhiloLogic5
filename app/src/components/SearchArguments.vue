@@ -106,7 +106,7 @@ const route = useRoute();
 const router = useRouter();
 const { t } = useI18n();
 const store = useMainStore();
-const { formData, currentReport, description } = storeToRefs(store);
+const { formData, currentReport, description, resultsLength } = storeToRefs(store);
 
 const closeButton = useTemplateRef("closeButton");
 const queryTermsDialog = useTemplateRef("queryTermsDialog");

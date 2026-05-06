@@ -1,14 +1,14 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 """Load Filters used in Loader"""
 
-import gc
 import os
 from collections import Counter
 
 import lz4.frame
 from orjson import dumps, loads
-from philologic.loadtime.OHCOVector import Record
 from spacy.tokens import Doc as SpacyDoc
+
+from philologic.loadtime.OHCOVector import Record
 
 
 # Default filters
@@ -73,7 +73,7 @@ def spacy_tagger(loader_obj, text):
                 yield spacy_sentence, sentence_records
 
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
-        for spacy_sentence, sentence_records in loader_obj.nlp.pipe(process_file(), as_tuples=True, batch_size=128):
+        for spacy_sentence, sentence_records in loader_obj.nlp.pipe(process_file(), as_tuples=True, batch_size=1024):
             for record, parsed_word in zip(sentence_records, spacy_sentence):
                 record.attrib["pos"] = parsed_word.pos_
                 record.attrib["tag"] = parsed_word.tag_
@@ -84,7 +84,6 @@ def spacy_tagger(loader_obj, text):
             spacy_sentence.tensor = None
             del spacy_sentence
             del sentence_records
-    gc.collect()
 
     os.remove(text["raw"])
     os.rename(text["raw"] + ".tmp", text["raw"])

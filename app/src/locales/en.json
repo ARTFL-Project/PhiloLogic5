@@ -202,7 +202,16 @@
         "compareBy": "Compare by",
         "selectField": "Select a field",
         "invalidQuery": "Invalid query for collocations",
-        "invalidQueryExplanation": "Collocations require a single word query. Use OR or NOT for multiple terms (e.g., volonté OR désir, volonté NOT volontés)"
+        "invalidQueryExplanation": "Collocations require a single word query. Use OR or NOT for multiple terms (e.g., volonté OR désir, volonté NOT volontés)",
+        "distinctiveByField": "Distinctive {field}",
+        "distinctiveCollocates": "Distinctive collocates",
+        "score": "Score",
+        "gatheringOutliers": "Identifying distinctive {field}",
+        "outlierResults": "Distinctive {field} results",
+        "minHitsLabel": "Min. occurrences per {field}",
+        "outliersUpdated": "Distinctive groups updated for minimum {value} occurrences",
+        "distinctiveGroups": "Most distinctive groups",
+        "mostDistinctiveByField": "Most distinctive {field}"
     },
     "concordance": {
         "more": "More",

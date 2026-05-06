@@ -202,7 +202,16 @@
         "compareBy": "Comparer par",
         "selectField": "Sélectionner un champ",
         "invalidQuery": "Requête invalide pour les collocations",
-        "invalidQueryExplanation": "Les collocations nécessitent une requête d'un seul mot. Utilisez OR ou NOT pour plusieurs termes (ex : volonté OR désir, volonté NOT volontés)"
+        "invalidQueryExplanation": "Les collocations nécessitent une requête d'un seul mot. Utilisez OR ou NOT pour plusieurs termes (ex : volonté OR désir, volonté NOT volontés)",
+        "distinctiveByField": "{field} distinctifs",
+        "distinctiveCollocates": "Collocations distinctives",
+        "score": "Score",
+        "gatheringOutliers": "Identification des {field} distinctifs",
+        "outlierResults": "Résultats : {field} distinctifs",
+        "minHitsLabel": "Occurrences min. par {field}",
+        "outliersUpdated": "Groupes distinctifs mis à jour pour un minimum de {value} occurrences",
+        "distinctiveGroups": "Groupes les plus distinctifs",
+        "mostDistinctiveByField": "{field} les plus distinctifs"
     },
     "concordance": {
         "more": "Plus",

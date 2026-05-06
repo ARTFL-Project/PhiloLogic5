@@ -472,11 +472,14 @@ def _vectorized_collocation(
         vg_sorted, vt_sorted, gb.astype(np.int64), n_groups, max_tid,
     )
 
+    # Per-group query-word hit counts (used by outlier scoring as a representativeness floor)
+    group_hits = np.bincount(v_gids, minlength=n_groups).astype(np.int32)
+
     # Return raw numpy arrays — string decode is deferred to downstream scripts
     group_bounds = np.searchsorted(unique_gids, np.arange(n_groups + 1, dtype=np.int32))
     # Ensure group_names are strings (metadata values may be int, e.g. year)
     group_names = [str(n) for n in group_names]
-    return unique_tids, unique_counts, group_bounds, group_names
+    return unique_tids, unique_counts, group_bounds, group_names, group_hits
 
 def collocation_results(request, config):
     """Fetch collocation results"""
@@ -569,11 +572,11 @@ def collocation_results(request, config):
         collocation_object["collocates"] = all_collocates.most_common(100)
         collocation_object["file_path"] = file_path
     else:
-        unique_tids, unique_counts, group_bounds, group_names = result
+        unique_tids, unique_counts, group_bounds, group_names, group_hits = result
         file_path = create_file_path(request, map_field, config.db_path, ext=".npz")
         save_map_field_cache(
             file_path, unique_tids, unique_counts, group_bounds, group_names,
-            count_lemmas, attribute, attribute_value,
+            count_lemmas, attribute, attribute_value, group_hits=group_hits,
         )
         collocation_object["file_path"] = file_path
 
@@ -609,26 +612,28 @@ def atomic_pickle_dump(data, file_path):
 
 
 def save_map_field_cache(file_path, unique_tids, unique_counts, group_bounds, group_names,
-                         count_lemmas, attribute, attribute_value):
+                         count_lemmas, attribute, attribute_value, group_hits=None):
     """Save map_field results as numpy arrays (no string decode, no pickle overhead)."""
     dir_path = os.path.dirname(file_path)
     fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as f:
-            np.savez(
-                f,
-                tids=unique_tids.astype(np.uint32),
-                counts=unique_counts.astype(np.int32),
-                group_bounds=group_bounds.astype(np.int64),
-                group_names=np.frombuffer("\0".join(group_names).encode("utf-8"), dtype=np.uint8),
-                meta=np.array([int(count_lemmas)], dtype=np.uint8),
-                attr=np.frombuffer(
+            arrays = {
+                "tids": unique_tids.astype(np.uint32),
+                "counts": unique_counts.astype(np.int32),
+                "group_bounds": group_bounds.astype(np.int64),
+                "group_names": np.frombuffer("\0".join(group_names).encode("utf-8"), dtype=np.uint8),
+                "meta": np.array([int(count_lemmas)], dtype=np.uint8),
+                "attr": np.frombuffer(
                     (attribute or "").encode("utf-8"), dtype=np.uint8
                 ) if attribute else np.array([], dtype=np.uint8),
-                attr_val=np.frombuffer(
+                "attr_val": np.frombuffer(
                     (attribute_value or "").encode("utf-8"), dtype=np.uint8
                 ) if attribute_value else np.array([], dtype=np.uint8),
-            )
+            }
+            if group_hits is not None:
+                arrays["group_hits"] = group_hits.astype(np.int32)
+            np.savez(f, **arrays)
         os.replace(tmp_path, file_path)
     except BaseException:
         os.unlink(tmp_path)
@@ -648,6 +653,14 @@ def load_map_field_cache(file_path):
     attr_val_raw = data["attr_val"]
     attribute_value = attr_val_raw.tobytes().decode("utf-8") if len(attr_val_raw) > 0 else None
     return tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value
+
+
+def load_group_hits(file_path):
+    """Load per-group query-word hit counts from a map_field cache, or None if absent (legacy cache)."""
+    data = np.load(file_path, allow_pickle=False)
+    if "group_hits" not in data.files:
+        return None
+    return data["group_hits"]
 
 
 def decode_group_collocates(tids, counts, group_bounds, group_index, db_path, count_lemmas, attribute, attribute_value):
