@@ -280,6 +280,17 @@ export function buildBiblioCriteria(philoConfig, query, formData) {
     return biblio;
 }
 
+export function collocateCleanup(collocate, q) {
+    if (collocate.surfaceForm.startsWith("lemma:") || collocate.surfaceForm.search(/\w+:.*/) !== -1) {
+        return `${q} ${collocate.surfaceForm}`;
+    }
+    return `${q} "${collocate.surfaceForm}"`;
+}
+
+export function concordanceMethod(collocWithin) {
+    return collocWithin === "n" ? "proxy" : "sentence";
+}
+
 export function extractSurfaceFromCollocate(words) {
     let newWords = [];
     for (let wordObj of words) {
