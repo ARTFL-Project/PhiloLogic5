@@ -31,6 +31,7 @@ JSON_SCRIPTS = {
     "get_notes",
     "get_outlier_groups",
     "get_query_terms",
+    "get_representative_passages",
     "get_similar_collocate_distributions",
     "get_sorted_frequency",
     "get_table_of_contents",

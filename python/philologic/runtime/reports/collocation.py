@@ -293,6 +293,51 @@ def fightin_words_zscores(y_a, y_b):
     sigma_sq = 1.0 / (y_a + alpha) + 1.0 / (y_b + alpha)
     return delta / np.sqrt(sigma_sq)
 
+
+def fightin_words_zscores_vs_rest(y_a, y_b, n_a, n_b):
+    """Closed-form fightin' words for the 'this slice vs. rest of corpus' case.
+
+    When y_b is the rest-of-corpus on the same support as y_a (i.e., n_a + n_b
+    is the corpus total), alpha_0 = n_a + n_b and alpha[i] simplifies to
+    y_a[i] + y_b[i], so the prior pre-computation drops out. Faster than the
+    general form when this assumption holds (single-group / single-hit
+    "distinctiveness" scoring).
+
+    y_a, y_b: 1D float arrays of equal length on the active vocab support.
+    n_a, n_b: scalar totals (corpus_total = n_a + n_b).
+    Returns per-token z-scores; positive means over-represented in y_a.
+    """
+    delta = (
+        np.log((2.0 * y_a + y_b) / (2.0 * n_a + n_b))
+        - np.log((y_a + 2.0 * y_b) / (n_a + 2.0 * n_b))
+    )
+    sigma_sq = 1.0 / (2.0 * y_a + y_b) + 1.0 / (y_a + 2.0 * y_b)
+    return delta / np.sqrt(sigma_sq)
+
+
+def score_with_top_k_positive(z, candidate_tids, top_k, min_distinctive=1):
+    """Collapse a z-score vector to a single distinctiveness score + explainers.
+
+    Take the tokens with z > 0, keep the top-k by z, sum their z-scores. The
+    selected token ids are returned as explainers — the actual evidence behind
+    the score.
+
+    Returns (score, explainer_tids):
+      - score: float, sum of top-k positive z-scores, or -np.inf if fewer than
+        min_distinctive tokens have positive z (caller can use this as a skip).
+      - explainer_tids: int64 array of the corresponding token ids, in
+        z-descending order, length min(top_k, n_positive).
+    """
+    pos_mask = z > 0
+    n_positive = int(pos_mask.sum())
+    if n_positive < min_distinctive:
+        return -np.inf, np.empty(0, dtype=np.int64)
+    z_pos = z[pos_mask]
+    t_pos = candidate_tids[pos_mask]
+    order = np.argsort(z_pos)[::-1][:top_k]
+    return float(z_pos[order].sum()), t_pos[order].astype(np.int64)
+
+
 def _vectorized_collocation(
     db_path,
     hits,
@@ -514,30 +559,23 @@ def collocation_results(request, config):
         attribute_value = None
 
     # Build list of search terms to filter out.
-    # When counting lemmas, vocab entries are "lemma:{value}", so filter
-    # strings must be lemma-prefixed to match the vocab hashes.
+    # The .terms file lines ARE the count-vocab keys: "lemma:{value}" when
+    # counting lemmas, surface forms otherwise. Pass them through verbatim —
+    # don't re-prefix or synthesize case variants.
     query_words = []
     while not os.path.exists(f"{hits.filename}.terms"):
         time.sleep(0.1)
     for group in get_word_groups(f"{hits.filename}.terms"):
-        for word in group:
-            if count_lemmas:
-                query_words.extend([f"lemma:{word}", f"lemma:{word.lower()}"])
-            else:
-                query_words.extend([word, word.title(), word.upper()])
+        query_words.extend(group)
 
-    if request.colloc_filter_choice == "nofilter":
-        filter_list = set(query_words)
-    elif request.colloc_filter_choice == "attribute":
-        if f"{attribute}:{attribute_value}" not in request.q:
-            filter_list = {f"{word}:{attribute}:{attribute_value}" for word in query_words}
-        else:
-            filter_list = set(query_words)
-            filter_list = filter_list.union(set(query_words))
+    # Bare query_words must be in filter_list so the count-side identity hash
+    # matches the (un-suffixed) count vocab keys.
+    filter_list = set(query_words)
+    if request.colloc_filter_choice == "attribute":
+        filter_list.update(f"{word}:{attribute}:{attribute_value}" for word in query_words)
         filter_list.add(f"{request.q}:{attribute}:{attribute_value}")
-    else:
-        filter_list = set(build_filter_list(request, config, count_lemmas))
-        filter_list = filter_list.union(set(query_words))
+    elif request.colloc_filter_choice != "nofilter":
+        filter_list.update(build_filter_list(request, config, count_lemmas))
     collocation_object["filter_list"] = sorted(filter_list, key=str.lower)
 
     hits.finish()

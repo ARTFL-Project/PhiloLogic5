@@ -211,7 +211,20 @@
         "minHitsLabel": "Min. occurrences per {field}",
         "outliersUpdated": "Distinctive groups updated for minimum {value} occurrences",
         "distinctiveGroups": "Most distinctive groups",
-        "mostDistinctiveByField": "Most distinctive {field}"
+        "mostDistinctiveByField": "Most distinctive {field}",
+        "withinFilteredScope": "(within filtered scope)"
+    },
+    "distinctivePassages": {
+        "title": "Representative passages",
+        "titleFor": "Representative passages — {group}",
+        "signature": "Signature",
+        "orderingNote": "Passages are ordered by how many of these signature collocates they contain (weighted by distinctiveness).",
+        "score": "Score",
+        "loadMore": "Load more",
+        "viewFor": "View representative passages",
+        "viewAll": "View all uses",
+        "viewAllFor": "View all uses of {group}",
+        "noResults": "No representative passages found."
     },
     "concordance": {
         "more": "More",

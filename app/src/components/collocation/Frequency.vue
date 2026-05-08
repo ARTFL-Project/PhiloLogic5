@@ -38,7 +38,7 @@
             </div>
         </div>
 
-        <!-- Distinctive groups (outliers) — tabbed by configured field -->
+        <!-- Distinctive groups -->
         <div v-if="outlierPanels.length > 0" class="col-12 col-md-4 mt-3 mt-md-0">
             <div class="card shadow-sm">
                 <div class="card-header p-2">
@@ -46,6 +46,9 @@
                         {{ activeOutlierLabel
                             ? $t('collocation.mostDistinctiveByField', { field: activeOutlierLabel })
                             : $t('collocation.distinctiveGroups') }}
+                        <span v-if="hasActiveFilter" class="scope-suffix">
+                            {{ $t('collocation.withinFilteredScope') }}
+                        </span>
                     </h3>
                 </div>
                 <ul class="nav nav-tabs" id="distinctive-tabs" role="tablist"
@@ -61,7 +64,7 @@
                     </li>
                 </ul>
 
-                <!-- Min-hits incrementer (shared across tabs) -->
+                <!-- Min-hits incrementer -->
                 <div class="d-flex align-items-center px-3 pt-3 pb-1" style="gap: 0.5rem">
                     <label for="min-hits-input" class="fw-bold mb-0 text-nowrap">
                         {{ $t('collocation.minHitsLabel', { field: activeOutlierLabel }) }}
@@ -94,11 +97,20 @@
                             :score-aria-label="$t('collocation.score')"
                             :region-aria-label="$t('collocation.outlierResults', { field: panel.label })"
                             :format-score="(n) => n.toFixed(1)"
-                            @select="(name) => onOutlierSelect(name, panel.field)" />
+                            :enable-view-passages="true"
+                            :view-passages-label="$t('distinctivePassages.viewFor')"
+                            @select="(name) => onOutlierSelect(name, panel.field)"
+                            @view-passages="(item) => onViewPassages(item, panel.field)" />
                     </div>
                 </div>
             </div>
         </div>
+
+        <DistinctivePassagesModal
+            :group-name="modal.groupName" :signature="modal.signature"
+            :passages="modal.passages" :loading="modal.loading"
+            :has-more="modal.hasMore" :view-all-url="modal.viewAllUrl"
+            @load-more="loadMorePassages" @view-all="onViewAll" />
     </div>
 </template>
 
@@ -116,6 +128,8 @@ import {
     paramsFilter,
     paramsToRoute,
 } from "../../utils.js";
+import { Modal } from "bootstrap";
+import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import GroupRanking from "../GroupRanking.vue";
 import ProgressSpinner from "../ProgressSpinner";
 import WordCloud from "../WordCloud.vue";
@@ -127,10 +141,8 @@ const props = defineProps({
 
 const emit = defineEmits(["pivot-to-compare"]);
 
-// Self-trigger on mount if primary results are already in the parent's state
-// (e.g. user navigated back to frequency mode without a refetch). On the first
-// mount of an initial load sortedList is still empty, so this is a no-op and
-// the parent's runPostFetchModeAction calls fetchOutliers explicitly.
+// Self-trigger on remount when primary results are already in the parent.
+// First mount has empty sortedList; parent's runPostFetchModeAction triggers there.
 onMounted(() => {
     if (props.sortedList.length > 0) fetchOutliers();
 });
@@ -151,6 +163,16 @@ let outlierFetchToken = 0;
 let outlierRerankToken = 0;
 let minHitsDebounce = null;
 
+// Drives the "(within filtered scope)" header suffix: when a metadata filter
+// narrows the query, distinctive-groups compare to peers in scope, not the corpus.
+const hasActiveFilter = computed(() => {
+    const fields = Object.keys(philoConfig.metadata_aliases || {});
+    return fields.some((f) => {
+        const v = formData.value[f];
+        return v && (typeof v !== "string" || v.trim() !== "");
+    });
+});
+
 const activeOutlierLabel = computed(() => {
     const panel = outlierPanels.value.find((p) => p.field === activeOutlierField.value);
     return panel ? panel.label : "";
@@ -168,11 +190,14 @@ function onCollocateClick(item) {
     );
 }
 
-// Sequentially compute outlier groups for each field in collocation_fields_to_compare.
-// One field at a time so we don't pile up parallel map_field collocation requests.
+// Sequential per-field cascade — avoids parallel map_field requests.
 async function fetchOutliers() {
-    const fields = philoConfig.collocation_fields_to_compare || [];
     const aliases = philoConfig.metadata_aliases || {};
+    // Skip fields already pinned by the primary filters (author=Holbach → Author tab is moot).
+    const fields = (philoConfig.collocation_fields_to_compare || []).filter((f) => {
+        const v = formData.value[f];
+        return !v || (typeof v === "string" && v.trim() === "");
+    });
     const myToken = ++outlierFetchToken;
 
     outlierPanels.value = fields.map((f) => ({
@@ -201,7 +226,6 @@ async function fetchOutliers() {
                 params: { file_path: panel.filePath, min_hits: minHits.value },
             });
             if (myToken !== outlierFetchToken) return;
-            // Drop any items whose group_name is empty / whitespace (missing metadata).
             panel.items = (outResp.data.outliers || []).filter(
                 (item) => item[0] && String(item[0]).trim() !== ""
             );
@@ -216,9 +240,7 @@ async function fetchOutliers() {
     }
 }
 
-// Re-rank outliers using the cached .npz files — cheap (~10ms per panel).
-// Skips panels whose primary cache build is still in flight; the cascade
-// will pick up the current minHits.value when it gets to them.
+// Re-rank from the cached .npz; in-flight cascade picks up minHits.value itself.
 async function rerankOutliers() {
     const myToken = ++outlierRerankToken;
     for (const panel of outlierPanels.value) {
@@ -248,6 +270,92 @@ function onMinHitsChange() {
 
 function onOutlierSelect(name, field) {
     emit("pivot-to-compare", { field, name });
+}
+
+// Modal state for representative passages
+const modal = ref({
+    groupName: "",
+    field: "",
+    value: "",
+    signature: [],
+    passages: [],
+    loading: false,
+    hasMore: false,
+    offset: 0,
+    pageSize: 25,
+    viewAllUrl: "",
+});
+let modalInstance = null;
+let passagesFetchToken = 0;
+
+function onViewPassages(item, field) {
+    const [name, , explainers] = item;
+    const escapedValue = `"${String(name).replace(/"/g, '\\"')}"`;
+    modal.value = {
+        groupName: name,
+        field,
+        value: escapedValue,
+        // explainers from GroupRanking are bare words (no z); endpoint accepts
+        // signature_weights optional and falls back to unweighted coverage if absent.
+        signature: (explainers || []).map((w) => ({ word: w, z: null })),
+        passages: [],
+        loading: true,
+        hasMore: false,
+        offset: 0,
+        pageSize: 25,
+        viewAllUrl: paramsToRoute({
+            ...formData.value,
+            report: "concordance",
+            method: concordanceMethod(formData.value.colloc_within),
+            [field]: escapedValue,
+        }),
+    };
+    showModal();
+    fetchPassages({ append: false });
+}
+
+function showModal() {
+    const el = document.getElementById("distinctive-passages-modal");
+    if (!el) return;
+    if (!modalInstance) modalInstance = new Modal(el);
+    modalInstance.show();
+}
+
+function onViewAll() {
+    const dest = modal.value.viewAllUrl;
+    if (modalInstance) modalInstance.hide();
+    if (dest) router.push(dest);
+}
+
+async function fetchPassages({ append }) {
+    const myToken = ++passagesFetchToken;
+    modal.value.loading = true;
+    try {
+        const params = {
+            ...paramsFilter(formData.value),
+            restrict_to_field: modal.value.field,
+            restrict_to_value: modal.value.value,
+            signature_tokens: modal.value.signature.map((s) => s.word).join(","),
+            top_n: modal.value.pageSize,
+            offset: modal.value.offset,
+        };
+        const resp = await $http.get(`${$dbUrl}/scripts/get_representative_passages.py`, { params });
+        if (myToken !== passagesFetchToken) return;
+        const data = resp.data || {};
+        modal.value.passages = append
+            ? modal.value.passages.concat(data.passages || [])
+            : (data.passages || []);
+        modal.value.hasMore = !!data.has_more;
+    } catch (error) {
+        debug({ $options: { name: "collocation-frequency" } }, error);
+    } finally {
+        if (myToken === passagesFetchToken) modal.value.loading = false;
+    }
+}
+
+function loadMorePassages() {
+    modal.value.offset += modal.value.pageSize;
+    fetchPassages({ append: true });
 }
 
 function reset() {
@@ -340,5 +448,13 @@ th {
         font-variant: small-caps;
         font-size: 1rem;
     }
+}
+
+.scope-suffix {
+    font-variant: normal;
+    font-size: 0.8rem;
+    font-weight: 400;
+    opacity: 0.75;
+    margin-left: 0.25rem;
 }
 </style>

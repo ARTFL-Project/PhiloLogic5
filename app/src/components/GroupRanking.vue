@@ -4,7 +4,7 @@
         <h2 v-if="hiddenHeader" class="visually-hidden">{{ hiddenHeader }}</h2>
         <h3 v-if="!embedded && title" class="group-ranking-header">{{ title }}</h3>
         <ul class="list-group list-group-flush" :aria-label="title || regionAriaLabel">
-            <li v-for="(item, index) in items" :key="item[0]">
+            <li v-for="(item, index) in items" :key="item[0]" class="position-relative">
                 <button type="button"
                     class="list-group-item position-relative w-100 text-start border-0 pb-1"
                     style="text-align: justify"
@@ -22,6 +22,11 @@
                         aria-hidden="true">
                         <strong>{{ explainerLabel }}:</strong> {{ item[2].join(', ') }}
                     </small>
+                </button>
+                <button v-if="enableViewPassages" type="button" class="view-passages-link"
+                    @click.stop="$emit('view-passages', item)"
+                    :aria-label="`${viewPassagesLabel} ${item[0]}`">
+                    {{ viewPassagesLabel }} <span aria-hidden="true">→</span>
                 </button>
                 <hr v-if="index < items.length - 1" class="my-0 group-ranking-divider"
                     aria-hidden="true">
@@ -41,9 +46,11 @@ const props = defineProps({
     hiddenHeader: { type: String, default: "" },
     formatScore: { type: Function, default: (n) => n },
     embedded: { type: Boolean, default: false },
+    enableViewPassages: { type: Boolean, default: false },
+    viewPassagesLabel: { type: String, default: "View representative passages" },
 });
 
-defineEmits(["select"]);
+defineEmits(["select", "view-passages"]);
 
 function buildAriaLabel(item) {
     const [name, score, explainers] = item;
@@ -131,5 +138,28 @@ function buildAriaLabel(item) {
 
 .badge {
     font-size: 0.75rem;
+}
+
+.view-passages-link {
+    display: block;
+    margin: 0 0 0.4rem 1rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: theme.$link-color;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    text-align: left;
+    cursor: pointer;
+}
+
+.view-passages-link:hover {
+    text-decoration: underline;
+}
+
+.view-passages-link:focus {
+    outline: 2px solid theme.$link-color;
+    outline-offset: 2px;
+    border-radius: 0.15rem;
 }
 </style>

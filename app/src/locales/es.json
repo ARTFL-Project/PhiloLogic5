@@ -211,7 +211,20 @@
         "minHitsLabel": "Ocurrencias mín. por {field}",
         "outliersUpdated": "Grupos distintivos actualizados para un mínimo de {value} ocurrencias",
         "distinctiveGroups": "Grupos más distintivos",
-        "mostDistinctiveByField": "{field} más distintivos"
+        "mostDistinctiveByField": "{field} más distintivos",
+        "withinFilteredScope": "(en el ámbito filtrado)"
+    },
+    "distinctivePassages": {
+        "title": "Pasajes representativos",
+        "titleFor": "Pasajes representativos — {group}",
+        "signature": "Firma",
+        "orderingNote": "Los pasajes están ordenados según cuántos de estos colocados característicos contienen (ponderado por su distintividad).",
+        "score": "Puntuación",
+        "loadMore": "Cargar más",
+        "viewFor": "Ver pasajes representativos",
+        "viewAll": "Ver todos los usos",
+        "viewAllFor": "Ver todos los usos de {group}",
+        "noResults": "No se encontraron pasajes representativos."
     },
     "concordance": {
         "more": "Más",

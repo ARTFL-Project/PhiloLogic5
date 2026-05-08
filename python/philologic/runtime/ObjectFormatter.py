@@ -258,6 +258,98 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
     return output
 
 
+def format_concordance_distinctive(text_in_utf8, word_regex,
+                                    main_byte_offsets, distinctive_byte_offsets):
+    """Concordance formatter that emits two distinct highlight classes.
+
+    Like format_concordance, but accepts two offset sets:
+      - main_byte_offsets: query word(s) — rendered with class "highlight"
+        (matches the existing concordance treatment).
+      - distinctive_byte_offsets: signature/collocate words — rendered with
+        class "colloc-explainer".
+
+    Both lists must be byte offsets relative to the same source text. They
+    must be disjoint (an offset shouldn't be in both); if they aren't, main
+    wins.
+    """
+    removed_from_start = 0
+    begin = BEGIN_MATCH.search(text_in_utf8)
+    if begin:
+        removed_from_start = len(begin.group(0))
+        text_in_utf8 = text_in_utf8[begin.end(0):]
+    start_cutoff = START_CUTOFF_MATCH.search(text_in_utf8)
+    if start_cutoff:
+        removed_from_start += len(start_cutoff.group(0))
+        text_in_utf8 = text_in_utf8[start_cutoff.end(0):]
+    end = END_MATCH.search(text_in_utf8)
+    if end:
+        text_in_utf8 = text_in_utf8[:end.start(0)]
+
+    # Build a unified ordered list of (adjusted_offset, kind), main winning ties.
+    main_set = set(b - removed_from_start for b in (main_byte_offsets or []))
+    sig_set = set(b - removed_from_start for b in (distinctive_byte_offsets or []))
+    sig_set -= main_set  # disjoint
+    markers = sorted(
+        [(b, "M") for b in main_set if 0 < b < len(text_in_utf8)]
+        + [(b, "S") for b in sig_set if 0 < b < len(text_in_utf8)]
+    )
+
+    if markers:
+        new_text = b""
+        last_offset = 0
+        for b, kind in markers:
+            tag = b"<philoHighlightMain/>" if kind == "M" else b"<philoHighlightSig/>"
+            new_text += text_in_utf8[last_offset:b] + tag
+            last_offset = b
+        text_in_utf8 = new_text + text_in_utf8[last_offset:]
+
+    text = text_in_utf8.decode("utf8", "ignore")
+    xml = FragmentParserParse(text)
+    allowed_tags = set([
+        "philoHighlightMain", "philoHighlightSig",
+        "l", "ab", "ln", "w", "sp", "speaker", "stage", "i", "sc", "scx", "br",
+    ])
+    for el in xml.iter():
+        if "lang" in el.attrib:
+            del el.attrib["lang"]
+        if el.tag == "a":
+            el.tag = "span"
+            el.attrib["class"] = "xml-a"
+        if el.tag.startswith("DIV"):
+            el.tag = el.tag.lower()
+        if el.tag not in allowed_tags:
+            el.tag = "span"
+        elif el.tag == "title":
+            el.tag = "span"
+            el.attrib["class"] = "xml-title"
+        elif el.tag == "q":
+            el.tag = "span"
+            el.attrib["class"] = "xml-q"
+        if "id" in el.attrib and el.tag != "l" and el.tag != "w":
+            del el.attrib["id"]
+        if el.tag == "sc" or el.tag == "scx":
+            el.tag = "span"
+            el.attrib["class"] = "small-caps"
+        elif el.tag == "img":
+            el.getparent().remove(el)
+        if el.tag in ("philoHighlightMain", "philoHighlightSig"):
+            cls = "highlight" if el.tag == "philoHighlightMain" else "colloc-explainer"
+            word_match = re.match(word_regex, el.tail) if el.tail else None
+            if word_match:
+                el.text = el.tail[: word_match.end()]
+                el.tail = el.tail[word_match.end():]
+            el.tag = "span"
+            el.attrib["class"] = cls
+        if el.tag not in VALID_HTML_TAGS:
+            el = xml_to_html_class(el)
+    output = etree.tostring(xml, encoding="unicode")
+    output = re.sub(r'\A<div class="philologic-fragment">', "", output)
+    output = re.sub(r"</div>\Z", "", output)
+    output = convert_entities(output)
+    output = STRIP_START_PUNCTUATION.sub("", output)
+    return output
+
+
 def format_strip(text, word_regex, byte_offsets=None):
     """Remove formatting for HTML rendering
     Called from KWIC only"""

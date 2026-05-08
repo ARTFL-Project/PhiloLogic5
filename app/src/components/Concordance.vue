@@ -174,14 +174,9 @@ fetchResults();
 </script>
 
 <style>
-.concordance-text {
-    text-align: justify;
-}
-
-.philologic-occurrence {
-    left: 0;
-    position: relative;
-}
+/* .concordance-text, .philologic-occurrence, .citation-container, and .cite
+   are defined globally in App.vue so they are also available to other
+   components that reuse this card markup (e.g. DistinctivePassagesModal). */
 
 .separator {
     padding: 5px;
@@ -229,28 +224,12 @@ fetchResults();
     }
 }
 
-.more_context,
-.citation-container {
+.more_context {
     border-bottom: solid 1px #eee !important;
-}
-
-.number {
-    color: #fff;
-    font-size: 1rem;
-    line-height: 1.5;
-    padding: 0.375rem 0.75rem;
-    display: inline-block;
-    margin-right: 5px;
-    border-radius: 0.25rem;
 }
 
 .hit_n {
     vertical-align: 5px;
-}
-
-.cite {
-    height: 38px;
-    display: inline-block;
 }
 
 .philologic-doc {

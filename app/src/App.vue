@@ -460,4 +460,37 @@ span.note {
 .toc-div1 .toc-section {
     font-size: 1.1rem;
 }
+
+/* Concordance-card rules. Defined here (rather than in Concordance.vue, where
+   they were originally) because the Concordance route is lazy-loaded — its
+   stylesheet isn't on the page until the user visits it. Other components
+   (e.g. DistinctivePassagesModal) reuse the same card markup and need these
+   rules available from first paint. */
+.philologic-occurrence {
+    position: relative;
+    left: 0;
+}
+
+.citation-container {
+    border-bottom: solid 1px #eee !important;
+}
+
+.cite {
+    height: 38px;
+    display: inline-block;
+}
+
+.concordance-text {
+    text-align: justify;
+}
+
+.number {
+    color: #fff;
+    font-size: 1rem;
+    line-height: 1.5;
+    padding: 0.375rem 0.75rem;
+    display: inline-block;
+    margin-right: 5px;
+    border-radius: 0.25rem;
+}
 </style>

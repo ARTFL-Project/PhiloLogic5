@@ -9,7 +9,12 @@ import os
 
 import numpy as np
 
-from philologic.runtime.reports.collocation import load_group_hits, load_map_field_cache
+from philologic.runtime.reports.collocation import (
+    fightin_words_zscores_vs_rest,
+    load_group_hits,
+    load_map_field_cache,
+    score_with_top_k_positive,
+)
 
 
 def get_outlier_groups(request, config):
@@ -68,21 +73,12 @@ def get_outlier_groups(request, config):
         y_a = counts_f[gs:ge]
         y_b = corpus_vec[g_tids] - y_a  # rest-of-corpus on the group's tids
 
-        delta = (
-            np.log((2.0 * y_a + y_b) / (2.0 * n_a + n_b))
-            - np.log((y_a + 2.0 * y_b) / (n_a + 2.0 * n_b))
-        )
-        sigma_sq = 1.0 / (2.0 * y_a + y_b) + 1.0 / (y_a + 2.0 * y_b)
-        z = delta / np.sqrt(sigma_sq)
-
-        pos_mask = z > 0
-        if not pos_mask.any():
+        z = fightin_words_zscores_vs_rest(y_a, y_b, n_a, n_b)
+        score, exp_tids = score_with_top_k_positive(z, g_tids, top_k, min_distinctive=1)
+        if score == -np.inf:
             continue
-        z_pos = z[pos_mask]
-        t_pos = g_tids[pos_mask]
-        order = np.argsort(z_pos)[::-1][:top_k]
-        scores[g] = float(z_pos[order].sum())
-        explainer_tids[g] = t_pos[order]
+        scores[g] = score
+        explainer_tids[g] = exp_tids
 
     # Pick top-N eligible groups
     ranked = [int(g) for g in np.argsort(scores)[::-1] if scores[g] != -np.inf][:top_n]

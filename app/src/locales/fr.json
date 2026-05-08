@@ -211,7 +211,20 @@
         "minHitsLabel": "Occurrences min. par {field}",
         "outliersUpdated": "Groupes distinctifs mis à jour pour un minimum de {value} occurrences",
         "distinctiveGroups": "Groupes les plus distinctifs",
-        "mostDistinctiveByField": "{field} les plus distinctifs"
+        "mostDistinctiveByField": "{field} les plus distinctifs",
+        "withinFilteredScope": "(dans le périmètre filtré)"
+    },
+    "distinctivePassages": {
+        "title": "Passages représentatifs",
+        "titleFor": "Passages représentatifs — {group}",
+        "signature": "Signature",
+        "orderingNote": "Les passages sont classés selon le nombre de collocatifs caractéristiques qu'ils contiennent (pondéré par leur distinctivité).",
+        "score": "Score",
+        "loadMore": "Charger plus",
+        "viewFor": "Voir les passages représentatifs",
+        "viewAll": "Voir tous les usages",
+        "viewAllFor": "Voir tous les usages de {group}",
+        "noResults": "Aucun passage représentatif trouvé."
     },
     "concordance": {
         "more": "Plus",
