@@ -1,8 +1,8 @@
 """Thread detection for a query (collocation evolution).
 
-Returns thread decomposition: each thread has a per-year intensity curve,
-peak years, and a ranked word list. Built on a global HDBSCAN clustering of
-the query's collocate vocabulary, projected to time bins.
+Returns thread decomposition: each thread has a per-year intensity curve
+and a ranked word list. Built on a global HDBSCAN clustering of the
+query's collocate vocabulary, projected to time bins.
 """
 
 import math

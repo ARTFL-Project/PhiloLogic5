@@ -30,7 +30,6 @@ JSON_SCRIPTS = {
     "get_more_context",
     "get_notes",
     "get_outlier_groups",
-    "get_phase_shifts",
     "get_query_terms",
     "get_threads",
     "get_representative_passages",

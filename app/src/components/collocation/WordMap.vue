@@ -41,7 +41,7 @@
                                 </label>
                                 <select id="min-words-net" v-model="minWordsPerThread"
                                     @change="onGrainChange" class="form-select form-select-sm">
-                                    <option value="auto">{{ $t('threads.minWordsAuto') }}</option>
+                                    <option value="auto">{{ $t('threads.minWordsAuto') }}{{ minWordsPerThread === 'auto' && result?.min_words_resolved ? ` (${result.min_words_resolved})` : '' }}</option>
                                     <option v-for="n in [4, 5, 6, 8, 10, 12, 15]" :key="n" :value="n">{{ n }}</option>
                                 </select>
                                 <p class="control-hint">{{ $t('threads.minWordsHint') }}</p>
@@ -108,11 +108,6 @@ import { concordanceMethod, debug, paramsFilter, paramsToRoute } from "../../uti
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 
-defineProps({
-    biblio: { type: Object, required: true },
-    resultsLength: { type: Number, default: 0 },
-});
-
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const router = useRouter();
@@ -170,9 +165,11 @@ let modalInstance = null;
 let passagesFetchToken = 0;
 
 function onViewPassages(thread) {
-    const yearRange = thread.peaks.length === 1
-        ? `${thread.peaks[0] - 2}-${thread.peaks[0] + 2}`
-        : `${Math.min(...thread.peaks) - 2}-${Math.max(...thread.peaks) + 2}`;
+    // Use the full result year range; the thread's signature tokens do the
+    // semantic filtering, so a broader window surfaces more relevant hits
+    // than a tight peak-centric slice would.
+    const [yMin, yMax] = result.value.year_range;
+    const yearRange = `${yMin}-${yMax}`;
     modal.value = {
         groupName: `${formData.value.q} · T${thread.id}: ${thread.label}`,
         yearRange,

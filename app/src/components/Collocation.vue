@@ -94,11 +94,9 @@
                 @field-selected="onSimilarFieldSelected"
                 @pivot-to-compare="pivotToCompare" />
 
-            <ThreadTimeline v-if="mode === 'timeSeries'" ref="threadTimelineRef"
-                :biblio="biblio" :results-length="resultsLength" />
+            <ThreadTimeline v-if="mode === 'timeSeries'" ref="threadTimelineRef" />
 
-            <WordMap v-if="mode === 'wordMap'" ref="wordMapRef"
-                :biblio="biblio" :results-length="resultsLength" />
+            <WordMap v-if="mode === 'wordMap'" ref="wordMapRef" />
         </div>
     </div>
 </template>
