@@ -11,6 +11,7 @@ from urllib.parse import unquote
 import netaddr
 import regex as re
 from netaddr import IPSet
+
 from philologic.runtime.DB import DB
 from philologic.utils import load_module
 
@@ -97,6 +98,9 @@ def load_or_compile_ip_whitelist(access_file):
                 else:
                     # Exact IP address
                     exact_ips.add(ip)
+
+                    # Match prefixes of exact IPs as well (e.g., "192.168.1.12" should match "192.168.1.123")
+                    regex_patterns.add(re.compile(f"^{re.escape(ip)}.*$"))
 
             except (ValueError, netaddr.AddrFormatError) as e:
                 # Fallback to regex for any formats netaddr can't handle
