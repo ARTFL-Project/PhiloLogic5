@@ -17,6 +17,7 @@
                 <option value="compare">{{ $t("collocation.compareTo") }}</option>
                 <option value="similar">{{ $t("collocation.similarUsage") }}</option>
                 <option value="timeSeries">{{ $t("collocation.timeSeries") }}</option>
+                <option value="wordMap">{{ $t("collocation.wordMap") }}</option>
             </select>
         </div>
 
@@ -56,11 +57,20 @@
                         {{ $t("collocation.timeSeries") }}
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="word-map-tab" data-bs-toggle="tab"
+                        :class="{ active: mode === 'wordMap' }" data-bs-target="#word-map-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'wordMap'" :disabled="isInvalidCollocationQuery"
+                        @click="!isInvalidCollocationQuery && setMode('wordMap')">
+                        {{ $t("collocation.wordMap") }}
+                    </button>
+                </li>
             </ul>
         </div>
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
-            v-if="mode === 'frequency'" style="margin-top:0 !important;"></results-summary>
+            v-if="['frequency', 'timeSeries', 'wordMap'].includes(mode)"
+            style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
             <Frequency v-if="mode === 'frequency'" ref="frequencyRef"
@@ -84,7 +94,10 @@
                 @field-selected="onSimilarFieldSelected"
                 @pivot-to-compare="pivotToCompare" />
 
-            <Evolution v-if="mode === 'timeSeries'" ref="evolutionRef"
+            <ThreadTimeline v-if="mode === 'timeSeries'" ref="threadTimelineRef"
+                :biblio="biblio" :results-length="resultsLength" />
+
+            <WordMap v-if="mode === 'wordMap'" ref="wordMapRef"
                 :biblio="biblio" :results-length="resultsLength" />
         </div>
     </div>
@@ -104,9 +117,10 @@ import {
 } from "../utils.js";
 import ResultsSummary from "./ResultsSummary";
 import Compare from "./collocation/Compare.vue";
-import Evolution from "./collocation/Evolution.vue";
 import Frequency from "./collocation/Frequency.vue";
 import Similar from "./collocation/Similar.vue";
+import ThreadTimeline from "./collocation/ThreadTimeline.vue";
+import WordMap from "./collocation/WordMap.vue";
 
 //  Injects, route, router, store
 const $http = inject("$http");
@@ -127,7 +141,8 @@ const {
 const frequencyRef = useTemplateRef("frequencyRef");
 const compareRef = useTemplateRef("compareRef");
 const similarRef = useTemplateRef("similarRef");
-const evolutionRef = useTemplateRef("evolutionRef");
+const threadTimelineRef = useTemplateRef("threadTimelineRef");
+const wordMapRef = useTemplateRef("wordMapRef");
 
 //  Shared state
 const mode = ref("frequency");
@@ -225,11 +240,17 @@ function updateCollocationUrl() {
         delete urlParams.time_series_interval;
     }
     if (mode.value === "timeSeries") {
-        urlParams.time_series_interval = evolutionRef.value?.getInterval() || 10;
+        // ThreadTimeline doesn't take an interval parameter (legacy from
+        // the per-decade time-series view). Clear stale URL params.
         delete urlParams.similarity_by;
+        delete urlParams.time_series_interval;
     }
     if (mode.value === "compare") {
         Object.assign(urlParams, getNonEmptyComparedMetadata());
+        delete urlParams.similarity_by;
+        delete urlParams.time_series_interval;
+    }
+    if (mode.value === "wordMap") {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -342,10 +363,27 @@ watch(
         if (route.name !== "collocation") return;
 
         // Sync mode + biblio cheaply on every route change.
+        const oldMode = oldQuery.collocation_method || "frequency";
         const newMode = newQuery.collocation_method || "frequency";
+        const modeChanged = newMode !== oldMode;
         if (newMode !== mode.value) mode.value = newMode;
         if (newMode === "compare") restoreComparedMetadataFromUrl();
         biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
+
+        // timeSeries / wordMap auto-run on tab switch (no Detect button anymore).
+        // The child is freshly v-if-mounted, so its result is null and needs a fetch.
+        if (modeChanged && !shouldRefetchOnQueryChange(newQuery, oldQuery)) {
+            if (newMode === "timeSeries") {
+                await nextTick();
+                threadTimelineRef.value?.runDetection();
+                return;
+            }
+            if (newMode === "wordMap") {
+                await nextTick();
+                wordMapRef.value?.runDetection();
+                return;
+            }
+        }
 
         // Bail out if only the view changed (tab click, similarity dropdown
         // selection, time-series interval, etc.). Primary results stay valid;
@@ -355,7 +393,10 @@ watch(
         // Real search params changed — refetch the right path for the active mode.
         if (newMode === "timeSeries") {
             await nextTick();
-            evolutionRef.value?.runEvolution(parseInt(route.query.time_series_interval) || 10);
+            threadTimelineRef.value?.runDetection();
+        } else if (newMode === "wordMap") {
+            await nextTick();
+            wordMapRef.value?.runDetection();
         } else {
             fetchResults();  // .then() runs runPostFetchModeAction for similar/compare/frequency
         }
@@ -385,7 +426,11 @@ onMounted(async () => {
             break;
         case "timeSeries":
             await nextTick();
-            evolutionRef.value?.runEvolution(parseInt(route.query.time_series_interval) || 10);
+            threadTimelineRef.value?.runDetection();
+            break;
+        case "wordMap":
+            await nextTick();
+            wordMapRef.value?.runDetection();
             break;
         case "compare":
             fetchResults();  // primary fetch then runPostFetchModeAction → compareRef.runFromMetadata

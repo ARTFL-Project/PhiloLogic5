@@ -30,6 +30,7 @@ dependencies = [
     "numpy~=2.3",
     "numba~=0.63",
     "scikit-learn~=1.8",
+    "hdbscan~=0.8",
     "pandas~=2.3",
     "spacy~=3.8",
     "netaddr",

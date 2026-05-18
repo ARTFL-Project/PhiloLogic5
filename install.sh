@@ -261,7 +261,7 @@ if [ "$IS_MACOS" = true ]; then
         echo "  sudo launchctl bootout system/$PLIST_LABEL"
     fi
 
-elif [ -d /etc/systemd/system ] && command -v systemctl &> /dev/null; then
+elif [ -d /run/systemd/system ] && command -v systemctl &> /dev/null; then
     sudo cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
     sudo systemctl daemon-reload
     if systemctl is-active --quiet philologic5-gunicorn 2>/dev/null; then

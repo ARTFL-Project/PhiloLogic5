@@ -15,6 +15,8 @@ from .get_landing_page_content import get_landing_page_content
 from .get_more_context import get_more_context
 from .get_notes import get_notes
 from .get_outlier_groups import get_outlier_groups
+from .get_phase_shifts import get_phase_shifts
+from .get_threads import get_threads
 from .get_query_terms import get_query_terms
 from .get_representative_passages import get_representative_passages
 from .get_similar_collocate_distributions import get_similar_collocate_distributions

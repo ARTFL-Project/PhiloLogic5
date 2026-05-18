@@ -77,7 +77,15 @@
             :start_date="formData.start_date" :end_date="formData.end_date"
             :removeMetadata="removeMetadata"></bibliography-criteria>
         <div style="margin-top: 10px" v-if="queryReport === 'collocation'">
-            {{ $t("searchArgs.collocOccurrences", { n: resultsLength }) }}
+            <!-- "top 100 collocates" only applies to methods that actually
+                 display a top-collocates list. timeSeries / wordMap cluster
+                 collocates into usage patterns, so show a simpler count. -->
+            <template v-if="['timeSeries', 'wordMap'].includes(collocMethod)">
+                {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
+            </template>
+            <template v-else>
+                {{ $t("searchArgs.collocOccurrences", { n: resultsLength }) }}
+            </template>
         </div>
     </div>
 </template>
@@ -123,6 +131,10 @@ const termGroupButtons = ref({});
 const triggerButtonIndex = ref(null);
 
 const wordGroups = computed(() => description.value.termGroups);
+
+// Sub-mode within the collocation report — frequency / compare / similar /
+// timeSeries / wordMap. Used to pick the right "occurrences" wording.
+const collocMethod = computed(() => route.query.collocation_method || "frequency");
 
 const collocationFilter = computed(() => {
     if (formData.value.colloc_filter_choice === "attribute") {
