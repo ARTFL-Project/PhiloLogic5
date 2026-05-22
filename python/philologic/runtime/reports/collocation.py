@@ -19,6 +19,16 @@ from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.Query import get_word_groups
 from philologic.runtime.sql_validation import validate_column
 
+# Per-worker cache of corpus-wide sentence document-frequency arrays.
+# Keyed by (db_path, count_lemmas) -> (df_array, n_sentences).
+_SENTENCE_DF_CACHE: dict = {}
+
+# Default and bounds for the document-frequency stopword filter (percent of
+# sentences a word must exceed to be dropped).
+DEFAULT_DF_PCT = 1.0
+MIN_DF_PCT = 0.5
+MAX_DF_PCT = 5.0
+
 
 @numba.njit(cache=True)
 def _nb_compare_keys(a, b):
@@ -729,6 +739,139 @@ def decode_group_collocates(tids, counts, group_bounds, group_index, db_path, co
     return Counter(dict(zip(nz_names, nz_counts)))
 
 
+@numba.njit(cache=True, nogil=True)
+def _sentence_df_kernel(count_ids, sent_offsets, n_vocab):
+    """Corpus-wide document frequency: number of sentences each vocab id
+    appears in (deduplicated within a sentence).
+
+    The ``seen`` buffer is reset only for the ids touched in each sentence,
+    so a single pass over the flat token stream is O(total tokens).
+    """
+    df = np.zeros(n_vocab, dtype=np.int64)
+    seen = np.zeros(n_vocab, dtype=np.bool_)
+    n_sents = len(sent_offsets) - 1
+    for si in range(n_sents):
+        start = sent_offsets[si]
+        end = sent_offsets[si + 1]
+        for k in range(start, end):
+            tid = count_ids[k]
+            if not seen[tid]:
+                seen[tid] = True
+                df[tid] += 1
+        for k in range(start, end):
+            seen[count_ids[k]] = False
+    return df
+
+
+def _load_sentence_df(db_path, count_lemmas):
+    """Return ``(df_array, n_sentences)`` for the corpus, cached per worker.
+
+    Reads a precomputed ``sentence_df_{word,lemma}.npy`` if present (index-time
+    or a prior runtime computation), otherwise computes it once and persists it
+    to the world-writable ``hitlists/`` directory.
+    """
+    key = (db_path, bool(count_lemmas))
+    cached = _SENTENCE_DF_CACHE.get(key)
+    if cached is not None:
+        return cached
+
+    colloc_dir = os.path.join(db_path, "collocations")
+    if count_lemmas:
+        ids_file = "attr_lemma_ids.npy"
+        voff_file = "attr_lemma_vocab_offsets.npy"
+        name = "sentence_df_lemma.npy"
+    else:
+        ids_file = "token_ids.npy"
+        voff_file = "vocab_offsets.npy"
+        name = "sentence_df_word.npy"
+
+    v_offsets = np.load(os.path.join(colloc_dir, voff_file), mmap_mode="r")
+    n_vocab = len(v_offsets) - 1
+    sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
+    n_sentences = len(sent_offsets) - 1
+
+    df = None
+    for cand in (os.path.join(colloc_dir, name), os.path.join(db_path, "hitlists", name)):
+        if os.path.exists(cand):
+            try:
+                candidate = np.load(cand)
+                if len(candidate) == n_vocab:
+                    df = candidate
+                    break
+            except Exception:
+                pass
+
+    if df is None:
+        count_ids = np.load(os.path.join(colloc_dir, ids_file), mmap_mode="r")
+        df = _sentence_df_kernel(count_ids, sent_offsets, n_vocab)
+        try:
+            out = os.path.join(db_path, "hitlists", name)
+            fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(out), suffix=".tmp")
+            try:
+                with os.fdopen(fd, "wb") as f:
+                    np.save(f, df)
+                os.replace(tmp_path, out)
+            except BaseException:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                raise
+        except Exception:
+            pass  # cache write is best-effort; fall back to in-memory only
+
+    result = (df, n_sentences)
+    _SENTENCE_DF_CACHE[key] = result
+    return result
+
+
+def _df_threshold_pct(request):
+    """Return the document-frequency threshold percent, or None if unset.
+
+    Clamped to [MIN_DF_PCT, MAX_DF_PCT]. Empty/invalid values return None so
+    callers can fall back to the legacy top-N frequency filter.
+    """
+    raw = request["filter_df_pct"]
+    if raw in (None, ""):
+        return None
+    try:
+        pct = float(raw)
+    except (ValueError, TypeError):
+        return None
+    return max(MIN_DF_PCT, min(MAX_DF_PCT, pct))
+
+
+def _df_filter_list(db_path, count_lemmas, pct):
+    """Words whose sentence document-frequency exceeds ``pct`` percent.
+
+    The decoded vocab strings are exactly the count-vocab keys (lemma entries
+    already carry the ``lemma:`` prefix), so they can be returned verbatim.
+    """
+    df, n_sentences = _load_sentence_df(db_path, count_lemmas)
+    if n_sentences == 0:
+        return []
+    threshold = n_sentences * (pct / 100.0)
+    ids = np.nonzero(df > threshold)[0]
+    if len(ids) == 0:
+        return []
+
+    colloc_dir = os.path.join(db_path, "collocations")
+    if count_lemmas:
+        voff_file = "attr_lemma_vocab_offsets.npy"
+        vblob_file = "attr_lemma_vocab_strings.bin"
+    else:
+        voff_file = "vocab_offsets.npy"
+        vblob_file = "vocab_strings.bin"
+    v_offsets = np.load(os.path.join(colloc_dir, voff_file), mmap_mode="r")
+    with open(os.path.join(colloc_dir, vblob_file), "rb") as f:
+        v_blob = f.read()
+
+    out = []
+    for i in ids.tolist():
+        s = int(v_offsets[i])
+        e = int(v_offsets[i + 1])
+        out.append(v_blob[s:e].decode("utf-8"))
+    return out
+
+
 def build_filter_list(request, config, count_lemmas):
     """set up filtering with stopwords or most frequent terms."""
     if config.stopwords and request.colloc_filter_choice == "stopwords":
@@ -741,18 +884,21 @@ def build_filter_list(request, config, count_lemmas):
         if not os.path.exists(filter_file):
             return ["stopwords list not found"]
         filter_num = float("inf")
-    elif count_lemmas is True:
-        filter_file = config.db_path + "/data/frequencies/lemmas"
-        if request.filter_frequency:
-            filter_num = int(request.filter_frequency)
-        else:
-            filter_num = 100
     else:
-        filter_file = config.db_path + "/data/frequencies/word_frequencies"
-        if request.filter_frequency:
+        df_pct = _df_threshold_pct(request)
+        # Legacy top-N frequency filter is preserved for backward compatibility:
+        # only taken when an explicit filter_frequency is supplied without a
+        # df threshold. Otherwise the document-frequency filter is the default.
+        if df_pct is None and request.filter_frequency:
+            if count_lemmas is True:
+                filter_file = config.db_path + "/data/frequencies/lemmas"
+            else:
+                filter_file = config.db_path + "/data/frequencies/word_frequencies"
             filter_num = int(request.filter_frequency)
         else:
-            filter_num = 100
+            if df_pct is None:
+                df_pct = DEFAULT_DF_PCT
+            return _df_filter_list(os.path.join(config.db_path, "data"), count_lemmas, df_pct)
     filter_list = []
     with open(filter_file, encoding="utf8") as filehandle:
         for line_count, line in enumerate(filehandle):
@@ -786,6 +932,7 @@ def create_file_path(request, field, path, ext=".pickle"):
     hash.update(request.q_attribute_value.encode("utf-8"))
     hash.update(str(request.colloc_within).encode("utf-8"))
     hash.update(str(request.filter_frequency).encode("utf-8"))
+    hash.update(str(request["filter_df_pct"]).encode("utf-8"))
     hash.update(field.encode("utf-8"))
     for k, v in sorted(request.metadata.items()):
         if v:
@@ -809,6 +956,7 @@ if __name__ == "__main__":
             self.q_attribute_value = ""
             self.colloc_within = "sent"
             self.filter_frequency = 100
+            self.filter_df_pct = ""
             self.start = 0
             self.max_time = 10
             self.map_field = ""

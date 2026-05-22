@@ -115,9 +115,9 @@
                                 <span>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                         v-if="formData.colloc_filter_choice === 'frequency'"
-                                        :aria-label="$t('resultsSummary.commonWords', { n: formData.filter_frequency }) + ' ' + $t('resultsSummary.filtered')"
+                                        :aria-label="$t('resultsSummary.commonWordsDf', { pct: formData.filter_df_pct }) + ' ' + $t('resultsSummary.filtered')"
                                         :aria-expanded="showFilteredWords" aria-controls="filter-list">
-                                        {{ $t("resultsSummary.commonWords", { n: formData.filter_frequency }) }}
+                                        {{ $t("resultsSummary.commonWordsDf", { pct: formData.filter_df_pct }) }}
                                     </button>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                         v-if="formData.colloc_filter_choice === 'stopwords'"

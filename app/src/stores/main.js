@@ -17,6 +17,7 @@ export const useMainStore = defineStore("main", {
             colloc_filter_choice: "",
             colloc_within: "sent",
             filter_frequency: 100,
+            filter_df_pct: "1",
             approximate: "no",
             approximate_ratio: 100,
             start_date: "",
@@ -86,6 +87,7 @@ export const useMainStore = defineStore("main", {
                 colloc_filter_choice: "",
                 colloc_within: "sent",
                 filter_frequency: 100,
+                filter_df_pct: 5,
                 approximate: "no",
                 approximate_ratio: 100,
                 start_date: "",
@@ -123,7 +125,7 @@ export const useMainStore = defineStore("main", {
                 ]),
                 collocation: new Set([
                     ...commonFields,
-                    "start", "colloc_filter_choice", "filter_frequency",
+                    "start", "colloc_filter_choice", "filter_frequency", "filter_df_pct",
                     "colloc_within", "method_arg", "q_attribute", "q_attribute_value",
                 ]),
                 time_series: new Set([

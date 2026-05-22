@@ -94,9 +94,11 @@
                 @field-selected="onSimilarFieldSelected"
                 @pivot-to-compare="pivotToCompare" />
 
-            <ThreadTimeline v-if="mode === 'timeSeries'" ref="threadTimelineRef" />
+            <ThreadTimeline v-if="mode === 'timeSeries'" ref="threadTimelineRef"
+                @filter-list="filterList = $event" />
 
-            <WordMap v-if="mode === 'wordMap'" ref="wordMapRef" />
+            <WordMap v-if="mode === 'wordMap'" ref="wordMapRef"
+                @filter-list="filterList = $event" />
         </div>
     </div>
 </template>

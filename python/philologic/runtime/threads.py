@@ -769,7 +769,10 @@ def detect_threads(
     top_n_threads: Optional[int] = None,
     min_cluster_size: int = 10,
     min_cluster_size_floor: int = 5,
-    min_cluster_size_override: Optional[int] = None,
+    # User-facing "number of themes" knob. We reverse-map the requested count
+    # to the min_cluster_size in the sweep that produces it (nearest
+    # achievable). None = plateau auto-selection.
+    n_clusters_override: Optional[int] = None,
     min_samples: int = 1,
     abs_persistence_floor: float = 0.02,
     max_cluster_share: float = 0.25,
@@ -894,20 +897,20 @@ def detect_threads(
 
     # Adaptive HDBSCAN via a min_cluster_size sweep. Lower mcs → more, finer
     # clusters; higher mcs → fewer, coarser. There is no query-independent
-    # "right" mcs, so instead of picking one we sweep the whole range and read
-    # the *cluster-count curve*:
+    # "right" mcs, so we sweep the whole range and pick the resolution whose
+    # clusters are individually most robust:
     #
-    #   - The widest plateau (run of consecutive mcs sharing the same count,
-    #     count ≥ 2) is the most *stable* resolution — the count the data
-    #     keeps returning across many mcs values. That is the pick.
-    #   - Ties in plateau width break toward the run reaching the lower mcs
-    #     (the richer decomposition — surfaces a real extra thread rather than
-    #     leaving it merged).
-    #   - No plateau at all means the count never stabilizes (e.g. it explodes
-    #     8→13→18→23); chasing it would over-fragment, so we fall back to the
-    #     first mcs (highest, coarsest) that yields ≥ 2 clusters.
+    #   - Among mcs values yielding ≥ 2 valid threads, choose the one with the
+    #     highest MEAN cluster persistence (HDBSCAN's measure of how long a
+    #     cluster survives across density thresholds — i.e. "is this a real
+    #     theme?"). This directly optimizes decomposition quality.
     #   - No mcs yields ≥ 2: keep the first 1-cluster result (some queries
     #     genuinely have a single dominant usage).
+    #
+    # (Earlier this used the widest count-*plateau* as a stability proxy, but
+    # comparing the actual themes showed plateau-width tracks decomposition
+    # quality poorly: it left "raison" as 2 generic clusters and "nature" as a
+    # 46-word blob, where max-persistence surfaced the real distinct senses.)
     #
     # Two-pass cluster-selection: EOM first (Excess of Mass — stable/compact
     # clusters, the right default); if EOM yields < 2, retry with LEAF (the
@@ -970,56 +973,68 @@ def detect_threads(
                 attempt_kept_pers[cid] = float(attempt_pers[cid])
         return attempt_labels, attempt_pers, attempt_kept, attempt_kept_pers
 
-    def _pick(method: str):
-        # Sweep the full mcs range, then read the count curve (see above).
-        # Returns (chosen_mcs, labels, persistence, kept, kept_pers).
-        sweep = {mcs: _kept_at(mcs, method) for mcs in mcs_desc}
-        counts = {mcs: len(sweep[mcs][2]) for mcs in mcs_desc}
-        # Runs of consecutive mcs with equal count.
-        runs: List[Tuple[int, List[int]]] = []  # (count, [mcs,...])
-        i = 0
-        while i < len(mcs_desc):
-            j = i
-            while j + 1 < len(mcs_desc) and counts[mcs_desc[j + 1]] == counts[mcs_desc[i]]:
-                j += 1
-            runs.append((counts[mcs_desc[i]], mcs_desc[i:j + 1]))
-            i = j + 1
-        plateaus = [(c, run) for c, run in runs if c >= 2 and len(run) >= 2]
-        if plateaus:
-            # widest; tie → run reaching the lower mcs (richer decomposition)
-            best = max(plateaus, key=lambda cr: (len(cr[1]), -min(cr[1])))
-            rep_mcs = max(best[1])  # highest mcs in the plateau (most stable)
+    def _mean_pers_of(entry):
+        # Mean HDBSCAN persistence across a sweep entry's kept clusters. The
+        # entry is (labels, persistence, kept, kept_pers); index 3 is the
+        # {cid: persistence} dict for clusters that passed the validity test.
+        kept_pers = entry[3]
+        return sum(kept_pers.values()) / len(kept_pers) if kept_pers else 0.0
+
+    def _max_pers_pick(sweep, counts):
+        # Pick the resolution whose threads are most robust: among mcs values
+        # giving ≥ 2 valid threads, the one with the highest mean cluster
+        # persistence. Returns (chosen_mcs, labels, persistence, kept, kept_pers).
+        cands = [m for m in mcs_desc if counts[m] >= 2]
+        if cands:
+            rep_mcs = max(cands, key=lambda m: _mean_pers_of(sweep[m]))
             return (rep_mcs, *sweep[rep_mcs])
-        for mcs in mcs_desc:  # no plateau → first (coarsest) with ≥ 2
-            if counts[mcs] >= 2:
-                return (mcs, *sweep[mcs])
         for mcs in mcs_desc:  # no ≥ 2 anywhere → first 1-cluster result
             if counts[mcs] == 1:
                 return (mcs, *sweep[mcs])
         return None, None, None, {}, {}
 
-    if min_cluster_size_override is not None:
-        # Explicit user override ("minimum words per thread"): skip the
-        # plateau auto-selection and cluster directly at the requested mcs.
-        ov = max(2, int(min_cluster_size_override))
-        labels, persistence, kept_clusters, kept_pers = _kept_at(ov, "eom")
-        chosen_mcs = ov
-        if len(kept_clusters) < 2:
-            l = _kept_at(ov, "leaf")
-            if len(l[2]) > len(kept_clusters):
-                labels, persistence, kept_clusters, kept_pers = l
+    # Compute the EOM sweep once. It drives BOTH the auto plateau-pick and the
+    # "number of themes" knob — the knob just reverse-maps a requested theme
+    # count to the mcs in this sweep that yields it.
+    eom_sweep = {mcs: _kept_at(mcs, "eom") for mcs in mcs_desc}
+    eom_counts = {mcs: len(eom_sweep[mcs][2]) for mcs in mcs_desc}
+    # Theme counts the user can actually request for this query (≥ 2 clusters).
+    available_counts = sorted({c for c in eom_counts.values() if c >= 2})
+
+    if n_clusters_override is not None and available_counts:
+        # Map the requested theme count to the mcs producing it. Snap to the
+        # nearest achievable count (ties → fewer themes), then — among the mcs
+        # values that yield that count — pick the one whose clusters are most
+        # persistent (most robust in the density hierarchy).
+        target = max(2, int(n_clusters_override))
+        best_count = min(available_counts, key=lambda c: (abs(c - target), c))
+        mcs_for = max(
+            (m for m in mcs_desc if eom_counts[m] == best_count),
+            key=lambda m: _mean_pers_of(eom_sweep[m]),
+        )
+        chosen_mcs, labels, persistence, kept_clusters, kept_pers = (
+            mcs_for, *eom_sweep[mcs_for]
+        )
     else:
-        chosen_mcs, labels, persistence, kept_clusters, kept_pers = _pick("eom")
+        chosen_mcs, labels, persistence, kept_clusters, kept_pers = _max_pers_pick(
+            eom_sweep, eom_counts
+        )
         if len(kept_clusters) < 2:
             # EOM gave 0 or 1 usable clusters — LEAF fragments more
             # aggressively and may surface real sub-structure EOM collapsed.
-            # Use it if it finds strictly more clusters than EOM did.
-            l_chosen_mcs, l_labels, l_pers, l_kept, l_kept_pers = _pick("leaf")
+            # Compute LEAF lazily (only this degenerate case needs it).
+            leaf_sweep = {mcs: _kept_at(mcs, "leaf") for mcs in mcs_desc}
+            leaf_counts = {mcs: len(leaf_sweep[mcs][2]) for mcs in mcs_desc}
+            l_chosen, l_labels, l_pers, l_kept, l_kept_pers = _max_pers_pick(
+                leaf_sweep, leaf_counts
+            )
             if len(l_kept) > len(kept_clusters):
-                chosen_mcs = l_chosen_mcs
+                chosen_mcs = l_chosen
                 labels, persistence, kept_clusters, kept_pers = (
                     l_labels, l_pers, l_kept, l_kept_pers,
                 )
+                # The achievable counts now come from LEAF (what actually ran).
+                available_counts = sorted({c for c in leaf_counts.values() if c >= 2})
 
     if not kept_clusters:
         return empty_result
@@ -1109,10 +1124,10 @@ def detect_threads(
         "n_threads": len(thread_records),
         "n_detected_threads": n_detected,
         "vocab_size": K,
-        # The mcs the run actually used — surfaces what auto-plateau picked
-        # (or the override value when the user set one), so the UI can
-        # render e.g. "auto (8)" in the dropdown.
-        "min_words_resolved": int(chosen_mcs) if chosen_mcs is not None else None,
+        # Theme counts the user can pick from for this query (the distinct
+        # cluster counts the mcs sweep can produce). The UI populates the
+        # "Number of themes" dropdown from this, so every option is achievable.
+        "available_theme_counts": available_counts,
         "threads": thread_records,
         "frequency": frequency,
     }

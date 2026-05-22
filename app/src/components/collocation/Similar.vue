@@ -94,6 +94,7 @@ function runSimilar(fieldValue) {
             colloc_filter_choice: formData.value.colloc_filter_choice,
             colloc_within: formData.value.colloc_within,
             filter_frequency: formData.value.filter_frequency,
+            filter_df_pct: formData.value.filter_df_pct,
             map_field: fieldValue,
             q_attribute: formData.value.q_attribute || "",
             q_attribute_value: formData.value.q_attribute_value || "",

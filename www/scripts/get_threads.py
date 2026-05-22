@@ -71,24 +71,27 @@ def _load_corpus_idf(db_path, count_lemmas):
 
 
 def _load_stopwords(request, config, count_lemmas):
-    """Return the user-configured stopword set (same logic as the collocation
-    report's filter_list) for the current corpus + UI settings."""
+    """Return ``(stop_set, raw_words)`` for the current corpus + UI settings,
+    using the same logic as the collocation report's filter_list.
+
+    ``stop_set`` has the ``lemma:`` prefix stripped (thread candidates are
+    stored without it); ``raw_words`` keeps the prefix so the UI can display
+    the filtered words exactly as the frequency view does.
+    """
     choice = (request.colloc_filter_choice or "").strip()
     if choice == "nofilter" or choice == "attribute":
-        return set()
+        return set(), []
     try:
         words = build_filter_list(request, config, count_lemmas)
     except Exception:
-        return set()
+        return set(), []
     stop = set()
     for w in words:
-        # Strip the lemma: prefix when matching against vocab names; thread
-        # candidates are stored without the prefix.
         if w.startswith("lemma:"):
             stop.add(w[6:])
         else:
             stop.add(w)
-    return stop
+    return stop, words
 
 
 def get_threads(request, config):
@@ -108,7 +111,7 @@ def get_threads(request, config):
             attribute = attribute_value = None
 
     metadata = dict(request.metadata or {})
-    stopwords = _load_stopwords(request, config, count_lemmas)
+    stopwords, filter_words = _load_stopwords(request, config, count_lemmas)
 
     def _int_or_none(name, lo, hi):
         raw = getattr(request, name, "")
@@ -121,21 +124,27 @@ def get_threads(request, config):
         return max(lo, min(hi, v))
 
     top_n_threads = _int_or_none("top_n_threads", 1, 30)
-    # "Minimum words per thread" override; absent/blank/"auto" → plateau auto.
-    min_words = _int_or_none("min_words_per_thread", 3, 25)
+    # "Number of themes" override; absent/blank/"auto" → plateau auto.
+    n_clusters = _int_or_none("n_clusters", 2, 30)
 
-    return detect_threads(
+    result = detect_threads(
         db, config.db_path + "/data", q, count_lemmas, attribute, attribute_value,
         metadata,
         stopwords=stopwords,
         # Lazy: detect_threads only loads the corpus-idf map on a cache miss,
-        # so the common slider-rerun (cache hit) skips the ~380 ms full-map
-        # load entirely — on every worker, warm or cold.
+        # so the common rerun (cache hit) skips the ~380 ms full-map load
+        # entirely — on every worker, warm or cold.
         corpus_idf_loader=lambda: _load_corpus_idf(config.db_path, count_lemmas),
         top_n_threads=top_n_threads,
-        min_cluster_size_override=min_words,
+        n_clusters_override=n_clusters,
         # The network view is the spatial twin of the streamgraph — built from
         # the same clustering, so it ships in the same response (cheap: the
         # distance matrix and communities are already computed).
         include_graph=True,
     )
+    # Surface the filtered words so the results summary's filter list matches
+    # the frequency view (the streamgraph/word-map don't run the frequency
+    # fetch that normally populates it).
+    if isinstance(result, dict):
+        result["filter_list"] = sorted(filter_words, key=str.lower)
+    return result

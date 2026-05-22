@@ -238,17 +238,27 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                 </li>
                                             </ul>
                                         </div>
-                                        <div class="input-group d-inline ms-2" style="width: fit-content"
-                                            v-if="collocFilteringSelected.value == 'frequency'">
-                                            <button class="btn btn-outline-secondary" style="height: fit-content"
-                                                id="filter-frequency-label">
-                                                {{ $t("searchForm.wordFiltering") }}
-                                            </button>
-                                            <input type="text" class="form-control d-inline-block" id="filter-frequency"
-                                                name="filter_frequency" placeholder="100"
-                                                v-model="formData.filter_frequency"
-                                                aria-labelledby="filter-frequency-label"
-                                                style="width: 60px; text-align: center" />
+                                        <div class="d-inline-flex align-items-center ms-2" style="width: fit-content"
+                                            v-if="collocFilteringSelected.value == 'frequency'" role="group"
+                                            aria-labelledby="filter-df-pct-label">
+                                            <label for="filter-df-pct" id="filter-df-pct-label"
+                                                class="btn btn-outline-secondary mb-0" style="height: fit-content">
+                                                {{ $t("searchForm.dfFilterLabel") }}
+                                            </label>
+                                            <input type="range" class="form-range mx-2 df-filter-range"
+                                                id="filter-df-pct" name="filter_df_pct"
+                                                min="0.5" max="5" step="0.1"
+                                                v-model="formData.filter_df_pct"
+                                                :aria-valuetext="$t('searchForm.dfFilterValueText', { pct: formData.filter_df_pct })"
+                                                aria-describedby="filter-df-pct-desc"
+                                                style="width: 110px" />
+                                            <output for="filter-df-pct" aria-hidden="true"
+                                                style="white-space: nowrap">
+                                                {{ formData.filter_df_pct }}{{ $t("searchForm.dfFilterUnit") }}
+                                            </output>
+                                            <span id="filter-df-pct-desc" class="visually-hidden">
+                                                {{ $t("searchForm.dfFilterDescription") }}
+                                            </span>
                                         </div>
                                     </div>
                                 </div>
@@ -442,7 +452,7 @@ const methodOptions = [
     { text: t("common.sameSentence"), value: "sentence" },
 ];
 const collocationOptions = ref([
-    { text: t("searchForm.mostFrequentTerms"), value: "frequency" },
+    { text: t("searchForm.commonWordsFilter"), value: "frequency" },
     { text: t("searchForm.stopwords"), value: "stopwords" },
 ]);
 const aggregationOptions = philoConfig.aggregation_config.map((f) => ({
@@ -805,6 +815,12 @@ searchableMetadata.value = {
 <style scoped>
 input[type="text"] {
     opacity: 1;
+}
+
+/* Visible focus indicator for the document-frequency slider (WCAG 2.4.7). */
+.df-filter-range:focus-visible {
+    outline: 3px solid #0d6efd;
+    outline-offset: 2px;
 }
 
 .input-group,

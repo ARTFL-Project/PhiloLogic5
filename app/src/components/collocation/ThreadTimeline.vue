@@ -46,16 +46,16 @@
                 <!-- Clustering-grain control sits with the legend at the bottom of
                      the card, grouped with the other below-the-chart affordances. -->
                 <div class="control-stack mt-3 px-1">
-                    <label class="small text-muted d-block mb-1" for="min-words-time">
-                        {{ $t('threads.minWords') }}
+                    <label class="small text-muted d-block mb-1" for="theme-count-time">
+                        {{ $t('threads.themeCount') }}
                     </label>
-                    <select id="min-words-time" v-model="minWordsPerThread"
+                    <select id="theme-count-time" v-model="themeCount"
                         @change="onGrainChange"
                         class="form-select form-select-sm" style="max-width: 12rem;">
-                        <option value="auto">{{ $t('threads.minWordsAuto') }}{{ minWordsPerThread === 'auto' && result?.min_words_resolved ? ` (${result.min_words_resolved})` : '' }}</option>
-                        <option v-for="n in [4, 5, 6, 8, 10, 12, 15]" :key="n" :value="n">{{ n }}</option>
+                        <option value="auto">{{ $t('threads.themeCountAuto') }}{{ themeCount === 'auto' && result?.n_threads ? ` (${result.n_threads})` : '' }}</option>
+                        <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
                     </select>
-                    <p class="control-hint">{{ $t('threads.minWordsHint') }}</p>
+                    <p class="control-hint">{{ $t('threads.themeCountHint') }}</p>
                 </div>
             </div>
 
@@ -118,6 +118,8 @@ import { concordanceMethod, debug, paramsFilter, paramsToRoute } from "../../uti
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 
+const emit = defineEmits(["filterList"]);
+
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const router = useRouter();
@@ -126,8 +128,8 @@ const { formData } = storeToRefs(store);
 
 const loading = ref(false);
 const result = ref(null);
-// "auto" → backend plateau auto-selection; a number → explicit min words/thread
-const minWordsPerThread = ref("auto");
+// "auto" → backend plateau auto-selection; a number → explicit theme count
+const themeCount = ref("auto");
 let fetchToken = 0;
 
 const modal = ref({
@@ -224,12 +226,13 @@ function runDetection(opts = {}) {
     loading.value = true;
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
-    if (minWordsPerThread.value !== "auto") {
-        params.min_words_per_thread = minWordsPerThread.value;
+    if (themeCount.value !== "auto") {
+        params.n_clusters = themeCount.value;
     }
     $http.get(`${$dbUrl}/scripts/get_threads.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
+        emit("filterList", resp.data?.filter_list || []);
     }).catch((error) => {
         debug({ $options: { name: "thread-timeline" } }, error);
     }).finally(() => {

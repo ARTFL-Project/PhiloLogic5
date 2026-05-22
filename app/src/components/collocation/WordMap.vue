@@ -36,15 +36,15 @@
                         </div>
                         <div class="control-stack mt-3">
                             <div class="mb-3">
-                                <label class="small text-muted d-block mb-1" for="min-words-net">
-                                    {{ $t('threads.minWords') }}
+                                <label class="small text-muted d-block mb-1" for="theme-count-net">
+                                    {{ $t('threads.themeCount') }}
                                 </label>
-                                <select id="min-words-net" v-model="minWordsPerThread"
+                                <select id="theme-count-net" v-model="themeCount"
                                     @change="onGrainChange" class="form-select form-select-sm">
-                                    <option value="auto">{{ $t('threads.minWordsAuto') }}{{ minWordsPerThread === 'auto' && result?.min_words_resolved ? ` (${result.min_words_resolved})` : '' }}</option>
-                                    <option v-for="n in [4, 5, 6, 8, 10, 12, 15]" :key="n" :value="n">{{ n }}</option>
+                                    <option value="auto">{{ $t('threads.themeCountAuto') }}{{ themeCount === 'auto' && result?.n_threads ? ` (${result.n_threads})` : '' }}</option>
+                                    <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
                                 </select>
-                                <p class="control-hint">{{ $t('threads.minWordsHint') }}</p>
+                                <p class="control-hint">{{ $t('threads.themeCountHint') }}</p>
                             </div>
                             <div v-if="result.graph.nodes.length > result.graph.n_members" class="words-slider">
                                 <label class="small text-muted d-block mb-1" for="net-word-count">
@@ -108,6 +108,8 @@ import { concordanceMethod, debug, paramsFilter, paramsToRoute } from "../../uti
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 
+const emit = defineEmits(["filterList"]);
+
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const router = useRouter();
@@ -118,7 +120,7 @@ const { formData } = storeToRefs(store);
 const loading = ref(false);
 const result = ref(null);
 const networkWordCount = ref(0);
-const minWordsPerThread = ref("auto");
+const themeCount = ref("auto");
 let fetchToken = 0;
 
 // Same color palette as the streamgraph so thread colors are consistent across tabs.
@@ -133,12 +135,13 @@ function runDetection(opts = {}) {
     loading.value = true;
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
-    if (minWordsPerThread.value !== "auto") {
-        params.min_words_per_thread = minWordsPerThread.value;
+    if (themeCount.value !== "auto") {
+        params.n_clusters = themeCount.value;
     }
     $http.get(`${$dbUrl}/scripts/get_threads.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
+        emit("filterList", resp.data?.filter_list || []);
         networkWordCount.value = resp.data?.graph?.n_members || 0;
     }).catch((error) => {
         debug({ $options: { name: "word-map" } }, error);
