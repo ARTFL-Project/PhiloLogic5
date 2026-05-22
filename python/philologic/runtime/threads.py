@@ -31,7 +31,7 @@ from __future__ import annotations
 import hashlib
 import os
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numba
 import numpy as np
@@ -763,6 +763,9 @@ def detect_threads(
     stopwords: Optional[set] = None,
     corpus_idf: Optional[Dict[str, float]] = None,
     corpus_idf_default: float = 1.0,
+    # Lazy alternative to corpus_idf: called only on a cache miss, returns
+    # (idf_map, default). Avoids the ~380 ms full-map load on cache hits.
+    corpus_idf_loader: Optional[Callable[[], Tuple[Dict[str, float], float]]] = None,
     top_n_threads: Optional[int] = None,
     min_cluster_size: int = 10,
     min_cluster_size_floor: int = 5,
@@ -784,12 +787,16 @@ def detect_threads(
     cache_path = _thread_cache_path(db_path, cache_key)
     cached = _load_intermediates(cache_path)
 
-    if cached is not None:
+    # A cache entry is only usable if it carries candidate_idf — older entries
+    # (pre-lazy-idf) lack it, so treat those as a miss to auto-upgrade.
+    if cached is not None and "candidate_idf" in cached:
         flat_ids = cached["flat_ids"]
         indptr = cached["indptr"]
         years = cached["years"]
         candidate_ids = cached["candidate_ids"]
         counts_at_cand = cached["counts_at_cand"]
+        candidate_idf = cached["candidate_idf"]
+        corpus_idf_default = float(cached["corpus_idf_default"])
         raw_K = int(cached["raw_K"])
         dist = cached["dist"]
         v_blob, v_offsets = _load_vocab(db_path, count_lemmas)
@@ -820,6 +827,20 @@ def detect_threads(
         # w in candidate_ids.
         counts_at_cand = counts_full[candidate_ids].astype(np.float64)
 
+        # Corpus-IDF for the candidate words only. The full corpus idf map is
+        # ~676k entries and costs ~380 ms to load — but we only need the K
+        # candidates' values, and only on a cache MISS. Loading lazily here
+        # (rather than eagerly in the caller) means the common slider-rerun
+        # path (cache hit) never touches the idf map on any worker.
+        if corpus_idf is None and corpus_idf_loader is not None:
+            corpus_idf, corpus_idf_default = corpus_idf_loader()
+        cidf = corpus_idf or {}
+        cand_names = [_vocab_name(int(c), v_blob, v_offsets, count_lemmas)
+                      for c in candidate_ids]
+        candidate_idf = np.array(
+            [cidf.get(n, corpus_idf_default) for n in cand_names], dtype=np.float64
+        )
+
         n_vocab = len(v_offsets) - 1
         dist = _build_distance(flat_ids, indptr, candidate_ids, n_vocab=n_vocab)
         if dist is not None:
@@ -829,14 +850,17 @@ def detect_threads(
                 cache_path,
                 flat_ids=flat_ids, indptr=indptr, years=years,
                 candidate_ids=candidate_ids, counts_at_cand=counts_at_cand,
+                candidate_idf=candidate_idf,
+                corpus_idf_default=np.array(corpus_idf_default, dtype=np.float64),
                 raw_K=np.array(raw_K, dtype=np.int64), dist=dist,
             )
 
-    # Materialize counts as a vocab-id → count dict for the downstream
-    # per-thread word ranking. Consumer code (`counts[w]` for w in words ⊆
-    # candidate_ids) works identically against a dict.
+    # Materialize counts + idf as vocab-id → value dicts for the downstream
+    # per-thread word ranking. Both are keyed by candidate vocab id.
     counts = {int(candidate_ids[i]): float(counts_at_cand[i])
               for i in range(len(candidate_ids))}
+    idf_by_vocab = {int(candidate_ids[i]): float(candidate_idf[i])
+                    for i in range(len(candidate_ids))}
 
     # Derived values — same in both cache hit / miss paths.
     n_hits = len(indptr) - 1
@@ -1008,7 +1032,6 @@ def detect_threads(
         union_words.extend(words)
     union_words = sorted(set(union_words))
     cid_order = list(kept_clusters.keys())
-    cidf = corpus_idf or {}
 
     # Bags are already in flat (flat_ids, indptr) form from _build_hit_bags;
     # the intensity kernel can use them directly per thread.
@@ -1031,10 +1054,12 @@ def detect_threads(
         if max_v <= 0:
             continue
 
-        # Rank thread words by corpus-IDF c-TF-IDF: count × whole-corpus rarity
+        # Rank thread words by corpus-IDF c-TF-IDF: count × whole-corpus rarity.
+        # idf comes from the precomputed per-candidate array (cached), keyed by
+        # vocab id — no full corpus-idf map needed on this path.
         name_of = {w: _vocab_name(w, v_blob, v_offsets, count_lemmas) for w in words}
         ctfidf = {
-            w: thread_word_counts[cid][w] * cidf.get(name_of[w], corpus_idf_default)
+            w: thread_word_counts[cid][w] * idf_by_vocab.get(w, corpus_idf_default)
             for w in words
         }
         ranked_words = sorted(words, key=lambda w: -ctfidf[w])

@@ -91,6 +91,10 @@
                             {{ $t('searchTips.multipleAttributes') }}
                             <code class="code-block" aria-label="code example">charles:pos:PROPN:ner:PERS</code>.
                         </li>
+                        <li>
+                            {{ $t('searchTips.multiWordLemma') }}
+                            <code class="code-block" aria-label="code example">lemma:parce_que</code>.
+                        </li>
                     </ol>
                 </section>
 

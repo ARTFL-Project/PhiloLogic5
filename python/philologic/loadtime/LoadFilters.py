@@ -78,7 +78,7 @@ def spacy_tagger(loader_obj, text):
                 record.attrib["pos"] = parsed_word.pos_
                 record.attrib["tag"] = parsed_word.tag_
                 record.attrib["ent_type"] = parsed_word.ent_type_
-                record.attrib["lemma"] = parsed_word.lemma_
+                record.attrib["lemma"] = "_".join((parsed_word.lemma_ or record.name).lower().split())
                 print(record, file=tmp_file)
 
             spacy_sentence.tensor = None

@@ -379,6 +379,7 @@
         "wordAttributeExample": "syntaxe. Par exemple :",
         "combineLemma": "Vous pouvez combiner les recherches de lemme et d'attribut :",
         "multipleAttributes": "Vous pouvez utiliser plusieurs attributs :",
+        "multiWordLemma": "Les lemmes composés de plusieurs mots (par exemple « parce que ») sont stockés avec les espaces remplacés par des soulignements. Utilisez un souligné à la place de l'espace :",
         "metadataSearches": "Recherches de métadonnées",
         "metadataDescription": "Les recherches de métadonnées fonctionnent avec les mêmes conventions que les recherches de mots. Les expressions régulières sont également supportées pour la recherche par motifs :",
         "metadataPlainTokens": "Les tokens simples sont interprétés comme des tokens",

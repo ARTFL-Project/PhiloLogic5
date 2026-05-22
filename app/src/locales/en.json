@@ -379,6 +379,7 @@
         "wordAttributeExample": "syntax. For example:",
         "combineLemma": "You can combine lemma and attribute searches:",
         "multipleAttributes": "You can use multiple attributes:",
+        "multiWordLemma": "Multi-word lemmas (e.g. the French compound \"parce que\") are stored with whitespace collapsed to underscores. Query them with an underscore instead of a space:",
         "metadataSearches": "Metadata Searches",
         "metadataDescription": "Metadata searches work with the same conventions as word searches. Regular expressions are also supported for pattern matching:",
         "metadataPlainTokens": "Plain tokens are interpreted as tokens",

@@ -109,7 +109,6 @@ def get_threads(request, config):
 
     metadata = dict(request.metadata or {})
     stopwords = _load_stopwords(request, config, count_lemmas)
-    corpus_idf, corpus_idf_default = _load_corpus_idf(config.db_path, count_lemmas)
 
     def _int_or_none(name, lo, hi):
         raw = getattr(request, name, "")
@@ -129,8 +128,10 @@ def get_threads(request, config):
         db, config.db_path + "/data", q, count_lemmas, attribute, attribute_value,
         metadata,
         stopwords=stopwords,
-        corpus_idf=corpus_idf,
-        corpus_idf_default=corpus_idf_default,
+        # Lazy: detect_threads only loads the corpus-idf map on a cache miss,
+        # so the common slider-rerun (cache hit) skips the ~380 ms full-map
+        # load entirely — on every worker, warm or cold.
+        corpus_idf_loader=lambda: _load_corpus_idf(config.db_path, count_lemmas),
         top_n_threads=top_n_threads,
         min_cluster_size_override=min_words,
         # The network view is the spatial twin of the streamgraph — built from

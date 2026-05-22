@@ -379,6 +379,7 @@
         "wordAttributeExample": "sintaxis. Por ejemplo:",
         "combineLemma": "Se puede combinar la búsqueda de vocablo y atributo:",
         "multipleAttributes": "Se pueden emplear múltiples atributos:",
+        "multiWordLemma": "Los lemas de varias palabras (p. ej. el compuesto francés «parce que») se almacenan con los espacios reemplazados por subrayados. Búsquelos con un subrayado en lugar de un espacio:",
         "metadataSearches": "Búsquedas de Metadatos",
         "metadataDescription": "Las búsquedas de metadatos emplean las mismas convenciones que las de palabras. También soporta el uso de expresiones regulares para concordar patrones:",
         "metadataPlainTokens": "Las muestras sencillas se interpretan como muestras",

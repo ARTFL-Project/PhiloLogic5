@@ -23,6 +23,7 @@ When specifying a query, one can select a query method to constrain the relation
 #### Lemma and word attribute Searches
 If you text collection contains lemma and/or word attribute information (usually in <w> tags), then PhiloLogic allows you to query words based on lemma and/or word attribute value
 1. For simple lemma searching, just preprend the lemma with `lemma:` such as in `lemma:have`. Regexes are permitted on the token portion of the search, e.g. `lemma:constitut.*`.
+   - Multi-word lemmas (e.g. the French compound `parce que`) are stored with whitespace collapsed to underscores. Query them as `lemma:parce_que`, not `lemma:parce que`.
 2. For word attribute searching, use the `word:attribute:attribute` syntax such as in `love:pos:NOUN`. Regexes are permitted on the token portion of the search, e.g. `lov.*:pos:NOUN`.
 3. You can combine lemma searching with word attribute filtering. Just preprend your token with `lemma:` such as in `lemma:love:pos:NOUN`. Regexes are permitted on the token portion of the search, e.g. `lemma:lov.*:pos:NOUN`.
 4. Note that you cannot combine multiple word attributes filters on one token, such as in `charles:pos:PROPN:ner:PERS`.
