@@ -129,8 +129,9 @@
 </template>
 
 <script setup>
+import { Tab } from "bootstrap";
 import { storeToRefs } from "pinia";
-import { inject, onBeforeUnmount, onMounted, ref } from "vue";
+import { inject, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAutocomplete } from "../../composables/useAutocomplete";
 import { useMainStore } from "../../stores/main";
@@ -226,7 +227,14 @@ function onOtherCollocateClick(item) {
 
 // Run the full compare flow: build params from comparedMetadataValues, fetch
 // "other" collocates, then call comparativeCollocations.
-function runFromMetadata() {
+function focusDistinctiveTab() {
+    nextTick(() => {
+        const btn = document.getElementById("rep-tab");
+        if (btn) Tab.getOrCreateInstance(btn).show();
+    });
+}
+
+function runFromMetadata(opts = {}) {
     wholeCorpus.value = Object.keys(props.comparedMetadataValues).length === 0;
     // dateRangeHandler mutates comparedMetadataValues in place
     dateRangeHandler(props.metadataInputStyle, props.dateRange, props.dateType, props.comparedMetadataValues);
@@ -247,6 +255,10 @@ function runFromMetadata() {
     comparativeSearchStarted.value = true;
     compareSearching.value = true;
     otherCollocates.value = [];
+    // Activate the tab only after comparativeSearchStarted flips true — the
+    // results card (and the tab buttons) are v-if-gated on it, so scheduling
+    // the switch first would target a DOM node that doesn't exist yet.
+    if (opts.focusDistinctive) focusDistinctiveTab();
     $http.get(`${$dbUrl}/reports/collocation.py`, { params: paramsFilter(params) })
         .then((response) => {
             compareSearching.value = false;

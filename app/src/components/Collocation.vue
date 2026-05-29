@@ -148,6 +148,11 @@ const wordMapRef = useTemplateRef("wordMapRef");
 const mode = ref("frequency");
 const results = ref({});
 const filterList = ref([]);
+// Whether the primary collocation fetch has run for the current query. False
+// when the page was loaded directly on a detection tab (wordMap/timeSeries),
+// which only run thread detection — so switching to frequency/similar/compare
+// must trigger the primary fetch.
+const primaryFetched = ref(false);
 const biblio = ref({});
 const sortedList = ref([]);
 const collocatesFilePath = ref("");
@@ -278,6 +283,7 @@ function updateCollocation() {
             filterList.value = response.data.filter_list;
             collocatesFilePath.value = response.data.file_path;
             searching.value = false;
+            primaryFetched.value = true;
             if (resultsLength.value) {
                 sortedList.value = extractSurfaceFromCollocate(response.data.collocates);
                 runPostFetchModeAction();
@@ -315,7 +321,7 @@ function fetchResults() {
 //  Cross-mode pivot: a child (frequency or similar) has selected a group
 //  and wants to compare against it.
 async function pivotToCompare(payload) {
-    const { field, name, otherFilePath = null, otherCollocates = null } = payload;
+    const { field, name, otherFilePath = null, otherCollocates = null, focusDistinctive = false } = payload;
     // IMPORTANT: populate comparedMetadataValues BEFORE setMode -- updateCollocationUrl
     // serializes the current values into compare_* URL params, and the route
     // watcher restores comparedMetadataValues from those params. If we set after,
@@ -331,7 +337,7 @@ async function pivotToCompare(payload) {
     if (otherFilePath) {
         compareRef.value.runFromFilePath(otherFilePath, otherCollocates);
     } else {
-        compareRef.value.runFromMetadata();
+        compareRef.value.runFromMetadata({ focusDistinctive });
     }
 }
 
@@ -383,6 +389,13 @@ watch(
                 wordMapRef.value?.runDetection();
                 return;
             }
+            // Switching to frequency/similar/compare, but the primary fetch
+            // never ran (page was loaded directly on a detection tab) — run it
+            // now so the view isn't empty.
+            if (!primaryFetched.value) {
+                fetchResults();
+                return;
+            }
         }
 
         // Bail out if only the view changed (tab click, similarity dropdown
@@ -390,7 +403,10 @@ watch(
         // mode-specific secondary fetches are user-triggered via their buttons.
         if (!shouldRefetchOnQueryChange(newQuery, oldQuery)) return;
 
-        // Real search params changed — refetch the right path for the active mode.
+        // Real search params changed — the primary results are now stale.
+        primaryFetched.value = false;
+
+        // Refetch the right path for the active mode.
         if (newMode === "timeSeries") {
             await nextTick();
             threadTimelineRef.value?.runDetection();

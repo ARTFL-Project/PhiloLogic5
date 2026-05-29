@@ -28,7 +28,7 @@
                             <button v-for="thread in result.threads" :key="`leg-${thread.id}`" type="button"
                                 class="btn btn-sm legend-chip"
                                 :style="{ borderColor: threadColor(thread.id - 1, 1), color: threadColor(thread.id - 1, 1) }"
-                                @click="onViewPassages(thread)"
+                                @click="onViewThread(thread)"
                                 :title="thread.words.slice(0, 10).map((w) => w.word).join(', ')">
                                 <span class="legend-swatch" :style="{ backgroundColor: threadColor(thread.id - 1, 1) }"></span>
                                 <span class="legend-text">T{{ thread.id }}: {{ thread.label }}</span>
@@ -39,9 +39,8 @@
                                 <label class="small text-muted d-block mb-1" for="theme-count-net">
                                     {{ $t('threads.themeCount') }}
                                 </label>
-                                <select id="theme-count-net" v-model="themeCount"
+                                <select id="theme-count-net" v-model.number="themeCount"
                                     @change="onGrainChange" class="form-select form-select-sm">
-                                    <option value="auto">{{ $t('threads.themeCountAuto') }}{{ themeCount === 'auto' && result?.n_threads ? ` (${result.n_threads})` : '' }}</option>
                                     <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
                                 </select>
                                 <p class="control-hint">{{ $t('threads.themeCountHint') }}</p>
@@ -120,7 +119,7 @@ const { formData } = storeToRefs(store);
 const loading = ref(false);
 const result = ref(null);
 const networkWordCount = ref(0);
-const themeCount = ref("auto");
+const themeCount = ref(4);
 let fetchToken = 0;
 
 // Same color palette as the streamgraph so thread colors are consistent across tabs.
@@ -135,12 +134,16 @@ function runDetection(opts = {}) {
     loading.value = true;
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
-    if (themeCount.value !== "auto") {
-        params.n_clusters = themeCount.value;
-    }
+    params.n_clusters = themeCount.value;
     $http.get(`${$dbUrl}/scripts/get_threads.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
+        // Keep the dropdown selection valid on thin queries that yield fewer
+        // senses than requested (backend already truncated; reflect it here).
+        const avail = resp.data?.available_theme_counts || [];
+        if (avail.length && !avail.includes(themeCount.value)) {
+            themeCount.value = avail[avail.length - 1];
+        }
         emit("filterList", resp.data?.filter_list || []);
         networkWordCount.value = resp.data?.graph?.n_members || 0;
     }).catch((error) => {
@@ -167,16 +170,16 @@ const modal = ref({
 let modalInstance = null;
 let passagesFetchToken = 0;
 
-function onViewPassages(thread) {
-    // Use the full result year range; the thread's signature tokens do the
-    // semantic filtering, so a broader window surfaces more relevant hits
-    // than a tight peak-centric slice would.
+function openPassages(groupName, words) {
+    // Use the full result year range; the signature tokens do the semantic
+    // filtering, so a broader window surfaces more relevant hits than a tight
+    // peak-centric slice would.
     const [yMin, yMax] = result.value.year_range;
     const yearRange = `${yMin}-${yMax}`;
     modal.value = {
-        groupName: `${formData.value.q} · T${thread.id}: ${thread.label}`,
+        groupName,
         yearRange,
-        signature: thread.words.slice(0, 20).map((w) => ({ word: w.word, z: null })),
+        signature: words.slice(0, 20).map((word) => ({ word, z: null })),
         passages: [],
         loading: true,
         hasMore: false,
@@ -191,6 +194,24 @@ function onViewPassages(thread) {
     };
     showModal();
     fetchPassages({ append: false });
+}
+
+// Legend chip → passages representative of the whole theme.
+function onViewThread(thread) {
+    openPassages(`${formData.value.q} · ${thread.label}`, thread.words.slice(0, 20).map((w) => w.word));
+}
+
+// Node click → the hovered node plus its highlighted neighbours (which may
+// span clusters). Those highlighted words are exactly what's surfaced to the
+// user, so they — not the full thread — form the query signature.
+function onViewNode(nodeIdx) {
+    const node = nodes[nodeIdx];
+    const words = [node.word];
+    for (const e of edges) {
+        if (e.source === nodeIdx) words.push(nodes[e.target].word);
+        else if (e.target === nodeIdx) words.push(nodes[e.source].word);
+    }
+    openPassages(`${formData.value.q} · ${node.word}`, [...new Set(words)]);
 }
 
 function showModal() {
@@ -249,7 +270,9 @@ defineExpose({ runDetection, reset });
 // Logical layout space (canvas scales to fit, single scale factor).
 const W = 1000;
 const H = 560;
-const labelThreshold = 7;
+// How many of each sense's most-central words get a permanent label (the rest
+// are dots, labeled on hover) — keeps a 500-node map legible.
+const LABELS_PER_CLUSTER = 5;
 
 const canvasRef = ref(null);
 let ctx = null;
@@ -296,13 +319,10 @@ let zoomAnim = null;
 let zoomRaf = null;
 
 function showLabel(n) {
-    return n.member ? (n.active || n.r >= labelThreshold) : n.active;
-}
-
-function threadById(id) {
-    const ts = result.value?.threads || [];
-    for (const t of ts) if (t.id === id) return t;
-    return null;
+    // Label only each sense's few most-central words (n.labelable, set in
+    // initLayout) plus whatever's hovered — keeps the map readable at high node
+    // counts; the rest are bare dots that reveal their word on hover.
+    return n.active || (n.member && n.labelable);
 }
 
 // ---- Canvas setup (DPR-aware, viewport-capped) ----
@@ -445,8 +465,7 @@ function onWindowMouseUp() {
         return;  // suppress click after drag
     }
     if (hovered >= 0) {
-        const t = threadById(nodes[hovered].cluster);
-        if (t) onViewPassages(t);
+        onViewNode(hovered);
     }
 }
 
@@ -787,16 +806,20 @@ function initLayout() {
     const floor = g.n_members || g.nodes.length;
     const count = Math.min(g.nodes.length, Math.max(floor, networkWordCount.value || floor));
     const slice = g.nodes.slice(0, count);
-    const maxW = Math.max(...slice.map((n) => n.weight), 1);
+    // Node size encodes within-sense ANCHOR strength (how core a word is to its
+    // sense), matching the label ranking — not raw frequency. Fall back to
+    // weight for older server responses that don't ship `anchor`.
+    const sizeOf = (n) => (n.anchor != null ? n.anchor : n.weight);
+    const maxW = Math.max(...slice.map(sizeOf), 0.001);
     const clusters = [...new Set(slice.map((n) => n.cluster))];
-    // Order clusters around the anchor ring so pairs sharing many bridge
-    // edges sit at adjacent positions — preserves the "related clusters
-    // are visually close" property of force-only layouts while still
-    // getting the spatial separation of anchors.
+    // Order clusters around the seed ring so pairs sharing many bridge edges
+    // start adjacent — a good starting arrangement for the force sim to settle
+    // from (related clusters then merge closer instead of crossing the canvas).
     const orderedClusters = orderClustersOnRing(clusters, slice, g.edges, count);
-    // Cluster anchors: each cluster gets a fixed target position so the
-    // simulation pulls clusters apart by design rather than relying on
-    // repulsion alone.
+    // Seed positions only: each cluster gets a starting point on a ring so the
+    // sim settles quickly without a hairball. These are NOT anchors — no force
+    // pins nodes here; the organic layout (springs + repulsion) moves them to
+    // their edge-determined positions.
     clusterAnchors = {};
     const anchorRad = Math.min(W, H) * 0.38;
     orderedClusters.forEach((cid, i) => {
@@ -807,19 +830,31 @@ function initLayout() {
         };
     });
     nodes = slice.map((n) => {
-        const anchor = clusterAnchors[n.cluster];
-        const base = Math.sqrt(n.weight / maxW);
+        const seed = clusterAnchors[n.cluster];
+        const base = Math.sqrt(sizeOf(n) / maxW);
         return {
             word: n.word,
             cluster: n.cluster,
             member: n.member,
             r: n.member ? 3 + base * 13 : 2 + base * 6,
-            x: anchor.x + (Math.random() - 0.5) * 60,
-            y: anchor.y + (Math.random() - 0.5) * 60,
+            x: seed.x + (Math.random() - 0.5) * 60,
+            y: seed.y + (Math.random() - 0.5) * 60,
             vx: 0, vy: 0, fx: 0, fy: 0,
             active: false,
         };
     });
+    // Mark each sense's top-N most-central (largest-anchor) member nodes as
+    // labelable; everything else is a bare dot until hovered. This is the main
+    // declutter lever — a 500-node map otherwise carries 500 labels.
+    const byCluster = {};
+    nodes.forEach((n, i) => {
+        if (!n.member) return;
+        (byCluster[n.cluster] || (byCluster[n.cluster] = [])).push(i);
+    });
+    for (const cid in byCluster) {
+        byCluster[cid].sort((a, b) => nodes[b].r - nodes[a].r);
+        byCluster[cid].slice(0, LABELS_PER_CLUSTER).forEach((i) => { nodes[i].labelable = true; });
+    }
     edges = g.edges
         .filter((e) => e.source < count && e.target < count)
         .map((e) => ({ source: e.source, target: e.target, weight: e.weight, intra: e.intra }));
@@ -852,22 +887,19 @@ function runSim() {
     // should sit closer than members of different threads.
     const INTRA_REPEL = 0.55;
     const SPRING_INTRA = 0.030;
-    // Inter-cluster (bridge) springs need to be weak — otherwise they yank
-    // cluster members across the canvas toward sibling anchors. Keep them
-    // just strong enough to bias related clusters to sit closer together.
-    const SPRING_INTER = 0.0025;
+    // Organic (FA2-style) layout: position emerges from the co-occurrence edges,
+    // not from imposed positions. Bridge springs carry the layout (so related
+    // senses pull together), repulsion spreads everything out, and color — not
+    // position — encodes the thread. Clusters are only used to *seed* initial
+    // positions (see initLayout); no force pins them anywhere.
+    const SPRING_INTER = 0.020;
     const TARGET_LEN = 75;
-    // CENTER is a weak global pull to keep the whole graph centered; the
-    // bulk of positioning comes from the anchor force below.
-    const CENTER = 0.004;
-    // Each node feels a pull toward its cluster's fixed anchor — this is
-    // what separates clusters into distinct regions. Cranked high enough
-    // that weakly-connected members don't drift toward a sibling cluster's
-    // gap, but the overlap-resolution pass means we don't need it to
-    // double as "keep nodes from touching".
-    const ANCHOR_FORCE = 0.055;
-    // Cluster gravity keeps members tight around the cluster centroid.
-    const CLUSTER_GRAVITY = 0.045;
+    // CENTER is a weak global pull to keep the graph on-canvas; repulsion +
+    // springs do the actual positioning.
+    const CENTER = 0.006;
+    // Gentle cohesion nudge toward each thread's centroid — enough to keep a
+    // sense loosely together and avoid a hairball, without dictating where it sits.
+    const CLUSTER_GRAVITY = 0.012;
     const DAMP = 0.82;
     // Soft wall starts well inside the canvas so context outliers get
     // caught long before the hard clamp pins them in a corner.
@@ -884,18 +916,13 @@ function runSim() {
             c.x += a.x; c.y += a.y; c.n += 1;
         }
         for (const k in cents) { cents[k].x /= cents[k].n; cents[k].y /= cents[k].n; }
-        // Repulsion + centering + cluster gravity + cluster anchor + soft wall — O(N²)
+        // Repulsion + centering + cluster gravity + soft wall — O(N²)
         for (let i = 0; i < N; i++) {
             const a = nodes[i];
             let fx = (W / 2 - a.x) * CENTER;
             let fy = (H / 2 - a.y) * CENTER;
             const c = cents[a.cluster];
             if (c) { fx += (c.x - a.x) * CLUSTER_GRAVITY; fy += (c.y - a.y) * CLUSTER_GRAVITY; }
-            const anchor = clusterAnchors[a.cluster];
-            if (anchor) {
-                fx += (anchor.x - a.x) * ANCHOR_FORCE;
-                fy += (anchor.y - a.y) * ANCHOR_FORCE;
-            }
             if (a.x < WALL_MARGIN) fx += (WALL_MARGIN - a.x) * WALL_STIFF;
             else if (a.x > W - WALL_MARGIN) fx -= (a.x - (W - WALL_MARGIN)) * WALL_STIFF;
             if (a.y < WALL_MARGIN) fy += (WALL_MARGIN - a.y) * WALL_STIFF;
@@ -941,7 +968,7 @@ function runSim() {
         // splitting the correction half-and-half. Positional constraint, not
         // a force — lets us tune repulsion for *spacing* rather than for
         // *non-overlap*.
-        const PAD = 3;
+        const PAD = 8;  // inter-node gap; raises whitespace (auto-fit preserves it)
         for (let i = 0; i < N; i++) {
             const a = nodes[i];
             for (let j = i + 1; j < N; j++) {

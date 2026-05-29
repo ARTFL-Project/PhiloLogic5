@@ -18,7 +18,7 @@
                     </button>
                 </div>
 
-                <div class="modal-body">
+                <div class="modal-body" @click="onContentClick">
                     <div v-if="signature && signature.length > 0" class="signature-strip mb-2">
                         <strong>{{ $t('distinctivePassages.signature') }}:</strong>
                         <span v-for="s in signature" :key="s.word" class="sig-chip">{{ s.word }}</span>
@@ -76,6 +76,8 @@
 </template>
 
 <script setup>
+import { Modal } from "bootstrap";
+import { onBeforeUnmount } from "vue";
 import Citations from "./Citations";  // eslint-disable-line no-unused-vars
 import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
 
@@ -89,6 +91,30 @@ defineProps({
 });
 
 defineEmits(["load-more", "view-all"]);
+
+const MODAL_ID = "distinctive-passages-modal";
+
+// Citation links are <router-link>s, so clicking one navigates away (often
+// unmounting this view) before Bootstrap tears down the modal — leaving the
+// backdrop orphaned on <body>. Hide the modal as soon as a link is clicked.
+function onContentClick(event) {
+    if (!event.target.closest("a")) return;
+    const el = document.getElementById(MODAL_ID);
+    const instance = el && Modal.getInstance(el);
+    if (instance) instance.hide();
+}
+
+// Safety net: if the component is unmounted while still open (SPA navigation
+// mid-fade), remove any lingering backdrop and restore the body.
+onBeforeUnmount(() => {
+    const el = document.getElementById(MODAL_ID);
+    const instance = el && Modal.getInstance(el);
+    if (instance) instance.dispose();
+    document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
+    document.body.classList.remove("modal-open");
+    document.body.style.removeProperty("overflow");
+    document.body.style.removeProperty("padding-right");
+});
 </script>
 
 <style lang="scss" scoped>

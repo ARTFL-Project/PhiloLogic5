@@ -49,10 +49,9 @@
                     <label class="small text-muted d-block mb-1" for="theme-count-time">
                         {{ $t('threads.themeCount') }}
                     </label>
-                    <select id="theme-count-time" v-model="themeCount"
+                    <select id="theme-count-time" v-model.number="themeCount"
                         @change="onGrainChange"
                         class="form-select form-select-sm" style="max-width: 12rem;">
-                        <option value="auto">{{ $t('threads.themeCountAuto') }}{{ themeCount === 'auto' && result?.n_threads ? ` (${result.n_threads})` : '' }}</option>
                         <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
                     </select>
                     <p class="control-hint">{{ $t('threads.themeCountHint') }}</p>
@@ -128,8 +127,8 @@ const { formData } = storeToRefs(store);
 
 const loading = ref(false);
 const result = ref(null);
-// "auto" → backend plateau auto-selection; a number → explicit theme count
-const themeCount = ref("auto");
+// Number of themes to display (top-N senses by mass). Default 4.
+const themeCount = ref(4);
 let fetchToken = 0;
 
 const modal = ref({
@@ -226,12 +225,16 @@ function runDetection(opts = {}) {
     loading.value = true;
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
-    if (themeCount.value !== "auto") {
-        params.n_clusters = themeCount.value;
-    }
+    params.n_clusters = themeCount.value;
     $http.get(`${$dbUrl}/scripts/get_threads.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
+        // Keep the dropdown selection valid on thin queries that yield fewer
+        // senses than requested (backend already truncated; reflect it here).
+        const avail = resp.data?.available_theme_counts || [];
+        if (avail.length && !avail.includes(themeCount.value)) {
+            themeCount.value = avail[avail.length - 1];
+        }
         emit("filterList", resp.data?.filter_list || []);
     }).catch((error) => {
         debug({ $options: { name: "thread-timeline" } }, error);
@@ -258,7 +261,7 @@ function onViewPassages(thread) {
     const [yMin, yMax] = result.value.year_range;
     const yearRange = `${yMin}-${yMax}`;
     modal.value = {
-        groupName: `${formData.value.q} · T${thread.id}: ${thread.label}`,
+        groupName: `${formData.value.q} · ${thread.label}`,
         yearRange,
         signature: thread.words.slice(0, 20).map((w) => ({ word: w.word, z: null })),
         passages: [],

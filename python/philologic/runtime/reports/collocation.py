@@ -915,13 +915,6 @@ def build_filter_list(request, config, count_lemmas):
     return filter_list
 
 
-def get_metadata_value(sql_cursor, field, sentence_id, index, obj_level):
-    """Get metadata value"""
-    object_id = " ".join(map(str, struct.unpack(f"{index}I", sentence_id[: index * 4])))
-    sql_cursor.execute(f"SELECT {field} FROM toms WHERE philo_{obj_level}_id=?", (object_id,))
-    return sql_cursor.fetchone()[0]
-
-
 def create_file_path(request, field, path, ext=".pickle"):
     hash = hashlib.sha1()
     hash.update(request["q"].encode("utf-8"))

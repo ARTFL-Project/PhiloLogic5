@@ -269,7 +269,8 @@ function onMinHitsChange() {
 }
 
 function onOutlierSelect(name, field) {
-    emit("pivot-to-compare", { field, name });
+    // Came from a distinctive listing → land on the over-represented tab.
+    emit("pivot-to-compare", { field, name, focusDistinctive: true });
 }
 
 // Modal state for representative passages

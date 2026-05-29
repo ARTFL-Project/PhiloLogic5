@@ -13,13 +13,15 @@ Highlighting uses format_concordance_distinctive, which emits two CSS classes
 ("highlight" for the main word, "colloc-explainer" for signature words).
 """
 
+import hashlib
 import os
 import re
+import struct
 
 import numpy as np
 
 from philologic.runtime.citations import citation_links, citations
-from philologic.runtime.DB import DB
+from philologic.runtime.DB import DB, LEVEL_MAP, hit_to_string
 from philologic.runtime.get_text import _get_mmap, adjust_bytes
 from philologic.runtime.ObjectFormatter import format_concordance_distinctive
 from philologic.runtime.Query import resolve_method
@@ -194,9 +196,11 @@ def get_representative_passages(request, config):
     if not page:
         return _empty_response(request, total_in_group=total_in_group)
 
-    # Prefetch rep hits once for the whole page to amortize SQL.
+    # Prefetch toms rows for only the page's hits. They're scattered across the
+    # score-sorted list, so a contiguous prefetch_hits(min..max) would pull in
+    # almost the entire hitlist; build philo_id strings for just these rows.
     rep_indices = [m["rep_idx"] for m in page]
-    db.prefetch_hits(hits, min(rep_indices) + 1, max(rep_indices) + 1)
+    _prefetch_page_rows(db, rows, rep_indices)
     tid_to_display = _build_tid_to_display(config.db_path, sig_weight_by_tid.keys(), count_lemmas)
     word_regex = db.locals["token_regex"]
 
@@ -301,52 +305,92 @@ def _resolve_main_tids(db_path, hitlist_filename, count_lemmas):
     return frozenset(lookup.values())
 
 
-def _build_sig_tid_lookup(db_path, sig_keys, count_lemmas):
-    """Map signature key strings to vocab token ids."""
+def _vocab_files(db_path, count_lemmas):
+    """Paths to the (hashes, offsets, strings) arrays for the active vocab."""
     colloc_dir = os.path.join(db_path, "data", "collocations")
     if count_lemmas:
-        offsets = np.load(os.path.join(colloc_dir, "attr_lemma_vocab_offsets.npy"), mmap_mode="r")
-        with open(os.path.join(colloc_dir, "attr_lemma_vocab_strings.bin"), "rb") as f:
-            blob = f.read()
+        prefix = "attr_lemma_vocab"
     else:
-        offsets = np.load(os.path.join(colloc_dir, "vocab_offsets.npy"), mmap_mode="r")
-        with open(os.path.join(colloc_dir, "vocab_strings.bin"), "rb") as f:
-            blob = f.read()
+        prefix = "vocab"
+    return (
+        os.path.join(colloc_dir, f"{prefix}_hashes.npy"),
+        os.path.join(colloc_dir, f"{prefix}_offsets.npy"),
+        os.path.join(colloc_dir, f"{prefix}_strings.bin"),
+    )
+
+
+def _hash_key(key):
+    """Deterministic 64-bit key hash — must match the index-time formula
+    (see collocation.py's filter-hash construction)."""
+    return struct.unpack("<Q", hashlib.md5(key.encode("utf-8")).digest()[:8])[0]
+
+
+def _build_sig_tid_lookup(db_path, sig_keys, count_lemmas):
+    """Map signature key strings to vocab token ids.
+
+    Uses the precomputed md5-hash array (vectorized ``np.isin``) instead of a
+    linear scan + UTF-8 decode of the whole vocab — the latter is O(vocab) and
+    costs ~2s on a 4.7M-form corpus. The actual string at each hash match is
+    verified to rule out the rare 64-bit collision.
+    """
     needed = set(sig_keys)
+    if not needed:
+        return {}
+    hashes_path, offsets_path, blob_path = _vocab_files(db_path, count_lemmas)
+
+    want = np.fromiter((_hash_key(k) for k in needed), dtype=np.uint64, count=len(needed))
+    hashes = np.asarray(np.load(hashes_path, mmap_mode="r"))
+    cand_tids = np.nonzero(np.isin(hashes, want))[0]
+    if len(cand_tids) == 0:
+        return {}
+
+    offsets = np.load(offsets_path, mmap_mode="r")
     out = {}
-    n = len(offsets) - 1
-    for tid in range(n):
-        s = int(offsets[tid])
-        e = int(offsets[tid + 1])
-        name = blob[s:e].decode("utf-8")
-        if name in needed:
-            out[name] = tid
-            if len(out) == len(needed):
-                break
+    with open(blob_path, "rb") as f:
+        for tid in cand_tids.tolist():
+            s = int(offsets[tid])
+            f.seek(s)
+            name = f.read(int(offsets[tid + 1]) - s).decode("utf-8")
+            if name in needed:
+                out[name] = tid
     return out
 
 
 def _build_tid_to_display(db_path, tids, count_lemmas):
     if not tids:
         return {}
-    colloc_dir = os.path.join(db_path, "data", "collocations")
-    if count_lemmas:
-        offsets = np.load(os.path.join(colloc_dir, "attr_lemma_vocab_offsets.npy"), mmap_mode="r")
-        with open(os.path.join(colloc_dir, "attr_lemma_vocab_strings.bin"), "rb") as f:
-            blob = f.read()
-    else:
-        offsets = np.load(os.path.join(colloc_dir, "vocab_offsets.npy"), mmap_mode="r")
-        with open(os.path.join(colloc_dir, "vocab_strings.bin"), "rb") as f:
-            blob = f.read()
+    _, offsets_path, blob_path = _vocab_files(db_path, count_lemmas)
+    offsets = np.load(offsets_path, mmap_mode="r")
     out = {}
-    for tid in tids:
-        s = int(offsets[tid])
-        e = int(offsets[tid + 1])
-        name = blob[s:e].decode("utf-8")
-        if name.startswith("lemma:"):
-            name = name[6:]
-        out[int(tid)] = name
+    with open(blob_path, "rb") as f:
+        for tid in tids:
+            s = int(offsets[tid])
+            f.seek(s)
+            name = f.read(int(offsets[tid + 1]) - s).decode("utf-8")
+            if name.startswith("lemma:"):
+                name = name[6:]
+            out[int(tid)] = name
     return out
+
+
+def _prefetch_page_rows(db, rows, rep_indices):
+    """Batch-fetch toms rows for just the page's representative hits.
+
+    Mirrors DB.prefetch_hits' level selection, but builds philo_id strings from
+    the specific (scattered) rows we render rather than the whole min..max span.
+    """
+    needed_levels = {1}  # always need doc level
+    for f_type in db.locals["metadata_types"].values():
+        if f_type in LEVEL_MAP:
+            needed_levels.add(LEVEL_MAP[f_type])
+        elif f_type == "div":
+            needed_levels.update((2, 3, 4))
+    unique_ids = set()
+    for idx in rep_indices:
+        philo_id = [int(v) for v in rows[idx, :6]]
+        for level in needed_levels:
+            unique_ids.add(hit_to_string(philo_id[:level], db.width))
+    db.prefetch_rows(list(unique_ids))
 
 
 def _render_passage(db, config, hit, main_offsets, sig_offsets,

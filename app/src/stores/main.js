@@ -87,7 +87,7 @@ export const useMainStore = defineStore("main", {
                 colloc_filter_choice: "",
                 colloc_within: "sent",
                 filter_frequency: 100,
-                filter_df_pct: 5,
+                filter_df_pct: "1",
                 approximate: "no",
                 approximate_ratio: 100,
                 start_date: "",

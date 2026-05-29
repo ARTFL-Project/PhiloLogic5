@@ -1,29 +1,36 @@
 """Global-first thread detection for collocation evolution.
 
 Identifies persistent "threads" — coherent sets of collocate words representing
-distinct uses or contexts of the query word over time.
+distinct uses or senses of the query word over time.
 
-Algorithm (one HDBSCAN call on all hits, then project to time bins):
+Decomposition is **HyperLex** (Véronis 2004), a white-box word-sense-induction
+method: the query's collocates form a weighted graph (words linked by NPMI), and
+each distinct sense is anchored by a *hub* — a tightly connected collocate. The
+rule, statable in one sentence: "each sense is a hub collocate; every other word
+joins the hub it co-occurs with most strongly; words tied to no hub are left
+unplaced." It replaced an HDBSCAN density-clustering stack (persistence floor,
+EOM/LEAF switch, min_cluster_size sweep) whose parameters were opaque and which
+treated a graph as a point cloud — it could not decompose abstract words
+(raison, vérité, esprit) at all, where HyperLex decomposes them cleanly.
+
+Algorithm (one pass on all hits, then project to time bins):
   1. Build per-hit collocate bags from the query's hitlist.
   2. Filter candidate vocabulary by:
        - df_floor: word must appear in ≥ 0.5% of hits (min 3),
-       - max_df:   word in ≤ 30% of hits (too generic to anchor a thread),
-       - length ≥ 2 and not in the user-configured stopword list.
+       - max_df:   word in ≤ 30% of hits (too generic to anchor a sense),
+       - length ≥ 2 and the user-configured stopword list (build_filter_list —
+         the single exclusion authority, shared with the frequency view).
   3. Build an NPMI distance matrix on the kept vocabulary.
-  4. HDBSCAN over a min_cluster_size sweep; pick the resolution at the widest
-     stable plateau in the cluster-count curve (see _pick).
-  5. Thread-validity test — each raw cluster must be BOTH:
-       - stable:  HDBSCAN persistence ≥ 0.02 (it actually cohered), and
-       - focused: size ≤ 25% of K (it isn't an "everything-else" catch-all).
-     These catch disjoint failure modes (see _kept_at).
-  6. Project each surviving thread to per-year-bin intensity = share of hits
-     in the bin whose bag intersects the thread's vocabulary.
-  7. Corpus-IDF c-TF-IDF for per-thread label ranking: each word is scored by
-     its result-set count × its rarity in the whole corpus, so a word that is
-     frequent in these hits *and* uncommon corpus-wide rises to the top.
-     (Fightin' words was tried but, with disjoint clusters, it degenerates to
-     plain count-ranking — it can't tell a distinctive word from a globally
-     common one.)
+  4. HyperLex (see _hyperlex): hub detection + direct-affinity assignment over a
+     single NPMI edge floor, auto-tuned by _auto_floor (a principled base that
+     rises only when one hub over-grabs).
+  5. Project each sense to per-year-bin intensity = share of hits in the bin
+     whose bag intersects the sense's vocabulary.
+  6. Label each sense by within-sense ANCHOR strength: rank its words by their
+     summed NPMI to the other members (graph centrality inside the sense). This
+     is sense-specific (unlike a global corpus-IDF, which can't tell one sense
+     of the query from another) and surfaces the tight core, so the hub leads
+     and the peripheral members added by step 4's growth don't muddy the label.
 """
 
 from __future__ import annotations
@@ -31,11 +38,10 @@ from __future__ import annotations
 import hashlib
 import os
 import time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numba
 import numpy as np
-from hdbscan import HDBSCAN
 from scipy.sparse import csr_matrix
 
 from philologic.runtime.DB import DB
@@ -455,9 +461,11 @@ def _select_candidates(
     df_floor = max(3, int(n_hits * df_floor_pct))
     df_ceiling = int(n_hits * max_df_pct)
     raw_candidates = np.where((df >= df_floor) & (df <= df_ceiling))[0]
-    # Token filter: length ≥ 2 and not stopword. The stopword set comes from
-    # the user's UI/config-driven filter list (build_filter_list in the
-    # collocation report), so per-corpus customization Just Works.
+    # Token filter: length ≥ 2 and not stopword. The stopword set is the single
+    # exclusion authority — the user's UI/config-driven filter list
+    # (build_filter_list in the collocation report), shared with the frequency
+    # and comparison views, so per-corpus customization Just Works and all views
+    # exclude consistently. (Numerals/OCR fragments belong there, not here.)
     filtered = []
     for cid in raw_candidates:
         name = _vocab_name(int(cid), v_blob, v_offsets, count_lemmas)
@@ -611,9 +619,21 @@ def _build_graph(
             "member": False,
         })
 
-    # Edges — KNN over the full node set, intra/cross budgeted separately.
+    # Anchor strength per node: summed NPMI to its cluster's MEMBER nodes only
+    # (excluding tier-2 context). Restricting to members makes this identical to
+    # the per-sense centrality used for the legend's word ranking, so the map's
+    # node sizes and labels match the legend's anchor words exactly. The UI sizes
+    # nodes by this (how core a word is to its sense, not raw frequency);
+    # ``weight`` (frequency) is kept for tooltips. npmi's diagonal is 0.
     cluster_of = [n["cluster"] for n in nodes]
+    member_of = np.array([n["member"] for n in nodes])
     cols = np.array([col_of[w] for w in node_vocab], dtype=np.int64)
+    cluster_arr = np.array(cluster_of)
+    for i, n in enumerate(nodes):
+        same = cols[(cluster_arr == n["cluster"]) & member_of]  # cluster members
+        n["anchor"] = round(float(npmi[cols[i], same].sum()), 4)
+
+    # Edges — KNN over the full node set, intra/cross budgeted separately.
     seen: set = set()
     edges: List[Dict] = []
     for ni in range(len(node_vocab)):
@@ -670,6 +690,7 @@ def _thread_cache_key(
     stopwords: Optional[set],
 ) -> str:
     h = hashlib.sha1()
+    h.update(b"hlex2\0")  # schema tag: bump when the cached array set changes
     h.update(q.encode("utf-8"))
     h.update(b"\0L1" if count_lemmas else b"\0L0")
     h.update(b"\0a")
@@ -751,6 +772,142 @@ def _load_vocab(db_path: str, count_lemmas: bool) -> Tuple[bytes, np.ndarray]:
     return v_blob, np.asarray(v_offsets)
 
 
+# ----------------------------- HyperLex sense induction ------------------------------
+# The collocate graph (NPMI affinities) is decomposed by Véronis-style hub
+# detection: each sense is anchored by a hub collocate, every other word joins
+# the hub it co-occurs with most, and words tied to no hub are left unplaced
+# (the honest tail). Pure NumPy — no graph/clustering library needed.
+
+_HYPERLEX_BASE_FLOOR = 0.22   # standard NPMI "real association" cutoff (not fitted)
+_HYPERLEX_MAX_HUBS = 8        # internal cap on number of senses
+
+
+def _hyperlex(
+    dist: np.ndarray, edge_floor: float, min_neighbors: int, max_hubs: int,
+    grow: bool = False,
+) -> Tuple[List[int], np.ndarray]:
+    """Decompose the NPMI graph into hub-anchored senses.
+
+    Returns ``(hub_cols, labels)`` where ``labels[i]`` is the sense index of
+    candidate column ``i`` (or -1 if unplaced). Steps:
+      1. NPMI affinity; an edge exists iff ``npmi >= edge_floor``.
+      2. Hubs: repeatedly take the highest-degree still-available node, then
+         remove it and its strong neighbours from the pool. This is the
+         percolation guard — a hub absorbs its neighbourhood, so no two hubs
+         grow out of one dense region (unlike connected-components, which a
+         single hub word fuses into a giant blob). Stop at ``max_hubs``.
+      3. Each non-hub word joins the hub it has the strongest direct edge to
+         (``>= edge_floor``); otherwise it stays unplaced (the hub-core).
+      4. If ``grow``: attach each still-unplaced word to the sense it has its
+         strongest real link with — over that sense's *members*, not just its
+         hub (a word can belong via members other than the hub). Same floor
+         gate, so no new parameter and the honest tail survives. ``_auto_floor``
+         calls with grow=False (it sizes the cores); detection grows.
+    """
+    K = dist.shape[0]
+    npmi = np.where(dist < 1.0, 1.0 - dist, 0.0)
+    np.fill_diagonal(npmi, 0.0)
+    adj = npmi >= edge_floor            # boolean adjacency over "real" edges
+    degree = adj.sum(axis=1)
+
+    available = np.ones(K, dtype=bool)
+    hubs: List[int] = []
+    for node in np.argsort(-degree):    # highest-degree first
+        if len(hubs) >= max_hubs:
+            break
+        node = int(node)
+        if not available[node] or degree[node] < min_neighbors:
+            continue
+        hubs.append(node)
+        available[node] = False
+        available[adj[node]] = False    # claim the hub's strong neighbourhood
+
+    labels = np.full(K, -1, dtype=np.int64)
+    if not hubs:
+        return hubs, labels
+    hub_arr = np.array(hubs, dtype=np.int64)
+    for hi, h in enumerate(hubs):
+        labels[h] = hi
+    # Hub-core: argmax NPMI to any hub, thresholded at floor. (Véronis used a
+    # minimum-spanning tree, but its transitive chains re-percolate on dense
+    # graphs; direct affinity keeps the honest tail.)
+    aff = npmi[:, hub_arr]
+    best = np.argmax(aff, axis=1)
+    best_aff = aff[np.arange(K), best]
+    place = (labels < 0) & (best_aff >= edge_floor)
+    labels[place] = best[place]
+
+    if grow:
+        # Whole-sense growth: a word joins the sense containing the single member
+        # it co-occurs with most strongly (>= edge_floor). One quantity — the
+        # strongest member-link — is both the gate and the which-sense tie-break,
+        # so there's no new threshold; the hub is just one special member.
+        members: Dict[int, List[int]] = {}
+        for col in range(K):
+            if labels[col] >= 0:
+                members.setdefault(int(labels[col]), []).append(col)
+        member_cols = {s: np.asarray(c, dtype=np.int64) for s, c in members.items()}
+        for w in range(K):
+            if labels[w] >= 0:
+                continue
+            best_s, best_link = -1, edge_floor
+            for s, mcols in member_cols.items():
+                link = float(npmi[w, mcols].max())
+                if link >= best_link:
+                    best_link, best_s = link, s
+            if best_s >= 0:
+                labels[w] = best_s
+    return hubs, labels
+
+
+def _auto_floor(
+    dist: np.ndarray, min_neighbors: int, max_hubs: int,
+    base: float = _HYPERLEX_BASE_FLOOR,
+) -> float:
+    """Self-tuning NPMI edge floor: keep the principled base, raise ONLY on over-grab.
+
+    Internal tightness metrics (modularity / cohesion / silhouette) all reward
+    over-tightening monotonically, so maximizing one collapses rich
+    decompositions into a few 5-word fragments. Instead: scan upward from the
+    base and take the lowest floor whose biggest sense fits a readable cap
+    (= the over-grab guard), as long as ≥ ceil(max_hubs/2) senses survive. Most
+    queries stay at the base; only a word dominated by one generic hub tightens.
+    """
+    K = dist.shape[0]
+    band_cap = max(40.0, 0.08 * K)
+    min_senses = max(2, (max_hubs + 1) // 2)
+    floors = [round(base + 0.02 * i, 2) for i in range(7)]  # base .. base+0.12
+    fallback, fallback_big = base, None
+    for f in floors:
+        _, labels = _hyperlex(dist, f, min_neighbors, max_hubs)
+        placed = labels[labels >= 0]
+        if placed.size == 0:
+            continue
+        sizes = np.bincount(placed)
+        n_senses = int((sizes > 0).sum())
+        biggest = int(sizes.max())
+        if n_senses < min_senses:
+            continue
+        if biggest <= band_cap:
+            return f
+        if fallback_big is None or biggest < fallback_big:
+            fallback, fallback_big = f, biggest
+    return fallback
+
+
+def _sense_cohesion(member_cols: List[int], dist: np.ndarray) -> float:
+    """Mean within-sense NPMI similarity (non-edges count as 0). Transparent
+    per-sense quality score that replaces HDBSCAN's opaque persistence."""
+    m = len(member_cols)
+    if m < 2:
+        return 0.0
+    cols = np.array(member_cols, dtype=np.int64)
+    sub = dist[np.ix_(cols, cols)]
+    sim = np.where(sub < 1.0, 1.0 - sub, 0.0)
+    iu = np.triu_indices(m, k=1)
+    return float(sim[iu].mean()) if iu[0].size else 0.0
+
+
 def detect_threads(
     db: DB,
     db_path: str,
@@ -761,24 +918,23 @@ def detect_threads(
     metadata: Dict[str, str],
     *,
     stopwords: Optional[set] = None,
-    corpus_idf: Optional[Dict[str, float]] = None,
-    corpus_idf_default: float = 1.0,
-    # Lazy alternative to corpus_idf: called only on a cache miss, returns
-    # (idf_map, default). Avoids the ~380 ms full-map load on cache hits.
-    corpus_idf_loader: Optional[Callable[[], Tuple[Dict[str, float], float]]] = None,
     top_n_threads: Optional[int] = None,
-    min_cluster_size: int = 10,
-    min_cluster_size_floor: int = 5,
-    # User-facing "number of themes" knob. We reverse-map the requested count
-    # to the min_cluster_size in the sweep that produces it (nearest
-    # achievable). None = plateau auto-selection.
+    # User-facing "number of themes" knob: the number of hubs (= senses) to
+    # induce at the fixed floor — more themes = finer senses (hubs are nested, so
+    # raising the count appends the next-strongest hub region and a broad sense
+    # splits as members re-flow to it); fewer = coarser. None → a sensible
+    # default. The UI dropdown is populated from available_theme_counts (the
+    # achievable range at this floor, capped at max_senses).
     n_clusters_override: Optional[int] = None,
-    min_samples: int = 1,
-    abs_persistence_floor: float = 0.02,
-    max_cluster_share: float = 0.25,
+    # HyperLex knobs. edge_floor=None auto-tunes (recommended); hub_min_neighbors
+    # is how many strong neighbours a word needs to anchor a sense; max_senses
+    # caps the granularity (the most themes the dropdown will offer).
+    edge_floor: Optional[float] = None,
+    hub_min_neighbors: int = 4,
+    max_senses: int = 12,
     include_graph: bool = False,
 ) -> Dict:
-    """End-to-end global-first thread detection."""
+    """End-to-end global-first thread detection (HyperLex)."""
     stop_set = stopwords or set()
 
     # Try cache first: bags + candidates + NPMI dist are invariant across
@@ -790,16 +946,14 @@ def detect_threads(
     cache_path = _thread_cache_path(db_path, cache_key)
     cached = _load_intermediates(cache_path)
 
-    # A cache entry is only usable if it carries candidate_idf — older entries
-    # (pre-lazy-idf) lack it, so treat those as a miss to auto-upgrade.
-    if cached is not None and "candidate_idf" in cached:
+    # The cache key carries a schema tag (see _thread_cache_key), so any hit is
+    # already the current schema; "counts_at_cand" is a cheap presence check.
+    if cached is not None and "counts_at_cand" in cached:
         flat_ids = cached["flat_ids"]
         indptr = cached["indptr"]
         years = cached["years"]
         candidate_ids = cached["candidate_ids"]
         counts_at_cand = cached["counts_at_cand"]
-        candidate_idf = cached["candidate_idf"]
-        corpus_idf_default = float(cached["corpus_idf_default"])
         raw_K = int(cached["raw_K"])
         dist = cached["dist"]
         v_blob, v_offsets = _load_vocab(db_path, count_lemmas)
@@ -830,20 +984,6 @@ def detect_threads(
         # w in candidate_ids.
         counts_at_cand = counts_full[candidate_ids].astype(np.float64)
 
-        # Corpus-IDF for the candidate words only. The full corpus idf map is
-        # ~676k entries and costs ~380 ms to load — but we only need the K
-        # candidates' values, and only on a cache MISS. Loading lazily here
-        # (rather than eagerly in the caller) means the common slider-rerun
-        # path (cache hit) never touches the idf map on any worker.
-        if corpus_idf is None and corpus_idf_loader is not None:
-            corpus_idf, corpus_idf_default = corpus_idf_loader()
-        cidf = corpus_idf or {}
-        cand_names = [_vocab_name(int(c), v_blob, v_offsets, count_lemmas)
-                      for c in candidate_ids]
-        candidate_idf = np.array(
-            [cidf.get(n, corpus_idf_default) for n in cand_names], dtype=np.float64
-        )
-
         n_vocab = len(v_offsets) - 1
         dist = _build_distance(flat_ids, indptr, candidate_ids, n_vocab=n_vocab)
         if dist is not None:
@@ -853,17 +993,13 @@ def detect_threads(
                 cache_path,
                 flat_ids=flat_ids, indptr=indptr, years=years,
                 candidate_ids=candidate_ids, counts_at_cand=counts_at_cand,
-                candidate_idf=candidate_idf,
-                corpus_idf_default=np.array(corpus_idf_default, dtype=np.float64),
                 raw_K=np.array(raw_K, dtype=np.int64), dist=dist,
             )
 
-    # Materialize counts + idf as vocab-id → value dicts for the downstream
-    # per-thread word ranking. Both are keyed by candidate vocab id.
+    # Per-candidate counts as a vocab-id → value dict for the downstream "n"
+    # field (frequency of each word in the result set).
     counts = {int(candidate_ids[i]): float(counts_at_cand[i])
               for i in range(len(candidate_ids))}
-    idf_by_vocab = {int(candidate_ids[i]): float(candidate_idf[i])
-                    for i in range(len(candidate_ids))}
 
     # Derived values — same in both cache hit / miss paths.
     n_hits = len(indptr) - 1
@@ -888,156 +1024,53 @@ def detect_threads(
         "n_threads": 0,
         "n_detected_threads": 0,
         "vocab_size": K,
+        "available_theme_counts": [],
         "threads": [],
         "frequency": frequency,
     }
 
-    if K < min_cluster_size * 2 or dist is None:
+    if dist is None or K < 10:
         return empty_result
 
-    # Adaptive HDBSCAN via a min_cluster_size sweep. Lower mcs → more, finer
-    # clusters; higher mcs → fewer, coarser. There is no query-independent
-    # "right" mcs, so we sweep the whole range and pick the resolution whose
-    # clusters are individually most robust:
-    #
-    #   - Among mcs values yielding ≥ 2 valid threads, choose the one with the
-    #     highest MEAN cluster persistence (HDBSCAN's measure of how long a
-    #     cluster survives across density thresholds — i.e. "is this a real
-    #     theme?"). This directly optimizes decomposition quality.
-    #   - No mcs yields ≥ 2: keep the first 1-cluster result (some queries
-    #     genuinely have a single dominant usage).
-    #
-    # (Earlier this used the widest count-*plateau* as a stability proxy, but
-    # comparing the actual themes showed plateau-width tracks decomposition
-    # quality poorly: it left "raison" as 2 generic clusters and "nature" as a
-    # 46-word blob, where max-persistence surfaced the real distinct senses.)
-    #
-    # Two-pass cluster-selection: EOM first (Excess of Mass — stable/compact
-    # clusters, the right default); if EOM yields < 2, retry with LEAF (the
-    # cluster-tree leaves — finer-grained; rescues dense graphs EOM collapses
-    # into one huge blob, e.g. surface queries without a POS filter).
-    # Thread-validity test: a raw HDBSCAN cluster is a real thread only if it is
-    # BOTH stable AND focused. These are two facets of one question ("is this a
-    # real thread?"), not an accidental filter stack — an A/B over 727 raw
-    # clusters showed they catch near-perfectly disjoint failure modes (3/727
-    # overlap):
-    #   - stable  (persistence ≥ abs_persistence_floor): kills clusters that
-    #     never cohered — HDBSCAN persistence near 0, normal size. ~37% of
-    #     raw clusters. This is the dominant filter.
-    #   - focused (size ≤ max_cluster_share × K): kills clusters that *did*
-    #     clear the persistence floor but cohered into an "everything-else"
-    #     catch-all — 30–80% of the vocabulary in one cluster. ~4% of raw
-    #     clusters. Real threads top out near 19% of K and these blobs start
-    #     near 30%, so the cap sits in a genuine empty gap, not on a knife-edge.
-    # You cannot replace one with the other: the blobs reach persistence ~0.06
-    # (above many legitimate threads), so no persistence floor catches them
-    # without also killing real threads — the two axes are orthogonal.
-    size_threshold = max(20, int(K * max_cluster_share))
-    floor = max(2, int(min_cluster_size_floor))
-    mcs_start = max(floor, int(min_cluster_size))
-    mcs_desc = list(range(mcs_start, floor - 1, -1))
+    # ---- HyperLex sense induction (white-box; replaces HDBSCAN) -------------
+    # Treat the collocate graph as the graph it is: each sense is anchored by a
+    # hub collocate, every other word joins the hub it co-occurs with most, and
+    # words tied to no hub are left unplaced (the honest tail). One interpretable
+    # knob — the NPMI edge floor — auto-tuned (a principled base of 0.22 that
+    # rises only when a single hub over-grabs). No persistence, no EOM/LEAF, no
+    # min_cluster_size sweep: a humanist can state the rule in one sentence and
+    # inspect why any given word landed where it did.
+    floor = (
+        float(edge_floor) if edge_floor is not None
+        else _auto_floor(dist, hub_min_neighbors, _HYPERLEX_MAX_HUBS)
+    )
+    # "Number of themes" = how many hubs to induce at this fixed floor. The hubs
+    # are deterministic and nested, so raising the count only appends the
+    # next-strongest hub region; membership re-flows to the nearest hub, so a
+    # broad sense splits into finer ones rather than the senses reshuffling
+    # arbitrarily. Find the achievable range once (for the dropdown), then induce
+    # at the requested count. (The floor is held fixed across the knob, so only
+    # granularity changes — not which associations count.)
+    hubs_avail, _ = _hyperlex(dist, floor, hub_min_neighbors, max_senses)
+    n_avail = max(2, len(hubs_avail))
+    available_counts = list(range(2, n_avail + 1))
+    requested = n_clusters_override if n_clusters_override is not None else min(4, n_avail)
+    n_req = max(2, min(int(requested), n_avail))
+    _, labels = _hyperlex(dist, floor, hub_min_neighbors, n_req, grow=True)
 
-    def _is_valid_thread(persistence: float, n_words: int) -> bool:
-        """A raw cluster is a real thread iff it is both stable and focused."""
-        stable = persistence >= abs_persistence_floor
-        focused = n_words <= size_threshold
-        return stable and focused
-
-    def _kept_at(mcs_local: int, method: str):
-        """Run HDBSCAN at one mcs; return (labels, pers, kept, kept_pers).
-
-        `kept` holds only clusters passing the thread-validity test above.
-        """
-        try:
-            clusterer = HDBSCAN(
-                min_cluster_size=mcs_local,
-                min_samples=min_samples,
-                metric="precomputed",
-                cluster_selection_method=method,
-            )
-            attempt_labels = clusterer.fit_predict(dist)
-        except Exception:
-            return None, None, {}, {}
-        attempt_pers = clusterer.cluster_persistence_
-        cluster_ids = sorted(int(x) for x in np.unique(attempt_labels) if x >= 0)
-        cluster_words: Dict[int, List[int]] = {}
-        for ci, lbl in enumerate(attempt_labels):
-            if lbl < 0:
-                continue
-            cluster_words.setdefault(int(lbl), []).append(int(candidate_ids[ci]))
-        attempt_kept: Dict[int, List[int]] = {}
-        attempt_kept_pers: Dict[int, float] = {}
-        for cid in cluster_ids:
-            if _is_valid_thread(attempt_pers[cid], len(cluster_words[cid])):
-                attempt_kept[cid] = cluster_words[cid]
-                attempt_kept_pers[cid] = float(attempt_pers[cid])
-        return attempt_labels, attempt_pers, attempt_kept, attempt_kept_pers
-
-    def _mean_pers_of(entry):
-        # Mean HDBSCAN persistence across a sweep entry's kept clusters. The
-        # entry is (labels, persistence, kept, kept_pers); index 3 is the
-        # {cid: persistence} dict for clusters that passed the validity test.
-        kept_pers = entry[3]
-        return sum(kept_pers.values()) / len(kept_pers) if kept_pers else 0.0
-
-    def _max_pers_pick(sweep, counts):
-        # Pick the resolution whose threads are most robust: among mcs values
-        # giving ≥ 2 valid threads, the one with the highest mean cluster
-        # persistence. Returns (chosen_mcs, labels, persistence, kept, kept_pers).
-        cands = [m for m in mcs_desc if counts[m] >= 2]
-        if cands:
-            rep_mcs = max(cands, key=lambda m: _mean_pers_of(sweep[m]))
-            return (rep_mcs, *sweep[rep_mcs])
-        for mcs in mcs_desc:  # no ≥ 2 anywhere → first 1-cluster result
-            if counts[mcs] == 1:
-                return (mcs, *sweep[mcs])
-        return None, None, None, {}, {}
-
-    # Compute the EOM sweep once. It drives BOTH the auto plateau-pick and the
-    # "number of themes" knob — the knob just reverse-maps a requested theme
-    # count to the mcs in this sweep that yields it.
-    eom_sweep = {mcs: _kept_at(mcs, "eom") for mcs in mcs_desc}
-    eom_counts = {mcs: len(eom_sweep[mcs][2]) for mcs in mcs_desc}
-    # Theme counts the user can actually request for this query (≥ 2 clusters).
-    available_counts = sorted({c for c in eom_counts.values() if c >= 2})
-
-    if n_clusters_override is not None and available_counts:
-        # Map the requested theme count to the mcs producing it. Snap to the
-        # nearest achievable count (ties → fewer themes), then — among the mcs
-        # values that yield that count — pick the one whose clusters are most
-        # persistent (most robust in the density hierarchy).
-        target = max(2, int(n_clusters_override))
-        best_count = min(available_counts, key=lambda c: (abs(c - target), c))
-        mcs_for = max(
-            (m for m in mcs_desc if eom_counts[m] == best_count),
-            key=lambda m: _mean_pers_of(eom_sweep[m]),
-        )
-        chosen_mcs, labels, persistence, kept_clusters, kept_pers = (
-            mcs_for, *eom_sweep[mcs_for]
-        )
-    else:
-        chosen_mcs, labels, persistence, kept_clusters, kept_pers = _max_pers_pick(
-            eom_sweep, eom_counts
-        )
-        if len(kept_clusters) < 2:
-            # EOM gave 0 or 1 usable clusters — LEAF fragments more
-            # aggressively and may surface real sub-structure EOM collapsed.
-            # Compute LEAF lazily (only this degenerate case needs it).
-            leaf_sweep = {mcs: _kept_at(mcs, "leaf") for mcs in mcs_desc}
-            leaf_counts = {mcs: len(leaf_sweep[mcs][2]) for mcs in mcs_desc}
-            l_chosen, l_labels, l_pers, l_kept, l_kept_pers = _max_pers_pick(
-                leaf_sweep, leaf_counts
-            )
-            if len(l_kept) > len(kept_clusters):
-                chosen_mcs = l_chosen
-                labels, persistence, kept_clusters, kept_pers = (
-                    l_labels, l_pers, l_kept, l_kept_pers,
-                )
-                # The achievable counts now come from LEAF (what actually ran).
-                available_counts = sorted({c for c in leaf_counts.values() if c >= 2})
-
+    # Group placed candidate columns into senses; keep both vocab ids (for
+    # counts/labels) and column indices (for cohesion + the graph projection).
+    kept_clusters: Dict[int, List[int]] = {}
+    sense_cols: Dict[int, List[int]] = {}
+    for col in range(K):
+        s = int(labels[col])
+        if s < 0:
+            continue
+        kept_clusters.setdefault(s, []).append(int(candidate_ids[col]))
+        sense_cols.setdefault(s, []).append(col)
     if not kept_clusters:
         return empty_result
+    sense_cohesion = {s: _sense_cohesion(cols, dist) for s, cols in sense_cols.items()}
 
     # Per-thread word counts (also feeds the "n" field in the output).
     thread_word_counts: Dict[int, Dict[int, int]] = {}
@@ -1069,36 +1102,43 @@ def detect_threads(
         if max_v <= 0:
             continue
 
-        # Rank thread words by corpus-IDF c-TF-IDF: count × whole-corpus rarity.
-        # idf comes from the precomputed per-candidate array (cached), keyed by
-        # vocab id — no full corpus-idf map needed on this path.
+        # Rank thread words by within-sense ANCHOR strength: each word's summed
+        # NPMI to the other members of this sense (its graph centrality inside
+        # the sense). Pure NPMI — no counts, no corpus-IDF — so it's sense-
+        # discriminating (unlike global IDF) and robust to the whole-sense
+        # growth (it surfaces the tight core, not the peripheral members the
+        # growth adds). The hub lands first naturally, being the most central.
+        cols = np.asarray(sense_cols[cid], dtype=np.int64)
+        sub = dist[np.ix_(cols, cols)]
+        sub_npmi = np.where(sub < 1.0, 1.0 - sub, 0.0)
+        np.fill_diagonal(sub_npmi, 0.0)
+        centrality = sub_npmi.sum(axis=1)
+        order = np.argsort(-centrality)
         name_of = {w: _vocab_name(w, v_blob, v_offsets, count_lemmas) for w in words}
-        ctfidf = {
-            w: thread_word_counts[cid][w] * idf_by_vocab.get(w, corpus_idf_default)
-            for w in words
-        }
-        ranked_words = sorted(words, key=lambda w: -ctfidf[w])
         words_out = [
             {
-                "word": name_of[w],
-                "n": thread_word_counts[cid][w],
-                "score": round(ctfidf[w], 3),
+                "word": name_of[words[int(i)]],
+                "n": thread_word_counts[cid][words[int(i)]],
+                "score": round(float(centrality[int(i)]), 4),
             }
-            for w in ranked_words
+            for i in order
         ]
 
         thread_records.append({
-            "_cid": cid,  # internal: maps the record back to its HDBSCAN cluster
+            "_cid": cid,  # internal: maps the record back to its sense
             "n_words": len(words),
-            "persistence": round(kept_pers[cid], 4),
+            "cohesion": round(sense_cohesion[cid], 4),
             "words": words_out,
             "max_intensity": round(max_v, 6),
             "intensity": [round(float(intensity_smooth[bi]), 6) for bi in range(n_bins)],
         })
 
-    # Sort by total share of mass (intensity area), assign ids, build labels
+    # Sort by total share of mass (intensity area), assign ids, build labels.
     thread_records.sort(key=lambda t: -sum(t["intensity"]))
     n_detected = len(thread_records)
+    # available_counts was computed at induction time (the achievable hub range
+    # at this floor). The theme COUNT is controlled by the hub count above, not
+    # by truncation; top_n_threads remains a separate hard cap (rarely set).
     if top_n_threads is not None and top_n_threads > 0:
         thread_records = thread_records[:top_n_threads]
     for i, t in enumerate(thread_records):
@@ -1124,9 +1164,8 @@ def detect_threads(
         "n_threads": len(thread_records),
         "n_detected_threads": n_detected,
         "vocab_size": K,
-        # Theme counts the user can pick from for this query (the distinct
-        # cluster counts the mcs sweep can produce). The UI populates the
-        # "Number of themes" dropdown from this, so every option is achievable.
+        # Theme counts the UI offers in the "Number of themes" dropdown
+        # (2 .. senses found); picking fewer truncates to the top senses by mass.
         "available_theme_counts": available_counts,
         "threads": thread_records,
         "frequency": frequency,
