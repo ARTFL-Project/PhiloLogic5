@@ -450,8 +450,8 @@ def _select_candidates(
     """Return (candidate vocab ids, per-id counts, raw_K before cap).
 
     ``counts`` here is per-bag document frequency (each id counts once per
-    bag regardless of in-bag multiplicity) — that matches what the c-TF-IDF
-    ranking later wants as the term-frequency component.
+    bag regardless of in-bag multiplicity) — used downstream as each word's
+    ``n`` (its frequency in the result set).
     """
     n_hits = len(indptr) - 1
     n_vocab = len(v_offsets) - 1
@@ -667,9 +667,9 @@ def _build_graph(
 
 # ---------- Per-query intermediates cache ----------
 # Disk-backed cache for the expensive query-dependent intermediates
-# (bags + NPMI distance matrix). Lets the min-words-per-thread slider rerun
-# in ~300 ms instead of ~1.6 s on a big query. All gunicorn workers share
-# the same cache files, so cross-worker reruns also hit cache.
+# (bags + NPMI distance matrix). Lets a rerun with a different theme-count /
+# edge-floor reuse them instead of rebuilding (~1.6 s on a big query). All
+# gunicorn workers share the same cache files, so cross-worker reruns also hit.
 #
 # Cache files live in the existing ``hitlists/`` directory (already mode 777
 # in every corpus install — gunicorn runs as www-data and needs to write
@@ -679,9 +679,9 @@ def _build_graph(
 # Cache key includes everything that affects the cached arrays:
 #   - q, count_lemmas, attribute, attribute_value, metadata: feed _build_hit_bags
 #   - stopwords: feed _select_candidates → candidate_ids → dist
-# It does NOT include HDBSCAN params (min_cluster_size*, persistence floor,
-# etc.) — those only affect the downstream clustering, which runs fresh
-# every call. That's the whole point: the slider changes only those.
+# It does NOT include the theme-count / edge-floor knobs — those only affect
+# the downstream HyperLex clustering, which runs fresh every call. That's the
+# whole point: changing the number of themes reuses the cached bags + dist.
 
 
 def _thread_cache_key(
@@ -937,9 +937,9 @@ def detect_threads(
     """End-to-end global-first thread detection (HyperLex)."""
     stop_set = stopwords or set()
 
-    # Try cache first: bags + candidates + NPMI dist are invariant across
-    # HDBSCAN-parameter changes (the only thing that varies in a min-words
-    # rerun). Cache hit skips ~1.3 s of work on a big query like `woman`.
+    # Try cache first: bags + candidates + NPMI dist are invariant across the
+    # theme-count / edge-floor knobs (all a rerun varies). Cache hit skips
+    # ~1.3 s of work on a big query like `woman`.
     cache_key = _thread_cache_key(
         q, count_lemmas, attribute, attribute_value, metadata, stop_set,
     )
@@ -1072,15 +1072,6 @@ def detect_threads(
         return empty_result
     sense_cohesion = {s: _sense_cohesion(cols, dist) for s, cols in sense_cols.items()}
 
-    # Per-thread word counts (also feeds the "n" field in the output).
-    thread_word_counts: Dict[int, Dict[int, int]] = {}
-    union_words: List[int] = []
-    for cid, words in kept_clusters.items():
-        thread_word_counts[cid] = {w: int(counts[w]) for w in words}
-        union_words.extend(words)
-    union_words = sorted(set(union_words))
-    cid_order = list(kept_clusters.keys())
-
     # Bags are already in flat (flat_ids, indptr) form from _build_hit_bags;
     # the intensity kernel can use them directly per thread.
     n_vocab_total = len(v_offsets) - 1
@@ -1088,7 +1079,7 @@ def detect_threads(
     smooth_bins = max(1, smooth_win // year_bin)
 
     thread_records: List[Dict] = []
-    for cid in cid_order:
+    for cid in kept_clusters:
         words = kept_clusters[cid]
         # Thread intensity = share of bin hits whose bag intersects thread words.
         # Build a vocab-wide boolean mask and let the kernel scan all bags in
@@ -1118,7 +1109,7 @@ def detect_threads(
         words_out = [
             {
                 "word": name_of[words[int(i)]],
-                "n": thread_word_counts[cid][words[int(i)]],
+                "n": int(counts[words[int(i)]]),
                 "score": round(float(centrality[int(i)]), 4),
             }
             for i in order
