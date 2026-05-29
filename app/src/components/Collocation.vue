@@ -105,7 +105,7 @@
 
 <script setup>
 import { storeToRefs } from "pinia";
-import { computed, inject, nextTick, onMounted, reactive, ref, useTemplateRef, watch } from "vue";
+import { computed, defineAsyncComponent, inject, nextTick, onMounted, reactive, ref, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useMainStore } from "../stores/main";
 import {
@@ -120,7 +120,9 @@ import Compare from "./collocation/Compare.vue";
 import Frequency from "./collocation/Frequency.vue";
 import Similar from "./collocation/Similar.vue";
 import ThreadTimeline from "./collocation/ThreadTimeline.vue";
-import WordMap from "./collocation/WordMap.vue";
+// Lazy-loaded: WordMap (with its force sim + canvas rendering) only ships when
+// the user actually opens the word-map tab, not on entry to Collocation.
+const WordMap = defineAsyncComponent(() => import("./collocation/WordMap.vue"));
 
 //  Injects, route, router, store
 const $http = inject("$http");

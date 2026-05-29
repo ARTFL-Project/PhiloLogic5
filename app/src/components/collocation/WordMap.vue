@@ -1031,6 +1031,14 @@ watch([() => result.value?.graph, networkWordCount], async ([g]) => {
 
 onMounted(() => {
     window.addEventListener("resize", onViewportResize);
+    // Self-fetch on mount. Necessary because this component is loaded async
+    // (defineAsyncComponent in Collocation.vue): the parent's tab-switch handler
+    // calls runDetection() via a template ref after `await nextTick()`, but
+    // nextTick doesn't wait for the dynamic-import promise to resolve — so on a
+    // page reload directly to the word-map tab, the parent fires its call while
+    // wordMapRef is still null, the ?. swallows it, and the canvas stays empty.
+    // Triggering here ensures we fetch as soon as the chunk lands.
+    if (!result.value) runDetection();
 });
 
 onBeforeUnmount(() => {
