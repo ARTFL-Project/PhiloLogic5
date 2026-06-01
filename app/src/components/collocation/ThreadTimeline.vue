@@ -12,14 +12,31 @@
             <!-- Everything (count, explanation, controls, streamgraph) lives
                  inside the result card as one self-contained unit. -->
             <div class="card shadow-sm p-3 mb-3 overview-card">
-                <p class="text-muted mb-1">
-                    {{ $t('threads.summary', { threads: result.threads.length }) }}
+                <p class="text-muted mb-3 d-flex align-items-center flex-wrap gap-1">
+                    <i18n-t keypath="threads.summary" tag="span">
+                        <template #threads>
+                            <select v-model.number="themeCount" @change="onGrainChange"
+                                class="form-select form-select-sm summary-dropdown"
+                                :aria-label="$t('threads.themeCount')">
+                                <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
+                            </select>
+                        </template>
+                    </i18n-t>
                     <span class="info-tip" tabindex="0"
                         :data-tip="$t('threads.overviewSubtitle')"
                         :aria-label="$t('threads.overviewSubtitle')">ⓘ</span>
                 </p>
-                <p class="small text-muted mb-3">{{ $t('threads.overviewHint') }}</p>
 
+                <div class="d-flex flex-wrap gap-1 px-1 mb-3">
+                    <button v-for="thread in result.threads" :key="`leg-${thread.id}`" type="button"
+                        class="btn btn-sm legend-chip"
+                        :style="{ borderColor: threadColor(thread.id - 1, 1), color: threadColor(thread.id - 1, 1) }"
+                        @click="onViewPassages(thread)"
+                        :title="thread.words.slice(0, 10).map((w) => w.word).join(', ')">
+                        <span class="legend-swatch" :style="{ backgroundColor: threadColor(thread.id - 1, 1) }"></span>
+                        {{ thread.label }}
+                    </button>
+                </div>
                 <svg :viewBox="`0 0 ${chartWidth} ${overviewHeight}`" class="overview-stream"
                     preserveAspectRatio="none" :aria-label="$t('threads.streamgraph')">
                     <path v-for="(layer, i) in streamLayers" :key="layer.id"
@@ -29,32 +46,9 @@
                         <title>{{ $t('threads.threadN', { n: layer.thread.id }) }}: {{ layer.thread.label }}</title>
                     </path>
                 </svg>
-                <div class="d-flex justify-content-between small text-muted mt-1 mb-2 px-1">
+                <div class="d-flex justify-content-between small text-muted mt-1 px-1">
                     <span>{{ result.year_range[0] }}</span>
                     <span>{{ result.year_range[1] }}</span>
-                </div>
-                <div class="d-flex flex-wrap gap-1 px-1">
-                    <button v-for="thread in result.threads" :key="`leg-${thread.id}`" type="button"
-                        class="btn btn-sm legend-chip"
-                        :style="{ borderColor: threadColor(thread.id - 1, 1), color: threadColor(thread.id - 1, 1) }"
-                        @click="onViewPassages(thread)"
-                        :title="thread.words.slice(0, 10).map((w) => w.word).join(', ')">
-                        <span class="legend-swatch" :style="{ backgroundColor: threadColor(thread.id - 1, 1) }"></span>
-                        T{{ thread.id }}: {{ thread.label }}
-                    </button>
-                </div>
-                <!-- Clustering-grain control sits with the legend at the bottom of
-                     the card, grouped with the other below-the-chart affordances. -->
-                <div class="control-stack mt-3 px-1">
-                    <label class="small text-muted d-block mb-1" for="theme-count-time">
-                        {{ $t('threads.themeCount') }}
-                    </label>
-                    <select id="theme-count-time" v-model.number="themeCount"
-                        @change="onGrainChange"
-                        class="form-select form-select-sm" style="max-width: 12rem;">
-                        <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
-                    </select>
-                    <p class="control-hint">{{ $t('threads.themeCountHint') }}</p>
                 </div>
             </div>
 
@@ -365,6 +359,15 @@ defineExpose({ runDetection, reset });
 
 .overview-card {
     background-color: #fff;
+}
+
+.summary-dropdown {
+    display: inline-block;
+    width: auto;
+    min-width: 3.2rem;
+    padding: 0.1rem 1.5rem 0.1rem 0.4rem;
+    font-weight: 600;
+    vertical-align: baseline;
 }
 
 .overview-stream {
