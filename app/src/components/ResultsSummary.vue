@@ -382,6 +382,10 @@ function updateDescriptions() {
     // (via the `searching` watcher below). This avoids blocking extra Gunicorn workers
     // with hits.finish() calls while the main request is still in flight.
     if (!["concordance", "kwic", "bibliography"].includes(formData.value.report)) {
+        // Force a fresh count fetch on every navigation — those reports never
+        // reset totalResultsDone themselves, so without this the early return
+        // in updateTotalResults reuses the previous query's resultsLength.
+        totalResultsDone.value = false;
         updateTotalResults();
     }
 }

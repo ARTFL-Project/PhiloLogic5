@@ -223,7 +223,7 @@
     },
     "threads": {
         "detecting": "Detectando patrones de uso",
-        "summary": "Los {threads} principales patrones de uso",
+        "summary": "Mostrando {threads} patrones de uso",
         "threadN": "Patrón {n}",
         "viewPassages": "Pasajes representativos",
         "intensityChart": "Intensidad por año",

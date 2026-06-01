@@ -223,7 +223,7 @@
     },
     "threads": {
         "detecting": "Detecting usage patterns",
-        "summary": "Top {threads} usage patterns",
+        "summary": "Showing {threads} usage patterns",
         "threadN": "Pattern {n}",
         "viewPassages": "Representative passages",
         "intensityChart": "Per-year intensity",

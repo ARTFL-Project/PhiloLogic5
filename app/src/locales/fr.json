@@ -223,7 +223,7 @@
     },
     "threads": {
         "detecting": "Détection des schémas d'usage",
-        "summary": "Les {threads} principaux schémas d'usage",
+        "summary": "Affichage de {threads} schémas d'usage",
         "threadN": "Schéma {n}",
         "viewPassages": "Passages représentatifs",
         "intensityChart": "Intensité par année",
