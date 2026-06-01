@@ -156,6 +156,19 @@ def _lmdb_scan_keys(txn, prefix: bytes, pattern_str: str | None = None,
     return results
 
 
+def _lemma_boundary_filter(kind: str, keys: list[str]) -> list[str]:
+    """Keep LEMMA regex matches within the lemma form, not its attribute variants.
+
+    A bare lemma key is 'lemma:<form>' (exactly one colon); attribute-qualified
+    keys like 'lemma:<form>:pos:NOUN' have more. Filtering to a single colon makes
+    'lemma:sentiment.*' match only lemma forms and stop at the attribute boundary.
+    (Lemma forms never contain ':', so the colon count is an exact discriminator.)
+    """
+    if kind != "LEMMA":
+        return keys
+    return [k for k in keys if k.count(":") == 1]
+
+
 def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
                      forms_env: lmdb.Environment | None = None) -> list[str]:
     """Expand one positive token to the list of words.lmdb lookup keys.
@@ -183,7 +196,8 @@ def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowerca
             literal, meta = _split_literal_prefix(token)
             prefix_bytes = literal.encode("utf-8")
             with forms_env.begin(buffers=True) as f_txn:
-                return _lmdb_scan_keys(f_txn, prefix_bytes, literal + meta)
+                keys = _lmdb_scan_keys(f_txn, prefix_bytes, literal + meta)
+            return _lemma_boundary_filter(kind, keys)
         return [token]
     return []
 
@@ -213,7 +227,8 @@ def _expand_exclude(kind: str, token: str, txn, ascii_conversion: bool, lowercas
             literal, meta = _split_literal_prefix(token)
             prefix_bytes = literal.encode("utf-8")
             with forms_env.begin(buffers=True) as f_txn:
-                return set(_lmdb_scan_keys(f_txn, prefix_bytes, literal + meta))
+                keys = _lmdb_scan_keys(f_txn, prefix_bytes, literal + meta)
+            return set(_lemma_boundary_filter(kind, keys))
         return {token}
     return set()
 
@@ -471,7 +486,8 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
                 if _is_regex_pattern(token):
                     literal, meta = _split_literal_prefix(token)
                     prefix_bytes = literal.encode("utf-8")
-                    return _lmdb_scan_keys(txn, prefix_bytes, literal + meta, max_results)
+                    keys = _lmdb_scan_keys(txn, prefix_bytes, literal + meta, max_results)
+                    return _lemma_boundary_filter(kind, keys)
                 else:
                     return _lmdb_scan_keys(txn, token.encode("utf-8"), None, max_results)
         finally:

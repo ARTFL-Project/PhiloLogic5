@@ -12,7 +12,7 @@ import struct
 import subprocess
 import sys
 import time
-from collections import Counter, defaultdict
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from glob import iglob
 from json import dump
@@ -1138,58 +1138,9 @@ class Loader:
         os.chmod(self.destination + "/hitlists/", 0o777)
         os.chmod(os.path.join(self.destination, "TEXT"), 0o775)
 
-        # Write lemmas to frequency file
-        if self.lemma_count > 0:
-            print("Writing lemmas to frequency file...", flush=True)
-            lemma_count = Counter()
-            with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
-                for line in input_file:
-                    line = line.decode("utf-8")
-                    _, lemma, _, _ = line.split("\t", 3)
-                    lemma_count[f"lemma:{lemma}"] += 1
-            with open(f"{self.destination}/frequencies/lemmas", "w", encoding="utf8") as freq_file:
-                for lemma, _ in lemma_count.most_common():
-                    print(lemma, file=freq_file)
-
-        # Write word attributes to frequency file
-        if self.has_attributes is True:
-            print("Writing word attributes to frequency file...", flush=True)
-            word_attributes = set()
-            total_count_per_attribute = defaultdict(Counter)
-            with open(f"{self.destination}/frequencies/word_attributes", "w", encoding="utf8") as freq_file:
-                with lz4.frame.open(f"{self.workdir}/all_words_sorted.lz4") as input_file:
-                    for line in input_file:
-                        line = line.decode("utf-8")
-                        _, word, _, attributes = line.split("\t", 3)
-                        for attribute, attribute_value in loads(attributes).items():
-                            if attribute in self.attributes_to_skip:
-                                continue
-                            if attribute_value:
-                                total_count_per_attribute[attribute][attribute_value] += 1
-                            stored_string = f"{word}:{attribute}:{attribute_value}"
-                            if stored_string not in word_attributes:
-                                print(stored_string, file=freq_file)
-                                word_attributes.add(stored_string)
-
-        # Write word attributes to frequency file with lemma info
-        if self.lemma_count > 0:
-            print("Writing lemma attributes to frequency file...", flush=True)
-            word_attributes = set()
-            total_count_per_attribute = defaultdict(Counter)
-            with open(f"{self.destination}/frequencies/lemma_word_attributes", "w", encoding="utf8") as freq_file:
-                with lz4.frame.open(f"{self.workdir}/all_lemmas_sorted.lz4") as input_file:
-                    for line in input_file:
-                        line = line.decode("utf-8")
-                        _, lemma, _, attributes = line.split("\t", 3)
-                        for attribute, attribute_value in loads(attributes).items():
-                            if attribute in self.attributes_to_skip:
-                                continue
-                            if attribute_value:
-                                total_count_per_attribute[attribute][attribute_value] += 1
-                            stored_string = f"lemma:{lemma}:{attribute}:{attribute_value}"
-                            if stored_string not in word_attributes:
-                                print(stored_string, file=freq_file)
-                                word_attributes.add(stored_string)
+        # Note: the lemmas / word_attributes / lemma_word_attributes frequency
+        # files are now written by the lemma_and_attribute_frequencies post-filter
+        # (in post_processing), so build_word_forms_lmdb can consume them.
 
         # Note: data/.htaccess ("deny from all") is no longer needed.
         # Under gunicorn, Apache/Nginx only proxies requests — it never

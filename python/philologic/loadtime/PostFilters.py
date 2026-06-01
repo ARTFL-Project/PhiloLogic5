@@ -7,7 +7,7 @@ import os
 import sqlite3
 import struct as _struct
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 import lmdb
 import lz4.frame
@@ -416,6 +416,63 @@ def build_norm_word_lmdb(loader_obj):
     print("%s: norm_word LMDB index built (%d keys)." % (time.ctime(), len(mapping)), flush=True)
 
 
+def lemma_and_attribute_frequencies(loader_obj):
+    """Write the lemmas / word_attributes / lemma_word_attributes flat files.
+
+    These are the inputs consumed by build_word_forms_lmdb, so this must run
+    before it in the post-filter list (mirroring word_frequencies ->
+    normalized_word_frequencies -> build_norm_word_lmdb).
+    """
+    frequencies = loader_obj.destination + "/frequencies"
+
+    # Write lemmas to frequency file
+    if loader_obj.lemma_count > 0:
+        print("%s: Writing lemmas to frequency file..." % time.ctime(), flush=True)
+        lemma_count = Counter()
+        with lz4.frame.open(f"{loader_obj.workdir}/all_lemmas_sorted.lz4") as input_file:
+            for line in input_file:
+                line = line.decode("utf-8")
+                _, lemma, _, _ = line.split("\t", 3)
+                lemma_count[f"lemma:{lemma}"] += 1
+        with open(f"{frequencies}/lemmas", "w", encoding="utf8") as freq_file:
+            for lemma, _ in lemma_count.most_common():
+                print(lemma, file=freq_file)
+
+    # Write word attributes to frequency file
+    if loader_obj.has_attributes is True:
+        print("%s: Writing word attributes to frequency file..." % time.ctime(), flush=True)
+        word_attributes = set()
+        with open(f"{frequencies}/word_attributes", "w", encoding="utf8") as freq_file:
+            with lz4.frame.open(f"{loader_obj.workdir}/all_words_sorted.lz4") as input_file:
+                for line in input_file:
+                    line = line.decode("utf-8")
+                    _, word, _, attributes = line.split("\t", 3)
+                    for attribute, attribute_value in loads(attributes).items():
+                        if attribute in loader_obj.attributes_to_skip:
+                            continue
+                        stored_string = f"{word}:{attribute}:{attribute_value}"
+                        if stored_string not in word_attributes:
+                            print(stored_string, file=freq_file)
+                            word_attributes.add(stored_string)
+
+    # Write word attributes to frequency file with lemma info
+    if loader_obj.lemma_count > 0:
+        print("%s: Writing lemma attributes to frequency file..." % time.ctime(), flush=True)
+        word_attributes = set()
+        with open(f"{frequencies}/lemma_word_attributes", "w", encoding="utf8") as freq_file:
+            with lz4.frame.open(f"{loader_obj.workdir}/all_lemmas_sorted.lz4") as input_file:
+                for line in input_file:
+                    line = line.decode("utf-8")
+                    _, lemma, _, attributes = line.split("\t", 3)
+                    for attribute, attribute_value in loads(attributes).items():
+                        if attribute in loader_obj.attributes_to_skip:
+                            continue
+                        stored_string = f"lemma:{lemma}:{attribute}:{attribute_value}"
+                        if stored_string not in word_attributes:
+                            print(stored_string, file=freq_file)
+                            word_attributes.add(stored_string)
+
+
 def build_word_forms_lmdb(loader_obj):
     """Build key-only word_forms.lmdb from lemma/attr flat files.
 
@@ -606,6 +663,7 @@ DefaultPostFilters = [
     word_frequencies,
     normalized_word_frequencies,
     build_norm_word_lmdb,
+    lemma_and_attribute_frequencies,
     build_word_forms_lmdb,
     metadata_frequencies,
     normalized_metadata_frequencies,
