@@ -1,9 +1,5 @@
 <template>
     <div>
-        <!-- Detection auto-runs on mount; the min-words knob below triggers
-             re-runs. No standalone Detect button is needed — its only role
-             was redundant re-runs. -->
-
         <div v-if="loading && !result" class="text-center py-5">
             <progress-spinner :lg="true" :message="$t('threads.detecting')" />
         </div>
@@ -12,40 +8,41 @@
             <!-- Everything (count, explanation, controls, viz) lives inside the
                  result card so the layout reads as one self-contained unit. -->
             <div v-if="result.graph" class="card shadow-sm p-3 mb-3 overview-card">
-                <p class="text-muted mb-1">
-                    {{ $t('threads.summary', { threads: result.threads.length }) }}
-                    <span class="info-tip" tabindex="0"
-                        :data-tip="$t('threads.networkSubtitle')"
-                        :aria-label="$t('threads.networkSubtitle')">ⓘ</span>
-                </p>
-                <p class="small text-muted mb-3">{{ $t('threads.networkHint') }}</p>
-
                 <div class="overview-body d-flex flex-wrap gap-3 align-items-start">
                     <aside class="legend-aside">
-                        <!-- Legend chips first (they describe what each thread is),
-                             then the controls grouped together below. -->
-                        <div class="legend-list">
+                        <p class="text-muted mb-1 d-flex align-items-center flex-wrap gap-1">
+                            <i18n-t keypath="threads.summary" tag="span">
+                                <template #threads>
+                                    <select v-model.number="themeCount" @change="onGrainChange"
+                                        class="form-select form-select-sm summary-dropdown"
+                                        :aria-label="$t('threads.themeCount')">
+                                        <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">
+                                            {{ n }}</option>
+                                    </select>
+                                </template>
+                            </i18n-t>
+                            <span class="info-tip" tabindex="0" :data-tip="$t('threads.networkSubtitle')"
+                                :aria-label="$t('threads.networkSubtitle')">ⓘ</span>
+                        </p>
+                        <div class="legend-list mt-2">
                             <button v-for="thread in result.threads" :key="`leg-${thread.id}`" type="button"
-                                class="btn btn-sm legend-chip"
+                                class="btn btn-sm legend-chip" :class="{ 'cluster-off': hiddenClusters.has(thread.id) }"
                                 :style="{ borderColor: threadColor(thread.id - 1, 1), color: threadColor(thread.id - 1, 1) }"
-                                @click="onViewThread(thread)"
+                                @click.stop="openLegendMenu(thread, $event)"
+                                @mouseenter="onLegendChipEnter(thread.id)"
+                                @mouseleave="onLegendChipLeave"
                                 :title="thread.words.slice(0, 10).map((w) => w.word).join(', ')">
-                                <span class="legend-swatch" :style="{ backgroundColor: threadColor(thread.id - 1, 1) }"></span>
-                                <span class="legend-text">T{{ thread.id }}: {{ thread.label }}</span>
+                                <span class="legend-swatch"
+                                    :style="{ backgroundColor: threadColor(thread.id - 1, 1) }"></span>
+                                <span class="legend-text">{{ thread.label }}</span>
                             </button>
                         </div>
-                        <div class="control-stack mt-3">
-                            <div class="mb-3">
-                                <label class="small text-muted d-block mb-1" for="theme-count-net">
-                                    {{ $t('threads.themeCount') }}
-                                </label>
-                                <select id="theme-count-net" v-model.number="themeCount"
-                                    @change="onGrainChange" class="form-select form-select-sm">
-                                    <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
-                                </select>
-                                <p class="control-hint">{{ $t('threads.themeCountHint') }}</p>
-                            </div>
-                            <div v-if="result.graph.nodes.length > result.graph.n_members" class="words-slider">
+                        <div class="graph-search mt-3">
+                            <input v-model="searchQuery" @input="onSearchInput" type="text"
+                                class="form-control form-control-sm" :placeholder="$t('threads.searchPlaceholder')" />
+                        </div>
+                        <div v-if="result.graph.nodes.length > result.graph.n_members" class="control-stack mt-3">
+                            <div class="words-slider">
                                 <label class="small text-muted d-block mb-1" for="net-word-count">
                                     {{ $t('threads.wordsShown') }}: <strong>{{ networkWordCount }}</strong>
                                     <span class="text-muted">/ {{ result.graph.nodes.length }}</span>
@@ -61,18 +58,61 @@
                     <div class="viz-area">
                         <div class="thread-network">
                             <div class="zoom-controls">
-                                <button type="button" @click="zoomIn" :disabled="!canZoomIn"
-                                    :title="$t('threads.zoomIn')" :aria-label="$t('threads.zoomIn')">+</button>
-                                <button type="button" @click="zoomOut" :disabled="!canZoomOut"
-                                    :title="$t('threads.zoomOut')" :aria-label="$t('threads.zoomOut')">−</button>
-                                <button type="button" @click="resetView" :disabled="!isManualView"
-                                    :title="$t('threads.zoomReset')" :aria-label="$t('threads.zoomReset')">
+                                <button type="button" @click="zoomIn" :title="$t('threads.zoomIn')"
+                                    :aria-label="$t('threads.zoomIn')">+</button>
+                                <button type="button" @click="zoomOut" :title="$t('threads.zoomOut')"
+                                    :aria-label="$t('threads.zoomOut')">−</button>
+                                <button type="button" @click="resetView" :title="$t('threads.zoomReset')"
+                                    :aria-label="$t('threads.zoomReset')">
                                     <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <canvas ref="canvasRef" class="network-canvas"
-                                @mousedown="onMouseDown" @mousemove="onMouseMove"
-                                @mouseleave="onMouseLeave"></canvas>
+                            <!-- Dim node rings drawn UNDERNEATH sigma so labels on
+                                 highlighted nodes (rendered inside sigma) sit on top
+                                 instead of being covered by the rings. -->
+                            <canvas ref="dimRingsRef" class="dim-rings-overlay"></canvas>
+                            <div ref="containerRef" class="sigma-container"
+                                :style="{ height: sigmaHeight + 'px' }"></div>
+                            <!-- Soft cluster hulls drawn on top of sigma (low alpha, no
+                                 pointer events). -->
+                            <canvas ref="hullsRef" class="hulls-overlay"></canvas>
+                            <!-- In-place spinner during grain change (result still
+                                 populated, so the main spinner above is hidden). -->
+                            <div v-if="loading" class="viz-loading-overlay">
+                                <progress-spinner :message="$t('threads.detecting')" />
+                            </div>
+                            <!-- Right-click context menu: actions depend on whether
+                                 user clicked a node or empty stage. -->
+                            <div v-if="contextMenu" class="ctx-menu"
+                                :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" @click.stop>
+                                <template v-if="contextMenu.kind === 'node'">
+                                    <button type="button" class="ctx-item" @click="ctxPassagesForNode">
+                                        {{ $t('threads.ctxPassagesNode') }}
+                                    </button>
+                                    <button type="button" class="ctx-item" @click="ctxPassagesForCluster">
+                                        {{ $t('threads.ctxPassagesCluster') }}
+                                    </button>
+                                    <div class="ctx-sep"></div>
+                                    <button type="button" class="ctx-item" @click="ctxFlyToCluster">
+                                        {{ $t('threads.ctxFlyCluster') }}
+                                    </button>
+                                    <button type="button" class="ctx-item" @click="ctxSoloCluster">
+                                        {{ $t('threads.ctxSoloCluster') }}
+                                    </button>
+                                    <button type="button" class="ctx-item" @click="ctxHideCluster">
+                                        {{ $t('threads.ctxHideCluster') }}
+                                    </button>
+                                </template>
+                                <template v-else>
+                                    <button type="button" class="ctx-item" @click="ctxResetView">
+                                        {{ $t('threads.ctxResetView') }}
+                                    </button>
+                                    <button type="button" class="ctx-item" :disabled="hiddenClusters.size === 0"
+                                        @click="ctxShowAll">
+                                        {{ $t('threads.ctxShowAll') }}
+                                    </button>
+                                </template>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -84,28 +124,67 @@
             </div>
         </div>
 
-        <div v-else-if="result && (!result.threads || result.threads.length === 0)"
-            class="text-center py-5 text-muted">
+        <div v-else-if="result && (!result.threads || result.threads.length === 0)" class="text-center py-5 text-muted">
             {{ $t('threads.noResults') }}
         </div>
 
-        <DistinctivePassagesModal
-            :group-name="modal.groupName" :signature="modal.signature"
-            :passages="modal.passages" :loading="modal.loading"
-            :has-more="modal.hasMore" :view-all-url="modal.viewAllUrl"
+        <DistinctivePassagesModal :group-name="modal.groupName" :signature="modal.signature" :passages="modal.passages"
+            :loading="modal.loading" :has-more="modal.hasMore" :view-all-url="modal.viewAllUrl"
             @load-more="loadMorePassages" @view-all="onViewAllPassages" />
+
+        <!-- Legend chip popup: 3 actions. Teleported to body so the absolute
+             positioning isn't clipped by ancestor overflow. -->
+        <Teleport to="body">
+            <div v-if="legendMenu" class="ctx-menu legend-popup"
+                :style="{ left: legendMenu.x + 'px', top: legendMenu.y + 'px', position: 'fixed' }" @click.stop>
+                <div class="legend-popup-header">
+                    <span class="legend-swatch"
+                        :style="{ backgroundColor: threadColor(legendMenu.thread.id - 1, 1) }"></span>
+                    <span class="legend-popup-label">T{{ legendMenu.thread.id }}: {{ legendMenu.thread.label }}</span>
+                </div>
+                <div class="ctx-sep"></div>
+                <button type="button" class="ctx-item" @click="legendGetPassages">
+                    {{ $t('threads.legendPopupPassages') }}
+                </button>
+                <button type="button" class="ctx-item" @click="legendFocusCluster">
+                    {{ $t('threads.legendPopupFocus') }}
+                </button>
+                <button type="button" class="ctx-item" @click="legendToggleHideCluster">
+                    {{ hiddenClusters.has(legendMenu.thread.id)
+                        ? $t('threads.legendPopupShow')
+                        : $t('threads.legendPopupHide') }}
+                </button>
+            </div>
+        </Teleport>
     </div>
 </template>
 
 <script setup>
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { storeToRefs } from "pinia";
-import { useRouter } from "vue-router";
+import EdgeCurveProgram from "@sigma/edge-curve";
+import { createNodeBorderProgram } from "@sigma/node-border";
 import { Modal } from "bootstrap";
+import Graph from "graphology";
+import forceAtlas2 from "graphology-layout-forceatlas2";
+import noverlap from "graphology-layout-noverlap";
+import { storeToRefs } from "pinia";
+import Sigma from "sigma";
+import { inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import { useMainStore } from "../../stores/main";
 import { concordanceMethod, debug, paramsFilter, paramsToRoute } from "../../utils.js";
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
+
+// Outline-only node program: the outer band takes the node's `color` (the
+// cluster color), the inner is driven by the `innerColor` attribute so we
+// can flip it transparent on dimmed nodes (lets the highlighted edges show
+// through them instead of being clipped by a solid white centre).
+const NodeRingProgram = createNodeBorderProgram({
+    borders: [
+        { size: { value: 0.12, mode: "auto" }, color: { attribute: "color" } },
+        { size: { fill: true }, color: { attribute: "innerColor" } },
+    ],
+});
 
 const emit = defineEmits(["filterList"]);
 
@@ -120,13 +199,28 @@ const loading = ref(false);
 const result = ref(null);
 const networkWordCount = ref(0);
 const themeCount = ref(4);
+// Cluster IDs the user has muted via legend chips. Plain click toggles a single
+// cluster; shift-click solos (hides all others). Composes with the words slider:
+// a node is hidden if EITHER condition hides it.
+const hiddenClusters = ref(new Set());
 let fetchToken = 0;
 
-// Same color palette as the streamgraph so thread colors are consistent across tabs.
+// Same color palette as the streamgraph so thread colors are consistent across
+// tabs. Emitted as rgba() — sigma's color parser doesn't accept hsla().
 const threadHues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
-function threadColor(i, alpha) {
+function threadColor(i, alpha = 1) {
     const h = threadHues[i % threadHues.length];
-    return `hsla(${h}, 55%, 50%, ${alpha})`;
+    const s = 0.55, l = 0.50;
+    const c = (1 - Math.abs(2 * l - 1)) * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = l - c / 2;
+    const [r1, g1, b1] = h < 60 ? [c, x, 0] : h < 120 ? [x, c, 0]
+        : h < 180 ? [0, c, x] : h < 240 ? [0, x, c]
+            : h < 300 ? [x, 0, c] : [c, 0, x];
+    const r = Math.round((r1 + m) * 255);
+    const g = Math.round((g1 + m) * 255);
+    const b = Math.round((b1 + m) * 255);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function runDetection(opts = {}) {
@@ -154,6 +248,12 @@ function runDetection(opts = {}) {
 }
 
 function onGrainChange() {
+    if (G) {
+        pendingPrevPositions = new Map();
+        G.forEachNode((id, attrs) => {
+            pendingPrevPositions.set(attrs.word, { x: attrs.x, y: attrs.y });
+        });
+    }
     runDetection({ keepResult: true });
 }
 
@@ -171,9 +271,6 @@ let modalInstance = null;
 let passagesFetchToken = 0;
 
 function openPassages(groupName, words) {
-    // Use the full result year range; the signature tokens do the semantic
-    // filtering, so a broader window surfaces more relevant hits than a tight
-    // peak-centric slice would.
     const [yMin, yMax] = result.value.year_range;
     const yearRange = `${yMin}-${yMax}`;
     modal.value = {
@@ -196,22 +293,137 @@ function openPassages(groupName, words) {
     fetchPassages({ append: false });
 }
 
-// Legend chip → passages representative of the whole theme.
-function onViewThread(thread) {
-    openPassages(`${formData.value.q} · ${thread.label}`, thread.words.slice(0, 20).map((w) => w.word));
+// Legend chip click opens a small popup with explicit actions (passages /
+// focus / hide-or-show). Replaces the previous shift-click gesture, which was
+// not discoverable.
+const legendMenu = ref(null);    // { thread, x, y } viewport-relative, or null
+
+function openLegendMenu(thread, event) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const popupWidth = 220;
+    let x = rect.right + 8;
+    if (x + popupWidth > window.innerWidth) x = Math.max(8, rect.left - popupWidth - 8);
+    legendMenu.value = { thread, x, y: rect.top };
+}
+function closeLegendMenu() { legendMenu.value = null; }
+
+// Hover a legend chip → focus that cluster in the graph: members stay bright,
+// everything else gets the standard "dim" treatment (same path used by node
+// hover + search). Reuses the dim-ring overlay, so no extra plumbing.
+function onLegendChipEnter(clusterId) {
+    hoveredCluster = clusterId;
+    if (renderer) renderer.refresh();
+}
+function onLegendChipLeave() {
+    if (hoveredCluster === null) return;
+    hoveredCluster = null;
+    if (renderer) renderer.refresh();
 }
 
-// Node click → the hovered node plus its highlighted neighbours (which may
-// span clusters). Those highlighted words are exactly what's surfaced to the
-// user, so they — not the full thread — form the query signature.
-function onViewNode(nodeIdx) {
-    const node = nodes[nodeIdx];
-    const words = [node.word];
-    for (const e of edges) {
-        if (e.source === nodeIdx) words.push(nodes[e.target].word);
-        else if (e.target === nodeIdx) words.push(nodes[e.source].word);
+function legendGetPassages() {
+    const t = legendMenu.value?.thread;
+    if (t) openPassages(`${formData.value.q} · ${t.label}`,
+        t.words.slice(0, 20).map((w) => w.word));
+    closeLegendMenu();
+}
+function legendFocusCluster() {
+    const t = legendMenu.value?.thread;
+    if (!t) return;
+    // Zoom-only: other clusters stay visible. Auto-unhide first if this
+    // cluster was hidden — zooming to invisible nodes would do nothing.
+    if (hiddenClusters.value.has(t.id)) {
+        const next = new Set(hiddenClusters.value);
+        next.delete(t.id);
+        hiddenClusters.value = next;
+        applyVisibility();
+        renderer?.refresh();
     }
-    openPassages(`${formData.value.q} · ${node.word}`, [...new Set(words)]);
+    zoomToCluster(t.id);
+    closeLegendMenu();
+}
+function legendToggleHideCluster() {
+    const t = legendMenu.value?.thread;
+    if (!t || !result.value) return;
+    const next = new Set(hiddenClusters.value);
+    if (next.has(t.id)) {
+        next.delete(t.id);
+    } else {
+        next.add(t.id);
+        if (next.size >= result.value.threads.length) {
+            closeLegendMenu();
+            return;
+        }
+    }
+    hiddenClusters.value = next;
+    applyVisibility();
+    renderer?.refresh();
+    closeLegendMenu();
+}
+
+// Outside-click dismiss for the legend popup. Chip clicks use @click.stop, so
+// they don't reach this handler; clicks inside the popup itself are caught by
+// its own @click.stop.
+function onDocClickForLegend(e) {
+    if (!legendMenu.value) return;
+    const el = document.querySelector(".legend-popup");
+    if (el && !el.contains(e.target)) closeLegendMenu();
+}
+
+// ---- Right-click context menu actions ----
+function closeContextMenu() { contextMenu.value = null; }
+function ctxThreadFor(nodeId) {
+    if (!G || !result.value) return null;
+    const cid = G.getNodeAttribute(nodeId, "cluster");
+    return result.value.threads.find((t) => t.id === cid) || null;
+}
+function ctxPassagesForNode() {
+    if (!contextMenu.value) return;
+    onViewNode(contextMenu.value.nodeId);
+    closeContextMenu();
+}
+function ctxPassagesForCluster() {
+    if (!contextMenu.value) return;
+    const thread = ctxThreadFor(contextMenu.value.nodeId);
+    if (thread) openPassages(`${formData.value.q} · ${thread.label}`,
+        thread.words.slice(0, 20).map((w) => w.word));
+    closeContextMenu();
+}
+function ctxFlyToCluster() {
+    if (!contextMenu.value) return;
+    const thread = ctxThreadFor(contextMenu.value.nodeId);
+    if (thread) flyToCluster(thread.id);
+    closeContextMenu();
+}
+function ctxSoloCluster() {
+    if (!contextMenu.value || !result.value) return;
+    const thread = ctxThreadFor(contextMenu.value.nodeId);
+    if (thread) onLegendClick(thread, { shiftKey: true });
+    closeContextMenu();
+}
+function ctxHideCluster() {
+    if (!contextMenu.value) return;
+    const thread = ctxThreadFor(contextMenu.value.nodeId);
+    if (thread && !hiddenClusters.value.has(thread.id))
+        onLegendClick(thread, { shiftKey: false });
+    closeContextMenu();
+}
+function ctxShowAll() {
+    hiddenClusters.value = new Set();
+    applyVisibility();
+    renderer?.refresh();
+    closeContextMenu();
+}
+function ctxResetView() { resetView(); closeContextMenu(); }
+
+// Node click → the node + its NPMI neighbours (which may span clusters) are
+// the words the user actually saw lit up, so they (not the full thread) seed
+// the passage signature.
+function onViewNode(nodeId) {
+    if (!G) return;
+    const word = G.getNodeAttribute(nodeId, "word");
+    const words = [word];
+    G.forEachNeighbor(nodeId, (nb) => words.push(G.getNodeAttribute(nb, "word")));
+    openPassages(`${formData.value.q} · ${word}`, [...new Set(words)]);
 }
 
 function showModal() {
@@ -261,794 +473,541 @@ function onViewAllPassages() {
 defineExpose({ runDetection, reset });
 
 // =====================================================================
-// Canvas force-layout visualization (formerly ThreadNetwork.vue).
-// Operates on result.value.graph + result.value.threads. Non-reactive
-// internal state (nodes, edges, camera) so the per-frame draw is a
-// straight imperative loop with no Vue diffing for 500+ elements.
+// Sigma + graphology rendering. Operates on result.value.graph.
+// Replaces the hand-rolled canvas + force sim: FA2 (Barnes-Hut) for
+// layout, sigma for WebGL rendering, label LOD, and hover/click events.
 // =====================================================================
 
-// Logical layout space (canvas scales to fit, single scale factor).
-const W = 1000;
-const H = 560;
-// How many of each sense's most-central words get a permanent label (the rest
-// are dots, labeled on hover) — keeps a 500-node map legible.
-const LABELS_PER_CLUSTER = 5;
+const containerRef = ref(null);
+const hullsRef = ref(null);     // cluster-hull overlay canvas (above sigma)
+const dimRingsRef = ref(null);  // dim-node rings overlay canvas (below sigma)
+// Sigma container height — computed to fill the viewport from the container's
+// top down to a small bottom margin. Updated on mount, window resize, and
+// whenever a new result loads (in case chrome above the graph shifts).
+const sigmaHeight = ref(540);
+const searchQuery = ref("");    // search-in-graph input
+// Right-click menu: { x, y, kind: 'node'|'stage', nodeId? } or null when closed.
+// Coordinates are container-relative (sigma's viewport space).
+const contextMenu = ref(null);
+let renderer = null;            // Sigma instance
+let G = null;                   // graphology Graph (data + layout positions)
+let hoveredNode = null;         // hover-highlight target
+let matchedNodes = new Set();   // search matches (highlighted, others dimmed)
+let hoveredCluster = null;      // legend-chip hover focus (entire cluster vs dimmed others)
+let LABELS_PER_CLUSTER = 5;     // top-N anchor words per cluster get forced labels
+// Position transition state — captured pre-change so the new layout can tween
+// in from the previous one (keyed by word so shared words flow to new spots).
+let pendingPrevPositions = null;
+let animFrameId = null;
 
-const canvasRef = ref(null);
-let ctx = null;
-let dpr = 1;
-let cssW = 0;
-let cssH = 0;
-// Camera: an auto-fit transform that maps node coords (W×H logical) into
-// canvas px. Lerped each tick toward the bounding box of the current node
-// set so the graph always fills the canvas instead of sitting in a blob.
-let viewScale = 1;
-let viewOffX = 0;
-let viewOffY = 0;
-
-// User zoom/pan: when active, auto-fit is suspended and the user controls
-// the camera via the +/-/reset buttons, click-drag pan, and mouse wheel.
-// userZoom is a continuous multiplier on top of auto-fit (1.0 = baseline);
-// buttons snap to ZOOM_STEPS, the wheel slides continuously between them.
-const ZOOM_STEPS = [1, 1.5, 2, 3, 4];
-const MIN_ZOOM = ZOOM_STEPS[0];
-const MAX_ZOOM = ZOOM_STEPS[ZOOM_STEPS.length - 1];
-const userZoom = ref(1);
-const isManualView = ref(false);
-const canZoomIn = computed(() => userZoom.value < MAX_ZOOM - 1e-3);
-const canZoomOut = computed(() => userZoom.value > MIN_ZOOM + 1e-3 || isManualView.value);
-
-let nodes = [];
-let edges = [];
-let clusterAnchors = {};   // cluster id -> { x, y } target position
-let hovered = -1;
-let raf = null;
-let resizeObs = null;
-let setupForCanvas = null;  // which canvas element we've wired listeners to
-
-// Pan/click disambiguation state.
-let isPanning = false;
-let panActive = false;
-let panStartX = 0, panStartY = 0;
-let panOffStartX = 0, panOffStartY = 0;
-
-// Animated zoom: an rAF loop lerps viewScale/viewOff toward the target
-// over ~320ms. Animations compose — clicking + mid-animation retargets
-// from the current visual position.
-let zoomAnim = null;
-let zoomRaf = null;
-
-function showLabel(n) {
-    // Label only each sense's few most-central words (n.labelable, set in
-    // initLayout) plus whatever's hovered — keeps the map readable at high node
-    // counts; the rest are bare dots that reveal their word on hover.
-    return n.active || (n.member && n.labelable);
-}
-
-// ---- Canvas setup (DPR-aware, viewport-capped) ----
-function setupCanvas() {
-    const c = canvasRef.value;
-    if (!c) return;
-    dpr = window.devicePixelRatio || 1;
-    const parent = c.parentElement;
-    const containerW = parent ? parent.getBoundingClientRect().width : 800;
-    // Cap height so the graph doesn't push the legend off-screen on tall
-    // displays. The viz wants room to breathe so dense clusters don't pile
-    // into a ball — 60vh gives the simulation more vertical canvas to use.
-    const maxH = Math.max(320, window.innerHeight * 0.60);
-    const naturalH = (containerW * H) / W;
-    if (naturalH <= maxH) {
-        cssW = containerW;
-        cssH = naturalH;
-    } else {
-        cssH = maxH;
-        cssW = (maxH * W) / H;
-    }
-    c.width = Math.max(1, Math.round(cssW * dpr));
-    c.height = Math.max(1, Math.round(cssH * dpr));
-    c.style.width = cssW + "px";
-    c.style.height = cssH + "px";
-    ctx = c.getContext("2d");
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    viewScale = cssW / W;
-    viewOffX = 0;
-    viewOffY = 0;
-    if (nodes.length > 0) applyFit(false);
-}
-
-// ---- Auto-fit camera ----
-function computeFitTarget() {
-    if (nodes.length === 0 || cssW === 0) return null;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (let i = 0; i < nodes.length; i++) {
-        const n = nodes[i];
-        if (n.x - n.r < minX) minX = n.x - n.r;
-        if (n.y - n.r < minY) minY = n.y - n.r;
-        if (n.x + n.r > maxX) maxX = n.x + n.r;
-        if (n.y + n.r > maxY) maxY = n.y + n.r;
-    }
-    // Logical padding — extra room on top for labels above the node circles.
-    minX -= 16; maxX += 16; minY -= 22; maxY += 16;
-    const dx = maxX - minX;
-    const dy = maxY - minY;
-    if (dx <= 0 || dy <= 0) return null;
-    const s = Math.min(cssW / dx, cssH / dy);
-    return {
-        scale: s,
-        offX: (cssW - dx * s) / 2 - minX * s,
-        offY: (cssH - dy * s) / 2 - minY * s,
-    };
-}
-
-function applyFit(damped = true) {
-    if (isManualView.value) return;
-    const t = computeFitTarget();
-    if (!t) return;
-    if (damped) {
-        const k = 0.08;
-        viewScale = viewScale * (1 - k) + t.scale * k;
-        viewOffX = viewOffX * (1 - k) + t.offX * k;
-        viewOffY = viewOffY * (1 - k) + t.offY * k;
-    } else {
-        viewScale = t.scale;
-        viewOffX = t.offX;
-        viewOffY = t.offY;
-    }
-}
-
-// ---- Hit testing ----
-function nearestNode(mx, my) {
-    let best = -1;
-    let bestD = Infinity;
-    for (let i = 0; i < nodes.length; i++) {
-        const n = nodes[i];
-        const dx = mx - (n.x * viewScale + viewOffX);
-        const dy = my - (n.y * viewScale + viewOffY);
-        const r = n.r * viewScale + 2;
-        const d2 = dx * dx + dy * dy;
-        if (d2 <= r * r && d2 < bestD) { bestD = d2; best = i; }
-    }
-    return best;
-}
-
-function setActive(idx) {
-    for (const n of nodes) n.active = false;
-    if (idx < 0) return;
-    nodes[idx].active = true;
-    for (const e of edges) {
-        if (e.source === idx) nodes[e.target].active = true;
-        else if (e.target === idx) nodes[e.source].active = true;
-    }
-}
-
-// ---- Mouse/pan handlers ----
-function onMouseDown(ev) {
-    if (ev.button !== 0) return;
-    panActive = true;
-    isPanning = false;
-    panStartX = ev.clientX;
-    panStartY = ev.clientY;
-    panOffStartX = viewOffX;
-    panOffStartY = viewOffY;
-    window.addEventListener("mousemove", onWindowMouseMove);
-    window.addEventListener("mouseup", onWindowMouseUp);
-}
-
-// Listen on window during drag so the pan continues if the cursor leaves
-// the canvas (and we don't lose the mouseup if it happens elsewhere).
-function onWindowMouseMove(ev) {
-    if (!panActive) return;
-    const dx = ev.clientX - panStartX;
-    const dy = ev.clientY - panStartY;
-    if (!isPanning && (dx * dx + dy * dy) > 16) {
-        isPanning = true;
-        isManualView.value = true;
-        const c = canvasRef.value;
-        if (c) c.style.cursor = "grabbing";
-    }
-    if (isPanning) {
-        viewOffX = panOffStartX + dx;
-        viewOffY = panOffStartY + dy;
-        if (!raf) draw();
-    }
-}
-
-function onWindowMouseUp() {
-    window.removeEventListener("mousemove", onWindowMouseMove);
-    window.removeEventListener("mouseup", onWindowMouseUp);
-    if (!panActive) return;
-    panActive = false;
-    const c = canvasRef.value;
-    if (isPanning) {
-        isPanning = false;
-        if (c) c.style.cursor = hovered >= 0 ? "pointer" : "default";
-        return;  // suppress click after drag
-    }
-    if (hovered >= 0) {
-        onViewNode(hovered);
-    }
-}
-
-function onMouseMove(ev) {
-    if (isPanning) return;
-    const c = canvasRef.value;
-    if (!c) return;
-    const rect = c.getBoundingClientRect();
-    const idx = nearestNode(ev.clientX - rect.left, ev.clientY - rect.top);
-    if (idx !== hovered) {
-        hovered = idx;
-        setActive(idx);
-        c.style.cursor = idx >= 0 ? "pointer" : "default";
-        if (!raf) draw();
-    }
-}
-
-function onMouseLeave() {
-    if (isPanning) return;
-    if (hovered !== -1) {
-        hovered = -1;
-        setActive(-1);
-        const c = canvasRef.value; if (c) c.style.cursor = "default";
-        if (!raf) draw();
-    }
-}
-
-// ---- Zoom controls (buttons step, wheel slides, both animate where it helps) ----
-const ZOOM_ANIM_MS = 320;
-
-// Quintic ease-in-out — smoother ramps at the ends than cubic.
-function easeInOutQuintic(t) {
-    return t < 0.5 ? 16 * t * t * t * t * t : 1 - Math.pow(-2 * t + 2, 5) / 2;
-}
-
-function animateView(toScale, toOffX, toOffY, { afterReset = false, duration = ZOOM_ANIM_MS } = {}) {
-    zoomAnim = {
-        fromScale: viewScale,
-        fromOffX: viewOffX,
-        fromOffY: viewOffY,
-        toScale, toOffX, toOffY,
-        startedAt: performance.now(),
-        duration,
-        afterReset,
-    };
-    if (zoomRaf == null) zoomRaf = requestAnimationFrame(stepZoom);
-}
-
-function stepZoom(now) {
-    zoomRaf = null;
-    if (!zoomAnim) return;
-    const t = Math.min(1, (now - zoomAnim.startedAt) / zoomAnim.duration);
-    const e = easeInOutQuintic(t);
-    viewScale = zoomAnim.fromScale + (zoomAnim.toScale - zoomAnim.fromScale) * e;
-    viewOffX = zoomAnim.fromOffX + (zoomAnim.toOffX - zoomAnim.fromOffX) * e;
-    viewOffY = zoomAnim.fromOffY + (zoomAnim.toOffY - zoomAnim.fromOffY) * e;
-    if (!raf) draw();
-    if (t < 1) {
-        zoomRaf = requestAnimationFrame(stepZoom);
-    } else {
-        const wasReset = zoomAnim.afterReset;
-        zoomAnim = null;
-        // Release the manual-view freeze AFTER the reset animation lands,
-        // so applyFit doesn't yank the view mid-animation.
-        if (wasReset) isManualView.value = false;
-    }
-}
-
-// Compute the (scale, offX, offY) you'd get by zooming `viewScale/viewOff*`
-// by `factor` about the screen point (cx, cy). Anchor algebra:
-//   world.x = (cx - viewOffX) / viewScale  (stays fixed)
-//   new viewOffX = cx - world.x * (viewScale * factor)
-function zoomTarget(cx, cy, factor) {
-    return {
-        scale: viewScale * factor,
-        offX: cx * (1 - factor) + viewOffX * factor,
-        offY: cy * (1 - factor) + viewOffY * factor,
-    };
-}
-
-// Find the next zoom step strictly above the current zoom (epsilon avoids
-// no-op clicks when the wheel left us right at a step boundary).
-function nextStepAbove(z) {
-    for (let i = 0; i < ZOOM_STEPS.length; i++) {
-        if (ZOOM_STEPS[i] > z + 1e-3) return ZOOM_STEPS[i];
-    }
-    return MAX_ZOOM;
-}
-function nextStepBelow(z) {
-    for (let i = ZOOM_STEPS.length - 1; i >= 0; i--) {
-        if (ZOOM_STEPS[i] < z - 1e-3) return ZOOM_STEPS[i];
-    }
-    return MIN_ZOOM;
-}
-
-function applyUserZoom(newZoom, cx, cy, { animated = true } = {}) {
-    newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
-    const factor = newZoom / userZoom.value;
-    userZoom.value = newZoom;
-    isManualView.value = true;
-    const t = zoomTarget(cx, cy, factor);
-    if (animated) {
-        animateView(t.scale, t.offX, t.offY);
-    } else {
-        // Cancel any in-flight animation — wheel is the authoritative input.
-        if (zoomRaf != null) { cancelAnimationFrame(zoomRaf); zoomRaf = null; }
-        zoomAnim = null;
-        viewScale = t.scale;
-        viewOffX = t.offX;
-        viewOffY = t.offY;
-        if (!raf) draw();
-    }
-}
-
-function zoomIn() {
-    if (!canZoomIn.value) return;
-    applyUserZoom(nextStepAbove(userZoom.value), cssW / 2, cssH / 2);
-}
-
-function zoomOut() {
-    if (!canZoomOut.value) return;
-    const next = nextStepBelow(userZoom.value);
-    if (next <= MIN_ZOOM + 1e-3) {
-        resetView();
-        return;
-    }
-    applyUserZoom(next, cssW / 2, cssH / 2);
-}
-
-function resetView() {
-    userZoom.value = 1;
-    const t = computeFitTarget();
-    if (t) {
-        animateView(t.scale, t.offX, t.offY, { afterReset: true });
-    } else {
-        isManualView.value = false;
-    }
-}
-
-// Wheel: continuous zoom about the cursor. Skips animation — it would
-// lag behind rapid scrolling. Exponential factor keeps perceived speed
-// roughly constant across zoom levels.
-function onWheel(ev) {
-    ev.preventDefault();
-    const c = canvasRef.value;
-    if (!c) return;
-    const rect = c.getBoundingClientRect();
-    const cx = ev.clientX - rect.left;
-    const cy = ev.clientY - rect.top;
-    // Trackpad gives much smaller deltaY than a wheel-mouse "click"; the
-    // 0.0015 factor calibrates so a single wheel notch (~100) ≈ 1.16×.
-    const factor = Math.exp(-ev.deltaY * 0.0015);
-    const newZoom = userZoom.value * factor;
-    if (newZoom <= MIN_ZOOM + 1e-3 && userZoom.value <= MIN_ZOOM + 1e-3) return;
-    if (newZoom <= MIN_ZOOM + 1e-3) {
-        userZoom.value = MIN_ZOOM;
-        resetView();
-        return;
-    }
-    applyUserZoom(newZoom, cx, cy, { animated: false });
-}
-
-// ---- Render ----
-function draw() {
-    if (!ctx || cssW === 0) return;
-    ctx.clearRect(0, 0, cssW, cssH);
-
-    // edges
-    const anyHover = hovered >= 0;
-    ctx.lineWidth = 0.6;
-    for (let i = 0; i < edges.length; i++) {
-        const e = edges[i];
-        const a = nodes[e.source], b = nodes[e.target];
-        const active = anyHover && (e.source === hovered || e.target === hovered);
-        ctx.strokeStyle = anyHover && !active
-            ? "rgba(185,185,185,0.06)"
-            : "rgba(185,185,185,0.5)";
-        ctx.beginPath();
-        ctx.moveTo(a.x * viewScale + viewOffX, a.y * viewScale + viewOffY);
-        ctx.lineTo(b.x * viewScale + viewOffX, b.y * viewScale + viewOffY);
-        ctx.stroke();
-    }
-
-    // nodes
-    for (let i = 0; i < nodes.length; i++) {
-        const n = nodes[i];
-        const dim = anyHover && !n.active;
-        const fa = (n.member ? 0.85 : 0.30) * (dim ? 0.18 : 1.0);
-        ctx.fillStyle = threadColor(n.cluster - 1, fa);
-        ctx.strokeStyle = n.member
-            ? (dim ? "rgba(255,255,255,0.4)" : "#fff")
-            : threadColor(n.cluster - 1, dim ? 0.12 : 0.55);
-        ctx.lineWidth = n.member ? 0.6 : 0.5;
-        ctx.beginPath();
-        ctx.arc(n.x * viewScale + viewOffX, n.y * viewScale + viewOffY,
-            n.r * viewScale, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-    }
-
-    // Labels (after nodes so they sit on top). Drawn in priority order with
-    // bounding-box collision skipping — important labels win, the rest are
-    // dropped if they would overlap an already-drawn one. Hover/zoom always
-    // reveal what's hidden.
-    ctx.textAlign = "center";
-    ctx.textBaseline = "alphabetic";
-    const labelOrder = [];
-    for (let i = 0; i < nodes.length; i++) {
-        const n = nodes[i];
-        if (!showLabel(n)) continue;
-        const tier = n.active ? 0 : (n.member ? 1 : 2);
-        labelOrder.push({ idx: i, tier, size: n.r });
-    }
-    labelOrder.sort((a, b) => a.tier - b.tier || b.size - a.size);
-    const drawnLabels = [];
-    const PAD_X = 2;
-    for (const item of labelOrder) {
-        const n = nodes[item.idx];
-        // When hovering: labels outside the active subgraph render very
-        // faint so the hovered node's network reads as a spotlight subset.
-        const dim = anyHover && !n.active;
-        let font, fill, hPx;
-        if (n.active) { font = "600 14px sans-serif"; fill = "#111"; hPx = 14; }
-        else if (n.member) {
-            font = "13px sans-serif";
-            fill = dim ? "rgba(120,120,120,0.22)" : "#444";
-            hPx = 13;
-        } else {
-            font = "11px sans-serif";
-            fill = dim ? "rgba(120,120,120,0.18)" : "#777";
-            hPx = 11;
-        }
-        const sx = n.x * viewScale + viewOffX;
-        const sy = (n.y - n.r - 3) * viewScale + viewOffY;
-        ctx.font = font;
-        const w = ctx.measureText(n.word).width;
-        const left = sx - w / 2 - PAD_X;
-        const right = sx + w / 2 + PAD_X;
-        const top = sy - hPx;
-        const bottom = sy;
-        let collision = false;
-        for (let k = 0; k < drawnLabels.length; k++) {
-            const r = drawnLabels[k];
-            if (left < r.right && right > r.left && top < r.bottom && bottom > r.top) {
-                collision = true;
-                break;
-            }
-        }
-        if (collision && !n.active) continue;
-        drawnLabels.push({ left, top, right, bottom });
-        ctx.fillStyle = fill;
-        ctx.fillText(n.word, sx, sy);
-    }
-}
-
-// ---- Cluster ring ordering ----
-// Place clusters around the anchor ring so neighbours on the ring share
-// as many bridge edges as possible. For typical N (3-8) brute-force over
-// permutations is cheap (≤ 5040 perms × O(N) score = sub-ms). Above N=8
-// we fall back to a greedy insertion heuristic.
-function orderClustersOnRing(clusters, slice, allEdges, count) {
-    const N = clusters.length;
-    if (N <= 2) return clusters.slice();
-    const idx = new Map();
-    clusters.forEach((c, i) => idx.set(c, i));
-    const aff = Array.from({ length: N }, () => new Array(N).fill(0));
-    for (const e of allEdges) {
-        if (e.source >= count || e.target >= count) continue;
-        const ca = slice[e.source].cluster;
-        const cb = slice[e.target].cluster;
-        if (ca === cb) continue;
-        const i = idx.get(ca), j = idx.get(cb);
-        const w = e.weight || 1;
-        aff[i][j] += w;
-        aff[j][i] += w;
-    }
-    function ringScore(order) {
-        let s = 0;
-        for (let k = 0; k < order.length; k++) {
-            s += aff[idx.get(order[k])][idx.get(order[(k + 1) % order.length])];
-        }
-        return s;
-    }
-    if (N > 8) return greedyRingOrder(clusters, aff, idx);
-    const tail = clusters.slice(1);
-    let best = clusters.slice(), bestScore = ringScore(best);
-    function permute(arr, k) {
-        if (k === arr.length - 1) {
-            const order = [clusters[0], ...arr];
-            const s = ringScore(order);
-            if (s > bestScore) { bestScore = s; best = order.slice(); }
-            return;
-        }
-        for (let i = k; i < arr.length; i++) {
-            [arr[k], arr[i]] = [arr[i], arr[k]];
-            permute(arr, k + 1);
-            [arr[k], arr[i]] = [arr[i], arr[k]];
-        }
-    }
-    permute(tail, 0);
-    return best;
-}
-
-function greedyRingOrder(clusters, aff, idx) {
-    const N = clusters.length;
-    let bestI = 0, bestJ = 1, bestPair = aff[0][1];
-    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
-        if (aff[i][j] > bestPair) { bestPair = aff[i][j]; bestI = i; bestJ = j; }
-    }
-    const order = [clusters[bestI], clusters[bestJ]];
-    const placed = new Set([bestI, bestJ]);
-    while (placed.size < N) {
-        let bestC = -1, bestPos = 0, bestGain = -Infinity;
-        for (let c = 0; c < N; c++) {
-            if (placed.has(c)) continue;
-            for (let p = 0; p < order.length; p++) {
-                const a = idx.get(order[p]);
-                const b = idx.get(order[(p + 1) % order.length]);
-                const gain = aff[c][a] + aff[c][b] - aff[a][b];
-                if (gain > bestGain) { bestGain = gain; bestC = c; bestPos = p + 1; }
-            }
-        }
-        order.splice(bestPos, 0, clusters[bestC]);
-        placed.add(bestC);
-    }
-    return order;
-}
-
-// ---- Init + sim ----
-function initLayout() {
-    if (raf) { cancelAnimationFrame(raf); raf = null; }
-    const g = result.value?.graph;
-    if (!g || !g.nodes || g.nodes.length === 0) {
-        nodes = []; edges = []; hovered = -1;
-        draw();
-        return;
-    }
-    const floor = g.n_members || g.nodes.length;
-    const count = Math.min(g.nodes.length, Math.max(floor, networkWordCount.value || floor));
-    const slice = g.nodes.slice(0, count);
-    // Node size encodes within-sense ANCHOR strength (how core a word is to its
-    // sense), matching the label ranking — not raw frequency. Fall back to
-    // weight for older server responses that don't ship `anchor`.
-    const sizeOf = (n) => (n.anchor != null ? n.anchor : n.weight);
-    const maxW = Math.max(...slice.map(sizeOf), 0.001);
-    const clusters = [...new Set(slice.map((n) => n.cluster))];
-    // Order clusters around the seed ring so pairs sharing many bridge edges
-    // start adjacent — a good starting arrangement for the force sim to settle
-    // from (related clusters then merge closer instead of crossing the canvas).
-    const orderedClusters = orderClustersOnRing(clusters, slice, g.edges, count);
-    // Seed positions only: each cluster gets a starting point on a ring so the
-    // sim settles quickly without a hairball. These are NOT anchors — no force
-    // pins nodes here; the organic layout (springs + repulsion) moves them to
-    // their edge-determined positions.
-    clusterAnchors = {};
-    const anchorRad = Math.min(W, H) * 0.38;
-    orderedClusters.forEach((cid, i) => {
-        const ang = (i / orderedClusters.length) * 2 * Math.PI - Math.PI / 2;
-        clusterAnchors[cid] = {
-            x: W / 2 + Math.cos(ang) * anchorRad,
-            y: H / 2 + Math.sin(ang) * anchorRad,
-        };
+function buildGraph(g, seedPositions = null) {
+    const graph = new Graph();
+    const maxAnchor = Math.max(0.001, ...g.nodes.map((n) => n.anchor || 0));
+    // Seed each cluster's members in its own region of a ring. FA2 starts from
+    // a clustered arrangement and just *refines* it (rather than discovering
+    // clusters from random init, which 500 nodes in a tiny box can't do in
+    // 300 iterations). Order is arbitrary — only matters that clusters start apart.
+    const clusterIds = [...new Set(g.nodes.map((n) => n.cluster))];
+    const ringRad = 30;             // small ring — a hint, not a lock
+    const seed = {};
+    clusterIds.forEach((cid, i) => {
+        const a = (i / clusterIds.length) * 2 * Math.PI;
+        seed[cid] = { x: Math.cos(a) * ringRad, y: Math.sin(a) * ringRad };
     });
-    nodes = slice.map((n) => {
-        const seed = clusterAnchors[n.cluster];
-        const base = Math.sqrt(sizeOf(n) / maxW);
-        return {
+    // For continuity across theme-count changes: place new words near the
+    // centroid of cluster siblings that we DO have prior positions for.
+    const prevClusterCentroid = new Map();
+    if (seedPositions) {
+        const acc = new Map();
+        g.nodes.forEach((n) => {
+            const p = seedPositions.get(n.word);
+            if (!p) return;
+            const a = acc.get(n.cluster) || { sx: 0, sy: 0, n: 0 };
+            a.sx += p.x; a.sy += p.y; a.n += 1;
+            acc.set(n.cluster, a);
+        });
+        acc.forEach((a, c) => prevClusterCentroid.set(c, { x: a.sx / a.n, y: a.sy / a.n }));
+    }
+    g.nodes.forEach((n, i) => {
+        const prev = seedPositions?.get(n.word);
+        const centroid = prevClusterCentroid.get(n.cluster);
+        const base = prev || centroid || seed[n.cluster];
+        const jitter = prev ? 0 : 8;
+        graph.addNode(String(i), {
+            x: base.x + (Math.random() - 0.5) * jitter,
+            y: base.y + (Math.random() - 0.5) * jitter,
+            // Size scales with within-sense anchor (the legend's centrality), so
+            // the biggest circles ARE the label words. Sqrt damps extremes.
+            size: 2 + 10 * Math.sqrt((n.anchor || 0) / maxAnchor),
+            color: threadColor(n.cluster - 1, 1),
+            innerColor: "#ffffff",
+            label: n.word,
             word: n.word,
             cluster: n.cluster,
             member: n.member,
-            r: n.member ? 3 + base * 13 : 2 + base * 6,
-            x: seed.x + (Math.random() - 0.5) * 60,
-            y: seed.y + (Math.random() - 0.5) * 60,
-            vx: 0, vy: 0, fx: 0, fy: 0,
-            active: false,
-        };
+            anchor: n.anchor || 0,
+            weight: n.weight,
+            // Hidden initially if beyond the "words shown" slider — see filter.
+            hidden: false,
+        });
     });
-    // Mark each sense's top-N most-central (largest-anchor) member nodes as
-    // labelable; everything else is a bare dot until hovered. This is the main
-    // declutter lever — a 500-node map otherwise carries 500 labels.
+    // FA2 has no native cluster concept, so we encode "cluster cohesion" via
+    // edge weights: intra-cluster edges keep their full NPMI weight, inter-
+    // cluster bridges are scaled down to INTER_WEIGHT_SCALE of their nominal
+    // weight in FA2's eyes. Intra-pull dominates → tight cluster blobs; inter
+    // still pulls related clusters near each other (so the layout encodes
+    // sense-affinity, not just "clusters spread evenly around the center").
+    //
+    // Rendering: intra edges stay straight (clean inside clusters); inter
+    // bridges render as gentle curves so the bundle of A-to-B edges arcs
+    // through the gap instead of crossing at the cluster boundaries.
+    const INTER_WEIGHT_SCALE = 0.15;
+    g.edges.forEach((e) => {
+        const w = e.weight || 0;
+        graph.addEdge(String(e.source), String(e.target), {
+            size: 0.2 + 0.7 * w,
+            // Opaque colours below white. Sigma's curve edge program doesn't
+            // reliably honour alpha, so we use solid colours instead.
+            color: e.intra ? "#d4d8df" : "#e6e8ec",
+            weight: e.intra ? w : INTER_WEIGHT_SCALE * w,
+            intra: e.intra,
+            type: e.intra ? "line" : "curve",
+            curvature: e.intra ? 0 : 0.35,
+        });
+    });
+    // Top-N per cluster get forceLabel (always rendered). Other labels appear
+    // automatically as you zoom in and node screen-size crosses the threshold.
     const byCluster = {};
-    nodes.forEach((n, i) => {
-        if (!n.member) return;
-        (byCluster[n.cluster] || (byCluster[n.cluster] = [])).push(i);
+    graph.forEachNode((id, attrs) => {
+        if (!attrs.member) return;
+        (byCluster[attrs.cluster] ||= []).push({ id, anchor: attrs.anchor });
+    });
+    for (const arr of Object.values(byCluster)) {
+        arr.sort((a, b) => b.anchor - a.anchor);
+        arr.slice(0, LABELS_PER_CLUSTER).forEach(({ id }) =>
+            graph.setNodeAttribute(id, "forceLabel", true));
+    }
+    return graph;
+}
+
+function applyVisibility() {
+    if (!G) return;
+    const limit = networkWordCount.value || 0;
+    const offClusters = hiddenClusters.value;
+    G.forEachNode((id, attrs) => {
+        const beyondSlider = Number(id) >= limit;
+        const inOffCluster = offClusters.has(attrs.cluster);
+        G.setNodeAttribute(id, "hidden", beyondSlider || inOffCluster);
+    });
+}
+
+// ---- Search-in-graph ----
+function onSearchInput() {
+    matchedNodes.clear();
+    const q = searchQuery.value.trim().toLowerCase();
+    if (q && G) {
+        G.forEachNode((id, attrs) => {
+            if (!attrs.hidden && attrs.word.toLowerCase().includes(q)) matchedNodes.add(id);
+        });
+    }
+    renderer?.refresh();
+    // Centre on the first match so the user sees where it is.
+    if (matchedNodes.size > 0 && renderer) {
+        const firstId = matchedNodes.values().next().value;
+        const a = G.getNodeAttributes(firstId);
+        // camera.animate() expects FRAMED-graph coords (sigma's internal [-1,1]
+        // camera space), not raw graph coords. Compose graph → viewport →
+        // framed since sigma 3 has no direct graphToFramedGraph.
+        const fg = renderer.viewportToFramedGraph(renderer.graphToViewport({ x: a.x, y: a.y }));
+        renderer.getCamera().animate({ x: fg.x, y: fg.y, ratio: 0.5 }, { duration: 400 });
+    }
+}
+
+// ---- Cluster hulls + mini-map ----
+// Convex hull (Andrew's monotone chain). Returns the hull as a closed loop of points.
+function convexHull(pts) {
+    if (pts.length < 3) return pts.slice();
+    const p = pts.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+    const cross = (O, A, B) => (A.x - O.x) * (B.y - O.y) - (A.y - O.y) * (B.x - O.x);
+    const lower = [];
+    for (const q of p) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0) lower.pop();
+        lower.push(q);
+    }
+    const upper = [];
+    for (let i = p.length - 1; i >= 0; i--) {
+        const q = p[i];
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0) upper.pop();
+        upper.push(q);
+    }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+}
+
+function sizeOverlayCanvas(canvas) {
+    if (!canvas) return null;
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== w * dpr) canvas.width = w * dpr;
+    if (canvas.height !== h * dpr) canvas.height = h * dpr;
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return { ctx, w, h };
+}
+
+function drawHulls() {
+    const ov = sizeOverlayCanvas(hullsRef.value);
+    if (!ov || !G || !renderer) return;
+    const { ctx } = ov;
+    // Group visible MEMBER nodes by cluster, in screen coords.
+    const byCluster = {};
+    G.forEachNode((id, attrs) => {
+        if (attrs.hidden || !attrs.member) return;
+        const s = renderer.graphToViewport(attrs);
+        (byCluster[attrs.cluster] ||= { pts: [], color: attrs.color }).pts.push(s);
     });
     for (const cid in byCluster) {
-        byCluster[cid].sort((a, b) => nodes[b].r - nodes[a].r);
-        byCluster[cid].slice(0, LABELS_PER_CLUSTER).forEach((i) => { nodes[i].labelable = true; });
+        const { pts, color } = byCluster[cid];
+        if (pts.length < 3) continue;
+        const hull = convexHull(pts);
+        // Inflate the hull outward by ~18 px so it doesn't sit on the outer nodes.
+        const cx = hull.reduce((a, p) => a + p.x, 0) / hull.length;
+        const cy = hull.reduce((a, p) => a + p.y, 0) / hull.length;
+        const pad = 18;
+        const padded = hull.map((p) => {
+            const dx = p.x - cx, dy = p.y - cy;
+            const len = Math.sqrt(dx * dx + dy * dy) || 1;
+            return { x: p.x + (dx / len) * pad, y: p.y + (dy / len) * pad };
+        });
+        // Soft fill at low alpha — matches cluster color so the region is recognisable.
+        const fill = color.replace(/,\s*1\s*\)$/, ", 0.13)");
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.moveTo(padded[0].x, padded[0].y);
+        for (let i = 1; i < padded.length; i++) ctx.lineTo(padded[i].x, padded[i].y);
+        ctx.closePath();
+        ctx.fill();
     }
-    edges = g.edges
-        .filter((e) => e.source < count && e.target < count)
-        .map((e) => ({ source: e.source, target: e.target, weight: e.weight, intra: e.intra }));
-    hovered = -1;
-    viewScale = cssW > 0 ? cssW / W : 1;
-    viewOffX = 0;
-    viewOffY = 0;
-    // Re-engage auto-fit on every (re)init: any prior user zoom/pan is
-    // meaningless for the new layout.
-    isManualView.value = false;
-    userZoom.value = 1;
-    if (zoomRaf != null) { cancelAnimationFrame(zoomRaf); zoomRaf = null; }
-    zoomAnim = null;
-    runSim();
+    drawDimNodes();
 }
 
-function runSim() {
-    const N = nodes.length;
-    if (N === 0) { draw(); return; }
-    // Start cooler than 1.0 — at full alpha the accumulated repulsion of
-    // many nodes flings outliers to the wall faster than the inward forces
-    // can catch them. A gentler ramp lets the system settle from a compact
-    // state instead of recovering from an explosion.
-    let alpha = 0.6;
-    // Repulsion now only shapes spacing — the discrete overlap-resolution
-    // pass below handles strict non-overlap, so we no longer have to crank
-    // this up to brute-force readability.
-    const REPULSION = Math.max(350, 180000 / N);
-    // Intra-cluster repulsion stays dampened: members of the same thread
-    // should sit closer than members of different threads.
-    const INTRA_REPEL = 0.55;
-    const SPRING_INTRA = 0.030;
-    // Organic (FA2-style) layout: position emerges from the co-occurrence edges,
-    // not from imposed positions. Bridge springs carry the layout (so related
-    // senses pull together), repulsion spreads everything out, and color — not
-    // position — encodes the thread. Clusters are only used to *seed* initial
-    // positions (see initLayout); no force pins them anywhere.
-    const SPRING_INTER = 0.020;
-    const TARGET_LEN = 75;
-    // CENTER is a weak global pull to keep the graph on-canvas; repulsion +
-    // springs do the actual positioning.
-    const CENTER = 0.006;
-    // Gentle cohesion nudge toward each thread's centroid — enough to keep a
-    // sense loosely together and avoid a hairball, without dictating where it sits.
-    const CLUSTER_GRAVITY = 0.012;
-    const DAMP = 0.82;
-    // Soft wall starts well inside the canvas so context outliers get
-    // caught long before the hard clamp pins them in a corner.
-    const WALL_MARGIN = 100;
-    const WALL_STIFF = 0.30;
+// Paint dim node rings on the BELOW-sigma overlay so overlap pixels are
+// identical to non-overlap pixels (stroked circles vs the WebGL ring
+// program's alpha-cutout artefacts) AND labels rendered inside sigma sit on
+// top of them. Sigma hides these nodes via the reducer; this is the only
+// thing rendering them while a hover or search is active.
+function drawDimNodes() {
+    // Always size + clear the canvas so leftover rings don't linger when
+    // the user clears their hover / search.
+    const ov = sizeOverlayCanvas(dimRingsRef.value);
+    if (!ov || !G || !renderer) return;
+    const { ctx } = ov;
+    const clusterFocus = hoveredCluster !== null;
+    const searching = matchedNodes.size > 0;
+    const hovering = hoveredNode !== null;
+    if (!clusterFocus && !searching && !hovering) return;
+    const ratio = renderer.getCamera().getState().ratio;
+    ctx.strokeStyle = "#cad0d8";
+    ctx.lineWidth = 1;
+    G.forEachNode((id, attrs) => {
+        if (attrs.hidden) return;     // user-hidden (slider / cluster-off)
+        let isDim;
+        if (clusterFocus) isDim = attrs.cluster !== hoveredCluster;
+        else if (searching) isDim = !matchedNodes.has(id);
+        else isDim = id !== hoveredNode && !G.areNeighbors(id, hoveredNode);
+        if (!isDim) return;
+        const pos = renderer.graphToViewport(attrs);
+        const r = (attrs.size || 4) / ratio;
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+        ctx.stroke();
+    });
+}
 
-    function tick() {
-        // Member centroids — context words follow the cores, can't drag them.
-        const cents = {};
-        for (let i = 0; i < N; i++) {
-            const a = nodes[i];
-            if (!a.member) continue;
-            const c = cents[a.cluster] || (cents[a.cluster] = { x: 0, y: 0, n: 0 });
-            c.x += a.x; c.y += a.y; c.n += 1;
+function setupReducers() {
+    if (!renderer) return;
+    // Dim colour for non-matches / non-neighbours: a medium gray-blue so the
+    // ring is clearly visible on white while still receding behind the
+    // highlighted (full-color) nodes.
+    const DIM = "#b0b6c0";
+    renderer.setSetting("nodeReducer", (node, attrs) => {
+        // Legend chip hover takes priority: show only the focused cluster.
+        if (hoveredCluster !== null) {
+            return attrs.cluster === hoveredCluster
+                ? { ...attrs, zIndex: 1 }
+                : { ...attrs, hidden: true };
         }
-        for (const k in cents) { cents[k].x /= cents[k].n; cents[k].y /= cents[k].n; }
-        // Repulsion + centering + cluster gravity + soft wall — O(N²)
-        for (let i = 0; i < N; i++) {
-            const a = nodes[i];
-            let fx = (W / 2 - a.x) * CENTER;
-            let fy = (H / 2 - a.y) * CENTER;
-            const c = cents[a.cluster];
-            if (c) { fx += (c.x - a.x) * CLUSTER_GRAVITY; fy += (c.y - a.y) * CLUSTER_GRAVITY; }
-            if (a.x < WALL_MARGIN) fx += (WALL_MARGIN - a.x) * WALL_STIFF;
-            else if (a.x > W - WALL_MARGIN) fx -= (a.x - (W - WALL_MARGIN)) * WALL_STIFF;
-            if (a.y < WALL_MARGIN) fy += (WALL_MARGIN - a.y) * WALL_STIFF;
-            else if (a.y > H - WALL_MARGIN) fy -= (a.y - (H - WALL_MARGIN)) * WALL_STIFF;
-            for (let j = 0; j < N; j++) {
-                if (i === j) continue;
-                const b = nodes[j];
-                let dx = a.x - b.x;
-                let dy = a.y - b.y;
-                let d2 = dx * dx + dy * dy || 0.01;
-                const d = Math.sqrt(d2);
-                const rep = a.cluster === b.cluster ? REPULSION * INTRA_REPEL : REPULSION;
-                const f = rep / d2;
-                fx += (dx / d) * f;
-                fy += (dy / d) * f;
+        // Search takes priority over node hover: highlight matches, hide rest.
+        // (drawDimNodes paints the dim ones as Canvas2D rings on the overlay
+        // so overlaps render cleanly — see drawHulls).
+        if (matchedNodes.size > 0) {
+            return matchedNodes.has(node)
+                ? { ...attrs, zIndex: 1, forceLabel: true }
+                : { ...attrs, hidden: true };
+        }
+        if (hoveredNode === null) return attrs;
+        if (node === hoveredNode || G.areNeighbors(node, hoveredNode)) {
+            return { ...attrs, zIndex: 1, forceLabel: true };
+        }
+        // Non-neighbour: hidden in sigma; drawDimNodes paints the ring.
+        return { ...attrs, hidden: true };
+    });
+    renderer.setSetting("edgeReducer", (edge, attrs) => {
+        if (hoveredCluster !== null) {
+            const [s, t] = G.extremities(edge);
+            const sIn = G.getNodeAttribute(s, "cluster") === hoveredCluster;
+            const tIn = G.getNodeAttribute(t, "cluster") === hoveredCluster;
+            // Only intra-cluster edges remain — bridges to other clusters get hidden.
+            return sIn && tIn ? attrs : { ...attrs, hidden: true };
+        }
+        if (matchedNodes.size > 0) {
+            const [s, t] = G.extremities(edge);
+            if (matchedNodes.has(s) || matchedNodes.has(t)) return attrs;
+            return { ...attrs, hidden: true };
+        }
+        if (hoveredNode === null) return attrs;
+        const [s, t] = G.extremities(edge);
+        if (s === hoveredNode || t === hoveredNode) return { ...attrs, color: "#888", size: attrs.size * 1.5 };
+        return { ...attrs, hidden: true };
+    });
+}
+
+function flyToCluster(clusterId) {
+    if (!G || !renderer) return;
+    const xs = [], ys = [];
+    G.forEachNode((id, attrs) => {
+        if (attrs.cluster === clusterId && attrs.member) {
+            xs.push(attrs.x); ys.push(attrs.y);
+        }
+    });
+    if (!xs.length) return;
+    const cx = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+    const fg = renderer.viewportToFramedGraph(renderer.graphToViewport({ x: cx, y: cy }));
+    renderer.getCamera().animate({ x: fg.x, y: fg.y, ratio: 0.4 }, { duration: 600 });
+}
+
+// Camera centroid + tight fixed ratio (about 7× zoom from the default ~1.0
+// natural fit). Used by the legend popup's "Focus" action.
+function zoomToCluster(clusterId) {
+    if (!G || !renderer) return;
+    const xs = [], ys = [];
+    G.forEachNode((id, attrs) => {
+        if (attrs.cluster === clusterId && attrs.member) {
+            xs.push(attrs.x); ys.push(attrs.y);
+        }
+    });
+    if (!xs.length) return;
+    const cx = xs.reduce((a, b) => a + b, 0) / xs.length;
+    const cy = ys.reduce((a, b) => a + b, 0) / ys.length;
+    const fg = renderer.viewportToFramedGraph(renderer.graphToViewport({ x: cx, y: cy }));
+    renderer.getCamera().animate({ x: fg.x, y: fg.y, ratio: 0.15 }, { duration: 600 });
+}
+
+function zoomIn() { renderer?.getCamera().animatedZoom({ duration: 200 }); }
+function zoomOut() { renderer?.getCamera().animatedUnzoom({ duration: 200 }); }
+function resetView() {
+    // Match the same comfortable ratio used on first render — animatedReset
+    // would snap to ratio 1 and crop nodes/hulls at the edges.
+    renderer?.getCamera().animate({ x: 0.5, y: 0.5, ratio: 1.05 }, { duration: 400 });
+}
+
+// Compute the sigma container's height so it extends from its current top
+// to a small margin from the bottom of the viewport. Idempotent; safe to
+// call on mount, resize, or after a result loads.
+function updateSigmaHeight() {
+    if (!containerRef.value) return;
+    const top = containerRef.value.getBoundingClientRect().top;
+    const bottomMargin = 24;
+    const minHeight = 480;
+    const available = window.innerHeight - top - bottomMargin;
+    sigmaHeight.value = Math.max(minHeight, Math.floor(available));
+}
+
+function destroyRenderer() {
+    cancelTween();
+    if (renderer) { renderer.kill(); renderer = null; }
+    G = null;
+    hoveredNode = null;
+    hoveredCluster = null;
+    matchedNodes.clear();
+    searchQuery.value = "";
+    hiddenClusters.value = new Set();
+    contextMenu.value = null;
+    legendMenu.value = null;
+}
+
+async function renderGraph(g) {
+    const prevPos = pendingPrevPositions;
+    pendingPrevPositions = null;
+    destroyRenderer();
+    if (!g || !containerRef.value) return;
+    G = buildGraph(g, prevPos);
+    // Snapshot of pre-FA2 positions: these are the tween's START frame, so the
+    // user sees the layout reorganize from where it was rather than snap.
+    const tweenStart = prevPos ? new Map() : null;
+    if (tweenStart) {
+        G.forEachNode((id, attrs) => tweenStart.set(id, { x: attrs.x, y: attrs.y }));
+    }
+    // ForceAtlas2 with LinLog: gives crisper cluster separation than vanilla
+    // FA2. Barnes-Hut is O(n log n) so scales if we ever raise max_nodes.
+    forceAtlas2.assign(G, {
+        iterations: 500,
+        settings: {
+            barnesHutOptimize: G.order > 200,
+            barnesHutTheta: 0.5,
+            gravity: 0.4,           // gentle gravity → layout has room to breathe
+            scalingRatio: 25,       // strong repulsion → meaningful gaps between nodes
+            strongGravityMode: false,
+            linLogMode: false,      // standard FA2 attraction: clusters hug together as blobs
+            edgeWeightInfluence: 1,
+            slowDown: 5,
+            adjustSizes: false,     // noverlap handles overlap as a post-pass
+            outboundAttractionDistribution: false,
+        },
+    });
+    // Post-process: nudge any remaining overlaps apart. Preserves cluster structure
+    // (only resolves local collisions); much cleaner than relying on FA2 alone.
+    noverlap.assign(G, {
+        maxIterations: 300,
+        settings: { margin: 7, ratio: 1.4, speed: 3, gridSize: 20 },
+    });
+    // Park each node at its tween-start spot (the previous layout) and stash
+    // the post-FA2 position as the target — the rAF loop interpolates between.
+    if (tweenStart) {
+        G.forEachNode((id, attrs) => {
+            G.setNodeAttribute(id, "tx", attrs.x);
+            G.setNodeAttribute(id, "ty", attrs.y);
+            const s = tweenStart.get(id);
+            if (s) {
+                G.setNodeAttribute(id, "x", s.x);
+                G.setNodeAttribute(id, "y", s.y);
             }
-            a.fx = fx; a.fy = fy;
-        }
-        // Springs — same-thread hard, bridges slack.
-        for (let i = 0; i < edges.length; i++) {
-            const e = edges[i];
-            const a = nodes[e.source];
-            const b = nodes[e.target];
-            let dx = b.x - a.x;
-            let dy = b.y - a.y;
-            const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-            const stiff = e.intra ? SPRING_INTRA : SPRING_INTER;
-            const force = stiff * (d - TARGET_LEN) * (0.3 + e.weight);
-            const ux = dx / d, uy = dy / d;
-            a.fx += ux * force; a.fy += uy * force;
-            b.fx -= ux * force; b.fy -= uy * force;
-        }
-        // Integrate.
-        for (let i = 0; i < N; i++) {
-            const a = nodes[i];
-            a.vx = (a.vx + a.fx * alpha) * DAMP;
-            a.vy = (a.vy + a.fy * alpha) * DAMP;
-            a.x = Math.max(a.r, Math.min(W - a.r, a.x + a.vx * alpha));
-            a.y = Math.max(a.r, Math.min(H - a.r, a.y + a.vy * alpha));
-        }
-        // Discrete overlap resolution: any two nodes whose circles (plus a
-        // small padding for label legibility) intersect get pushed apart,
-        // splitting the correction half-and-half. Positional constraint, not
-        // a force — lets us tune repulsion for *spacing* rather than for
-        // *non-overlap*.
-        const PAD = 8;  // inter-node gap; raises whitespace (auto-fit preserves it)
-        for (let i = 0; i < N; i++) {
-            const a = nodes[i];
-            for (let j = i + 1; j < N; j++) {
-                const b = nodes[j];
-                const dx = b.x - a.x;
-                const dy = b.y - a.y;
-                const minDist = a.r + b.r + PAD;
-                const d2 = dx * dx + dy * dy;
-                if (d2 < minDist * minDist && d2 > 0) {
-                    const d = Math.sqrt(d2);
-                    const push = (minDist - d) * 0.5;
-                    const ux = dx / d, uy = dy / d;
-                    a.x = Math.max(a.r, Math.min(W - a.r, a.x - ux * push));
-                    a.y = Math.max(a.r, Math.min(H - a.r, a.y - uy * push));
-                    b.x = Math.max(b.r, Math.min(W - b.r, b.x + ux * push));
-                    b.y = Math.max(b.r, Math.min(H - b.r, b.y + uy * push));
-                }
-            }
-        }
-        applyFit(true);
-        draw();
-        alpha *= 0.985;
-        if (alpha > 0.012) raf = requestAnimationFrame(tick);
-        else raf = null;
+        });
     }
-    tick();
+    applyVisibility();
+    renderer = new Sigma(G, containerRef.value, {
+        renderEdgeLabels: false,
+        defaultEdgeColor: "#dddfe4",
+        // Screen-px size threshold for showing a node's label. As you zoom in,
+        // more nodes cross this threshold — that's the automatic label LOD.
+        // (forceLabel-tagged nodes — top-N per cluster — bypass this.)
+        labelRenderedSizeThreshold: 8,
+        labelFont: "sans-serif",
+        labelSize: 12,
+        labelWeight: "500",
+        labelColor: { color: "#222" },
+        zIndex: true,
+        // Outline-only nodes: see NodeRingProgram definition near the top.
+        defaultNodeType: "ring",
+        nodeProgramClasses: { ring: NodeRingProgram },
+        // Edges with type:"curve" render via @sigma/edge-curve; intra-cluster
+        // edges stay type:"line" so the inside of a cluster reads cleanly.
+        edgeProgramClasses: { curve: EdgeCurveProgram },
+    });
+    setupReducers();
+    // Pull the camera back a touch so node radii (in screen px) and hull
+    // padding (18px past nodes) don't get clipped at the canvas edges on
+    // first render. Sigma 3's default state is {x: 0.5, y: 0.5, ratio: 1}
+    // — the graph centre lives at framed (0.5, 0.5), NOT (0, 0).
+    renderer.getCamera().setState({ x: 0.5, y: 0.5, ratio: 1.05 });
+    renderer.on("enterNode", ({ node }) => {
+        hoveredNode = node;
+        renderer.refresh();
+    });
+    renderer.on("leaveNode", () => {
+        hoveredNode = null;
+        renderer.refresh();
+    });
+    renderer.on("clickNode", ({ node }) => {
+        onViewNode(node);
+    });
+    renderer.on("rightClickNode", ({ node, event }) => {
+        event.original?.preventDefault?.();
+        contextMenu.value = { x: event.x, y: event.y, kind: "node", nodeId: node };
+    });
+    renderer.on("rightClickStage", ({ event }) => {
+        event.original?.preventDefault?.();
+        contextMenu.value = { x: event.x, y: event.y, kind: "stage" };
+    });
+    // Any left-click on the stage closes an open context menu (the menu's own
+    // buttons stop propagation, so they fire first).
+    renderer.on("clickStage", () => { contextMenu.value = null; });
+    // Redraw the hull overlay every time sigma paints — it needs to follow
+    // camera pan/zoom + reducer-driven node attribute changes.
+    renderer.on("afterRender", drawHulls);
+    if (tweenStart) animateNodesToTarget();
 }
 
-function onViewportResize() { setupCanvas(); draw(); }
-
-// ---- Canvas lifecycle ----
-// The canvas lives inside v-if="result.graph", so it mounts when graph
-// data arrives and may unmount on a fresh query. Wire listeners per
-// element instance, tear down the prior set when the element changes.
-async function ensureCanvasSetup() {
-    await nextTick();
-    const c = canvasRef.value;
-    if (!c || setupForCanvas === c) return;
-    if (setupForCanvas) setupForCanvas.removeEventListener("wheel", onWheel);
-    if (resizeObs) { resizeObs.disconnect(); resizeObs = null; }
-    setupCanvas();
-    if (typeof ResizeObserver !== "undefined" && c.parentElement) {
-        resizeObs = new ResizeObserver(() => { setupCanvas(); draw(); });
-        resizeObs.observe(c.parentElement);
+function cancelTween() {
+    if (animFrameId != null) {
+        cancelAnimationFrame(animFrameId);
+        animFrameId = null;
     }
-    // Wheel needs an explicit non-passive listener so preventDefault works
-    // — modern browsers default wheel listeners to passive otherwise.
-    c.addEventListener("wheel", onWheel, { passive: false });
-    setupForCanvas = c;
 }
 
-// When graph data arrives or the displayed-node count changes, (re-)build
-// the layout. flush: 'post' so the DOM is updated (canvas mounted) before
-// we touch it.
-watch([() => result.value?.graph, networkWordCount], async ([g]) => {
+// rAF tween from the parked x/y → the stashed tx/ty. Smoothstep easing.
+function animateNodesToTarget() {
+    cancelTween();
+    if (!G || !renderer) return;
+    const DURATION = 700;
+    const startTime = performance.now();
+    const startPos = new Map();
+    G.forEachNode((id, attrs) => startPos.set(id, { x: attrs.x, y: attrs.y }));
+    const step = (now) => {
+        if (!G || !renderer) { animFrameId = null; return; }
+        const t = Math.min(1, (now - startTime) / DURATION);
+        const e = t * t * (3 - 2 * t);
+        G.forEachNode((id, attrs) => {
+            const s = startPos.get(id);
+            const tx = attrs.tx, ty = attrs.ty;
+            if (!s || tx == null || ty == null) return;
+            G.setNodeAttribute(id, "x", s.x + (tx - s.x) * e);
+            G.setNodeAttribute(id, "y", s.y + (ty - s.y) * e);
+        });
+        renderer.refresh();
+        if (t < 1) {
+            animFrameId = requestAnimationFrame(step);
+        } else {
+            G.forEachNode((id) => {
+                G.removeNodeAttribute(id, "tx");
+                G.removeNodeAttribute(id, "ty");
+            });
+            animFrameId = null;
+        }
+    };
+    animFrameId = requestAnimationFrame(step);
+}
+
+// Rebuild sigma whenever a new graph arrives.
+watch(() => result.value?.graph, async (g) => {
     if (!g) return;
-    await ensureCanvasSetup();
-    initLayout();
+    await nextTick();
+    updateSigmaHeight();
+    renderGraph(g);
 }, { flush: "post" });
 
+// Slider just toggles hidden flags — no relayout.
+watch(networkWordCount, () => {
+    if (!G || !renderer) return;
+    applyVisibility();
+    renderer.refresh();
+});
+
 onMounted(() => {
-    window.addEventListener("resize", onViewportResize);
-    // Self-fetch on mount. Necessary because this component is loaded async
-    // (defineAsyncComponent in Collocation.vue): the parent's tab-switch handler
-    // calls runDetection() via a template ref after `await nextTick()`, but
-    // nextTick doesn't wait for the dynamic-import promise to resolve — so on a
-    // page reload directly to the word-map tab, the parent fires its call while
-    // wordMapRef is still null, the ?. swallows it, and the canvas stays empty.
-    // Triggering here ensures we fetch as soon as the chunk lands.
+    // Async-loaded: parent's nextTick-then-call may miss our mount; self-fetch.
     if (!result.value) runDetection();
+    document.addEventListener("click", onDocClickForLegend);
+    window.addEventListener("resize", updateSigmaHeight);
+    nextTick(updateSigmaHeight);
 });
 
 onBeforeUnmount(() => {
-    if (raf) cancelAnimationFrame(raf);
-    if (zoomRaf != null) cancelAnimationFrame(zoomRaf);
-    if (resizeObs) resizeObs.disconnect();
-    window.removeEventListener("resize", onViewportResize);
-    window.removeEventListener("mousemove", onWindowMouseMove);
-    window.removeEventListener("mouseup", onWindowMouseUp);
-    if (setupForCanvas) setupForCanvas.removeEventListener("wheel", onWheel);
+    destroyRenderer();
+    document.removeEventListener("click", onDocClickForLegend);
+    window.removeEventListener("resize", updateSigmaHeight);
+    closeLegendMenu();
 });
 </script>
 
@@ -1098,6 +1057,29 @@ onBeforeUnmount(() => {
     display: flex;
     align-items: flex-start;
     text-align: left;
+    transition: opacity 0.18s ease, background-color 0.18s ease;
+}
+
+.legend-chip.cluster-off {
+    opacity: 0.45;
+    background-color: #f6f6f6;
+}
+
+.legend-chip.cluster-off .legend-text {
+    text-decoration: line-through;
+}
+
+.legend-chip.cluster-off .legend-swatch {
+    opacity: 0.4;
+}
+
+.summary-dropdown {
+    display: inline-block;
+    width: auto;
+    min-width: 3.2rem;
+    padding: 0.1rem 1.5rem 0.1rem 0.4rem;
+    font-weight: 600;
+    vertical-align: baseline;
 }
 
 .legend-text {
@@ -1146,17 +1128,134 @@ onBeforeUnmount(() => {
     pointer-events: none;
 }
 
-/* ---- Canvas + zoom controls ---- */
+/* ---- Sigma container + zoom controls ---- */
 .thread-network {
     width: 100%;
     position: relative;
+    /* White bg + rounded corners live HERE (not on sigma-container) so the
+       dim-rings overlay at z 0 inside thread-network can paint visibly. If
+       sigma-container had the white bg, its z 1 layer would cover the rings. */
+    background: #fff;
+    border-radius: 0.375rem;
 }
 
-.network-canvas {
-    display: block;
-    margin: 0 auto;       /* JS sets explicit width/height; centered when narrower than container */
+.sigma-container {
+    position: relative;
+    z-index: 1;       /* above dim-rings overlay (z 0), below hulls (z 3) */
+    width: 100%;
+    /* height is set inline (see updateSigmaHeight) — computed to fit the
+       viewport. min-height kicks in if measurement fails / very tall chrome. */
+    min-height: 480px;
     cursor: default;
 }
+
+/* Dim node rings overlay — drawn UNDERNEATH the sigma canvas so node labels
+   (rendered by sigma) stay on top of any ring that passes behind them. */
+.dim-rings-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+}
+/* Inset shadow is drawn on top of the sigma WebGL canvas via a pseudo-element
+   on the parent — putting it on .sigma-container itself doesn't work because
+   the canvas covers the parent's bg painting (where inset shadow lives). */
+.thread-network::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 0.375rem;
+    pointer-events: none;
+    z-index: 3;
+    box-shadow:
+        inset 0 0 0 1px #d8dee8,
+        inset 0 4px 10px rgba(0, 0, 0, 0.10),
+        inset 0 -1px 3px rgba(0, 0, 0, 0.04);
+}
+
+/* Cluster hulls overlay — soft translucent shapes drawn on top of sigma at
+   low alpha, so node colours show through. Doesn't intercept mouse events. */
+.hulls-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.viz-loading-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.65);
+    z-index: 4;
+    pointer-events: all;
+}
+
+.ctx-menu {
+    position: absolute;
+    z-index: 5;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 0.25rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+    min-width: 11rem;
+    padding: 0.25rem 0;
+}
+
+.ctx-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: 0;
+    background: none;
+    padding: 0.35rem 0.75rem;
+    font-size: 0.85rem;
+    color: #222;
+    cursor: pointer;
+}
+
+.ctx-item:hover:not(:disabled) {
+    background: #f0f0f0;
+}
+
+.ctx-item:disabled {
+    color: #aaa;
+    cursor: default;
+}
+
+.ctx-sep {
+    height: 1px;
+    background: rgba(0, 0, 0, 0.08);
+    margin: 0.25rem 0;
+}
+
+.legend-popup {
+    min-width: 13rem;
+    z-index: 1040;
+}
+
+.legend-popup-header {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #333;
+}
+
+.legend-popup-label {
+    word-break: break-word;
+}
+
 
 .zoom-controls {
     position: absolute;

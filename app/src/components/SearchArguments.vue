@@ -76,10 +76,7 @@
         <bibliography-criteria :biblio="queryArgs.biblio" :queryReport="queryReport" :resultsLength="resultsLength"
             :start_date="formData.start_date" :end_date="formData.end_date"
             :removeMetadata="removeMetadata"></bibliography-criteria>
-        <div style="margin-top: 10px" v-if="queryReport === 'collocation'">
-            <!-- "top 100 collocates" only applies to methods that actually
-                 display a top-collocates list. timeSeries / wordMap cluster
-                 collocates into usage patterns, so show a simpler count. -->
+        <div v-if="queryReport === 'collocation'">
             <template v-if="['timeSeries', 'wordMap'].includes(collocMethod)">
                 {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
             </template>
@@ -90,10 +87,10 @@
     </div>
 </template>
 <script setup>
-import { computed, inject, nextTick, reactive, ref, useTemplateRef, watch } from "vue";
-import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
+import { computed, inject, nextTick, reactive, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRoute, useRouter } from "vue-router";
 import { useMainStore } from "../stores/main";
 import {
     buildBiblioCriteria,
@@ -103,7 +100,7 @@ import {
     paramsFilter,
     paramsToRoute,
 } from "../utils.js";
-import BibliographyCriteria from "./BibliographyCriteria";  // eslint-disable-line no-unused-vars
+import BibliographyCriteria from "./BibliographyCriteria"; // eslint-disable-line no-unused-vars
 
 const props = defineProps(["resultStart", "resultEnd"]);
 
