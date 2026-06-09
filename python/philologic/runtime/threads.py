@@ -47,6 +47,13 @@ from scipy.sparse import csr_matrix
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.reports.collocation import get_word_groups
+from philologic.runtime.reports.time_series import _get_doc_year_data
+
+# A timeline bin is only plotted as a usage rate if its smoothing window rests
+# on at least this many distinct documents. Below it the rate is statistically
+# too thin to trust (a single large document would dominate), so the bin is
+# zeroed. A transparent evidence floor — not an assumption about usage.
+_MIN_DOCS_WIN = 8
 
 
 # ----------------------------- Hit bagging ------------------------------
@@ -439,6 +446,62 @@ def _intensity_kernel(
                 intensity[bi] += 1.0
                 break
     return intensity
+
+
+@numba.jit(nopython=True, nogil=True, cache=True)
+def _weighted_argmax_kernel(
+    flat_ids: np.ndarray, indptr: np.ndarray, bin_of_hit: np.ndarray,
+    word_to_sense: np.ndarray, word_weight: np.ndarray, n_senses: int, n_bins: int,
+) -> np.ndarray:
+    """Assign each bag to ONE sense — the one its words point to most strongly —
+    and return per-(sense, bin) counts.
+
+    Used for the composition overview. At the sentence level a word's usage is
+    usually one thing (religious *or* political *or* sentimental, rarely a true
+    blend), so each occurrence votes for a single dominant sense rather than being
+    smeared across all of them. The vote is decided by the summed *centrality* of
+    the sense words present, not their raw count: a sentence containing a sense's
+    hub word outweighs one containing another sense's peripheral word. Because the
+    score is continuous, exact ties are rare; any that remain — e.g. two
+    equally-central words — are split equally. Bags matching no sense are skipped.
+
+    Per-occurrence the vote can still be wrong (collocate overlap is only a proxy
+    for sense), but that noise is unbiased and averages out over a bin.
+    """
+    counts = np.zeros((n_senses, n_bins), dtype=np.float64)
+    score = np.empty(n_senses, dtype=np.float64)
+    n_bags = len(indptr) - 1
+    for hi in range(n_bags):
+        start = indptr[hi]
+        end = indptr[hi + 1]
+        bi = bin_of_hit[hi]
+        for s in range(n_senses):
+            score[s] = -1.0  # sentinel: sense not present in this bag
+        any_match = False
+        for k in range(start, end):
+            s = word_to_sense[flat_ids[k]]
+            if s >= 0:
+                if score[s] < 0.0:
+                    score[s] = 0.0
+                score[s] += word_weight[flat_ids[k]]
+                any_match = True
+        if not any_match:
+            continue
+        # Max over present senses (unmatched stay at the -1 sentinel, so they
+        # can neither win nor join a tie even when a matched score is 0).
+        best_v = score[0]
+        for s in range(1, n_senses):
+            if score[s] > best_v:
+                best_v = score[s]
+        n_best = 0
+        for s in range(n_senses):
+            if score[s] == best_v:
+                n_best += 1
+        share = 1.0 / n_best
+        for s in range(n_senses):
+            if score[s] == best_v:
+                counts[s, bi] += share
+    return counts
 
 
 def _select_candidates(
@@ -895,6 +958,39 @@ def _auto_floor(
     return fallback
 
 
+def _default_theme_count(
+    dist: np.ndarray, edge_floor: float, hubs: List[int], n_avail: int,
+) -> int:
+    """Smart default for the number of themes: the knee in the ranked hub
+    strengths.
+
+    Hubs are ordered by how many collocates they strongly anchor (degree at the
+    NPMI floor). The leading hubs anchor large groups; their degrees then flatten
+    into a tail of minor hubs that only mop up small leftovers. The knee — the
+    point of greatest drop below the chord from the first hub to the last — marks
+    where prominent senses give way to that tail, i.e. "keep adding a theme while
+    each new one still anchors a substantial group."
+
+    This is a granularity heuristic, not a discovered "true K": the collocate
+    graph is a single diffuse cloud with no intrinsic cluster count, so there is
+    no correct number to find — only a sensible place to start. Clamped to a
+    [3, n_avail] usefulness range; the UI dropdown still overrides.
+    """
+    if not hubs or n_avail <= 3:
+        return min(4, n_avail)
+    npmi = np.where(dist < 1.0, 1.0 - dist, 0.0)
+    np.fill_diagonal(npmi, 0.0)
+    degree = (npmi >= edge_floor).sum(axis=1)
+    y = degree[np.asarray(hubs, dtype=np.int64)].astype(np.float64)  # descending
+    n = len(y)
+    if n < 3:
+        return max(2, min(n, n_avail))
+    x = np.arange(n, dtype=np.float64)
+    chord = y[0] + (y[-1] - y[0]) * x / (n - 1)
+    knee = int(np.argmax(chord - y)) + 1  # hubs up through the knee point
+    return int(min(max(knee, 3), n_avail))
+
+
 def _sense_cohesion(member_cols: List[int], dist: np.ndarray) -> float:
     """Mean within-sense NPMI similarity (non-edges count as 0). Transparent
     per-sense quality score that replaces HDBSCAN's opaque persistence."""
@@ -1054,7 +1150,10 @@ def detect_threads(
     hubs_avail, _ = _hyperlex(dist, floor, hub_min_neighbors, max_senses)
     n_avail = max(2, len(hubs_avail))
     available_counts = list(range(2, n_avail + 1))
-    requested = n_clusters_override if n_clusters_override is not None else min(4, n_avail)
+    requested = (
+        int(n_clusters_override) if n_clusters_override is not None
+        else _default_theme_count(dist, floor, hubs_avail, n_avail)
+    )
     n_req = max(2, min(int(requested), n_avail))
     _, labels = _hyperlex(dist, floor, hub_min_neighbors, n_req, grow=True)
 
@@ -1078,32 +1177,113 @@ def detect_threads(
     safe_totals = np.where(n_hits_yr > 0, n_hits_yr, 1).astype(np.float64)
     smooth_bins = max(1, smooth_win // year_bin)
 
+    # Per-bin intensity is a usage RATE — occurrences per million corpus words in
+    # the bin — not a share of the query word's own hits. The share view is flat
+    # by construction (it divides out the word's overall rise and fall); the rate
+    # recovers that volume trajectory. It is a ROLLING rate: the numerator and the
+    # corpus-word denominator are each smoothed over the window, THEN divided, so
+    # one large document in a sparse year can't spike the curve. Bins whose window
+    # rests on fewer than _MIN_DOCS_WIN documents are too thin to trust and are
+    # zeroed. If corpus word/doc totals are unavailable we fall back to the
+    # per-hit share view.
+    #
+    # NOTE: rates are relative to *this corpus's* sampling, which is uneven over
+    # time (size, genre, authorship); they are not language-wide frequencies.
+    corpus_words = np.zeros(n_bins, dtype=np.float64)
+    corpus_docs = np.zeros(n_bins, dtype=np.float64)
+    try:
+        _, year_word_counts, year_doc_counts, _, _ = _get_doc_year_data(db, "year")
+        for i in range(n_bins):
+            y = yr_min + i * year_bin
+            corpus_words[i] = year_word_counts.get(y, 0)
+            corpus_docs[i] = year_doc_counts.get(y, 0)
+        use_rate = bool(corpus_words.sum() > 0)
+    except Exception:
+        use_rate = False
+
+    if use_rate:
+        den_smooth = _smooth(corpus_words, win=smooth_bins) if smooth_bins > 1 else corpus_words
+        docs_smooth = _smooth(corpus_docs, win=smooth_bins) if smooth_bins > 1 else corpus_docs
+        # docs_smooth is a per-bin average; × window ≈ documents in the window.
+        valid_bins = ((docs_smooth * smooth_bins) >= _MIN_DOCS_WIN) & (den_smooth > 0)
+    else:
+        den_smooth = None
+        valid_bins = None
+
+    # Per-sense word centrality (each word's summed NPMI to its sense-mates — its
+    # anchor strength within the sense). Hoisted here so it feeds BOTH the
+    # composition assignment below and the per-thread word ranking later.
+    centrality_by_cid: Dict[int, np.ndarray] = {}
+    for cid, cols_list in sense_cols.items():
+        cols = np.asarray(cols_list, dtype=np.int64)
+        sub = dist[np.ix_(cols, cols)]
+        sub_npmi = np.where(sub < 1.0, 1.0 - sub, 0.0)
+        np.fill_diagonal(sub_npmi, 0.0)
+        centrality_by_cid[cid] = sub_npmi.sum(axis=1)
+
+    # Composition overview weight: assign each occurrence to the single sense its
+    # words point to most strongly — by summed word centrality, not raw count, so
+    # a hub word outweighs a peripheral one and continuous scores leave almost no
+    # ties. Computed once across all senses (a cross-sense decision per bag), then
+    # sliced per thread below. kept_clusters partitions the candidate vocabulary,
+    # so each word maps to one sense; non-candidate tokens map to -1 and ignored.
+    cids = list(kept_clusters.keys())
+    cid_to_idx = {c: i for i, c in enumerate(cids)}
+    word_to_sense = np.full(n_vocab_total, -1, dtype=np.int64)
+    word_weight = np.zeros(n_vocab_total, dtype=np.float64)
+    for c in cids:
+        ids = np.asarray(kept_clusters[c], dtype=np.int64)
+        word_to_sense[ids] = cid_to_idx[c]
+        word_weight[ids] = np.maximum(centrality_by_cid[c], 0.0)
+    argmax_counts = _weighted_argmax_kernel(
+        flat_ids, indptr, bin_of_hit, word_to_sense, word_weight, len(cids), n_bins
+    )
+
     thread_records: List[Dict] = []
     for cid in kept_clusters:
         words = kept_clusters[cid]
-        # Thread intensity = share of bin hits whose bag intersects thread words.
-        # Build a vocab-wide boolean mask and let the kernel scan all bags in
-        # one tight loop (early-exit on first hit per bag).
+        # Raw per-bin overlap counts: a bag contributes to its bin if it
+        # intersects the thread's words (early-exit kernel, one tight loop).
         thread_mask = np.zeros(n_vocab_total, dtype=np.bool_)
         thread_mask[np.asarray(words, dtype=np.int64)] = True
-        intensity = _intensity_kernel(flat_ids, indptr, bin_of_hit, thread_mask, n_bins)
-        intensity = intensity / safe_totals
-        intensity_smooth = _smooth(intensity, win=smooth_bins) if smooth_bins > 1 else intensity
+        raw = _intensity_kernel(flat_ids, indptr, bin_of_hit, thread_mask, n_bins)
+
+        # Per-hit share curve, used ONLY as the thread-ORDERING key: it is
+        # independent of the timeline projection, so thread ids — and the
+        # word-map node colours keyed to them — stay stable regardless of how
+        # the curve is displayed. The displayed curve is the rate (when available).
+        share_smooth = _smooth(raw / safe_totals, win=smooth_bins) if smooth_bins > 1 else raw / safe_totals
+        order_mass = float(share_smooth.sum())
+
+        if use_rate:
+            num_smooth = _smooth(raw, win=smooth_bins) if smooth_bins > 1 else raw
+            intensity_smooth = np.zeros(n_bins, dtype=np.float64)
+            intensity_smooth[valid_bins] = num_smooth[valid_bins] / den_smooth[valid_bins] * 1_000_000.0
+        else:
+            intensity_smooth = share_smooth
+
         max_v = float(intensity_smooth.max())
         if max_v <= 0:
             continue
 
-        # Rank thread words by within-sense ANCHOR strength: each word's summed
-        # NPMI to the other members of this sense (its graph centrality inside
-        # the sense). Pure NPMI — no counts, no corpus-IDF — so it's sense-
-        # discriminating (unlike global IDF) and robust to the whole-sense
-        # growth (it surfaces the tight core, not the peripheral members the
-        # growth adds). The hub lands first naturally, being the most central.
-        cols = np.asarray(sense_cols[cid], dtype=np.int64)
-        sub = dist[np.ix_(cols, cols)]
-        sub_npmi = np.where(sub < 1.0, 1.0 - sub, 0.0)
-        np.fill_diagonal(sub_npmi, 0.0)
-        centrality = sub_npmi.sum(axis=1)
+        # Composition weight for the overview streamgraph: this sense's share of
+        # the per-bin centrality-weighted assignments (each occurrence attributed
+        # to its dominant sense). The frontend normalises these per year into a
+        # 100%-stacked view; a touch-count would saturate to ~uniform shares (big
+        # overlapping bags), so the mix would look flat. Smoothed and masked to the
+        # same valid bins as the rate, so no-data years pinch rather than split.
+        amax_raw = argmax_counts[cid_to_idx[cid]]
+        amax_smooth = _smooth(amax_raw, win=smooth_bins) if smooth_bins > 1 else amax_raw
+        share_weight = amax_smooth
+        if valid_bins is not None:
+            share_weight = np.where(valid_bins, amax_smooth, 0.0)
+
+        # Rank thread words by within-sense ANCHOR strength (centrality computed
+        # once above): each word's summed NPMI to the other members of this sense.
+        # Pure NPMI — no counts, no corpus-IDF — so it's sense-discriminating
+        # (unlike global IDF) and robust to whole-sense growth (it surfaces the
+        # tight core, not the peripheral members). The hub lands first naturally.
+        centrality = centrality_by_cid[cid]
         order = np.argsort(-centrality)
         name_of = {w: _vocab_name(w, v_blob, v_offsets, count_lemmas) for w in words}
         words_out = [
@@ -1117,15 +1297,21 @@ def detect_threads(
 
         thread_records.append({
             "_cid": cid,  # internal: maps the record back to its sense
+            "_order_mass": order_mass,  # internal: ordering key (stable thread ids)
             "n_words": len(words),
             "cohesion": round(sense_cohesion[cid], 4),
             "words": words_out,
             "max_intensity": round(max_v, 6),
             "intensity": [round(float(intensity_smooth[bi]), 6) for bi in range(n_bins)],
+            # Per-bin composition weight for the overview; the frontend
+            # normalises these per year into the 100%-stacked bands.
+            "share_weight": [round(float(share_weight[bi]), 4) for bi in range(n_bins)],
         })
 
-    # Sort by total share of mass (intensity area), assign ids, build labels.
-    thread_records.sort(key=lambda t: -sum(t["intensity"]))
+    # Order by the projection-independent share-mass so thread ids — and the
+    # word-map node colours keyed to them — are stable regardless of the
+    # displayed curve (which is the rate).
+    thread_records.sort(key=lambda t: -t["_order_mass"])
     n_detected = len(thread_records)
     # available_counts was computed at induction time (the achievable hub range
     # at this floor). The theme COUNT is controlled by the hub count above, not
@@ -1146,6 +1332,7 @@ def detect_threads(
         )
     for t in thread_records:
         t.pop("_cid", None)
+        t.pop("_order_mass", None)
 
     result = {
         "n_total_hits": n_hits,
@@ -1160,6 +1347,9 @@ def detect_threads(
         "available_theme_counts": available_counts,
         "threads": thread_records,
         "frequency": frequency,
+        # True when intensity curves are corpus-normalised usage rates (per
+        # million words); False if corpus totals were unavailable (per-hit share).
+        "rate_normalized": bool(use_rate),
     }
     if graph is not None:
         result["graph"] = graph

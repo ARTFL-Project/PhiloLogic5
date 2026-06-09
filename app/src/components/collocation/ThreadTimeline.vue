@@ -1,8 +1,6 @@
 <template>
     <div>
-        <!-- Detection auto-runs on mount; the min-words knob below triggers
-             re-runs. No standalone Detect button is needed — its only role
-             was redundant re-runs. -->
+        <!-- Detection auto-runs on mount; the controls below trigger re-runs. -->
 
         <div v-if="loading && !result" class="text-center py-5">
             <progress-spinner :lg="true" :message="$t('threads.detecting')" />
@@ -121,8 +119,11 @@ const { formData } = storeToRefs(store);
 
 const loading = ref(false);
 const result = ref(null);
-// Number of themes to display (top-N senses by mass). Default 4.
+// Number of themes to display. Seeded at 4, but for a fresh query we let the
+// backend pick its smart default (the hub-strength knee) and adopt that count
+// here; only once the user picks from the dropdown do we send an explicit count.
 const themeCount = ref(4);
+let userChoseCount = false;
 let fetchToken = 0;
 
 const modal = ref({
@@ -145,17 +146,43 @@ function threadColor(i, alpha) {
     return `hsla(${h}, 55%, 50%, ${alpha})`;
 }
 
-// ---- Card sparkline paths ----
+// ---- Per-pattern share over time ----
+// Each card shows its pattern's SHARE of the composition over time — derived
+// from the same share_weight that drives the overview, normalized per year — so
+// a card mirrors its overview band (rising/falling). Auto-scaled to each
+// pattern's own peak share so its trajectory is legible.
+const shareByThread = computed(() => {
+    const threads = result.value?.threads || [];
+    if (!threads.length) return {};
+    const weightOf = (t) => t.share_weight || t.intensity;
+    const n = weightOf(threads[0]).length;
+    const totals = new Array(n).fill(0);
+    for (const t of threads) { const w = weightOf(t); for (let i = 0; i < n; i++) totals[i] += w[i]; }
+    const out = {};
+    for (const t of threads) {
+        const w = weightOf(t);
+        const vals = new Array(n);
+        let mx = 0;
+        for (let i = 0; i < n; i++) {
+            const s = totals[i] > 0 ? w[i] / totals[i] : 0;
+            vals[i] = s;
+            if (s > mx) mx = s;
+        }
+        out[t.id] = { values: vals, max: mx || 1 };
+    }
+    return out;
+});
+
+// ---- Card sparkline paths (per-pattern share) ----
 function cardSparkPath(thread) {
-    const intensities = thread.intensity || [];
-    const maxV = thread.max_intensity || 1;
-    if (intensities.length === 0 || maxV === 0) return "";
-    const n = intensities.length;
+    const series = shareByThread.value[thread.id];
+    if (!series) return "";
+    const vals = series.values, maxV = series.max, n = vals.length;
     const xStep = chartWidth / Math.max(1, n - 1);
     let d = `M 0 ${cardChartHeight} `;
     for (let i = 0; i < n; i++) {
         const x = i * xStep;
-        const y = cardChartHeight - (intensities[i] / maxV) * (cardChartHeight - 2);
+        const y = cardChartHeight - (vals[i] / maxV) * (cardChartHeight - 2);
         d += `L ${x.toFixed(2)} ${y.toFixed(2)} `;
     }
     d += `L ${chartWidth} ${cardChartHeight} Z`;
@@ -163,45 +190,54 @@ function cardSparkPath(thread) {
 }
 
 function cardSparkLine(thread) {
-    const intensities = thread.intensity || [];
-    const maxV = thread.max_intensity || 1;
-    if (intensities.length === 0 || maxV === 0) return "";
-    const n = intensities.length;
+    const series = shareByThread.value[thread.id];
+    if (!series) return "";
+    const vals = series.values, maxV = series.max, n = vals.length;
     const xStep = chartWidth / Math.max(1, n - 1);
     let d = "";
     for (let i = 0; i < n; i++) {
         const x = i * xStep;
-        const y = cardChartHeight - (intensities[i] / maxV) * (cardChartHeight - 2);
+        const y = cardChartHeight - (vals[i] / maxV) * (cardChartHeight - 2);
         d += (i === 0 ? "M" : " L") + ` ${x.toFixed(2)} ${y.toFixed(2)}`;
     }
     return d;
 }
 
-// ---- Streamgraph layers (centered-baseline streamgraph) ----
+// ---- Overview streamgraph: 100%-normalized composition ----
+// The overview answers "which sense dominates when", so each year is normalized
+// to that year's total (bands sum to full height). Normalizing per year is what
+// lets the bands move relative to each other (one sense widening as another
+// narrows) rather than tracking the word's overall volume. Years with no data
+// (all-zero, masked by the backend) collapse to the midline so the ribbon
+// pinches there rather than showing a false even split.
 const streamLayers = computed(() => {
     if (!result.value || !result.value.threads || result.value.threads.length === 0) return [];
     const threads = result.value.threads;
-    const n = threads[0].intensity.length;
-    // Per-year totals across threads
+    // Overview is composition: use the proportional share_weight when present
+    // (older backends only send intensity, so fall back to it).
+    const weightOf = (t) => t.share_weight || t.intensity;
+    const n = weightOf(threads[0]).length;
+    // Per-year totals across threads (the normalizer).
     const totals = new Array(n).fill(0);
-    for (const t of threads) for (let i = 0; i < n; i++) totals[i] += t.intensity[i];
-    const maxTotal = Math.max(...totals, 0.0001);
+    for (const t of threads) { const w = weightOf(t); for (let i = 0; i < n; i++) totals[i] += w[i]; }
     const xStep = chartWidth / Math.max(1, n - 1);
     const layers = [];
     const offsets = new Array(n).fill(0);
-    // Center stream around midline
-    const heights = threads.map((t) => t.intensity.map((v) => v));
+    const heights = threads.map((t) => weightOf(t));
     for (let li = 0; li < threads.length; li++) {
         const thread = threads[li];
         const top = new Array(n);
         const bottom = new Array(n);
         for (let i = 0; i < n; i++) {
-            const half = totals[i] / 2 / maxTotal;
-            const stackBefore = offsets[i] / maxTotal;
-            const v = heights[li][i] / maxTotal;
-            const yMid = streamHeight / 2;
-            bottom[i] = yMid - (half - stackBefore) * (streamHeight / 2);
-            top[i] = yMid - (half - stackBefore - v) * (streamHeight / 2);
+            const tot = totals[i];
+            if (tot <= 0) {
+                bottom[i] = top[i] = streamHeight / 2; // no data → pinch to midline
+                continue;
+            }
+            const cumBefore = offsets[i] / tot; // share stacked below this band
+            const frac = heights[li][i] / tot; // this band's share of the year
+            bottom[i] = (1 - cumBefore) * streamHeight;
+            top[i] = (1 - cumBefore - frac) * streamHeight;
             offsets[i] += heights[li][i];
         }
         let d = `M 0 ${bottom[0].toFixed(2)} `;
@@ -215,18 +251,25 @@ const streamLayers = computed(() => {
 
 // ---- Fetch ----
 function runDetection(opts = {}) {
+    // A fresh run (mount, new query) defers to the backend's smart default; only
+    // a user dropdown change sends an explicit count.
+    if (!opts.grainChange) userChoseCount = false;
     const myToken = ++fetchToken;
     loading.value = true;
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
-    params.n_clusters = themeCount.value;
+    if (userChoseCount) params.n_clusters = themeCount.value;
     $http.get(`${$dbUrl}/scripts/get_threads.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
-        // Keep the dropdown selection valid on thin queries that yield fewer
-        // senses than requested (backend already truncated; reflect it here).
         const avail = resp.data?.available_theme_counts || [];
-        if (avail.length && !avail.includes(themeCount.value)) {
+        if (!userChoseCount) {
+            // Adopt the backend's smart default so the dropdown reflects it.
+            const n = resp.data?.threads?.length;
+            if (n) themeCount.value = n;
+        } else if (avail.length && !avail.includes(themeCount.value)) {
+            // Keep the selection valid on thin queries that yield fewer senses
+            // than requested (backend already truncated; reflect it here).
             themeCount.value = avail[avail.length - 1];
         }
         emit("filterList", resp.data?.filter_list || []);
@@ -239,7 +282,8 @@ function runDetection(opts = {}) {
 
 // Re-run when the user overrides the clustering grain.
 function onGrainChange() {
-    runDetection({ keepResult: true });
+    userChoseCount = true;
+    runDetection({ keepResult: true, grainChange: true });
 }
 
 function reset() {
