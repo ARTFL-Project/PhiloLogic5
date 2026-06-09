@@ -64,7 +64,7 @@ def get_usage_patterns(request, config):
         return max(lo, min(hi, v))
 
     top_n_patterns = _int_or_none("top_n_patterns", 1, 30)
-    # "Number of themes": truncate to the top-N senses by mass (absent → all).
+    # "Number of patterns": truncate to the top-N senses by mass (absent → all).
     n_clusters = _int_or_none("n_clusters", 2, 30)
 
     result = detect_usage_patterns(

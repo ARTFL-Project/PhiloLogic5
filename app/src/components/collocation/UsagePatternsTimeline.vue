@@ -13,10 +13,10 @@
                 <p class="text-muted mb-3 d-flex align-items-center flex-wrap gap-1">
                     <i18n-t keypath="usagePatterns.summary" tag="span">
                         <template #patterns>
-                            <select v-model.number="themeCount" @change="onGrainChange"
+                            <select v-model.number="patternCount" @change="onGrainChange"
                                 class="form-select form-select-sm summary-dropdown"
-                                :aria-label="$t('usagePatterns.themeCount')">
-                                <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
+                                :aria-label="$t('usagePatterns.patternCount')">
+                                <option v-for="n in (result?.available_pattern_counts || [])" :key="n" :value="n">{{ n }}</option>
                             </select>
                         </template>
                     </i18n-t>
@@ -44,9 +44,9 @@
                         <title>{{ $t('usagePatterns.patternN', { n: layer.pattern.id }) }}: {{ layer.pattern.label }}</title>
                     </path>
                 </svg>
-                <div class="d-flex justify-content-between small text-muted mt-1 px-1">
-                    <span>{{ result.year_range[0] }}</span>
-                    <span>{{ result.year_range[1] }}</span>
+                <div class="year-axis small text-muted mt-1">
+                    <span v-for="t in yearTicks" :key="t.year" class="year-tick"
+                        :style="{ left: t.pct + '%', transform: tickShift(t.pct) }">{{ t.year }}</span>
                 </div>
             </div>
 
@@ -76,9 +76,9 @@
                                 <path :d="cardSparkPath(pattern)" :fill="patternColor(pattern.id - 1, 0.25)" stroke="none" />
                                 <path :d="cardSparkLine(pattern)" :stroke="patternColor(pattern.id - 1, 1)" stroke-width="1" fill="none" />
                             </svg>
-                            <div class="d-flex justify-content-between small text-muted">
-                                <span>{{ result.year_range[0] }}</span>
-                                <span>{{ result.year_range[1] }}</span>
+                            <div class="year-axis small text-muted">
+                                <span v-for="t in yearTicks" :key="t.year" class="year-tick"
+                                    :style="{ left: t.pct + '%', transform: tickShift(t.pct) }">{{ t.year }}</span>
                             </div>
                         </div>
                     </article>
@@ -119,10 +119,10 @@ const { formData } = storeToRefs(store);
 
 const loading = ref(false);
 const result = ref(null);
-// Number of themes to display. Seeded at 4, but for a fresh query we let the
+// Number of patterns to display. Seeded at 4, but for a fresh query we let the
 // backend pick its smart default (the hub-strength knee) and adopt that count
 // here; only once the user picks from the dropdown do we send an explicit count.
-const themeCount = ref(4);
+const patternCount = ref(4);
 let userChoseCount = false;
 let fetchToken = 0;
 
@@ -144,6 +144,32 @@ const patternHues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 
 function patternColor(i, alpha) {
     const h = patternHues[i % patternHues.length];
     return `hsla(${h}, 55%, 50%, ${alpha})`;
+}
+
+// ---- X-axis date ticks ----
+// Round-number year ticks across the range (~6-8), positioned as a percent of
+// the span so they line up with the full-width charts. Shared by the overview
+// and the per-pattern cards.
+const yearTicks = computed(() => {
+    const range = result.value?.year_range;
+    if (!range) return [];
+    const [min, max] = range;
+    const span = max - min;
+    if (span <= 0) return [{ year: min, pct: 0 }];
+    const steps = [10, 20, 25, 50, 100, 200, 250, 500];
+    let step = steps[steps.length - 1];
+    for (const s of steps) { if (span / s <= 9) { step = s; break; } }
+    const ticks = [];
+    for (let y = Math.ceil(min / step) * step; y <= max; y += step) {
+        ticks.push({ year: y, pct: ((y - min) / span) * 100 });
+    }
+    return ticks;
+});
+// Keep edge labels from overflowing the chart width.
+function tickShift(pct) {
+    if (pct < 5) return "translateX(0)";
+    if (pct > 95) return "translateX(-100%)";
+    return "translateX(-50%)";
 }
 
 // ---- Per-pattern share over time ----
@@ -258,19 +284,19 @@ function runDetection(opts = {}) {
     loading.value = true;
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
-    if (userChoseCount) params.n_clusters = themeCount.value;
+    if (userChoseCount) params.n_clusters = patternCount.value;
     $http.get(`${$dbUrl}/scripts/get_usage_patterns.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
-        const avail = resp.data?.available_theme_counts || [];
+        const avail = resp.data?.available_pattern_counts || [];
         if (!userChoseCount) {
             // Adopt the backend's smart default so the dropdown reflects it.
             const n = resp.data?.patterns?.length;
-            if (n) themeCount.value = n;
-        } else if (avail.length && !avail.includes(themeCount.value)) {
+            if (n) patternCount.value = n;
+        } else if (avail.length && !avail.includes(patternCount.value)) {
             // Keep the selection valid on thin queries that yield fewer senses
             // than requested (backend already truncated; reflect it here).
-            themeCount.value = avail[avail.length - 1];
+            patternCount.value = avail[avail.length - 1];
         }
         emit("filterList", resp.data?.filter_list || []);
     }).catch((error) => {
@@ -403,6 +429,17 @@ defineExpose({ runDetection, reset });
 
 .overview-card {
     background-color: #fff;
+}
+
+.year-axis {
+    position: relative;
+    height: 1.1em;
+}
+
+.year-tick {
+    position: absolute;
+    top: 0;
+    white-space: nowrap;
 }
 
 .summary-dropdown {

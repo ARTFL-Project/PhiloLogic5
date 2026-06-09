@@ -730,7 +730,7 @@ def _build_graph(
 
 # ---------- Per-query intermediates cache ----------
 # Disk-backed cache for the expensive query-dependent intermediates
-# (bags + NPMI distance matrix). Lets a rerun with a different theme-count /
+# (bags + NPMI distance matrix). Lets a rerun with a different pattern-count /
 # edge-floor reuse them instead of rebuilding (~1.6 s on a big query). All
 # gunicorn workers share the same cache files, so cross-worker reruns also hit.
 #
@@ -742,9 +742,9 @@ def _build_graph(
 # Cache key includes everything that affects the cached arrays:
 #   - q, count_lemmas, attribute, attribute_value, metadata: feed _build_hit_bags
 #   - stopwords: feed _select_candidates → candidate_ids → dist
-# It does NOT include the theme-count / edge-floor knobs — those only affect
+# It does NOT include the pattern-count / edge-floor knobs — those only affect
 # the downstream HyperLex clustering, which runs fresh every call. That's the
-# whole point: changing the number of themes reuses the cached bags + dist.
+# whole point: changing the number of patterns reuses the cached bags + dist.
 
 
 def _pattern_cache_key(
@@ -958,17 +958,17 @@ def _auto_floor(
     return fallback
 
 
-def _default_theme_count(
+def _default_pattern_count(
     dist: np.ndarray, edge_floor: float, hubs: List[int], n_avail: int,
 ) -> int:
-    """Smart default for the number of themes: the knee in the ranked hub
+    """Smart default for the number of patterns: the knee in the ranked hub
     strengths.
 
     Hubs are ordered by how many collocates they strongly anchor (degree at the
     NPMI floor). The leading hubs anchor large groups; their degrees then flatten
     into a tail of minor hubs that only mop up small leftovers. The knee — the
     point of greatest drop below the chord from the first hub to the last — marks
-    where prominent senses give way to that tail, i.e. "keep adding a theme while
+    where prominent senses give way to that tail, i.e. "keep adding a pattern while
     each new one still anchors a substantial group."
 
     This is a granularity heuristic, not a discovered "true K": the collocate
@@ -1015,16 +1015,16 @@ def detect_usage_patterns(
     *,
     stopwords: Optional[set] = None,
     top_n_patterns: Optional[int] = None,
-    # User-facing "number of themes" knob: the number of hubs (= senses) to
-    # induce at the fixed floor — more themes = finer senses (hubs are nested, so
+    # User-facing "number of patterns" knob: the number of hubs (= senses) to
+    # induce at the fixed floor — more patterns = finer senses (hubs are nested, so
     # raising the count appends the next-strongest hub region and a broad sense
     # splits as members re-flow to it); fewer = coarser. None → a sensible
-    # default. The UI dropdown is populated from available_theme_counts (the
+    # default. The UI dropdown is populated from available_pattern_counts (the
     # achievable range at this floor, capped at max_senses).
     n_clusters_override: Optional[int] = None,
     # HyperLex knobs. edge_floor=None auto-tunes (recommended); hub_min_neighbors
     # is how many strong neighbours a word needs to anchor a sense; max_senses
-    # caps the granularity (the most themes the dropdown will offer).
+    # caps the granularity (the most patterns the dropdown will offer).
     edge_floor: Optional[float] = None,
     hub_min_neighbors: int = 4,
     max_senses: int = 12,
@@ -1034,7 +1034,7 @@ def detect_usage_patterns(
     stop_set = stopwords or set()
 
     # Try cache first: bags + candidates + NPMI dist are invariant across the
-    # theme-count / edge-floor knobs (all a rerun varies). Cache hit skips
+    # pattern-count / edge-floor knobs (all a rerun varies). Cache hit skips
     # ~1.3 s of work on a big query like `woman`.
     cache_key = _pattern_cache_key(
         q, count_lemmas, attribute, attribute_value, metadata, stop_set,
@@ -1120,7 +1120,7 @@ def detect_usage_patterns(
         "n_patterns": 0,
         "n_detected_patterns": 0,
         "vocab_size": K,
-        "available_theme_counts": [],
+        "available_pattern_counts": [],
         "patterns": [],
         "frequency": frequency,
     }
@@ -1140,7 +1140,7 @@ def detect_usage_patterns(
         float(edge_floor) if edge_floor is not None
         else _auto_floor(dist, hub_min_neighbors, _HYPERLEX_MAX_HUBS)
     )
-    # "Number of themes" = how many hubs to induce at this fixed floor. The hubs
+    # "Number of patterns" = how many hubs to induce at this fixed floor. The hubs
     # are deterministic and nested, so raising the count only appends the
     # next-strongest hub region; membership re-flows to the nearest hub, so a
     # broad sense splits into finer ones rather than the senses reshuffling
@@ -1152,7 +1152,7 @@ def detect_usage_patterns(
     available_counts = list(range(2, n_avail + 1))
     requested = (
         int(n_clusters_override) if n_clusters_override is not None
-        else _default_theme_count(dist, floor, hubs_avail, n_avail)
+        else _default_pattern_count(dist, floor, hubs_avail, n_avail)
     )
     n_req = max(2, min(int(requested), n_avail))
     _, labels = _hyperlex(dist, floor, hub_min_neighbors, n_req, grow=True)
@@ -1314,7 +1314,7 @@ def detect_usage_patterns(
     pattern_records.sort(key=lambda t: -t["_order_mass"])
     n_detected = len(pattern_records)
     # available_counts was computed at induction time (the achievable hub range
-    # at this floor). The theme COUNT is controlled by the hub count above, not
+    # at this floor). The pattern COUNT is controlled by the hub count above, not
     # by truncation; top_n_patterns remains a separate hard cap (rarely set).
     if top_n_patterns is not None and top_n_patterns > 0:
         pattern_records = pattern_records[:top_n_patterns]
@@ -1342,9 +1342,9 @@ def detect_usage_patterns(
         "n_patterns": len(pattern_records),
         "n_detected_patterns": n_detected,
         "vocab_size": K,
-        # Theme counts the UI offers in the "Number of themes" dropdown
+        # Pattern counts the UI offers in the "Number of patterns" dropdown
         # (2 .. senses found); picking fewer truncates to the top senses by mass.
-        "available_theme_counts": available_counts,
+        "available_pattern_counts": available_counts,
         "patterns": pattern_records,
         "frequency": frequency,
         # True when intensity curves are corpus-normalised usage rates (per

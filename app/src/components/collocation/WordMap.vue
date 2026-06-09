@@ -13,10 +13,10 @@
                         <p class="text-muted mb-1 d-flex align-items-center flex-wrap gap-1">
                             <i18n-t keypath="usagePatterns.summary" tag="span">
                                 <template #patterns>
-                                    <select v-model.number="themeCount" @change="onGrainChange"
+                                    <select v-model.number="patternCount" @change="onGrainChange"
                                         class="form-select form-select-sm summary-dropdown"
-                                        :aria-label="$t('usagePatterns.themeCount')">
-                                        <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">
+                                        :aria-label="$t('usagePatterns.patternCount')">
+                                        <option v-for="n in (result?.available_pattern_counts || [])" :key="n" :value="n">
                                             {{ n }}</option>
                                     </select>
                                 </template>
@@ -198,7 +198,7 @@ const { formData } = storeToRefs(store);
 const loading = ref(false);
 const result = ref(null);
 const networkWordCount = ref(0);
-const themeCount = ref(4);
+const patternCount = ref(4);
 // Cluster IDs the user has muted via legend chips. Plain click toggles a single
 // cluster; shift-click solos (hides all others). Composes with the words slider:
 // a node is hidden if EITHER condition hides it.
@@ -228,15 +228,15 @@ function runDetection(opts = {}) {
     loading.value = true;
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
-    params.n_clusters = themeCount.value;
+    params.n_clusters = patternCount.value;
     $http.get(`${$dbUrl}/scripts/get_usage_patterns.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
         // Keep the dropdown selection valid on thin queries that yield fewer
         // senses than requested (backend already truncated; reflect it here).
-        const avail = resp.data?.available_theme_counts || [];
-        if (avail.length && !avail.includes(themeCount.value)) {
-            themeCount.value = avail[avail.length - 1];
+        const avail = resp.data?.available_pattern_counts || [];
+        if (avail.length && !avail.includes(patternCount.value)) {
+            patternCount.value = avail[avail.length - 1];
         }
         emit("filterList", resp.data?.filter_list || []);
         networkWordCount.value = resp.data?.graph?.n_members || 0;
@@ -514,7 +514,7 @@ function buildGraph(g, seedPositions = null) {
         const a = (i / clusterIds.length) * 2 * Math.PI;
         seed[cid] = { x: Math.cos(a) * ringRad, y: Math.sin(a) * ringRad };
     });
-    // For continuity across theme-count changes: place new words near the
+    // For continuity across pattern-count changes: place new words near the
     // centroid of cluster siblings that we DO have prior positions for.
     const prevClusterCentroid = new Map();
     if (seedPositions) {
