@@ -1,69 +1,69 @@
 <template>
     <div>
         <div v-if="loading && !result" class="text-center py-5">
-            <progress-spinner :lg="true" :message="$t('threads.detecting')" />
+            <progress-spinner :lg="true" :message="$t('usagePatterns.detecting')" />
         </div>
 
-        <div v-if="result && result.threads && result.threads.length > 0" class="mx-2 my-3">
+        <div v-if="result && result.patterns && result.patterns.length > 0" class="mx-2 my-3">
             <!-- Everything (count, explanation, controls, viz) lives inside the
                  result card so the layout reads as one self-contained unit. -->
             <div v-if="result.graph" class="card shadow-sm p-3 mb-3 overview-card">
                 <div class="overview-body d-flex flex-wrap gap-3 align-items-start">
                     <aside class="legend-aside">
                         <p class="text-muted mb-1 d-flex align-items-center flex-wrap gap-1">
-                            <i18n-t keypath="threads.summary" tag="span">
-                                <template #threads>
+                            <i18n-t keypath="usagePatterns.summary" tag="span">
+                                <template #patterns>
                                     <select v-model.number="themeCount" @change="onGrainChange"
                                         class="form-select form-select-sm summary-dropdown"
-                                        :aria-label="$t('threads.themeCount')">
+                                        :aria-label="$t('usagePatterns.themeCount')">
                                         <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">
                                             {{ n }}</option>
                                     </select>
                                 </template>
                             </i18n-t>
-                            <span class="info-tip" tabindex="0" :data-tip="$t('threads.networkSubtitle')"
-                                :aria-label="$t('threads.networkSubtitle')">ⓘ</span>
+                            <span class="info-tip" tabindex="0" :data-tip="$t('usagePatterns.networkSubtitle')"
+                                :aria-label="$t('usagePatterns.networkSubtitle')">ⓘ</span>
                         </p>
                         <div class="legend-list mt-2">
-                            <button v-for="thread in result.threads" :key="`leg-${thread.id}`" type="button"
-                                class="btn btn-sm legend-chip" :class="{ 'cluster-off': hiddenClusters.has(thread.id) }"
-                                :style="{ borderColor: threadColor(thread.id - 1, 1), color: threadColor(thread.id - 1, 1) }"
-                                @click.stop="openLegendMenu(thread, $event)"
-                                @mouseenter="onLegendChipEnter(thread.id)"
+                            <button v-for="pattern in result.patterns" :key="`leg-${pattern.id}`" type="button"
+                                class="btn btn-sm legend-chip" :class="{ 'cluster-off': hiddenClusters.has(pattern.id) }"
+                                :style="{ borderColor: patternColor(pattern.id - 1, 1), color: patternColor(pattern.id - 1, 1) }"
+                                @click.stop="openLegendMenu(pattern, $event)"
+                                @mouseenter="onLegendChipEnter(pattern.id)"
                                 @mouseleave="onLegendChipLeave"
-                                :title="thread.words.slice(0, 10).map((w) => w.word).join(', ')">
+                                :title="pattern.words.slice(0, 10).map((w) => w.word).join(', ')">
                                 <span class="legend-swatch"
-                                    :style="{ backgroundColor: threadColor(thread.id - 1, 1) }"></span>
-                                <span class="legend-text">{{ thread.label }}</span>
+                                    :style="{ backgroundColor: patternColor(pattern.id - 1, 1) }"></span>
+                                <span class="legend-text">{{ pattern.label }}</span>
                             </button>
                         </div>
                         <div class="graph-search mt-3">
                             <input v-model="searchQuery" @input="onSearchInput" type="text"
-                                class="form-control form-control-sm" :placeholder="$t('threads.searchPlaceholder')" />
+                                class="form-control form-control-sm" :placeholder="$t('usagePatterns.searchPlaceholder')" />
                         </div>
                         <div v-if="result.graph.nodes.length > result.graph.n_members" class="control-stack mt-3">
                             <div class="words-slider">
                                 <label class="small text-muted d-block mb-1" for="net-word-count">
-                                    {{ $t('threads.wordsShown') }}: <strong>{{ networkWordCount }}</strong>
+                                    {{ $t('usagePatterns.wordsShown') }}: <strong>{{ networkWordCount }}</strong>
                                     <span class="text-muted">/ {{ result.graph.nodes.length }}</span>
                                 </label>
                                 <input type="range" id="net-word-count" class="form-range form-range-sm w-100"
                                     :min="result.graph.n_members" :max="result.graph.nodes.length" step="1"
                                     v-model.number="networkWordCount" />
-                                <p class="control-hint">{{ $t('threads.wordsShownHint') }}</p>
+                                <p class="control-hint">{{ $t('usagePatterns.wordsShownHint') }}</p>
                             </div>
                         </div>
                     </aside>
 
                     <div class="viz-area">
-                        <div class="thread-network">
+                        <div class="pattern-network">
                             <div class="zoom-controls">
-                                <button type="button" @click="zoomIn" :title="$t('threads.zoomIn')"
-                                    :aria-label="$t('threads.zoomIn')">+</button>
-                                <button type="button" @click="zoomOut" :title="$t('threads.zoomOut')"
-                                    :aria-label="$t('threads.zoomOut')">−</button>
-                                <button type="button" @click="resetView" :title="$t('threads.zoomReset')"
-                                    :aria-label="$t('threads.zoomReset')">
+                                <button type="button" @click="zoomIn" :title="$t('usagePatterns.zoomIn')"
+                                    :aria-label="$t('usagePatterns.zoomIn')">+</button>
+                                <button type="button" @click="zoomOut" :title="$t('usagePatterns.zoomOut')"
+                                    :aria-label="$t('usagePatterns.zoomOut')">−</button>
+                                <button type="button" @click="resetView" :title="$t('usagePatterns.zoomReset')"
+                                    :aria-label="$t('usagePatterns.zoomReset')">
                                     <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
                                 </button>
                             </div>
@@ -79,7 +79,7 @@
                             <!-- In-place spinner during grain change (result still
                                  populated, so the main spinner above is hidden). -->
                             <div v-if="loading" class="viz-loading-overlay">
-                                <progress-spinner :message="$t('threads.detecting')" />
+                                <progress-spinner :message="$t('usagePatterns.detecting')" />
                             </div>
                             <!-- Right-click context menu: actions depend on whether
                                  user clicked a node or empty stage. -->
@@ -87,29 +87,29 @@
                                 :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }" @click.stop>
                                 <template v-if="contextMenu.kind === 'node'">
                                     <button type="button" class="ctx-item" @click="ctxPassagesForNode">
-                                        {{ $t('threads.ctxPassagesNode') }}
+                                        {{ $t('usagePatterns.ctxPassagesNode') }}
                                     </button>
                                     <button type="button" class="ctx-item" @click="ctxPassagesForCluster">
-                                        {{ $t('threads.ctxPassagesCluster') }}
+                                        {{ $t('usagePatterns.ctxPassagesCluster') }}
                                     </button>
                                     <div class="ctx-sep"></div>
                                     <button type="button" class="ctx-item" @click="ctxFlyToCluster">
-                                        {{ $t('threads.ctxFlyCluster') }}
+                                        {{ $t('usagePatterns.ctxFlyCluster') }}
                                     </button>
                                     <button type="button" class="ctx-item" @click="ctxSoloCluster">
-                                        {{ $t('threads.ctxSoloCluster') }}
+                                        {{ $t('usagePatterns.ctxSoloCluster') }}
                                     </button>
                                     <button type="button" class="ctx-item" @click="ctxHideCluster">
-                                        {{ $t('threads.ctxHideCluster') }}
+                                        {{ $t('usagePatterns.ctxHideCluster') }}
                                     </button>
                                 </template>
                                 <template v-else>
                                     <button type="button" class="ctx-item" @click="ctxResetView">
-                                        {{ $t('threads.ctxResetView') }}
+                                        {{ $t('usagePatterns.ctxResetView') }}
                                     </button>
                                     <button type="button" class="ctx-item" :disabled="hiddenClusters.size === 0"
                                         @click="ctxShowAll">
-                                        {{ $t('threads.ctxShowAll') }}
+                                        {{ $t('usagePatterns.ctxShowAll') }}
                                     </button>
                                 </template>
                             </div>
@@ -120,12 +120,12 @@
 
             <!-- Backend didn't ship graph data (older server) — friendly fallback. -->
             <div v-else class="text-center py-4 text-muted">
-                {{ $t('threads.noGraph') }}
+                {{ $t('usagePatterns.noGraph') }}
             </div>
         </div>
 
-        <div v-else-if="result && (!result.threads || result.threads.length === 0)" class="text-center py-5 text-muted">
-            {{ $t('threads.noResults') }}
+        <div v-else-if="result && (!result.patterns || result.patterns.length === 0)" class="text-center py-5 text-muted">
+            {{ $t('usagePatterns.noResults') }}
         </div>
 
         <DistinctivePassagesModal :group-name="modal.groupName" :signature="modal.signature" :passages="modal.passages"
@@ -139,20 +139,20 @@
                 :style="{ left: legendMenu.x + 'px', top: legendMenu.y + 'px', position: 'fixed' }" @click.stop>
                 <div class="legend-popup-header">
                     <span class="legend-swatch"
-                        :style="{ backgroundColor: threadColor(legendMenu.thread.id - 1, 1) }"></span>
-                    <span class="legend-popup-label">T{{ legendMenu.thread.id }}: {{ legendMenu.thread.label }}</span>
+                        :style="{ backgroundColor: patternColor(legendMenu.pattern.id - 1, 1) }"></span>
+                    <span class="legend-popup-label">T{{ legendMenu.pattern.id }}: {{ legendMenu.pattern.label }}</span>
                 </div>
                 <div class="ctx-sep"></div>
                 <button type="button" class="ctx-item" @click="legendGetPassages">
-                    {{ $t('threads.legendPopupPassages') }}
+                    {{ $t('usagePatterns.legendPopupPassages') }}
                 </button>
                 <button type="button" class="ctx-item" @click="legendFocusCluster">
-                    {{ $t('threads.legendPopupFocus') }}
+                    {{ $t('usagePatterns.legendPopupFocus') }}
                 </button>
                 <button type="button" class="ctx-item" @click="legendToggleHideCluster">
-                    {{ hiddenClusters.has(legendMenu.thread.id)
-                        ? $t('threads.legendPopupShow')
-                        : $t('threads.legendPopupHide') }}
+                    {{ hiddenClusters.has(legendMenu.pattern.id)
+                        ? $t('usagePatterns.legendPopupShow')
+                        : $t('usagePatterns.legendPopupHide') }}
                 </button>
             </div>
         </Teleport>
@@ -205,11 +205,11 @@ const themeCount = ref(4);
 const hiddenClusters = ref(new Set());
 let fetchToken = 0;
 
-// Same color palette as the streamgraph so thread colors are consistent across
+// Same color palette as the streamgraph so pattern colors are consistent across
 // tabs. Emitted as rgba() — sigma's color parser doesn't accept hsla().
-const threadHues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
-function threadColor(i, alpha = 1) {
-    const h = threadHues[i % threadHues.length];
+const patternHues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
+function patternColor(i, alpha = 1) {
+    const h = patternHues[i % patternHues.length];
     const s = 0.55, l = 0.50;
     const c = (1 - Math.abs(2 * l - 1)) * s;
     const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
@@ -229,7 +229,7 @@ function runDetection(opts = {}) {
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
     params.n_clusters = themeCount.value;
-    $http.get(`${$dbUrl}/scripts/get_threads.py`, { params }).then((resp) => {
+    $http.get(`${$dbUrl}/scripts/get_usage_patterns.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
         // Keep the dropdown selection valid on thin queries that yield fewer
@@ -296,14 +296,14 @@ function openPassages(groupName, words) {
 // Legend chip click opens a small popup with explicit actions (passages /
 // focus / hide-or-show). Replaces the previous shift-click gesture, which was
 // not discoverable.
-const legendMenu = ref(null);    // { thread, x, y } viewport-relative, or null
+const legendMenu = ref(null);    // { pattern, x, y } viewport-relative, or null
 
-function openLegendMenu(thread, event) {
+function openLegendMenu(pattern, event) {
     const rect = event.currentTarget.getBoundingClientRect();
     const popupWidth = 220;
     let x = rect.right + 8;
     if (x + popupWidth > window.innerWidth) x = Math.max(8, rect.left - popupWidth - 8);
-    legendMenu.value = { thread, x, y: rect.top };
+    legendMenu.value = { pattern, x, y: rect.top };
 }
 function closeLegendMenu() { legendMenu.value = null; }
 
@@ -321,13 +321,13 @@ function onLegendChipLeave() {
 }
 
 function legendGetPassages() {
-    const t = legendMenu.value?.thread;
+    const t = legendMenu.value?.pattern;
     if (t) openPassages(`${formData.value.q} · ${t.label}`,
         t.words.slice(0, 20).map((w) => w.word));
     closeLegendMenu();
 }
 function legendFocusCluster() {
-    const t = legendMenu.value?.thread;
+    const t = legendMenu.value?.pattern;
     if (!t) return;
     // Zoom-only: other clusters stay visible. Auto-unhide first if this
     // cluster was hidden — zooming to invisible nodes would do nothing.
@@ -342,14 +342,14 @@ function legendFocusCluster() {
     closeLegendMenu();
 }
 function legendToggleHideCluster() {
-    const t = legendMenu.value?.thread;
+    const t = legendMenu.value?.pattern;
     if (!t || !result.value) return;
     const next = new Set(hiddenClusters.value);
     if (next.has(t.id)) {
         next.delete(t.id);
     } else {
         next.add(t.id);
-        if (next.size >= result.value.threads.length) {
+        if (next.size >= result.value.patterns.length) {
             closeLegendMenu();
             return;
         }
@@ -371,10 +371,10 @@ function onDocClickForLegend(e) {
 
 // ---- Right-click context menu actions ----
 function closeContextMenu() { contextMenu.value = null; }
-function ctxThreadFor(nodeId) {
+function ctxPatternFor(nodeId) {
     if (!G || !result.value) return null;
     const cid = G.getNodeAttribute(nodeId, "cluster");
-    return result.value.threads.find((t) => t.id === cid) || null;
+    return result.value.patterns.find((t) => t.id === cid) || null;
 }
 function ctxPassagesForNode() {
     if (!contextMenu.value) return;
@@ -383,28 +383,28 @@ function ctxPassagesForNode() {
 }
 function ctxPassagesForCluster() {
     if (!contextMenu.value) return;
-    const thread = ctxThreadFor(contextMenu.value.nodeId);
-    if (thread) openPassages(`${formData.value.q} · ${thread.label}`,
-        thread.words.slice(0, 20).map((w) => w.word));
+    const pattern = ctxPatternFor(contextMenu.value.nodeId);
+    if (pattern) openPassages(`${formData.value.q} · ${pattern.label}`,
+        pattern.words.slice(0, 20).map((w) => w.word));
     closeContextMenu();
 }
 function ctxFlyToCluster() {
     if (!contextMenu.value) return;
-    const thread = ctxThreadFor(contextMenu.value.nodeId);
-    if (thread) flyToCluster(thread.id);
+    const pattern = ctxPatternFor(contextMenu.value.nodeId);
+    if (pattern) flyToCluster(pattern.id);
     closeContextMenu();
 }
 function ctxSoloCluster() {
     if (!contextMenu.value || !result.value) return;
-    const thread = ctxThreadFor(contextMenu.value.nodeId);
-    if (thread) onLegendClick(thread, { shiftKey: true });
+    const pattern = ctxPatternFor(contextMenu.value.nodeId);
+    if (pattern) onLegendClick(pattern, { shiftKey: true });
     closeContextMenu();
 }
 function ctxHideCluster() {
     if (!contextMenu.value) return;
-    const thread = ctxThreadFor(contextMenu.value.nodeId);
-    if (thread && !hiddenClusters.value.has(thread.id))
-        onLegendClick(thread, { shiftKey: false });
+    const pattern = ctxPatternFor(contextMenu.value.nodeId);
+    if (pattern && !hiddenClusters.value.has(pattern.id))
+        onLegendClick(pattern, { shiftKey: false });
     closeContextMenu();
 }
 function ctxShowAll() {
@@ -416,7 +416,7 @@ function ctxShowAll() {
 function ctxResetView() { resetView(); closeContextMenu(); }
 
 // Node click → the node + its NPMI neighbours (which may span clusters) are
-// the words the user actually saw lit up, so they (not the full thread) seed
+// the words the user actually saw lit up, so they (not the full pattern) seed
 // the passage signature.
 function onViewNode(nodeId) {
     if (!G) return;
@@ -539,7 +539,7 @@ function buildGraph(g, seedPositions = null) {
             // Size scales with within-sense anchor (the legend's centrality), so
             // the biggest circles ARE the label words. Sqrt damps extremes.
             size: 2 + 10 * Math.sqrt((n.anchor || 0) / maxAnchor),
-            color: threadColor(n.cluster - 1, 1),
+            color: patternColor(n.cluster - 1, 1),
             innerColor: "#ffffff",
             label: n.word,
             word: n.word,
@@ -1129,11 +1129,11 @@ onBeforeUnmount(() => {
 }
 
 /* ---- Sigma container + zoom controls ---- */
-.thread-network {
+.pattern-network {
     width: 100%;
     position: relative;
     /* White bg + rounded corners live HERE (not on sigma-container) so the
-       dim-rings overlay at z 0 inside thread-network can paint visibly. If
+       dim-rings overlay at z 0 inside pattern-network can paint visibly. If
        sigma-container had the white bg, its z 1 layer would cover the rings. */
     background: #fff;
     border-radius: 0.375rem;
@@ -1163,7 +1163,7 @@ onBeforeUnmount(() => {
 /* Inset shadow is drawn on top of the sigma WebGL canvas via a pseudo-element
    on the parent — putting it on .sigma-container itself doesn't work because
    the canvas covers the parent's bg painting (where inset shadow lives). */
-.thread-network::after {
+.pattern-network::after {
     content: "";
     position: absolute;
     inset: 0;

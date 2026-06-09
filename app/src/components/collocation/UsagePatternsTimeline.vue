@@ -3,45 +3,45 @@
         <!-- Detection auto-runs on mount; the controls below trigger re-runs. -->
 
         <div v-if="loading && !result" class="text-center py-5">
-            <progress-spinner :lg="true" :message="$t('threads.detecting')" />
+            <progress-spinner :lg="true" :message="$t('usagePatterns.detecting')" />
         </div>
 
-        <div v-if="result && result.threads && result.threads.length > 0" class="mx-2 my-3">
+        <div v-if="result && result.patterns && result.patterns.length > 0" class="mx-2 my-3">
             <!-- Everything (count, explanation, controls, streamgraph) lives
                  inside the result card as one self-contained unit. -->
             <div class="card shadow-sm p-3 mb-3 overview-card">
                 <p class="text-muted mb-3 d-flex align-items-center flex-wrap gap-1">
-                    <i18n-t keypath="threads.summary" tag="span">
-                        <template #threads>
+                    <i18n-t keypath="usagePatterns.summary" tag="span">
+                        <template #patterns>
                             <select v-model.number="themeCount" @change="onGrainChange"
                                 class="form-select form-select-sm summary-dropdown"
-                                :aria-label="$t('threads.themeCount')">
+                                :aria-label="$t('usagePatterns.themeCount')">
                                 <option v-for="n in (result?.available_theme_counts || [])" :key="n" :value="n">{{ n }}</option>
                             </select>
                         </template>
                     </i18n-t>
                     <span class="info-tip" tabindex="0"
-                        :data-tip="$t('threads.overviewSubtitle')"
-                        :aria-label="$t('threads.overviewSubtitle')">ⓘ</span>
+                        :data-tip="$t('usagePatterns.overviewSubtitle')"
+                        :aria-label="$t('usagePatterns.overviewSubtitle')">ⓘ</span>
                 </p>
 
                 <div class="d-flex flex-wrap gap-1 px-1 mb-3">
-                    <button v-for="thread in result.threads" :key="`leg-${thread.id}`" type="button"
+                    <button v-for="pattern in result.patterns" :key="`leg-${pattern.id}`" type="button"
                         class="btn btn-sm legend-chip"
-                        :style="{ borderColor: threadColor(thread.id - 1, 1), color: threadColor(thread.id - 1, 1) }"
-                        @click="onViewPassages(thread)"
-                        :title="thread.words.slice(0, 10).map((w) => w.word).join(', ')">
-                        <span class="legend-swatch" :style="{ backgroundColor: threadColor(thread.id - 1, 1) }"></span>
-                        {{ thread.label }}
+                        :style="{ borderColor: patternColor(pattern.id - 1, 1), color: patternColor(pattern.id - 1, 1) }"
+                        @click="onViewPassages(pattern)"
+                        :title="pattern.words.slice(0, 10).map((w) => w.word).join(', ')">
+                        <span class="legend-swatch" :style="{ backgroundColor: patternColor(pattern.id - 1, 1) }"></span>
+                        {{ pattern.label }}
                     </button>
                 </div>
                 <svg :viewBox="`0 0 ${chartWidth} ${overviewHeight}`" class="overview-stream"
-                    preserveAspectRatio="none" :aria-label="$t('threads.streamgraph')">
+                    preserveAspectRatio="none" :aria-label="$t('usagePatterns.streamgraph')">
                     <path v-for="(layer, i) in streamLayers" :key="layer.id"
-                        :d="layer.path" :fill="threadColor(i, 0.85)" stroke="#fff" stroke-width="0.3"
-                        @click="onViewPassages(layer.thread)" class="stream-band"
-                        :aria-label="`${$t('threads.threadN', { n: layer.thread.id })}: ${layer.thread.label}`">
-                        <title>{{ $t('threads.threadN', { n: layer.thread.id }) }}: {{ layer.thread.label }}</title>
+                        :d="layer.path" :fill="patternColor(i, 0.85)" stroke="#fff" stroke-width="0.3"
+                        @click="onViewPassages(layer.pattern)" class="stream-band"
+                        :aria-label="`${$t('usagePatterns.patternN', { n: layer.pattern.id })}: ${layer.pattern.label}`">
+                        <title>{{ $t('usagePatterns.patternN', { n: layer.pattern.id }) }}: {{ layer.pattern.label }}</title>
                     </path>
                 </svg>
                 <div class="d-flex justify-content-between small text-muted mt-1 px-1">
@@ -50,31 +50,31 @@
                 </div>
             </div>
 
-            <!-- Per-thread detail cards -->
+            <!-- Per-pattern detail cards -->
             <div class="row">
-                <div v-for="thread in result.threads" :key="thread.id" class="col-12 mb-3">
-                    <article class="card thread-card shadow-sm">
-                        <div class="card-header thread-header py-2 d-flex justify-content-between align-items-center flex-wrap"
-                            :style="{ borderLeft: `4px solid ${threadColor(thread.id - 1, 1)}` }">
-                            <strong>{{ $t('threads.threadN', { n: thread.id }) }}</strong>
+                <div v-for="pattern in result.patterns" :key="pattern.id" class="col-12 mb-3">
+                    <article class="card pattern-card shadow-sm">
+                        <div class="card-header pattern-header py-2 d-flex justify-content-between align-items-center flex-wrap"
+                            :style="{ borderLeft: `4px solid ${patternColor(pattern.id - 1, 1)}` }">
+                            <strong>{{ $t('usagePatterns.patternN', { n: pattern.id }) }}</strong>
                             <button type="button" class="btn btn-sm btn-link p-0"
-                                @click="onViewPassages(thread)">
-                                {{ $t('threads.viewPassages') }} →
+                                @click="onViewPassages(pattern)">
+                                {{ $t('usagePatterns.viewPassages') }} →
                             </button>
                         </div>
                         <div class="card-body py-2">
                             <div class="mb-2">
-                                <span v-for="w in thread.words.slice(0, 15)" :key="w.word" class="word-chip">
+                                <span v-for="w in pattern.words.slice(0, 15)" :key="w.word" class="word-chip">
                                     {{ w.word }}
                                 </span>
-                                <span v-if="thread.words.length > 15" class="text-muted small ms-1">
-                                    +{{ thread.words.length - 15 }}
+                                <span v-if="pattern.words.length > 15" class="text-muted small ms-1">
+                                    +{{ pattern.words.length - 15 }}
                                 </span>
                             </div>
-                            <svg :viewBox="`0 0 ${chartWidth} ${cardChartHeight}`" class="thread-spark"
-                                preserveAspectRatio="none" :aria-label="$t('threads.intensityChart')">
-                                <path :d="cardSparkPath(thread)" :fill="threadColor(thread.id - 1, 0.25)" stroke="none" />
-                                <path :d="cardSparkLine(thread)" :stroke="threadColor(thread.id - 1, 1)" stroke-width="1" fill="none" />
+                            <svg :viewBox="`0 0 ${chartWidth} ${cardChartHeight}`" class="pattern-spark"
+                                preserveAspectRatio="none" :aria-label="$t('usagePatterns.intensityChart')">
+                                <path :d="cardSparkPath(pattern)" :fill="patternColor(pattern.id - 1, 0.25)" stroke="none" />
+                                <path :d="cardSparkLine(pattern)" :stroke="patternColor(pattern.id - 1, 1)" stroke-width="1" fill="none" />
                             </svg>
                             <div class="d-flex justify-content-between small text-muted">
                                 <span>{{ result.year_range[0] }}</span>
@@ -86,9 +86,9 @@
             </div>
         </div>
 
-        <div v-else-if="result && (!result.threads || result.threads.length === 0)"
+        <div v-else-if="result && (!result.patterns || result.patterns.length === 0)"
             class="text-center py-5 text-muted">
-            {{ $t('threads.noResults') }}
+            {{ $t('usagePatterns.noResults') }}
         </div>
 
         <DistinctivePassagesModal
@@ -140,9 +140,9 @@ const streamHeight = 140;
 const overviewHeight = streamHeight;
 
 
-const threadHues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
-function threadColor(i, alpha) {
-    const h = threadHues[i % threadHues.length];
+const patternHues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
+function patternColor(i, alpha) {
+    const h = patternHues[i % patternHues.length];
     return `hsla(${h}, 55%, 50%, ${alpha})`;
 }
 
@@ -151,15 +151,15 @@ function threadColor(i, alpha) {
 // from the same share_weight that drives the overview, normalized per year — so
 // a card mirrors its overview band (rising/falling). Auto-scaled to each
 // pattern's own peak share so its trajectory is legible.
-const shareByThread = computed(() => {
-    const threads = result.value?.threads || [];
-    if (!threads.length) return {};
+const shareByPattern = computed(() => {
+    const patterns = result.value?.patterns || [];
+    if (!patterns.length) return {};
     const weightOf = (t) => t.share_weight || t.intensity;
-    const n = weightOf(threads[0]).length;
+    const n = weightOf(patterns[0]).length;
     const totals = new Array(n).fill(0);
-    for (const t of threads) { const w = weightOf(t); for (let i = 0; i < n; i++) totals[i] += w[i]; }
+    for (const t of patterns) { const w = weightOf(t); for (let i = 0; i < n; i++) totals[i] += w[i]; }
     const out = {};
-    for (const t of threads) {
+    for (const t of patterns) {
         const w = weightOf(t);
         const vals = new Array(n);
         let mx = 0;
@@ -174,8 +174,8 @@ const shareByThread = computed(() => {
 });
 
 // ---- Card sparkline paths (per-pattern share) ----
-function cardSparkPath(thread) {
-    const series = shareByThread.value[thread.id];
+function cardSparkPath(pattern) {
+    const series = shareByPattern.value[pattern.id];
     if (!series) return "";
     const vals = series.values, maxV = series.max, n = vals.length;
     const xStep = chartWidth / Math.max(1, n - 1);
@@ -189,8 +189,8 @@ function cardSparkPath(thread) {
     return d;
 }
 
-function cardSparkLine(thread) {
-    const series = shareByThread.value[thread.id];
+function cardSparkLine(pattern) {
+    const series = shareByPattern.value[pattern.id];
     if (!series) return "";
     const vals = series.values, maxV = series.max, n = vals.length;
     const xStep = chartWidth / Math.max(1, n - 1);
@@ -211,21 +211,21 @@ function cardSparkLine(thread) {
 // (all-zero, masked by the backend) collapse to the midline so the ribbon
 // pinches there rather than showing a false even split.
 const streamLayers = computed(() => {
-    if (!result.value || !result.value.threads || result.value.threads.length === 0) return [];
-    const threads = result.value.threads;
+    if (!result.value || !result.value.patterns || result.value.patterns.length === 0) return [];
+    const patterns = result.value.patterns;
     // Overview is composition: use the proportional share_weight when present
     // (older backends only send intensity, so fall back to it).
     const weightOf = (t) => t.share_weight || t.intensity;
-    const n = weightOf(threads[0]).length;
-    // Per-year totals across threads (the normalizer).
+    const n = weightOf(patterns[0]).length;
+    // Per-year totals across patterns (the normalizer).
     const totals = new Array(n).fill(0);
-    for (const t of threads) { const w = weightOf(t); for (let i = 0; i < n; i++) totals[i] += w[i]; }
+    for (const t of patterns) { const w = weightOf(t); for (let i = 0; i < n; i++) totals[i] += w[i]; }
     const xStep = chartWidth / Math.max(1, n - 1);
     const layers = [];
     const offsets = new Array(n).fill(0);
-    const heights = threads.map((t) => weightOf(t));
-    for (let li = 0; li < threads.length; li++) {
-        const thread = threads[li];
+    const heights = patterns.map((t) => weightOf(t));
+    for (let li = 0; li < patterns.length; li++) {
+        const pattern = patterns[li];
         const top = new Array(n);
         const bottom = new Array(n);
         for (let i = 0; i < n; i++) {
@@ -244,7 +244,7 @@ const streamLayers = computed(() => {
         for (let i = 0; i < n; i++) d += `L ${(i * xStep).toFixed(2)} ${bottom[i].toFixed(2)} `;
         for (let i = n - 1; i >= 0; i--) d += `L ${(i * xStep).toFixed(2)} ${top[i].toFixed(2)} `;
         d += "Z";
-        layers.push({ id: thread.id, path: d, thread });
+        layers.push({ id: pattern.id, path: d, pattern });
     }
     return layers;
 });
@@ -259,13 +259,13 @@ function runDetection(opts = {}) {
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
     if (userChoseCount) params.n_clusters = themeCount.value;
-    $http.get(`${$dbUrl}/scripts/get_threads.py`, { params }).then((resp) => {
+    $http.get(`${$dbUrl}/scripts/get_usage_patterns.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
         const avail = resp.data?.available_theme_counts || [];
         if (!userChoseCount) {
             // Adopt the backend's smart default so the dropdown reflects it.
-            const n = resp.data?.threads?.length;
+            const n = resp.data?.patterns?.length;
             if (n) themeCount.value = n;
         } else if (avail.length && !avail.includes(themeCount.value)) {
             // Keep the selection valid on thin queries that yield fewer senses
@@ -274,7 +274,7 @@ function runDetection(opts = {}) {
         }
         emit("filterList", resp.data?.filter_list || []);
     }).catch((error) => {
-        debug({ $options: { name: "thread-timeline" } }, error);
+        debug({ $options: { name: "pattern-timeline" } }, error);
     }).finally(() => {
         if (myToken === fetchToken) loading.value = false;
     });
@@ -292,16 +292,16 @@ function reset() {
 }
 
 // ---- Passage modal ----
-function onViewPassages(thread) {
-    // Use the full result year range; the thread's signature tokens do the
+function onViewPassages(pattern) {
+    // Use the full result year range; the pattern's signature tokens do the
     // semantic filtering, so a broader window surfaces more relevant hits
     // than a tight peak-centric slice would.
     const [yMin, yMax] = result.value.year_range;
     const yearRange = `${yMin}-${yMax}`;
     modal.value = {
-        groupName: `${formData.value.q} · ${thread.label}`,
+        groupName: `${formData.value.q} · ${pattern.label}`,
         yearRange,
-        signature: thread.words.slice(0, 20).map((w) => ({ word: w.word, z: null })),
+        signature: pattern.words.slice(0, 20).map((w) => ({ word: w.word, z: null })),
         passages: [],
         loading: true,
         hasMore: false,
@@ -345,7 +345,7 @@ async function fetchPassages({ append }) {
             : (data.passages || []);
         modal.value.hasMore = !!data.has_more;
     } catch (error) {
-        debug({ $options: { name: "thread-timeline" } }, error);
+        debug({ $options: { name: "pattern-timeline" } }, error);
     } finally {
         if (myToken === passagesFetchToken) modal.value.loading = false;
     }
@@ -368,16 +368,16 @@ defineExpose({ runDetection, reset });
 <style lang="scss" scoped>
 @use "../../assets/styles/theme.module.scss" as theme;
 
-.thread-card {
+.pattern-card {
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.thread-card:hover {
+.pattern-card:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08) !important;
 }
 
-.thread-header {
+.pattern-header {
     background-color: #fafafa;
     border-bottom: 1px solid #eee;
 }
@@ -393,7 +393,7 @@ defineExpose({ runDetection, reset });
     font-size: 0.85rem;
 }
 
-.thread-spark {
+.pattern-spark {
     width: 100%;
     height: 60px;
     background-color: #fafafa;

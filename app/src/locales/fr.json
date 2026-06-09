@@ -221,10 +221,10 @@
         "mostDistinctiveByField": "{field} les plus distinctifs",
         "withinFilteredScope": "(dans le périmètre filtré)"
     },
-    "threads": {
+    "usagePatterns": {
         "detecting": "Détection des schémas d'usage",
-        "summary": "Affichage de {threads} schémas d'usage",
-        "threadN": "Schéma {n}",
+        "summary": "Affichage de {patterns} schémas d'usage",
+        "patternN": "Schéma {n}",
         "viewPassages": "Passages représentatifs",
         "intensityChart": "Part de ce schéma au fil du temps",
         "streamgraph": "Part de chaque schéma d'usage au fil du temps",

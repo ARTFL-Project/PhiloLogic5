@@ -94,7 +94,7 @@
                 @field-selected="onSimilarFieldSelected"
                 @pivot-to-compare="pivotToCompare" />
 
-            <ThreadTimeline v-if="mode === 'timeSeries'" ref="threadTimelineRef"
+            <UsagePatternsTimeline v-if="mode === 'timeSeries'" ref="usagePatternsTimelineRef"
                 @filter-list="filterList = $event" />
 
             <WordMap v-if="mode === 'wordMap'" ref="wordMapRef"
@@ -119,7 +119,7 @@ import ResultsSummary from "./ResultsSummary";
 import Compare from "./collocation/Compare.vue";
 import Frequency from "./collocation/Frequency.vue";
 import Similar from "./collocation/Similar.vue";
-import ThreadTimeline from "./collocation/ThreadTimeline.vue";
+import UsagePatternsTimeline from "./collocation/UsagePatternsTimeline.vue";
 // Lazy-loaded: WordMap (with its force sim + canvas rendering) only ships when
 // the user actually opens the word-map tab, not on entry to Collocation.
 const WordMap = defineAsyncComponent(() => import("./collocation/WordMap.vue"));
@@ -143,7 +143,7 @@ const {
 const frequencyRef = useTemplateRef("frequencyRef");
 const compareRef = useTemplateRef("compareRef");
 const similarRef = useTemplateRef("similarRef");
-const threadTimelineRef = useTemplateRef("threadTimelineRef");
+const usagePatternsTimelineRef = useTemplateRef("usagePatternsTimelineRef");
 const wordMapRef = useTemplateRef("wordMapRef");
 
 //  Shared state
@@ -152,7 +152,7 @@ const results = ref({});
 const filterList = ref([]);
 // Whether the primary collocation fetch has run for the current query. False
 // when the page was loaded directly on a detection tab (wordMap/timeSeries),
-// which only run thread detection — so switching to frequency/similar/compare
+// which only run pattern detection — so switching to frequency/similar/compare
 // must trigger the primary fetch.
 const primaryFetched = ref(false);
 const biblio = ref({});
@@ -247,7 +247,7 @@ function updateCollocationUrl() {
         delete urlParams.time_series_interval;
     }
     if (mode.value === "timeSeries") {
-        // ThreadTimeline doesn't take an interval parameter (legacy from
+        // UsagePatternsTimeline doesn't take an interval parameter (legacy from
         // the per-decade time-series view). Clear stale URL params.
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
@@ -383,7 +383,7 @@ watch(
         if (modeChanged && !shouldRefetchOnQueryChange(newQuery, oldQuery)) {
             if (newMode === "timeSeries") {
                 await nextTick();
-                threadTimelineRef.value?.runDetection();
+                usagePatternsTimelineRef.value?.runDetection();
                 return;
             }
             if (newMode === "wordMap") {
@@ -411,7 +411,7 @@ watch(
         // Refetch the right path for the active mode.
         if (newMode === "timeSeries") {
             await nextTick();
-            threadTimelineRef.value?.runDetection();
+            usagePatternsTimelineRef.value?.runDetection();
         } else if (newMode === "wordMap") {
             await nextTick();
             wordMapRef.value?.runDetection();
@@ -444,7 +444,7 @@ onMounted(async () => {
             break;
         case "timeSeries":
             await nextTick();
-            threadTimelineRef.value?.runDetection();
+            usagePatternsTimelineRef.value?.runDetection();
             break;
         case "wordMap":
             await nextTick();

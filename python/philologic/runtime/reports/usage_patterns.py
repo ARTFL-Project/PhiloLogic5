@@ -1,6 +1,6 @@
-"""Global-first thread detection for collocation evolution.
+"""Global-first pattern detection for collocation evolution.
 
-Identifies persistent "threads" — coherent sets of collocate words representing
+Identifies persistent "patterns" — coherent sets of collocate words representing
 distinct uses or senses of the query word over time.
 
 Decomposition is **HyperLex** (Véronis 2004), a white-box word-sense-induction
@@ -427,11 +427,11 @@ def _flat_to_sparse_cols(
 @numba.jit(nopython=True, nogil=True, cache=True)
 def _intensity_kernel(
     flat_ids: np.ndarray, indptr: np.ndarray, bin_of_hit: np.ndarray,
-    thread_mask: np.ndarray, n_bins: int,
+    pattern_mask: np.ndarray, n_bins: int,
 ) -> np.ndarray:
-    """Per-bin count of bags containing *any* id in ``thread_mask``.
+    """Per-bin count of bags containing *any* id in ``pattern_mask``.
 
-    A bag contributes 1 to its year-bin's count if it intersects the thread's
+    A bag contributes 1 to its year-bin's count if it intersects the pattern's
     word set — multiplicity within a bag doesn't compound. Breaks on the
     first match to avoid scanning the rest of the bag.
     """
@@ -442,7 +442,7 @@ def _intensity_kernel(
         end = indptr[hi + 1]
         bi = bin_of_hit[hi]
         for k in range(start, end):
-            if thread_mask[flat_ids[k]]:
+            if pattern_mask[flat_ids[k]]:
                 intensity[bi] += 1.0
                 break
     return intensity
@@ -596,31 +596,31 @@ def _build_distance(
 
 
 def _build_graph(
-    thread_records: List[Dict], kept_clusters: Dict[int, List[int]],
+    pattern_records: List[Dict], kept_clusters: Dict[int, List[int]],
     candidate_ids: np.ndarray, dist: np.ndarray, counts: Dict[int, float],
     v_blob: bytes, v_offsets: np.ndarray, count_lemmas: bool,
     knn_intra: int = 6, knn_inter: int = 2, max_nodes: int = 500,
 ) -> Dict:
-    """Spatial twin of the streamgraph: the thread communities as a network.
+    """Spatial twin of the streamgraph: the pattern communities as a network.
 
-    Two node tiers, both colored by thread id (so the network matches the
+    Two node tiers, both colored by pattern id (so the network matches the
     streamgraph):
-      - members: words that landed in a surviving thread (``member: True``).
+      - members: words that landed in a surviving pattern (``member: True``).
       - context: every other candidate word, attached to its *highest-NPMI-
-        affinity* thread — even though it never formally clustered, it still
+        affinity* pattern — even though it never formally clustered, it still
         co-occurs most with one community, so it can be placed there
-        ("member: False"). Words with zero affinity to any thread are dropped
+        ("member: False"). Words with zero affinity to any pattern are dropped
         (genuinely unplaceable). Context words are ordered by affinity so a
         UI slider can expand the view outward from the cluster cores.
 
     ``n_members`` (the count of tier-1 nodes) is returned as the slider floor.
 
     Edges are a per-node k-nearest-neighbour selection over NPMI strength with
-    intra-/cross-cluster budgets kept separate: up to ``knn_intra`` same-thread
-    links (these make a community cohere) and only ``knn_inter`` cross-thread
+    intra-/cross-cluster budgets kept separate: up to ``knn_intra`` same-pattern
+    links (these make a community cohere) and only ``knn_inter`` cross-pattern
     bridges. Without that split a single query word's collocate graph has
     enough weak cross-links to collapse every community into one hairball.
-    Each edge carries an ``intra`` flag so the layout can spring same-thread
+    Each edge carries an ``intra`` flag so the layout can spring same-pattern
     links harder than bridges.
     """
     col_of = {int(t): i for i, t in enumerate(candidate_ids)}
@@ -633,10 +633,10 @@ def _build_graph(
     node_vocab: List[int] = []      # node index → vocab id
     node_index: Dict[int, int] = {}  # vocab id → node index
     member_set: set = set()
-    cluster_cols: Dict[int, List[int]] = {}  # thread id → member col indices
+    cluster_cols: Dict[int, List[int]] = {}  # pattern id → member col indices
 
-    # Tier 1 — thread members.
-    for t in thread_records:
+    # Tier 1 — pattern members.
+    for t in pattern_records:
         cid = t["_cid"]
         tid = t["id"]
         cluster_cols.setdefault(tid, [])
@@ -655,10 +655,10 @@ def _build_graph(
             cluster_cols[tid].append(col_of[w])
     n_members = len(nodes)
 
-    # Tier 2 — context words, each attached to its strongest-affinity thread.
+    # Tier 2 — context words, each attached to its strongest-affinity pattern.
     cluster_col_arr = {tid: np.array(cols, dtype=np.int64)
                        for tid, cols in cluster_cols.items()}
-    context: List[Tuple[float, int, int]] = []  # (affinity, vocab_id, thread_id)
+    context: List[Tuple[float, int, int]] = []  # (affinity, vocab_id, pattern_id)
     for ci in range(K):
         w = int(candidate_ids[ci])
         if w in member_set:
@@ -736,7 +736,7 @@ def _build_graph(
 #
 # Cache files live in the existing ``hitlists/`` directory (already mode 777
 # in every corpus install — gunicorn runs as www-data and needs to write
-# hitlists there) with a ``.thread.npz`` suffix to keep them visually
+# hitlists there) with a ``.pattern.npz`` suffix to keep them visually
 # distinguishable from hitlist binaries.
 #
 # Cache key includes everything that affects the cached arrays:
@@ -747,7 +747,7 @@ def _build_graph(
 # whole point: changing the number of themes reuses the cached bags + dist.
 
 
-def _thread_cache_key(
+def _pattern_cache_key(
     q: str, count_lemmas: bool, attribute: Optional[str],
     attribute_value: Optional[str], metadata: Dict[str, str],
     stopwords: Optional[set],
@@ -776,11 +776,11 @@ def _thread_cache_key(
     return h.hexdigest()
 
 
-def _thread_cache_path(db_path: str, key: str) -> str:
+def _pattern_cache_path(db_path: str, key: str) -> str:
     # Sit alongside hitlist files (already mode 777, world-writable so
-    # gunicorn-as-www-data can write to it). The .thread.npz suffix keeps
+    # gunicorn-as-www-data can write to it). The .pattern.npz suffix keeps
     # our cache files visually distinguishable from hitlist binaries.
-    return os.path.join(db_path, "hitlists", f"{key}.thread.npz")
+    return os.path.join(db_path, "hitlists", f"{key}.pattern.npz")
 
 
 def _load_intermediates(path: str) -> Optional[Dict[str, np.ndarray]]:
@@ -1004,7 +1004,7 @@ def _sense_cohesion(member_cols: List[int], dist: np.ndarray) -> float:
     return float(sim[iu].mean()) if iu[0].size else 0.0
 
 
-def detect_threads(
+def detect_usage_patterns(
     db: DB,
     db_path: str,
     q: str,
@@ -1014,7 +1014,7 @@ def detect_threads(
     metadata: Dict[str, str],
     *,
     stopwords: Optional[set] = None,
-    top_n_threads: Optional[int] = None,
+    top_n_patterns: Optional[int] = None,
     # User-facing "number of themes" knob: the number of hubs (= senses) to
     # induce at the fixed floor — more themes = finer senses (hubs are nested, so
     # raising the count appends the next-strongest hub region and a broad sense
@@ -1030,19 +1030,19 @@ def detect_threads(
     max_senses: int = 12,
     include_graph: bool = False,
 ) -> Dict:
-    """End-to-end global-first thread detection (HyperLex)."""
+    """End-to-end global-first pattern detection (HyperLex)."""
     stop_set = stopwords or set()
 
     # Try cache first: bags + candidates + NPMI dist are invariant across the
     # theme-count / edge-floor knobs (all a rerun varies). Cache hit skips
     # ~1.3 s of work on a big query like `woman`.
-    cache_key = _thread_cache_key(
+    cache_key = _pattern_cache_key(
         q, count_lemmas, attribute, attribute_value, metadata, stop_set,
     )
-    cache_path = _thread_cache_path(db_path, cache_key)
+    cache_path = _pattern_cache_path(db_path, cache_key)
     cached = _load_intermediates(cache_path)
 
-    # The cache key carries a schema tag (see _thread_cache_key), so any hit is
+    # The cache key carries a schema tag (see _pattern_cache_key), so any hit is
     # already the current schema; "counts_at_cand" is a cheap presence check.
     if cached is not None and "counts_at_cand" in cached:
         flat_ids = cached["flat_ids"]
@@ -1058,7 +1058,7 @@ def detect_threads(
             db, db_path, q, count_lemmas, attribute, attribute_value, metadata
         )
         if len(indptr) <= 1:
-            return {"n_total_hits": 0, "threads": []}
+            return {"n_total_hits": 0, "patterns": []}
 
         # Drop bags whose year is -1 (either unmatched-to-sentence or
         # metadata-missing) and reorder by year. Both operations on flat form
@@ -1069,7 +1069,7 @@ def detect_threads(
         flat_ids, indptr = _reorder_bags(flat_ids, indptr, order)
         years = years[order]
         if len(indptr) - 1 < 30:
-            return {"n_total_hits": len(indptr) - 1, "threads": []}
+            return {"n_total_hits": len(indptr) - 1, "patterns": []}
 
         candidate_ids, counts_full, raw_K = _select_candidates(
             flat_ids, indptr, v_blob, v_offsets, count_lemmas, stop_set,
@@ -1117,11 +1117,11 @@ def detect_threads(
         "year_range": [yr_min, yr_max],
         "year_bin": year_bin,
         "n_bins": n_bins,
-        "n_threads": 0,
-        "n_detected_threads": 0,
+        "n_patterns": 0,
+        "n_detected_patterns": 0,
         "vocab_size": K,
         "available_theme_counts": [],
-        "threads": [],
+        "patterns": [],
         "frequency": frequency,
     }
 
@@ -1172,7 +1172,7 @@ def detect_threads(
     sense_cohesion = {s: _sense_cohesion(cols, dist) for s, cols in sense_cols.items()}
 
     # Bags are already in flat (flat_ids, indptr) form from _build_hit_bags;
-    # the intensity kernel can use them directly per thread.
+    # the intensity kernel can use them directly per pattern.
     n_vocab_total = len(v_offsets) - 1
     safe_totals = np.where(n_hits_yr > 0, n_hits_yr, 1).astype(np.float64)
     smooth_bins = max(1, smooth_win // year_bin)
@@ -1212,7 +1212,7 @@ def detect_threads(
 
     # Per-sense word centrality (each word's summed NPMI to its sense-mates — its
     # anchor strength within the sense). Hoisted here so it feeds BOTH the
-    # composition assignment below and the per-thread word ranking later.
+    # composition assignment below and the per-pattern word ranking later.
     centrality_by_cid: Dict[int, np.ndarray] = {}
     for cid, cols_list in sense_cols.items():
         cols = np.asarray(cols_list, dtype=np.int64)
@@ -1225,7 +1225,7 @@ def detect_threads(
     # words point to most strongly — by summed word centrality, not raw count, so
     # a hub word outweighs a peripheral one and continuous scores leave almost no
     # ties. Computed once across all senses (a cross-sense decision per bag), then
-    # sliced per thread below. kept_clusters partitions the candidate vocabulary,
+    # sliced per pattern below. kept_clusters partitions the candidate vocabulary,
     # so each word maps to one sense; non-candidate tokens map to -1 and ignored.
     cids = list(kept_clusters.keys())
     cid_to_idx = {c: i for i, c in enumerate(cids)}
@@ -1239,17 +1239,17 @@ def detect_threads(
         flat_ids, indptr, bin_of_hit, word_to_sense, word_weight, len(cids), n_bins
     )
 
-    thread_records: List[Dict] = []
+    pattern_records: List[Dict] = []
     for cid in kept_clusters:
         words = kept_clusters[cid]
         # Raw per-bin overlap counts: a bag contributes to its bin if it
-        # intersects the thread's words (early-exit kernel, one tight loop).
-        thread_mask = np.zeros(n_vocab_total, dtype=np.bool_)
-        thread_mask[np.asarray(words, dtype=np.int64)] = True
-        raw = _intensity_kernel(flat_ids, indptr, bin_of_hit, thread_mask, n_bins)
+        # intersects the pattern's words (early-exit kernel, one tight loop).
+        pattern_mask = np.zeros(n_vocab_total, dtype=np.bool_)
+        pattern_mask[np.asarray(words, dtype=np.int64)] = True
+        raw = _intensity_kernel(flat_ids, indptr, bin_of_hit, pattern_mask, n_bins)
 
-        # Per-hit share curve, used ONLY as the thread-ORDERING key: it is
-        # independent of the timeline projection, so thread ids — and the
+        # Per-hit share curve, used ONLY as the pattern-ORDERING key: it is
+        # independent of the timeline projection, so pattern ids — and the
         # word-map node colours keyed to them — stay stable regardless of how
         # the curve is displayed. The displayed curve is the rate (when available).
         share_smooth = _smooth(raw / safe_totals, win=smooth_bins) if smooth_bins > 1 else raw / safe_totals
@@ -1278,7 +1278,7 @@ def detect_threads(
         if valid_bins is not None:
             share_weight = np.where(valid_bins, amax_smooth, 0.0)
 
-        # Rank thread words by within-sense ANCHOR strength (centrality computed
+        # Rank pattern words by within-sense ANCHOR strength (centrality computed
         # once above): each word's summed NPMI to the other members of this sense.
         # Pure NPMI — no counts, no corpus-IDF — so it's sense-discriminating
         # (unlike global IDF) and robust to whole-sense growth (it surfaces the
@@ -1295,9 +1295,9 @@ def detect_threads(
             for i in order
         ]
 
-        thread_records.append({
+        pattern_records.append({
             "_cid": cid,  # internal: maps the record back to its sense
-            "_order_mass": order_mass,  # internal: ordering key (stable thread ids)
+            "_order_mass": order_mass,  # internal: ordering key (stable pattern ids)
             "n_words": len(words),
             "cohesion": round(sense_cohesion[cid], 4),
             "words": words_out,
@@ -1308,29 +1308,29 @@ def detect_threads(
             "share_weight": [round(float(share_weight[bi]), 4) for bi in range(n_bins)],
         })
 
-    # Order by the projection-independent share-mass so thread ids — and the
+    # Order by the projection-independent share-mass so pattern ids — and the
     # word-map node colours keyed to them — are stable regardless of the
     # displayed curve (which is the rate).
-    thread_records.sort(key=lambda t: -t["_order_mass"])
-    n_detected = len(thread_records)
+    pattern_records.sort(key=lambda t: -t["_order_mass"])
+    n_detected = len(pattern_records)
     # available_counts was computed at induction time (the achievable hub range
     # at this floor). The theme COUNT is controlled by the hub count above, not
-    # by truncation; top_n_threads remains a separate hard cap (rarely set).
-    if top_n_threads is not None and top_n_threads > 0:
-        thread_records = thread_records[:top_n_threads]
-    for i, t in enumerate(thread_records):
+    # by truncation; top_n_patterns remains a separate hard cap (rarely set).
+    if top_n_patterns is not None and top_n_patterns > 0:
+        pattern_records = pattern_records[:top_n_patterns]
+    for i, t in enumerate(pattern_records):
         t["id"] = i + 1
         t["label"] = ", ".join(w["word"] for w in t["words"][:5])
 
     # Optional network projection of the same communities (built before _cid
-    # is stripped, so node colors match the streamgraph's thread ids).
+    # is stripped, so node colors match the streamgraph's pattern ids).
     graph = None
     if include_graph:
         graph = _build_graph(
-            thread_records, kept_clusters, candidate_ids, dist, counts,
+            pattern_records, kept_clusters, candidate_ids, dist, counts,
             v_blob, v_offsets, count_lemmas,
         )
-    for t in thread_records:
+    for t in pattern_records:
         t.pop("_cid", None)
         t.pop("_order_mass", None)
 
@@ -1339,13 +1339,13 @@ def detect_threads(
         "year_range": [yr_min, yr_max],
         "year_bin": year_bin,
         "n_bins": n_bins,
-        "n_threads": len(thread_records),
-        "n_detected_threads": n_detected,
+        "n_patterns": len(pattern_records),
+        "n_detected_patterns": n_detected,
         "vocab_size": K,
         # Theme counts the UI offers in the "Number of themes" dropdown
         # (2 .. senses found); picking fewer truncates to the top senses by mass.
         "available_theme_counts": available_counts,
-        "threads": thread_records,
+        "patterns": pattern_records,
         "frequency": frequency,
         # True when intensity curves are corpus-normalised usage rates (per
         # million words); False if corpus totals were unavailable (per-hit share).

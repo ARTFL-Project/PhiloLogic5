@@ -221,10 +221,10 @@
         "mostDistinctiveByField": "Most distinctive {field}",
         "withinFilteredScope": "(within filtered scope)"
     },
-    "threads": {
+    "usagePatterns": {
         "detecting": "Detecting usage patterns",
-        "summary": "Showing {threads} usage patterns",
-        "threadN": "Pattern {n}",
+        "summary": "Showing {patterns} usage patterns",
+        "patternN": "Pattern {n}",
         "viewPassages": "Representative passages",
         "intensityChart": "This pattern's share over time",
         "streamgraph": "Each usage pattern's share over time",
@@ -235,7 +235,7 @@
         "themeCountHint": "How many usage patterns to show — the strongest are listed first.",
         "wordsShownHint": "Adds context words around the colored core.",
         "searchPlaceholder": "Search a word…",
-        "noResults": "No threads detected — too few hits or insufficient distributional change.",
+        "noResults": "No patterns detected — too few hits or insufficient distributional change.",
         "noGraph": "Network data is not available (the server may be running an older version).",
         "zoomIn": "Zoom in",
         "zoomOut": "Zoom out",

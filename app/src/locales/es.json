@@ -221,10 +221,10 @@
         "mostDistinctiveByField": "{field} más distintivos",
         "withinFilteredScope": "(en el ámbito filtrado)"
     },
-    "threads": {
+    "usagePatterns": {
         "detecting": "Detectando patrones de uso",
-        "summary": "Mostrando {threads} patrones de uso",
-        "threadN": "Patrón {n}",
+        "summary": "Mostrando {patterns} patrones de uso",
+        "patternN": "Patrón {n}",
         "viewPassages": "Pasajes representativos",
         "intensityChart": "Proporción de este patrón a lo largo del tiempo",
         "streamgraph": "Proporción de cada patrón de uso a lo largo del tiempo",

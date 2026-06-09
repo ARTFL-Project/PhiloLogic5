@@ -1,12 +1,12 @@
-"""Thread detection for a query (collocation evolution).
+"""Pattern detection for a query (collocation evolution).
 
-Returns thread decomposition: each thread has a per-year intensity curve and an
+Returns pattern decomposition: each pattern has a per-year intensity curve and an
 anchor-ranked word list. Built on a HyperLex sense induction of the query's
 collocate vocabulary, projected to time bins.
 """
 
 from philologic.runtime.DB import DB
-from philologic.runtime.threads import detect_threads
+from philologic.runtime.reports.usage_patterns import detect_usage_patterns
 from philologic.runtime.reports.collocation import build_filter_list
 
 
@@ -14,7 +14,7 @@ def _load_stopwords(request, config, count_lemmas):
     """Return ``(stop_set, raw_words)`` for the current corpus + UI settings,
     using the same logic as the collocation report's filter_list.
 
-    ``stop_set`` has the ``lemma:`` prefix stripped (thread candidates are
+    ``stop_set`` has the ``lemma:`` prefix stripped (pattern candidates are
     stored without it); ``raw_words`` keeps the prefix so the UI can display
     the filtered words exactly as the frequency view does.
     """
@@ -34,12 +34,12 @@ def _load_stopwords(request, config, count_lemmas):
     return stop, words
 
 
-def get_threads(request, config):
+def get_usage_patterns(request, config):
     db = DB(config.db_path + "/data/")
 
     q = (request.q or "").strip()
     if not q:
-        return {"n_total_hits": 0, "threads": []}
+        return {"n_total_hits": 0, "patterns": []}
     count_lemmas = q.startswith("lemma:")
 
     attribute = None
@@ -63,15 +63,15 @@ def get_threads(request, config):
             return None
         return max(lo, min(hi, v))
 
-    top_n_threads = _int_or_none("top_n_threads", 1, 30)
+    top_n_patterns = _int_or_none("top_n_patterns", 1, 30)
     # "Number of themes": truncate to the top-N senses by mass (absent → all).
     n_clusters = _int_or_none("n_clusters", 2, 30)
 
-    result = detect_threads(
+    result = detect_usage_patterns(
         db, config.db_path + "/data", q, count_lemmas, attribute, attribute_value,
         metadata,
         stopwords=stopwords,
-        top_n_threads=top_n_threads,
+        top_n_patterns=top_n_patterns,
         n_clusters_override=n_clusters,
         # The network view is the spatial twin of the streamgraph — built from
         # the same clustering, so it ships in the same response (cheap: the
