@@ -41,18 +41,6 @@
                             <input v-model="searchQuery" @input="onSearchInput" type="text"
                                 class="form-control form-control-sm" :placeholder="$t('usagePatterns.searchPlaceholder')" />
                         </div>
-                        <div v-if="result.graph.nodes.length > result.graph.n_members" class="control-stack mt-3">
-                            <div class="words-slider">
-                                <label class="small text-muted d-block mb-1" for="net-word-count">
-                                    {{ $t('usagePatterns.wordsShown') }}: <strong>{{ networkWordCount }}</strong>
-                                    <span class="text-muted">/ {{ result.graph.nodes.length }}</span>
-                                </label>
-                                <input type="range" id="net-word-count" class="form-range form-range-sm w-100"
-                                    :min="result.graph.n_members" :max="result.graph.nodes.length" step="1"
-                                    v-model.number="networkWordCount" />
-                                <p class="control-hint">{{ $t('usagePatterns.wordsShownHint') }}</p>
-                            </div>
-                        </div>
                     </aside>
 
                     <div class="viz-area">
@@ -197,11 +185,14 @@ const { formData } = storeToRefs(store);
 // ---- Data fetch state ----
 const loading = ref(false);
 const result = ref(null);
-const networkWordCount = ref(0);
+// Seeded at 4, but a fresh query defers to the backend's smart default (the
+// hub-strength knee) and adopts that count; only a user dropdown pick sends an
+// explicit count. Mirrors UsagePatternsTimeline.
 const patternCount = ref(4);
+let userChoseCount = false;
 // Cluster IDs the user has muted via legend chips. Plain click toggles a single
-// cluster; shift-click solos (hides all others). Composes with the words slider:
-// a node is hidden if EITHER condition hides it.
+// cluster; shift-click solos (hides all others). A node is hidden iff its
+// cluster is muted.
 const hiddenClusters = ref(new Set());
 let fetchToken = 0;
 
@@ -224,22 +215,28 @@ function patternColor(i, alpha = 1) {
 }
 
 function runDetection(opts = {}) {
+    // Fresh run (mount, new query) defers to the backend smart default; only a
+    // user dropdown change sends an explicit count.
+    if (!opts.grainChange) userChoseCount = false;
     const myToken = ++fetchToken;
     loading.value = true;
     if (!opts.keepResult) result.value = null;
     const params = paramsFilter(formData.value);
-    params.n_clusters = patternCount.value;
+    if (userChoseCount) params.n_clusters = patternCount.value;
     $http.get(`${$dbUrl}/scripts/get_usage_patterns.py`, { params }).then((resp) => {
         if (myToken !== fetchToken) return;
         result.value = resp.data;
-        // Keep the dropdown selection valid on thin queries that yield fewer
-        // senses than requested (backend already truncated; reflect it here).
         const avail = resp.data?.available_pattern_counts || [];
-        if (avail.length && !avail.includes(patternCount.value)) {
+        if (!userChoseCount) {
+            // Adopt the backend's smart default so the dropdown reflects it.
+            const n = resp.data?.patterns?.length;
+            if (n) patternCount.value = n;
+        } else if (avail.length && !avail.includes(patternCount.value)) {
+            // Keep the selection valid on thin queries that yield fewer senses
+            // than requested (backend already truncated; reflect it here).
             patternCount.value = avail[avail.length - 1];
         }
         emit("filterList", resp.data?.filter_list || []);
-        networkWordCount.value = resp.data?.graph?.n_members || 0;
     }).catch((error) => {
         debug({ $options: { name: "word-map" } }, error);
     }).finally(() => {
@@ -254,7 +251,8 @@ function onGrainChange() {
             pendingPrevPositions.set(attrs.word, { x: attrs.x, y: attrs.y });
         });
     }
-    runDetection({ keepResult: true });
+    userChoseCount = true;
+    runDetection({ keepResult: true, grainChange: true });
 }
 
 function reset() {
@@ -294,8 +292,7 @@ function openPassages(groupName, words) {
 }
 
 // Legend chip click opens a small popup with explicit actions (passages /
-// focus / hide-or-show). Replaces the previous shift-click gesture, which was
-// not discoverable.
+// focus / hide-or-show).
 const legendMenu = ref(null);    // { pattern, x, y } viewport-relative, or null
 
 function openLegendMenu(pattern, event) {
@@ -474,8 +471,8 @@ defineExpose({ runDetection, reset });
 
 // =====================================================================
 // Sigma + graphology rendering. Operates on result.value.graph.
-// Replaces the hand-rolled canvas + force sim: FA2 (Barnes-Hut) for
-// layout, sigma for WebGL rendering, label LOD, and hover/click events.
+// FA2 (Barnes-Hut) for layout, sigma for WebGL rendering, label LOD,
+// and hover/click events.
 // =====================================================================
 
 const containerRef = ref(null);
@@ -547,7 +544,7 @@ function buildGraph(g, seedPositions = null) {
             member: n.member,
             anchor: n.anchor || 0,
             weight: n.weight,
-            // Hidden initially if beyond the "words shown" slider — see filter.
+            // Visible unless its cluster is muted (see applyVisibility).
             hidden: false,
         });
     });
@@ -592,12 +589,12 @@ function buildGraph(g, seedPositions = null) {
 
 function applyVisibility() {
     if (!G) return;
-    const limit = networkWordCount.value || 0;
+    // All graph words (members + the context the backend padded in up to its
+    // cap) are shown; only muted clusters hide nodes. Decluttering is by cluster
+    // toggle (legend chips), not a per-word count.
     const offClusters = hiddenClusters.value;
     G.forEachNode((id, attrs) => {
-        const beyondSlider = Number(id) >= limit;
-        const inOffCluster = offClusters.has(attrs.cluster);
-        G.setNodeAttribute(id, "hidden", beyondSlider || inOffCluster);
+        G.setNodeAttribute(id, "hidden", offClusters.has(attrs.cluster));
     });
 }
 
@@ -607,19 +604,34 @@ function onSearchInput() {
     const q = searchQuery.value.trim().toLowerCase();
     if (q && G) {
         G.forEachNode((id, attrs) => {
-            if (!attrs.hidden && attrs.word.toLowerCase().includes(q)) matchedNodes.add(id);
+            if (!attrs.hidden && attrs.word.toLowerCase().startsWith(q)) matchedNodes.add(id);
         });
     }
     renderer?.refresh();
-    // Centre on the first match so the user sees where it is.
+    // Fit the camera to ALL matches rather than diving to the first one. When the
+    // matches sit in one zone the bounding box is small, so it zooms in; when they
+    // are scattered across the graph the box spans most of it, so the camera stays
+    // near the overview and every match stays visible (highlighted).
     if (matchedNodes.size > 0 && renderer) {
-        const firstId = matchedNodes.values().next().value;
-        const a = G.getNodeAttributes(firstId);
-        // camera.animate() expects FRAMED-graph coords (sigma's internal [-1,1]
-        // camera space), not raw graph coords. Compose graph → viewport →
-        // framed since sigma 3 has no direct graphToFramedGraph.
-        const fg = renderer.viewportToFramedGraph(renderer.graphToViewport({ x: a.x, y: a.y }));
-        renderer.getCamera().animate({ x: fg.x, y: fg.y, ratio: 0.5 }, { duration: 400 });
+        // camera.animate() expects FRAMED-graph coords (camera-independent);
+        // compose graph → viewport → framed since sigma 3 has no direct map.
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        matchedNodes.forEach((id) => {
+            const a = G.getNodeAttributes(id);
+            const p = renderer.viewportToFramedGraph(renderer.graphToViewport({ x: a.x, y: a.y }));
+            if (p.x < minX) minX = p.x;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.y > maxY) maxY = p.y;
+        });
+        const spread = Math.max(maxX - minX, maxY - minY);
+        // ratio 1 ≈ whole graph; smaller = more zoomed in. Pad the box by 1.3, and
+        // clamp: never zoom past a single tight cluster, never zoom out beyond the
+        // overview.
+        const ratio = Math.min(1, Math.max(0.4, spread * 1.3));
+        renderer.getCamera().animate(
+            { x: (minX + maxX) / 2, y: (minY + maxY) / 2, ratio }, { duration: 400 }
+        );
     }
 }
 
@@ -660,10 +672,11 @@ function drawHulls() {
     const ov = sizeOverlayCanvas(hullsRef.value);
     if (!ov || !G || !renderer) return;
     const { ctx } = ov;
-    // Group visible MEMBER nodes by cluster, in screen coords.
+    // Group all visible nodes (members + context) by cluster, in screen coords,
+    // so the hull encloses every word in the cluster.
     const byCluster = {};
     G.forEachNode((id, attrs) => {
-        if (attrs.hidden || !attrs.member) return;
+        if (attrs.hidden) return;
         const s = renderer.graphToViewport(attrs);
         (byCluster[attrs.cluster] ||= { pts: [], color: attrs.color }).pts.push(s);
     });
@@ -711,11 +724,11 @@ function drawDimNodes() {
     ctx.strokeStyle = "#cad0d8";
     ctx.lineWidth = 1;
     G.forEachNode((id, attrs) => {
-        if (attrs.hidden) return;     // user-hidden (slider / cluster-off)
+        if (attrs.hidden) return;     // user-hidden (cluster-off)
         let isDim;
         if (clusterFocus) isDim = attrs.cluster !== hoveredCluster;
-        else if (searching) isDim = !matchedNodes.has(id);
-        else isDim = id !== hoveredNode && !G.areNeighbors(id, hoveredNode);
+        else if (hovering) isDim = id !== hoveredNode && !G.areNeighbors(id, hoveredNode);
+        else isDim = !matchedNodes.has(id);
         if (!isDim) return;
         const pos = renderer.graphToViewport(attrs);
         const r = (attrs.size || 4) / ratio;
@@ -738,20 +751,25 @@ function setupReducers() {
                 ? { ...attrs, zIndex: 1 }
                 : { ...attrs, hidden: true };
         }
-        // Search takes priority over node hover: highlight matches, hide rest.
-        // (drawDimNodes paints the dim ones as Canvas2D rings on the overlay
-        // so overlaps render cleanly — see drawHulls).
+        // Node hover takes priority over search, so hovering a match reveals its
+        // connections — its neighbours (even non-matches) light up. Only visible
+        // nodes can be hovered, so during a search this fires on a match.
+        if (hoveredNode !== null) {
+            if (node === hoveredNode || G.areNeighbors(node, hoveredNode)) {
+                return { ...attrs, zIndex: 1, forceLabel: true };
+            }
+            // Non-neighbour: hidden in sigma; drawDimNodes paints the ring.
+            return { ...attrs, hidden: true };
+        }
+        // Search (not hovering): highlight matches, hide the rest. (drawDimNodes
+        // paints the dim ones as Canvas2D rings on the overlay so overlaps render
+        // cleanly — see drawHulls.)
         if (matchedNodes.size > 0) {
             return matchedNodes.has(node)
                 ? { ...attrs, zIndex: 1, forceLabel: true }
                 : { ...attrs, hidden: true };
         }
-        if (hoveredNode === null) return attrs;
-        if (node === hoveredNode || G.areNeighbors(node, hoveredNode)) {
-            return { ...attrs, zIndex: 1, forceLabel: true };
-        }
-        // Non-neighbour: hidden in sigma; drawDimNodes paints the ring.
-        return { ...attrs, hidden: true };
+        return attrs;
     });
     renderer.setSetting("edgeReducer", (edge, attrs) => {
         if (hoveredCluster !== null) {
@@ -761,15 +779,17 @@ function setupReducers() {
             // Only intra-cluster edges remain — bridges to other clusters get hidden.
             return sIn && tIn ? attrs : { ...attrs, hidden: true };
         }
+        if (hoveredNode !== null) {
+            const [s, t] = G.extremities(edge);
+            if (s === hoveredNode || t === hoveredNode) return { ...attrs, color: "#888", size: attrs.size * 1.5 };
+            return { ...attrs, hidden: true };
+        }
         if (matchedNodes.size > 0) {
             const [s, t] = G.extremities(edge);
             if (matchedNodes.has(s) || matchedNodes.has(t)) return attrs;
             return { ...attrs, hidden: true };
         }
-        if (hoveredNode === null) return attrs;
-        const [s, t] = G.extremities(edge);
-        if (s === hoveredNode || t === hoveredNode) return { ...attrs, color: "#888", size: attrs.size * 1.5 };
-        return { ...attrs, hidden: true };
+        return attrs;
     });
 }
 
@@ -850,8 +870,10 @@ async function renderGraph(g) {
     if (tweenStart) {
         G.forEachNode((id, attrs) => tweenStart.set(id, { x: attrs.x, y: attrs.y }));
     }
-    // ForceAtlas2 with LinLog: gives crisper cluster separation than vanilla
-    // FA2. Barnes-Hut is O(n log n) so scales if we ever raise max_nodes.
+    // Standard FA2: strong repulsion + weak gravity spreads the clusters into
+    // distinct regions. (LinLog mode was tried and collapses these graphs into a
+    // central mass — the senses share too many bridge words to separate under
+    // logarithmic attraction.)
     forceAtlas2.assign(G, {
         iterations: 500,
         settings: {
@@ -860,7 +882,7 @@ async function renderGraph(g) {
             gravity: 0.4,           // gentle gravity → layout has room to breathe
             scalingRatio: 25,       // strong repulsion → meaningful gaps between nodes
             strongGravityMode: false,
-            linLogMode: false,      // standard FA2 attraction: clusters hug together as blobs
+            linLogMode: false,
             edgeWeightInfluence: 1,
             slowDown: 5,
             adjustSizes: false,     // noverlap handles overlap as a post-pass
@@ -988,13 +1010,6 @@ watch(() => result.value?.graph, async (g) => {
     renderGraph(g);
 }, { flush: "post" });
 
-// Slider just toggles hidden flags — no relayout.
-watch(networkWordCount, () => {
-    if (!G || !renderer) return;
-    applyVisibility();
-    renderer.refresh();
-});
-
 onMounted(() => {
     // Async-loaded: parent's nextTick-then-call may miss our mount; self-fetch.
     if (!result.value) runDetection();
@@ -1033,18 +1048,6 @@ onBeforeUnmount(() => {
     display: flex;
     flex-direction: column;
     gap: 4px;
-}
-
-.control-stack {
-    padding-top: 0.75rem;
-    border-top: 1px solid #eee;
-}
-
-.control-hint {
-    margin: 0.25rem 0 0;
-    font-size: 0.7rem;
-    line-height: 1.3;
-    color: #888;
 }
 
 .legend-chip {
@@ -1260,7 +1263,7 @@ onBeforeUnmount(() => {
 .zoom-controls {
     position: absolute;
     top: 6px;
-    right: 6px;
+    left: 6px;
     z-index: 5;
     display: flex;
     flex-direction: column;
