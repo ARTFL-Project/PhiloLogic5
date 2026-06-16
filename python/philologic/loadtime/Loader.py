@@ -265,7 +265,7 @@ class Loader:
         os.system(f"chmod -R 775 {self.textdir}")
         print("Copying files to database directory... done.", flush=True)
 
-    def parse_bibliography_file(self, bibliography_file, sort_by_field, reverse_sort=True):
+    def parse_bibliography_file(self, bibliography_file, sort_by_field):
         """Parse tab delimited bibliography file: tsv, tab, or csv"""
 
         # Detect delimiter based on file extension
@@ -332,12 +332,8 @@ class Loader:
             end=" ",
         )
 
-        def make_sort_key(d):
-            """Inner sort function"""
-            key = [d.get(f, "") for f in sort_by_field]
-            return key
-
-        load_metadata.sort(key=make_sort_key, reverse=reverse_sort)
+        self.sort_order = sort_by_field  # to be used for the sort by concordance biblio key in web config
+        load_metadata = sort_list(load_metadata, sort_by_field)
         print("done.")
 
         return load_metadata
