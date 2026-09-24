@@ -3,15 +3,85 @@
 import fcntl
 import os
 import struct
+import threading
 import time
 from contextlib import contextmanager
 
+import numpy as np
 from unidecode import unidecode
 
 from .HitWrapper import HitWrapper
 from .sql_validation import validate_column, validate_philo_type
 
 obj_dict = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
+
+
+def sort_key(value, ascii_conversion):
+    """Sort key of a metadata value: numbers in numeric order, then text regardless of case (and of accents with
+    ascii_conversion), then missing values."""
+    if value is None or value == "":
+        return (2, "")
+    if isinstance(value, (int, float)):
+        return (0, value)
+    value = str(value)
+    return (1, (unidecode(value) if ascii_conversion else value).casefold())
+
+
+def _id_keys(ids, depth):
+    """The first `depth` columns of rows of object ids, as byte strings that compare like the id tuples."""
+    return np.ascontiguousarray(ids[:, :depth], dtype=">u4").view(f"S{4 * depth}").ravel()
+
+
+def sort_hits(hits, dbh, sort_order, ascii_conversion):
+    """Order of hits (rows of object ids) sorted by the sort_order metadata of the objects containing them.
+
+    Sort fields describe one object type (e.g. doc for author and title), so rather than hits, we sort those
+    objects, then give each hit the rank of the deepest one containing it. Ties, and hits within an object, keep
+    their load order; hits in no such object come last.
+    """
+    philo_types = set()
+    for field in sort_order:
+        philo_type = dbh.locals["metadata_types"][field]
+        philo_types |= {"div1", "div2", "div3"} if philo_type == "div" else {philo_type}
+    philo_types = sorted(validate_philo_type(t) for t in philo_types)
+    cursor = dbh.dbh.cursor()
+    cursor.execute(
+        f"select philo_id, philo_type, {', '.join(sort_order)} from toms "
+        f"where philo_type in ({', '.join('?' for _ in philo_types)}) order by rowid",
+        philo_types,
+    )
+    rows = cursor.fetchall()
+    object_order = sorted(range(len(rows)), key=lambda i: [sort_key(rows[i][f], ascii_conversion) for f in sort_order])
+    object_ranks = np.empty(len(rows), dtype=np.int64)
+    object_ranks[object_order] = np.arange(len(rows))
+    object_ids = np.array([[int(i) for i in row["philo_id"].split()[:7]] for row in rows], dtype=np.uint32).reshape(-1, 7)
+    depths = np.array([obj_dict[row["philo_type"]] for row in rows])
+
+    ranks = np.full(len(hits), len(rows), dtype=np.int64)
+    unranked = np.ones(len(hits), dtype=bool)
+    for depth in sorted(set(depths.tolist()), reverse=True):  # the deepest object containing a hit decides
+        at_depth = depths == depth
+        keys = _id_keys(object_ids[at_depth], depth)
+        by_key = np.argsort(keys)
+        keys, ranks_at_depth = keys[by_key], object_ranks[at_depth][by_key]
+        hit_keys = _id_keys(hits, depth)
+        found = np.minimum(np.searchsorted(keys, hit_keys), len(keys) - 1)
+        matched = unranked & (keys[found] == hit_keys)
+        ranks[matched] = ranks_at_depth[found[matched]]
+        unranked &= ~matched
+    return np.argsort(ranks, kind="stable")
+
+
+def sorted_hitlist_file(filename, length, dbh, sort_order, ascii_conversion):
+    """Path of a copy of a complete hitlist file with its hits sorted by sort_order, sorting them unless done
+    already. It is written whole under a temporary name, so readers only ever see it complete."""
+    path = f"{filename}.sorted.{','.join(sort_order)}"
+    if not os.path.exists(path):
+        hits = np.fromfile(filename, dtype=np.uint32).reshape(-1, length)
+        tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+        hits[sort_hits(hits, dbh, sort_order, ascii_conversion)].tofile(tmp)
+        os.replace(tmp, path)
+    return path
 
 
 class HitlistClaim:
@@ -201,118 +271,63 @@ class HitList(object):
         self.done = False
         self.update()
 
+        # The file hits are read from: the hitlist itself, or once complete, a copy sorted by sort_order
+        self.data_file = self.filename
         if self.sort_order:
             self.sort_order = [validate_column(col, dbh) for col in self.sort_order]
-            self.sorted_hitlist = []
-            iter_position = 0
-            self.seek(iter_position)
-            while True:
-                try:
-                    hit = self.readhit(iter_position)
-                except IndexError as IOError:
-                    break
-                self.sorted_hitlist.append(hit)
-                iter_position += 1
-            metadata_types = set([dbh.locals["metadata_types"][i] for i in self.sort_order])
-            if "div" in metadata_types:
-                metadata_types.remove("div")
-                metadata_types.add("div1")
-                metadata_types.add("div2")
-                metadata_types.add("div3")
-            # Validate metadata_types for defense in depth
-            metadata_types = [validate_philo_type(m) for m in metadata_types]
-            cursor = self.dbh.dbh.cursor()
-            query = "select * from toms where "
-            if metadata_types:
-                query += "philo_type in (%s) AND " % ", ".join(['"%s"' % m for m in metadata_types])
-            order_params = []
-            for s in self.sort_order:
-                order_params.append("%s is not null" % s)
-            query += " AND ".join(order_params)
-            cursor.execute(query)
-            metadata = {}
-            for i in cursor:
-                sql_row = dict(i)
-                philo_id = tuple(int(s) for s in sql_row["philo_id"].split() if int(s))
-                if ascii_conversion is True:
-                    metadata[philo_id] = [unidecode(sql_row[m] or "ZZZZZ") for m in sort_order]
-                else:
-                    metadata[philo_id] = [sql_row[m] or "ZZZZZ" for m in sort_order]
-
-            def sort_by_metadata(philo_id):
-                while philo_id:
-                    try:
-                        return metadata[philo_id]
-                    except KeyError:
-                        if len(philo_id) == 1:
-                            break
-                        philo_id = philo_id[:-1]
-                return ["ZZZZZ"]
-
-            self.sorted_hitlist.sort(key=sort_by_metadata, reverse=False)
+            self.finish()
+            self.data_file = sorted_hitlist_file(self.filename, self.length, dbh, self.sort_order, ascii_conversion)
+            self.fh.close()
+            self.fh = open(self.data_file, "rb")
+            self.position = 0
 
     def __getitem__(self, n):
-        if self.sort_order:
+        self.update()
+        if isinstance(n, slice):
             return self.get_slice(n)
         else:
-            self.update()
-            if isinstance(n, slice):
-                return self.get_slice(n)
+            if self.raw:
+                return self.readhit(n)
             else:
-                if self.raw:
-                    return self.readhit(n)
-                else:
-                    self.readhit(n)
-                    return HitWrapper(self.readhit(n), self.dbh)
+                return HitWrapper(self.readhit(n), self.dbh)
 
     def get_slice(self, n):
-        if self.sort_order:
-            try:
-                for hit in self.sorted_hitlist[n]:
-                    yield HitWrapper(hit, self.dbh)
-            except IndexError:
-                pass
-        else:
-            self.update()
-            # need to handle negative offsets.
-            slice_position = n.start or 0
-            self.seek(slice_position)
-            while True:
-                if n.stop is not None:
-                    if slice_position >= n.stop:
-                        break
-                try:
-                    hit = self.readhit(slice_position)
-                except IndexError as IOError:
+        self.update()
+        # need to handle negative offsets.
+        slice_position = n.start or 0
+        self.seek(slice_position)
+        while True:
+            if n.stop is not None:
+                if slice_position >= n.stop:
                     break
-                if self.raw:
-                    yield hit
-                else:
-                    yield HitWrapper(hit, self.dbh)
-                slice_position += 1
+            try:
+                hit = self.readhit(slice_position)
+            except IndexError as IOError:
+                break
+            if self.raw:
+                yield hit
+            else:
+                yield HitWrapper(hit, self.dbh)
+            slice_position += 1
 
     def __len__(self):
         self.update()
         return self.count
 
     def __iter__(self):
-        if self.sort_order:
-            for hit in self.sorted_hitlist:
+        self.update()
+        iter_position = 0
+        self.seek(iter_position)
+        while True:
+            try:
+                hit = self.readhit(iter_position)
+            except IndexError as IOError:
+                break
+            if self.raw:
+                yield hit
+            else:
                 yield HitWrapper(hit, self.dbh)
-        else:
-            self.update()
-            iter_position = 0
-            self.seek(iter_position)
-            while True:
-                try:
-                    hit = self.readhit(iter_position)
-                except IndexError as IOError:
-                    break
-                if self.raw:
-                    yield hit
-                else:
-                    yield HitWrapper(hit, self.dbh)
-                iter_position += 1
+            iter_position += 1
 
     def seek(self, n):
         if self.position == n:
