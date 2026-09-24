@@ -91,17 +91,14 @@ class DB:
         if hit_count <= 0:
             return
 
-        if hits.sort_order:
-            raw_hits = hits.sorted_hitlist[start - 1 : end]
-        else:
-            offset_bytes = hits.hitsize * (start - 1)
-            with open(hits.filename, "rb") as f:
-                f.seek(offset_bytes)
-                raw_data = f.read(hits.hitsize * hit_count)
-            raw_hits = [
-                struct.unpack(hits.format, raw_data[i * hits.hitsize : (i + 1) * hits.hitsize])
-                for i in range(len(raw_data) // hits.hitsize)
-            ]
+        offset_bytes = hits.hitsize * (start - 1)
+        with open(hits.data_file, "rb") as f:
+            f.seek(offset_bytes)
+            raw_data = f.read(hits.hitsize * hit_count)
+        raw_hits = [
+            struct.unpack(hits.format, raw_data[i * hits.hitsize : (i + 1) * hits.hitsize])
+            for i in range(len(raw_data) // hits.hitsize)
+        ]
 
         unique_ids = set()
         for raw in raw_hits:
