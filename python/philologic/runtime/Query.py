@@ -476,6 +476,8 @@ def start_search(db, terms, filename, lock=None, corpus_file=None, method=None, 
         daemon=True,
     )
     thread.start()
+    if lock is not None:
+        lock.hand_over()  # the thread finishes the hitlist whatever happens, so errors here must not undo the claim
     return len(split)
 
 
