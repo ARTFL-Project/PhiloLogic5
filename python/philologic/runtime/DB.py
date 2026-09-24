@@ -6,6 +6,7 @@ import hashlib
 import os
 import sqlite3
 import struct
+from contextlib import contextmanager
 
 from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
 from philologic.runtime import HitList, MetadataQuery, Query, QuerySyntax
@@ -28,6 +29,36 @@ def hit_to_string(hit, width):
     hit_string = " ".join(map(str, hit))
     hit_string += "".join(" 0" for _ in range(pad))
     return hit_string
+
+
+@contextmanager
+def claim_hitlist(filename):
+    """Atomically create an empty hitlist file. Yields True if this call created it, in which case
+    the caller must produce its content; False if it already exists (being produced or done).
+
+    Checking for the file and creating it in two steps let concurrent identical queries both run
+    the search into the same files, overwriting each other's results.
+    """
+    try:
+        os.close(os.open(filename, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666))
+    except FileExistsError:
+        yield False
+        return
+    # Flags left behind by an earlier hitlist of the same name that cleanup removed
+    for suffix in (".done", ".terms"):
+        try:
+            os.remove(filename + suffix)
+        except FileNotFoundError:
+            pass
+    try:
+        yield True
+    except BaseException:
+        # Producing it failed: remove it so that identical queries retry instead of waiting forever
+        try:
+            os.remove(filename)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 class DB:
@@ -139,24 +170,24 @@ class DB:
         hash.update(philo_type.encode("utf8"))
         all_hash = hash.hexdigest()
         all_file = self.path + "/hitlists/" + all_hash + ".hitlist"
-        if not os.path.isfile(all_file):
-            # write out the corpus file
-            if philo_type == "div":
-                param_dicts = [{"philo_type": ['"div1"|"div2"|"div3"']}]
-            else:
-                param_dicts = [{"philo_type": ['"%s"' % philo_type]}]
-            return MetadataQuery.metadata_query(
-                self,
-                all_file,
-                param_dicts,
-                sort_order,
-                raw_results=raw_results,
-                ascii_conversion=self.locals.ascii_conversion,
-            )
-        else:
-            return HitList.HitList(
-                all_file, 0, self, sort_order=sort_order, raw=raw_results, ascii_conversion=self.locals.ascii_conversion
-            )
+        with claim_hitlist(all_file) as claimed:
+            if claimed:
+                # write out the corpus file
+                if philo_type == "div":
+                    param_dicts = [{"philo_type": ['"div1"|"div2"|"div3"']}]
+                else:
+                    param_dicts = [{"philo_type": ['"%s"' % philo_type]}]
+                return MetadataQuery.metadata_query(
+                    self,
+                    all_file,
+                    param_dicts,
+                    sort_order,
+                    raw_results=raw_results,
+                    ascii_conversion=self.locals.ascii_conversion,
+                )
+        return HitList.HitList(
+            all_file, 0, self, sort_order=sort_order, raw=raw_results, ascii_conversion=self.locals.ascii_conversion
+        )
 
     def query(
         self,
@@ -202,35 +233,36 @@ class DB:
             corpus_hash = hash.hexdigest()
             corpus_file = self.path + "/hitlists/" + corpus_hash + ".hitlist"
 
-            if not os.path.isfile(corpus_file):  # this means it contains a word query too
-                # before we query, we need to figure out what type each parameter belongs to,
-                # and sort them into a list of dictionaries, one for each type.
-                metadata_dicts = [{} for level in self.locals["metadata_hierarchy"]]
-                for k, v in list(metadata.items()):
-                    for i, params in enumerate(self.locals["metadata_hierarchy"]):
-                        if v and (k in params):
-                            metadata_dicts[i][k] = v
-                            if k in self.locals["metadata_types"]:
-                                this_type = self.locals["metadata_types"][k]
-                                if this_type == "div":
-                                    metadata_dicts[i]["philo_type"] = ['"div"|"div1"|"div2"|"div3"']
-                                else:
-                                    metadata_dicts[i]["philo_type"] = ['"%s"' % self.locals["metadata_types"][k]]
-                metadata_dicts = [d for d in metadata_dicts if d]
-                if "philo_id" in metadata:
-                    if metadata_dicts:
-                        metadata_dicts[-1]["philo_id"] = metadata["philo_id"]
-                    else:
-                        metadata_dicts.append({"philo_id": metadata["philo_id"]})
-                corpus = MetadataQuery.metadata_query(
-                    self,
-                    corpus_file,
-                    metadata_dicts,
-                    sort_order,
-                    raw_results=raw_results,
-                    ascii_conversion=self.locals.ascii_conversion,
-                )
-            else:  # no word query here
+            with claim_hitlist(corpus_file) as claimed:
+                if claimed:  # this means it contains a word query too
+                    # before we query, we need to figure out what type each parameter belongs to,
+                    # and sort them into a list of dictionaries, one for each type.
+                    metadata_dicts = [{} for level in self.locals["metadata_hierarchy"]]
+                    for k, v in list(metadata.items()):
+                        for i, params in enumerate(self.locals["metadata_hierarchy"]):
+                            if v and (k in params):
+                                metadata_dicts[i][k] = v
+                                if k in self.locals["metadata_types"]:
+                                    this_type = self.locals["metadata_types"][k]
+                                    if this_type == "div":
+                                        metadata_dicts[i]["philo_type"] = ['"div"|"div1"|"div2"|"div3"']
+                                    else:
+                                        metadata_dicts[i]["philo_type"] = ['"%s"' % self.locals["metadata_types"][k]]
+                    metadata_dicts = [d for d in metadata_dicts if d]
+                    if "philo_id" in metadata:
+                        if metadata_dicts:
+                            metadata_dicts[-1]["philo_id"] = metadata["philo_id"]
+                        else:
+                            metadata_dicts.append({"philo_id": metadata["philo_id"]})
+                    corpus = MetadataQuery.metadata_query(
+                        self,
+                        corpus_file,
+                        metadata_dicts,
+                        sort_order,
+                        raw_results=raw_results,
+                        ascii_conversion=self.locals.ascii_conversion,
+                    )
+            if not claimed:  # no word query here
                 if sort_order == ["rowid"]:
                     sort_order = None
                 corpus = HitList.HitList(
@@ -256,19 +288,20 @@ class DB:
             search_file = self.path + "/hitlists/" + search_hash + ".hitlist"
             if sort_order == ["rowid"]:
                 sort_order = None
-            if not os.path.isfile(search_file):
-                return Query.query(
-                    self,
-                    qs,
-                    corpus_file=corpus_file,
-                    method=method,
-                    method_arg=method_arg,
-                    filename=search_file,
-                    sort_order=sort_order,
-                    raw_results=raw_results,
-                    raw_bytes=raw_bytes,
-                    ascii_conversion=self.locals.ascii_conversion,
-                )
+            with claim_hitlist(search_file) as claimed:
+                if claimed:
+                    return Query.query(
+                        self,
+                        qs,
+                        corpus_file=corpus_file,
+                        method=method,
+                        method_arg=method_arg,
+                        filename=search_file,
+                        sort_order=sort_order,
+                        raw_results=raw_results,
+                        raw_bytes=raw_bytes,
+                        ascii_conversion=self.locals.ascii_conversion,
+                    )
             parsed = QuerySyntax.parse_query(qs, query_patterns=self.locals.query_patterns)
             grouped = QuerySyntax.group_terms(parsed)
             split = Query.split_terms(grouped)
