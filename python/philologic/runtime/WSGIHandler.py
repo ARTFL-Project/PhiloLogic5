@@ -131,13 +131,16 @@ class WSGIHandler(object):
         except:
             self.path_components = []
 
-        if "sort_order" in self.cgi:
-            sort_order = []
-            for metadata in self.cgi["sort_order"]:
-                sort_order.append(metadata)
-            self.cgi["sort_order"][0] = sort_order
-        else:
-            self.cgi["sort_order"] = [["rowid"]]
+        # Fields to sort results by. The web client sends them as sort_by: sort_by[]=author&sort_by[]=title
+        # (axios), sort_by=author&sort_by=title (from its URL) or sort_by=author,title (export links).
+        # sort_order is the older name. "rowid" means load order.
+        sort_order = []
+        for key in ("sort_by[]", "sort_by", "sort_order"):
+            if key in self.cgi:
+                sort_order = [field for value in self.cgi[key] for field in value.split(",") if field]
+                break
+        sort_order = [field for field in sort_order if field != "rowid"]
+        self.cgi["sort_order"] = [sort_order or ["rowid"]]
 
         if "start_byte" in self.cgi:
             try:
