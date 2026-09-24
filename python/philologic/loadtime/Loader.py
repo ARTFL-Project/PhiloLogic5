@@ -162,9 +162,7 @@ def build_lemma_lookup_index(workdir, destination, lemma_count):
             philo_ids.append(philo_id)
         if current_lemma is not None:
             store_lemma_lookups(current_lemma, philo_ids)
-        # The last transaction (the final count % commit_interval entries) has never been committed here:
-        # kept as is so the index doesn't change.
-        lemma_txn.abort()
+        lemma_txn.commit()  # Commit the remaining entries
     print(f"{time.ctime()}: Stored {count} lemma lookup entries.", flush=True)
 
     print(f"{time.ctime()}: Optimizing lemma lookup index for space...", flush=True)
