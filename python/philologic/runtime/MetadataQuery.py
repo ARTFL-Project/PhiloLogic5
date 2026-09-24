@@ -75,7 +75,9 @@ def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, asc
         print("METADATA_QUERY:", param_dicts, "\nASCII CONVERSION", ascii_conversion, file=sys.stderr)
     prev = None
     for d in param_dicts:
-        query = query_recursive(db, d, prev, sort_order, ascii_conversion=ascii_conversion)
+        # The file is always written in load order, which filtering word hits against it relies on, and it is
+        # cached whatever sort was asked for: sort_order only applies to the HitList returned below.
+        query = query_recursive(db, d, prev, None, ascii_conversion=ascii_conversion)
         prev = query
     try:
         corpus_fh = open(filename, "wb")
