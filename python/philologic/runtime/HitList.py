@@ -14,66 +14,138 @@ from .sql_validation import validate_column, validate_philo_type
 obj_dict = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
 
+class HitlistClaim:
+    """The right to produce a hitlist: an exclusive flock on it, held until finish_hitlist() writes its .done flag."""
+
+    def __init__(self, fd):
+        self.fd = fd
+        self.handed_over = False
+
+    def hand_over(self):
+        """Record that a producer now owns the claim and will finish_hitlist() it on every path, so that the claimer
+        failing afterwards (e.g. while building its HitList) no longer undoes it under the producer."""
+        self.handed_over = True
+
+    def release(self):
+        if self.fd is not None:
+            os.close(self.fd)
+            self.fd = None
+
+
+def _create_locked(filename):
+    """Create filename with its flock already held, so that no other claimer ever sees it unlocked. Returns the file
+    descriptor, or None if filename already exists."""
+    tmp = f"{filename}.{os.urandom(8).hex()}.claim"
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)  # nobody else knows tmp, so this never waits
+        os.link(tmp, filename)
+        return fd
+    except FileExistsError:
+        os.close(fd)
+        return None
+    except OSError:  # no hard links on this filesystem: create it in place, where it is briefly visible unlocked
+        os.close(fd)
+        try:
+            fd = os.open(filename, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+        except FileExistsError:
+            return None
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+    finally:
+        os.remove(tmp)
+
+
+def _same_file(fd, path):
+    try:
+        st = os.stat(path)
+    except FileNotFoundError:
+        return False
+    fst = os.fstat(fd)
+    return (st.st_dev, st.st_ino) == (fst.st_dev, fst.st_ino)
+
+
 @contextmanager
 def claim_hitlist(filename):
     """Try to become the producer of a hitlist file.
 
-    Yields a lock if the caller must produce the hitlist, None if it is done or being produced. The lock is a
-    file descriptor holding an exclusive flock on the hitlist: the producer keeps it until finish_hitlist()
-    has written the .done flag. If the producer dies before that, the kernel releases the lock and the next
-    claim takes the unfinished hitlist over, so orphaned hitlists are told apart from ones still being
-    produced, however long that takes. If the caller fails before handing the lock over to its producer, the
-    claim is undone.
+    Yields a HitlistClaim if the caller must produce the hitlist, None if it is done or being produced. The claim
+    holds an exclusive flock on the hitlist, which the producer keeps until finish_hitlist() has written the .done
+    flag. If the producer dies before that, the kernel releases the lock and the next claim takes the unfinished
+    hitlist over, so orphaned hitlists are told apart from ones still being produced, however long that takes. If
+    the caller fails before handing the claim over to its producer, the claim is undone.
     """
     while True:
-        try:
-            lock = os.open(filename, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
-            created = True
+        fd = _create_locked(filename)
+        if fd is not None:
             break
-        except FileExistsError:
-            try:
-                lock = os.open(filename, os.O_WRONLY)
-                created = False
-                break
-            except FileNotFoundError:  # removed in between: try again
-                continue
-    try:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except BlockingIOError:  # a live producer holds it
-        os.close(lock)
-        yield None
-        return
-    if not created and os.path.exists(filename + ".done"):
-        os.close(lock)
-        yield None
-        return
-    # New, or orphaned by a producer that died: produce it from scratch. Readers of an orphan keep their file open
-    # and read the new content, which is the same since searches are deterministic.
-    os.ftruncate(lock, 0)
+        try:
+            # Read-only is enough for flock, and lets processes that can read a hitlist but not write it use it
+            fd = os.open(filename, os.O_RDONLY)
+        except FileNotFoundError:  # removed in between: try again
+            continue
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:  # a live producer holds it
+            os.close(fd)
+            yield None
+            return
+        if not _same_file(fd, filename):  # replaced while we were locking it: try again
+            os.close(fd)
+            continue
+        if os.path.exists(filename + ".done"):
+            os.close(fd)
+            yield None
+            return
+        # Orphaned by a producer that died: empty it in place and produce it again. Its readers keep it open and read
+        # the new content, which is the same since searches are deterministic.
+        try:
+            writable = os.open(filename, os.O_WRONLY)
+        except (PermissionError, FileNotFoundError):  # not ours to produce
+            os.close(fd)
+            yield None
+            return
+        try:
+            replaced = not _same_file(writable, filename) or os.fstat(writable).st_ino != os.fstat(fd).st_ino
+            if not replaced:
+                os.ftruncate(writable, 0)
+        finally:
+            os.close(writable)
+        if replaced:
+            os.close(fd)
+            continue
+        break
     for suffix in (".done", ".terms"):  # left behind by an earlier producer, or by a hitlist cleanup removed
         try:
             os.remove(filename + suffix)
         except FileNotFoundError:
             pass
+    claim = HitlistClaim(fd)
     try:
-        yield lock
+        yield claim
     except BaseException:
-        os.close(lock)
-        try:
-            os.remove(filename)
-        except FileNotFoundError:
-            pass
+        if not claim.handed_over:
+            claim.release()
+            try:
+                os.remove(filename)
+            except FileNotFoundError:
+                pass
         raise
 
 
 def finish_hitlist(filename, lock, message="1"):
-    """Mark a hitlist produced under claim_hitlist() as complete, then release its lock."""
+    """Mark a hitlist produced under claim_hitlist() as complete, then release its claim."""
+    if lock is not None:
+        lock.hand_over()  # complete (or, if writing .done fails, orphaned) from here on: never undone by the claimer
     try:
         with open(filename + ".done", "w") as flag:
             flag.write(message)
     finally:
         if lock is not None:
-            os.close(lock)
+            lock.release()
 
 
 class HitList(object):
