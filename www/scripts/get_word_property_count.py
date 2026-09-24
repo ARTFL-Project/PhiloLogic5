@@ -14,22 +14,39 @@ OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "wo
 
 HIT_SIZE = 9 * 4  # a hit is 9 uint32s, so a raw hit buffer's length gives the hit count
 
+# Term kinds that can carry a word property, and the kind they become once they do
+PROPERTY_KINDS = {"TERM": "ATTR", "QUOTE": "ATTR", "LEMMA": "LEMMA_ATTR"}
 
-def index_keys(db, query):
-    """Return the words.lmdb keys `query` expands to, or None if it needs a real search.
 
-    A single-word query resolves to a set of index keys — one per matching form — whose
-    stored hit buffers we can count directly, so no search is needed. Multi-word queries
-    are the exception: their hits depend on where the words fall relative to each other,
-    which only the phrase/proximity/cooccurrence kernels can work out.
+def with_property(group, word_property, value):
+    """Rewrite a single-word term group so that each of its terms carries word_property=value.
+
+    `love | light` becomes `love:pos:NOUN | light:pos:NOUN`, `lemma:love` becomes `lemma:love:pos:NOUN`
+    and a quoted word, which stands for that exact form, becomes `love:pos:NOUN`. Returns None if the
+    group can't be broken down by a property, e.g. because it already specifies one.
     """
-    split = split_terms(group_terms(parse_query(query, query_patterns=db.locals.query_patterns)))
-    if len(split) != 1:
-        return None
+    rewritten = []
+    for kind, token in group:
+        if kind in ("OR", "NOT"):
+            rewritten.append((kind, token))
+        elif kind in PROPERTY_KINDS:
+            word = token.strip('"')
+            rewritten.append((PROPERTY_KINDS[kind], f"{word}:{word_property}:{value}"))
+        else:
+            return None
+    return rewritten
+
+
+def index_keys(db, group):
+    """Return the words.lmdb keys a single-word term group expands to.
+
+    Such a group resolves to a set of index keys — one per matching form — whose stored hit
+    buffers we can count directly, so no search is needed.
+    """
     # Reuse the search's own expansion so the keys — and therefore the counts — are identical.
     expanded = io.StringIO()
     expand_query_not(
-        split,
+        [group],
         f"{db.path}/frequencies/normalized_word_frequencies",
         expanded,
         db.locals.ascii_conversion,
@@ -98,67 +115,38 @@ def get_corpus_file(db, request):
     return corpus.filename, False
 
 
-def query_word_property(db, query, request):
-    """Slow path: run a real search for queries that don't reduce to a single index key."""
-    hits = db.query(
-        query,
-        request["method"],
-        request["arg"],
-        raw_results=True,
-        raw_bytes=True,
-        **request.metadata,
-    )
-    hits.finish()
-    result = {"label": query.split(":")[-1], "count": len(hits), "q": query}
-    for suffix in ("", ".done", ".terms"):  # we don't want to clog up the server with hitlist files
-        try:
-            os.remove(hits.filename + suffix)
-        except OSError:
-            pass
-    return result
-
-
 def get_word_property_count(request, config):
     """Get word property count"""
     db = DB(config.db_path + "/data/")
+    results = {"query": dict([i for i in request]), "results": []}
+
+    # Word properties describe single words: the words of a multi-word query each have their own
+    split = split_terms(group_terms(parse_query(request.q, query_patterns=db.locals.query_patterns)))
+    if len(split) != 1:
+        return results
 
     word_property_count = []
     if request.word_property != "lemma":
         # Get all word properties from config
         possible_word_properties = config.word_attributes[request.word_property]
-        queries = [f"{request.q}:{request.word_property}:{p}" for p in possible_word_properties]
+        groups = {value: with_property(split[0], request.word_property, value) for value in possible_word_properties}
 
-        # Counting hits per property value needs no search unless the query is multi-word: the
-        # count falls out of the size of each key's stored hit buffer, optionally filtered
-        # against the metadata corpus.
+        # Counting hits per property value needs no search: the count falls out of the size of each
+        # key's stored hit buffer, optionally filtered against the metadata corpus.
         corpus_file, empty_corpus = get_corpus_file(db, request)
-        if not empty_corpus:
-            keys = {query: index_keys(db, query) for query in queries}
-
-            counts = {}
-            direct = [q for q in queries if keys[q] is not None]
-            if direct:
-                overflow_words = db.locals.overflow_words
-                with lmdb_env(f"{db.path}/words.lmdb") as env, env.begin(buffers=True) as txn:
-                    for query in direct:
-                        try:
-                            counts[query] = count_hits(txn, keys[query], overflow_words, db.path, corpus_file)
-                        except Exception as e:
-                            print(f"Exception occurred during processing {query}: {e}", file=sys.stderr)
-
-            for query in queries:
-                if keys[query] is not None:
-                    continue
-                try:
-                    counts[query] = query_word_property(db, query, request)["count"]
-                except Exception as e:
-                    print(f"Exception occurred during processing {query}: {e}", file=sys.stderr)
-
-            word_property_count = [
-                {"label": query.split(":")[-1], "count": counts[query], "q": query}
-                for query in queries
-                if counts.get(query, 0) > 0
-            ]
+        if not empty_corpus and None not in groups.values():
+            keys = {value: index_keys(db, group) for value, group in groups.items()}
+            overflow_words = db.locals.overflow_words
+            with lmdb_env(f"{db.path}/words.lmdb") as env, env.begin(buffers=True) as txn:
+                for value, group in groups.items():
+                    query = " ".join(token for _, token in group)
+                    try:
+                        count = count_hits(txn, keys[value], overflow_words, db.path, corpus_file)
+                    except Exception as e:
+                        print(f"Exception occurred during processing {query}: {e}", file=sys.stderr)
+                        continue
+                    if count > 0:
+                        word_property_count.append({"label": value, "count": count, "q": query})
     else:
         # Get all lemmas
         hits = db.query(
@@ -183,6 +171,5 @@ def get_word_property_count(request, config):
         word_property_count = [{"label": k.replace("lemma:", ""), "count": v, "q": k} for k, v in lemma_count.items()]
 
     word_property_count.sort(key=lambda x: x["count"], reverse=True)
-
-    results = {"query": dict([i for i in request]), "results": word_property_count}
+    results["results"] = word_property_count
     return results
