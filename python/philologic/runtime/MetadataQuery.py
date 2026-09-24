@@ -69,8 +69,8 @@ def bulk_load_metadata(db, fields, extra_columns=None):
     return caches
 
 
-def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, ascii_conversion=True):
-    """Prepare and execute SQL metadata query."""
+def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, ascii_conversion=True, lock=None):
+    """Prepare and execute SQL metadata query. Releases lock (see HitList.claim_hitlist) once filename is complete."""
     if db.locals["debug"]:
         print("METADATA_QUERY:", param_dicts, "\nASCII CONVERSION", ascii_conversion, file=sys.stderr)
     prev = None
@@ -86,13 +86,9 @@ def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, asc
     except Exception as e:
         print(str(e), file=sys.stderr)
         # should clean up file
-        flag = open(filename + ".done", "w")
-        flag.write("1")
-        flag.close()
+        HitList.finish_hitlist(filename, lock)
         return NoHits()
-    flag = open(filename + ".done", "w")
-    flag.write("1")
-    flag.close()
+    HitList.finish_hitlist(filename, lock)
     return HitList.HitList(filename, 0, db, raw=raw_results, sort_order=sort_order, ascii_conversion=ascii_conversion)
 
 
