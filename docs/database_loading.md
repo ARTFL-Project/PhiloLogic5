@@ -368,7 +368,7 @@ The basic layout is this:
 
 `metadata_to_parse` is a dictionary that maps one or more non-document-level object types to a list of metadata (usually attributes) to retrieve.
 
-`suppress_tags` is a list of tags in which you do not want to perform tokenization at all--that is, no words in them will be searchable via full-text search. It does not prohibit extracting metadata from the content of those tags.
+`suppress_tags` is a list of tags in which you do not want to perform tokenization at all--that is, no words in them will be searchable via full-text search. It does not prohibit extracting metadata from the content of those tags. `<gap>` is always suppressed, whether or not it is listed here.
 
 `token_regex` is a regular expression used to drive our tokenizer.
 
