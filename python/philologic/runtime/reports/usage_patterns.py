@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-import time
 from typing import Dict, List, Optional, Tuple
 
 import numba
@@ -46,6 +45,7 @@ from scipy.sparse import csr_matrix
 
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
+from philologic.runtime.Query import rewrite_terms_file
 from philologic.runtime.reports.collocation import get_word_groups
 from philologic.runtime.reports.time_series import _get_doc_year_data
 
@@ -115,10 +115,8 @@ def _build_hit_bags(
     attribute filter is set, off-attribute tokens are excluded.
     """
     hits = db.query(q, "single_term", "", raw_results=True, raw_bytes=True, **metadata)
-    while not os.path.exists(f"{hits.filename}.terms"):
-        time.sleep(0.05)
     hits.finish()
-    if len(hits) == 0:
+    if len(hits) == 0:  # also when the metadata matched nothing: no search ran, so there is no .terms
         return (
             np.array([], dtype=np.uint32),
             np.array([0], dtype=np.int64),
@@ -127,9 +125,13 @@ def _build_hit_bags(
             np.array([0], dtype=np.uint64),
         )
 
-    # Identity filter from .terms file
+    # Identity filter from .terms file. .terms is written before any hit, so a finished search that has hits
+    # but no .terms had it removed by cleanup: write it again.
+    terms_file = f"{hits.filename}.terms"
+    if not os.path.exists(terms_file):
+        rewrite_terms_file(db, q, hits.filename)
     query_words: List[str] = []
-    for group in get_word_groups(f"{hits.filename}.terms"):
+    for group in get_word_groups(terms_file):
         query_words.extend(group)
     filter_set = set(query_words)
     if attribute is not None:

@@ -720,7 +720,8 @@ def load_map_field_cache(file_path):
     tids = data["tids"]
     counts = data["counts"]
     group_bounds = data["group_bounds"]
-    group_names = data["group_names"].tobytes().decode("utf-8").split("\0")
+    # Zero groups and a single empty-named group are both stored as b"": group_bounds tells them apart
+    group_names = data["group_names"].tobytes().decode("utf-8").split("\0") if len(group_bounds) > 1 else []
     count_lemmas = bool(data["meta"][0])
     attr_raw = data["attr"]
     attribute = attr_raw.tobytes().decode("utf-8") if len(attr_raw) > 0 else None
