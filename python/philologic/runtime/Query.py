@@ -401,24 +401,40 @@ def get_word_groups(terms_file):
     return word_groups
 
 
+def write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index):
+    """Write the expanded search terms of a query to filename.terms.
+
+    Readers (e.g. collocation) wait for .terms to exist, so it has to appear complete: write it under a
+    temporary name and rename it, even if expansion fails, so that no reader waits forever.
+    """
+    # Lazy import to avoid circular dependency
+    from philologic.runtime.term_expansion import expand_query_not
+
+    terms_tmp = f"{filename}.terms.{os.getpid()}.{threading.get_ident()}.tmp"
+    try:
+        with open(terms_tmp, "w") as terms_file:
+            expand_query_not(split, frequency_file, terms_file, ascii_conversion, lowercase_index)
+    finally:
+        os.replace(terms_tmp, f"{filename}.terms")
+
+
+def rewrite_terms_file(db, qs, filename):
+    """Write filename.terms again for query qs, for a finished search whose .terms file was removed."""
+    split = split_terms(group_terms(parse_query(qs, query_patterns=db.locals.query_patterns)))
+    frequency_file = db.path + "/frequencies/normalized_word_frequencies"
+    write_terms_file(filename, split, frequency_file, db.locals.ascii_conversion, db.locals["lowercase_index"])
+
+
 def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowercase_index,
                 method, method_arg, overflow_words, object_level, corpus_file):
     """Run search in a background thread. Always writes .done file, even on error."""
     # Lazy imports to avoid circular dependency with multi_word_search
-    from philologic.runtime.term_expansion import expand_query_not
     from philologic.runtime.multi_word_search import (
         search_phrase, search_within_word_span, search_within_text_object,
     )
 
     try:
-        # Readers (e.g. collocation) wait for .terms to exist, so it has to appear complete: write it
-        # under a temporary name and rename it, even if expansion fails, so that no reader waits forever.
-        terms_tmp = f"{filename}.terms.{threading.get_ident()}.tmp"
-        try:
-            with open(terms_tmp, "w") as terms_file:
-                expand_query_not(split, frequency_file, terms_file, ascii_conversion, lowercase_index)
-        finally:
-            os.replace(terms_tmp, f"{filename}.terms")
+        write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index)
 
         method_arg = int(method_arg) if method_arg else 0
         if method == "single_term":
