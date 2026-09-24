@@ -411,8 +411,14 @@ def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowe
     )
 
     try:
-        with open(f"{filename}.terms", "w") as terms_file:
-            expand_query_not(split, frequency_file, terms_file, ascii_conversion, lowercase_index)
+        # Readers (e.g. collocation) wait for .terms to exist, so it has to appear complete: write it
+        # under a temporary name and rename it, even if expansion fails, so that no reader waits forever.
+        terms_tmp = f"{filename}.terms.{threading.get_ident()}.tmp"
+        try:
+            with open(terms_tmp, "w") as terms_file:
+                expand_query_not(split, frequency_file, terms_file, ascii_conversion, lowercase_index)
+        finally:
+            os.replace(terms_tmp, f"{filename}.terms")
 
         method_arg = int(method_arg) if method_arg else 0
         if method == "single_term":
