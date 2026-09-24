@@ -157,7 +157,8 @@ ascii_conversion = True
 sort_order = ["year", "author", "title", "filename"]
 
 # A list of tags to ignore: contents will not be indexed
-# This should be a list of tag names, such as ["desc", "gap"]
+# This should be a list of tag names, such as ["desc", "fw"]
+# <gap> is always suppressed and does not need to be listed here.
 suppress_tags = []
 
 # --------------------- Set Apostrophe Break ------------------------

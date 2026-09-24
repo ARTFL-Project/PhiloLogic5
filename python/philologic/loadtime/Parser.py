@@ -146,6 +146,35 @@ TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 
 PUNCTUATION = r"\p{P}+"
 
+# Tags whose content is never indexed. These are added to the suppress_tags defined in load configs.
+DEFAULT_SUPPRESS_TAGS = {"gap"}
+
+# Tags which open or close para and div level objects (or their containers). Used to detect when we
+# leave the object containing an unclosed suppressed tag.
+OBJECT_TAGS = {
+    "p",
+    "note",
+    "epigraph",
+    "list",
+    "sp",
+    "argument",
+    "opener",
+    "closer",
+    "stage",
+    "castlist",
+    "add",
+    "lg",
+    "div",
+    "div1",
+    "div2",
+    "div3",
+    "hyperdiv",
+    "front",
+    "body",
+    "back",
+    "text",
+}
+
 CHARS_NOT_TO_INDEX = r"[\[\{\]\}]"
 
 # Pre-compiled regexes used for parsing
@@ -369,12 +398,10 @@ class XMLParser:
         else:
             self.punct_regex = re.compile(rf"{PUNCTUATION}")
 
-        if "suppress_tags" in parse_options:
-            self.suppress_tags = set([i for i in parse_options["suppress_tags"] if i])
-        else:
-            self.suppress_tags = []
+        # Tags in DEFAULT_SUPPRESS_TAGS are always suppressed: load configs can add tags, but not remove these.
+        self.suppress_tags = DEFAULT_SUPPRESS_TAGS | {i for i in parse_options.get("suppress_tags", []) if i}
         self.in_suppressed_tag = False
-        self.current_suppressed_tag = ""
+        self.suppressed_tag_stack = []  # suppressed tags and object tags opened inside a suppressed tag
 
         if "break_apost" in parse_options:
             self.break_apost = parse_options["break_apost"]
@@ -481,6 +508,7 @@ class XMLParser:
         # Split content into a list on newlines.
         self.content = self.content.split("\n")
         # self.content = DocumentContent(self.content)
+        self.closed_suppressed_tags = self.find_closed_suppressed_tags()
 
         self.bytes_read_in = 0
         self.line_count = 0
@@ -544,6 +572,65 @@ class XMLParser:
         # Add newlines to the beginning and end of all tags
         self.content = self.content.replace("<", "\n<").replace(">", ">\n")
 
+    def is_tracked_tag(self, name, is_self_closing):
+        """Suppressed and object open tags, which we match with their closing tags to find the extent of suppressed tags."""
+        return not is_self_closing and (name in self.suppress_tags or name.lower() in OBJECT_TAGS)
+
+    def find_closed_suppressed_tags(self):
+        """Return the line numbers of suppressed tags which are closed before their parent object ends.
+        Tags left unclosed have no content to suppress: this is typically dirty XML using them as empty tags."""
+        closed_suppressed_tags = set()
+        open_tags = []
+        open_tag_counts = {}
+        for line_num, line in enumerate(self.content):
+            if not line.startswith("<"):
+                continue
+            try:
+                name = tag_matcher.findall(line)[0]
+            except IndexError:
+                continue
+            if name.startswith("/"):
+                name = name[1:]
+                if open_tag_counts.get(name):
+                    # Close the most recent matching tag: any tags opened after it were left unclosed
+                    while True:
+                        open_name, open_line_num = open_tags.pop()
+                        open_tag_counts[open_name] -= 1
+                        if open_name == name:
+                            if name in self.suppress_tags:
+                                closed_suppressed_tags.add(open_line_num)
+                            break
+            elif self.is_tracked_tag(name, line.rstrip().endswith("/>")):
+                open_tags.append((name, line_num))
+                open_tag_counts[name] = open_tag_counts.get(name, 0) + 1
+        return closed_suppressed_tags
+
+    def skip_suppressed_tag(self, tag, tag_name):
+        """Track suppressed tags. Returns True if the tag is a suppressed tag or is inside one, and should be skipped."""
+        is_closing = tag_name.startswith("/")
+        name = tag_name.lstrip("/")
+        is_self_closing = tag.rstrip().endswith("/>")
+        if self.in_suppressed_tag is False:
+            if is_closing or name not in self.suppress_tags:
+                return False
+            # Self-closing and unclosed tags have no content to suppress
+            if self.line_count - 1 in self.closed_suppressed_tags:
+                self.suppressed_tag_stack.append(name)
+                self.in_suppressed_tag = True
+            return True
+
+        if is_closing and name in self.suppressed_tag_stack:
+            # Close the most recent matching tag, along with any unclosed tags opened inside it
+            while self.suppressed_tag_stack.pop() != name:
+                pass
+            self.in_suppressed_tag = bool(self.suppressed_tag_stack)
+            return True
+        if not is_closing and self.is_tracked_tag(name, is_self_closing):
+            self.suppressed_tag_stack.append(name)
+
+        # Keep page breaks so that page numbers stay correct after the suppressed tag
+        return not page_tag.search(tag)
+
     def tag_handler(self, tag):
         """Tag handler for parser."""
         start_byte = self.bytes_read_in - len(tag.encode("utf8"))
@@ -551,13 +638,7 @@ class XMLParser:
             tag_name = tag_matcher.findall(tag)[0]
         except IndexError:
             tag_name = "unparsable_tag"
-        if tag_name.replace("/", "") == self.current_suppressed_tag and tag.startswith("</"):
-            self.in_suppressed_tag = False
-            self.current_suppressed_tag = ""
-        elif tag_name in self.suppress_tags:
-            self.in_suppressed_tag = True
-            self.current_suppressed_tag = tag_name
-        else:
+        if not self.skip_suppressed_tag(tag, tag_name):
             if not tag_name.startswith("/"):
                 self.current_tag = tag_name
 
