@@ -16,7 +16,7 @@ import numpy as np
 
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
-from philologic.runtime.Query import get_word_groups
+from philologic.runtime.Query import get_word_groups, rewrite_terms_file
 from philologic.runtime.sql_validation import validate_column
 
 # Per-worker cache of corpus-wide sentence document-frequency arrays.
@@ -545,6 +545,12 @@ def collocation_results(request, config):
     if map_field is not None:
         map_field = validate_column(map_field, db)
 
+    if not request.q:  # collocates are counted around search hits: without a query there are none
+        collocation_object.update({"filter_list": [], "results_length": 0, "distance": None})
+        if map_field is None:
+            collocation_object["collocates"] = []
+        return collocation_object
+
     hits = db.query(
         request.q,
         "single_term",
@@ -573,9 +579,15 @@ def collocation_results(request, config):
     # counting lemmas, surface forms otherwise. Pass them through verbatim —
     # don't re-prefix or synthesize case variants.
     query_words = []
-    while not os.path.exists(f"{hits.filename}.terms"):
+    terms_file = f"{hits.filename}.terms"
+    # .terms is written before the search produces any hit, so once the hitlist is done without it, it is not
+    # coming: either no search ran (the metadata matched nothing) or cleanup removed it from a cached search.
+    while not os.path.exists(terms_file) and not os.path.exists(f"{hits.filename}.done"):
         time.sleep(0.1)
-    for group in get_word_groups(f"{hits.filename}.terms"):
+    if not os.path.exists(terms_file) and len(hits) > 0:
+        rewrite_terms_file(db, request.q, hits.filename)
+    word_groups = get_word_groups(terms_file) if os.path.exists(terms_file) else []
+    for group in word_groups:
         query_words.extend(group)
 
     # Bare query_words must be in filter_list so the count-side identity hash
@@ -596,16 +608,30 @@ def collocation_results(request, config):
         field_obj_index, metadata_cache = bulk_load_metadata(db, [map_field])[map_field]
         map_field_info = (metadata_cache, field_obj_index)
 
-    result = _vectorized_collocation(
-        db.path,
-        hits,
-        filter_list,
-        count_lemmas,
-        attribute,
-        attribute_value,
-        collocate_distance,
-        map_field_info=map_field_info,
-    )
+    if total_hits == 0:
+        # Nothing to count. Don't hand the hits over: when the metadata matched nothing, they are
+        # the (empty) metadata corpus, whose rows are object ids rather than word hits.
+        if map_field is None:
+            result = Counter()
+        else:
+            result = (
+                np.empty(0, dtype=np.uint32),
+                np.empty(0, dtype=np.int32),
+                np.zeros(1, dtype=np.int64),
+                [],
+                np.empty(0, dtype=np.int32),
+            )
+    else:
+        result = _vectorized_collocation(
+            db.path,
+            hits,
+            filter_list,
+            count_lemmas,
+            attribute,
+            attribute_value,
+            collocate_distance,
+            map_field_info=map_field_info,
+        )
 
     collocation_object["results_length"] = total_hits
     collocation_object["distance"] = collocate_distance
