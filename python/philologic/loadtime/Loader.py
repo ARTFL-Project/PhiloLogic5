@@ -1049,6 +1049,7 @@ class Loader:
                     if count % commit_interval == 0:
                         lemma_txn.commit()
                         lemma_txn = lemma_db_env.begin(write=True)
+                lemma_txn.commit()  # Commit the remaining entries
             print(f"{time.ctime()}: Stored {count} lemma lookup entries.", flush=True)
 
             print(f"{time.ctime()}: Optimizing lemma lookup index for space...", flush=True)
