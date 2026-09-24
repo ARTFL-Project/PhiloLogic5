@@ -426,7 +426,7 @@ def rewrite_terms_file(db, qs, filename):
 
 
 def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowercase_index,
-                method, method_arg, overflow_words, object_level, corpus_file):
+                method, method_arg, overflow_words, object_level, corpus_file, lock):
     """Run search in a background thread. Always writes .done file, even on error."""
     # Lazy imports to avoid circular dependency with multi_word_search
     from philologic.runtime.multi_word_search import (
@@ -456,9 +456,27 @@ def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowe
         elif method == "sentence_unordered":
             search_within_text_object(db_path, filename, overflow_words, object_level, False, corpus_file=corpus_file)
     finally:
-        with open(filename + ".done", "w") as flag:
-            flag.write(f"{method} search complete\n")
-            flag.flush()
+        HitList.finish_hitlist(filename, lock, f"{method} search complete\n")
+
+
+def start_search(db, terms, filename, lock=None, corpus_file=None, method=None, method_arg=None, object_level="sent"):
+    """Start the search for terms into filename in a background thread, which releases lock (see
+    HitList.claim_hitlist) once done. Returns the number of words per hit."""
+    parsed = parse_query(terms, query_patterns=db.locals.query_patterns)
+    grouped = group_terms(parsed)
+    split = split_terms(grouped)
+    frequency_file = db.path + "/frequencies/normalized_word_frequencies"
+    thread = threading.Thread(
+        target=_run_search,
+        args=(
+            db.path, filename, split, frequency_file,
+            db.locals.ascii_conversion, db.locals["lowercase_index"],
+            method, method_arg, db.locals.overflow_words, object_level, corpus_file, lock,
+        ),
+        daemon=True,
+    )
+    thread.start()
+    return len(split)
 
 
 def query(
@@ -474,32 +492,18 @@ def query(
     raw_bytes=False,
     ascii_conversion=True,
     object_level="sent",
+    lock=None,
 ):
     """Runs concordance queries"""
     sys.stdout.flush()
-    parsed = parse_query(terms, query_patterns=db.locals.query_patterns)
-    grouped = group_terms(parsed)
-    split = split_terms(grouped)
-    words_per_hit = len(split)
     if not filename:
         hfile = str(os.getpid()) + ".hitlist"
     dir = db.path + "/hitlists/"
     filename = filename or (dir + hfile)
     if not os.path.exists(filename):
         Path(filename).touch()
-    frequency_file = db.path + "/frequencies/normalized_word_frequencies"
 
-    # Run search in a background thread.
-    thread = threading.Thread(
-        target=_run_search,
-        args=(
-            db.path, filename, split, frequency_file,
-            db.locals.ascii_conversion, db.locals["lowercase_index"],
-            method, method_arg, db.locals.overflow_words, object_level, corpus_file,
-        ),
-        daemon=True,
-    )
-    thread.start()
+    words_per_hit = start_search(db, terms, filename, lock, corpus_file, method, method_arg, object_level)
 
     hits = HitList.HitList(
         filename,

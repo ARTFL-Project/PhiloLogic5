@@ -1,8 +1,10 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
+import fcntl
 import os
 import struct
 import time
+from contextlib import contextmanager
 
 from unidecode import unidecode
 
@@ -10,6 +12,68 @@ from .HitWrapper import HitWrapper
 from .sql_validation import validate_column, validate_philo_type
 
 obj_dict = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
+
+
+@contextmanager
+def claim_hitlist(filename):
+    """Try to become the producer of a hitlist file.
+
+    Yields a lock if the caller must produce the hitlist, None if it is done or being produced. The lock is a
+    file descriptor holding an exclusive flock on the hitlist: the producer keeps it until finish_hitlist()
+    has written the .done flag. If the producer dies before that, the kernel releases the lock and the next
+    claim takes the unfinished hitlist over, so orphaned hitlists are told apart from ones still being
+    produced, however long that takes. If the caller fails before handing the lock over to its producer, the
+    claim is undone.
+    """
+    while True:
+        try:
+            lock = os.open(filename, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+            created = True
+            break
+        except FileExistsError:
+            try:
+                lock = os.open(filename, os.O_WRONLY)
+                created = False
+                break
+            except FileNotFoundError:  # removed in between: try again
+                continue
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:  # a live producer holds it
+        os.close(lock)
+        yield None
+        return
+    if not created and os.path.exists(filename + ".done"):
+        os.close(lock)
+        yield None
+        return
+    # New, or orphaned by a producer that died: produce it from scratch. Readers of an orphan keep their file open
+    # and read the new content, which is the same since searches are deterministic.
+    os.ftruncate(lock, 0)
+    for suffix in (".done", ".terms"):  # left behind by an earlier producer, or by a hitlist cleanup removed
+        try:
+            os.remove(filename + suffix)
+        except FileNotFoundError:
+            pass
+    try:
+        yield lock
+    except BaseException:
+        os.close(lock)
+        try:
+            os.remove(filename)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def finish_hitlist(filename, lock, message="1"):
+    """Mark a hitlist produced under claim_hitlist() as complete, then release its lock."""
+    try:
+        with open(filename + ".done", "w") as flag:
+            flag.write(message)
+    finally:
+        if lock is not None:
+            os.close(lock)
 
 
 class HitList(object):
@@ -29,8 +93,12 @@ class HitList(object):
         raw=False,
         raw_bytes=False,
         ascii_conversion=True,
+        produce=None,
     ):
         self.filename = filename
+        # produce(lock=...) produces this hitlist again, if its producer dies before finishing it
+        self.produce = produce
+        self.next_producer_check = time.monotonic() + 1
         self.words = words
         self.method = method
         self.methodarg = methodarg
@@ -187,7 +255,11 @@ class HitList(object):
                 os.stat(self.filename + ".done")
                 self.done = True
             except OSError:
-                pass
+                if self.produce is not None and time.monotonic() >= self.next_producer_check:
+                    self.next_producer_check = time.monotonic() + 1
+                    with claim_hitlist(self.filename) as lock:
+                        if lock is not None:  # its producer died before finishing it
+                            self.produce(lock=lock)
             self.size = os.stat(self.filename).st_size  # in bytes
             self.count = int(self.size / self.hitsize)
 
