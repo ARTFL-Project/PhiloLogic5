@@ -12,6 +12,10 @@ import os
 # Server socket
 bind = "unix:/var/run/philologic/gunicorn.sock"
 
+# No control socket (gunicorn >= 26): its default path is in the service user's
+# home directory, which www-data cannot write to. Services are managed via systemd/launchd.
+control_socket_disable = True
+
 # Worker processes — sync workers (one request per process, no threads).
 # This avoids LMDB "already open" errors that occur with threaded workers.
 workers = min(multiprocessing.cpu_count(), 8)
