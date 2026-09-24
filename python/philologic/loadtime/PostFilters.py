@@ -3,11 +3,13 @@
 
 import array
 import hashlib
+import io
 import os
 import sqlite3
 import struct as _struct
 import time
 from collections import Counter, defaultdict
+from contextlib import contextmanager
 
 import lmdb
 import lz4.frame
@@ -21,6 +23,14 @@ from tqdm import tqdm
 from unidecode import unidecode
 
 from philologic.utils import count_lines
+
+
+@contextmanager
+def open_lz4_lines(path):
+    """Open an lz4 compressed file to iterate over its lines: same lines as iterating over lz4.frame.open(path),
+    but about twice as fast thanks to a larger read buffer."""
+    with lz4.frame.open(path) as compressed_file:
+        yield io.BufferedReader(compressed_file, buffer_size=1 << 20)
 
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
@@ -96,6 +106,76 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
 
 
 
+def collocation_file_arrays(args):
+    """Read one words_and_philo_ids file for make_collocation_database. Returns its words' ids in local
+    vocabularies (listed in order of first occurrence), and where its sentences start with their keys."""
+    path, word_attributes = args
+    vocab = {}  # token string -> local ID
+    token_ids = array.array("I")
+    sent_starts = array.array("Q")  # position among the file's words where each sentence starts
+    sent_keys_flat = array.array("I")  # 6 uint32s per sentence, flattened
+    attr_vocabs = {attr_name: {} for attr_name in word_attributes}
+    attr_ids = {attr_name: array.array("I") for attr_name in word_attributes}
+    word_count = 0
+    current_sentence = None
+    first_sentence = None
+    with open_lz4_lines(path) as input_file:
+        for line in input_file:
+            word_obj = loads(line.decode("utf8"))
+            if word_obj["philo_type"] != "word":
+                continue
+
+            # Track sentence boundaries
+            position_parts = word_obj["position"].split()
+            sent_key = tuple(int(x) for x in position_parts[:6])
+            if sent_key != current_sentence:
+                if current_sentence is None:
+                    first_sentence = sent_key
+                current_sentence = sent_key
+                sent_starts.append(word_count)
+                sent_keys_flat.extend(sent_key)
+
+            # Token -> vocab ID
+            token = word_obj["token"]
+            token_id = vocab.get(token)
+            if token_id is None:
+                token_id = vocab[token] = len(vocab)
+            token_ids.append(token_id)
+
+            # Per-attribute IDs
+            for attr_name in word_attributes:
+                val = word_obj.get(attr_name, "")
+                if attr_name == "lemma":
+                    val = f"lemma:{val}"
+                attr_vocab = attr_vocabs[attr_name]
+                if val not in attr_vocab:
+                    attr_vocab[val] = len(attr_vocab)
+                attr_ids[attr_name].append(attr_vocab[val])
+
+            word_count += 1
+    return (
+        word_count,
+        token_ids.tobytes(),
+        list(vocab),
+        sent_starts.tobytes(),
+        sent_keys_flat.tobytes(),
+        first_sentence,
+        current_sentence,
+        {attr_name: (attr_ids[attr_name].tobytes(), list(attr_vocabs[attr_name])) for attr_name in word_attributes},
+    )
+
+
+def to_global_ids(local_ids, local_vocab, global_vocab):
+    """Map IDs in a file's vocabulary to IDs in the global vocabulary, adding new entries in order"""
+    mapping = np.empty(len(local_vocab), dtype=np.uint32)
+    for local_id, key in enumerate(local_vocab):
+        global_id = global_vocab.get(key)
+        if global_id is None:
+            global_id = global_vocab[key] = len(global_vocab)
+        mapping[local_id] = global_id
+    return mapping[np.frombuffer(local_ids, dtype=np.uint32)]
+
+
 def make_collocation_database(loader_obj, db_destination):
     """Build flat columnar arrays for vectorized collocation computation.
 
@@ -105,66 +185,86 @@ def make_collocation_database(loader_obj, db_destination):
     print(f"{time.ctime()}: Building collocation columnar database...")
 
     vocab = {}  # token string -> uint32 ID
-    vocab_counter = 0
-    token_ids = array.array("I")  # uint32 per word, memory-efficient
-    sent_keys_flat = array.array("I")  # 6 uint32s per sentence, flattened
-    sent_offsets = array.array("Q")  # uint64, cumulative word count
-    sent_offsets.append(0)
+    token_ids = []  # uint32 array per file
+    sent_keys_flat = []  # uint32 array per file, 6 uint32s per sentence
+    sent_offsets = [np.zeros(1, dtype=np.uint64)]  # uint64 arrays, cumulative word count
 
     # Per-attribute arrays (only if word_attributes exist)
     attr_vocabs = {}
     attr_ids = {}
     for attr_name in loader_obj.word_attributes:
         attr_vocabs[attr_name] = {}
-        attr_ids[attr_name] = array.array("I")
+        attr_ids[attr_name] = []
 
     word_count = 0
     current_sentence = None
 
-    with tqdm(total=getattr(loader_obj, "word_count", None), leave=False, desc="Building collocation arrays") as pbar:
+    # Files are read in parallel, then combined in order: vocabulary IDs are assigned in order of first
+    # occurrence across all files, and a sentence continuing from one file to the next stays a single sentence.
+    raw_words_files = [
+        raw_words.path
         for raw_words in sorted(
             (e for e in os.scandir(f"{loader_obj.destination}/words_and_philo_ids") if e.name.endswith(".lz4")),
             key=lambda x: int(x.name.split(".")[0]),
-        ):
-            with lz4.frame.open(raw_words.path) as input_file:
-                for line in input_file:
-                    word_obj = loads(line.decode("utf8"))
-                    if word_obj["philo_type"] != "word":
-                        continue
+        )
+    ]
+    jobs = [(path, list(loader_obj.word_attributes)) for path in raw_words_files]
+    workers = max(1, getattr(loader_obj, "cores", 1) or 1)
+    pool = mp.Pool(workers) if workers > 1 and len(jobs) > 1 else None
+    try:
+        if pool is not None:
+            file_results = pool.imap(collocation_file_arrays, jobs, chunksize=max(1, len(jobs) // (workers * 16)))
+        else:
+            file_results = map(collocation_file_arrays, jobs)
+        with tqdm(
+            total=getattr(loader_obj, "word_count", None), leave=False, desc="Building collocation arrays"
+        ) as pbar:
+            for file_result in file_results:
+                (
+                    file_word_count,
+                    file_token_ids,
+                    file_vocab,
+                    sent_starts,
+                    file_sent_keys,
+                    first_sentence,
+                    last_sentence,
+                    file_attrs,
+                ) = file_result
+                if file_word_count == 0:
+                    continue
+                sent_starts = np.frombuffer(sent_starts, dtype=np.uint64)
+                file_sent_keys = np.frombuffer(file_sent_keys, dtype=np.uint32)
+                if first_sentence == current_sentence:  # continues the last sentence of the previous file
+                    sent_starts = sent_starts[1:]
+                    file_sent_keys = file_sent_keys[6:]
+                elif current_sentence is None:  # first sentence of all: its offset (0) is already stored
+                    sent_starts = sent_starts[1:]
+                sent_offsets.append(sent_starts + np.uint64(word_count))
+                sent_keys_flat.append(file_sent_keys)
+                current_sentence = last_sentence
 
-                    # Track sentence boundaries
-                    position_parts = word_obj["position"].split()
-                    sent_key = tuple(int(x) for x in position_parts[:6])
-                    if sent_key != current_sentence:
-                        if current_sentence is not None:
-                            sent_offsets.append(word_count)
-                        current_sentence = sent_key
-                        sent_keys_flat.extend(sent_key)
+                token_ids.append(to_global_ids(file_token_ids, file_vocab, vocab))
+                for attr_name, (file_attr_ids, file_attr_vocab) in file_attrs.items():
+                    attr_ids[attr_name].append(to_global_ids(file_attr_ids, file_attr_vocab, attr_vocabs[attr_name]))
 
-                    # Token -> vocab ID
-                    token = word_obj["token"]
-                    if token not in vocab:
-                        vocab[token] = vocab_counter
-                        vocab_counter += 1
-                    token_ids.append(vocab[token])
+                word_count += file_word_count
+                pbar.update(file_word_count)
+    finally:
+        if pool is not None:
+            pool.close()
+            pool.join()
 
-                    # Per-attribute IDs
-                    for attr_name in loader_obj.word_attributes:
-                        val = word_obj.get(attr_name, "")
-                        if attr_name == "lemma":
-                            val = f"lemma:{val}"
-                        attr_vocab = attr_vocabs[attr_name]
-                        if val not in attr_vocab:
-                            attr_vocab[val] = len(attr_vocab)
-                        attr_ids[attr_name].append(attr_vocab[val])
+    # Final sentence offset
+    sent_offsets.append(np.array([word_count], dtype=np.uint64))
 
-                    word_count += 1
-                    pbar.update()
-
-        # Final sentence offset
-        sent_offsets.append(word_count)
-
-    pbar.close()
+    token_ids = np.concatenate(token_ids).astype(np.uint32) if token_ids else np.empty(0, dtype=np.uint32)
+    sent_keys_flat = np.concatenate(sent_keys_flat) if sent_keys_flat else np.empty(0, dtype=np.uint32)
+    sent_offsets = np.concatenate(sent_offsets)
+    for attr_name in attr_ids:
+        if attr_ids[attr_name]:
+            attr_ids[attr_name] = np.concatenate(attr_ids[attr_name]).astype(np.uint32)
+        else:
+            attr_ids[attr_name] = np.empty(0, dtype=np.uint32)
 
     # Convert to numpy arrays
     token_ids_arr = np.frombuffer(token_ids, dtype=np.uint32).copy()
@@ -424,53 +524,102 @@ def lemma_and_attribute_frequencies(loader_obj):
     normalized_word_frequencies -> build_norm_word_lmdb).
     """
     frequencies = loader_obj.destination + "/frequencies"
+    jobs = []
 
     # Write lemmas to frequency file
     if loader_obj.lemma_count > 0:
         print("%s: Writing lemmas to frequency file..." % time.ctime(), flush=True)
-        lemma_count = Counter()
-        with lz4.frame.open(f"{loader_obj.workdir}/all_lemmas_sorted.lz4") as input_file:
-            for line in input_file:
-                line = line.decode("utf-8")
-                _, lemma, _, _ = line.split("\t", 3)
-                lemma_count[f"lemma:{lemma}"] += 1
-        with open(f"{frequencies}/lemmas", "w", encoding="utf8") as freq_file:
-            for lemma, _ in lemma_count.most_common():
-                print(lemma, file=freq_file)
+        jobs.append((write_lemma_frequencies, (f"{loader_obj.workdir}/all_lemmas_sorted.lz4", f"{frequencies}/lemmas")))
 
     # Write word attributes to frequency file
     if loader_obj.has_attributes is True:
         print("%s: Writing word attributes to frequency file..." % time.ctime(), flush=True)
-        word_attributes = set()
-        with open(f"{frequencies}/word_attributes", "w", encoding="utf8") as freq_file:
-            with lz4.frame.open(f"{loader_obj.workdir}/all_words_sorted.lz4") as input_file:
-                for line in input_file:
-                    line = line.decode("utf-8")
-                    _, word, _, attributes = line.split("\t", 3)
-                    for attribute, attribute_value in loads(attributes).items():
-                        if attribute in loader_obj.attributes_to_skip:
-                            continue
-                        stored_string = f"{word}:{attribute}:{attribute_value}"
-                        if stored_string not in word_attributes:
-                            print(stored_string, file=freq_file)
-                            word_attributes.add(stored_string)
+        jobs.append(
+            (
+                write_unique_word_attributes,
+                (
+                    f"{loader_obj.workdir}/all_words_sorted.lz4",
+                    f"{frequencies}/word_attributes",
+                    "",
+                    loader_obj.attributes_to_skip,
+                ),
+            )
+        )
 
     # Write word attributes to frequency file with lemma info
     if loader_obj.lemma_count > 0:
         print("%s: Writing lemma attributes to frequency file..." % time.ctime(), flush=True)
-        word_attributes = set()
-        with open(f"{frequencies}/lemma_word_attributes", "w", encoding="utf8") as freq_file:
-            with lz4.frame.open(f"{loader_obj.workdir}/all_lemmas_sorted.lz4") as input_file:
-                for line in input_file:
-                    line = line.decode("utf-8")
-                    _, lemma, _, attributes = line.split("\t", 3)
-                    for attribute, attribute_value in loads(attributes).items():
-                        if attribute in loader_obj.attributes_to_skip:
+        jobs.append(
+            (
+                write_unique_word_attributes,
+                (
+                    f"{loader_obj.workdir}/all_lemmas_sorted.lz4",
+                    f"{frequencies}/lemma_word_attributes",
+                    "lemma:",
+                    loader_obj.attributes_to_skip,
+                ),
+            )
+        )
+
+    # Each file is written from a single input file by its own process
+    processes = [mp.Process(target=function, args=args) for function, args in jobs]
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join()
+    if any(process.exitcode != 0 for process in processes):
+        raise RuntimeError("Writing lemma and word attribute frequency files failed")
+
+
+def write_lemma_frequencies(sorted_file, output_path):
+    """Write lemma:{lemma} for each lemma of a sorted lemmas file, most frequent first"""
+    # Count runs of identical lemmas (the file is sorted), keyed by lemma bytes. Keys are inserted in order
+    # of first occurrence, so most_common() orders ties as when counting line by line.
+    lemma_count = Counter()
+    with open_lz4_lines(sorted_file) as input_file:
+        current_lemma = None
+        run_length = 0
+        for line in input_file:
+            _, lemma, _, _ = line.split(b"\t", 3)
+            if lemma != current_lemma:
+                if current_lemma is not None:
+                    lemma_count[current_lemma] += run_length
+                current_lemma = lemma
+                run_length = 0
+            run_length += 1
+        if current_lemma is not None:
+            lemma_count[current_lemma] += run_length
+    with open(output_path, "w", encoding="utf8") as freq_file:
+        for lemma, _ in lemma_count.most_common():
+            freq_file.write(f"lemma:{lemma.decode('utf-8')}\n")
+
+
+def write_unique_word_attributes(sorted_file, output_path, prefix, attributes_to_skip):
+    """Write each distinct {prefix}{word}:{attribute}:{value} string found in a sorted words or lemmas file,
+    in order of first occurrence."""
+    word_attributes = set()
+    with open(output_path, "w", encoding="utf8") as freq_file:
+        with open_lz4_lines(sorted_file) as input_file:
+            current_word = None
+            for line in input_file:
+                _, word, _, attributes = line.split(b"\t", 3)
+                if word != current_word:
+                    current_word = word
+                    word_string = word.decode("utf-8")
+                    # (attribute, string value) pairs already handled for this word: their stored string is known
+                    seen_for_word = set()
+                for attribute, attribute_value in loads(attributes).items():
+                    if attribute in attributes_to_skip:
+                        continue
+                    if type(attribute_value) is str:
+                        attribute_pair = (attribute, attribute_value)
+                        if attribute_pair in seen_for_word:
                             continue
-                        stored_string = f"lemma:{lemma}:{attribute}:{attribute_value}"
-                        if stored_string not in word_attributes:
-                            print(stored_string, file=freq_file)
-                            word_attributes.add(stored_string)
+                        seen_for_word.add(attribute_pair)
+                    stored_string = f"{prefix}{word_string}:{attribute}:{attribute_value}"
+                    if stored_string not in word_attributes:
+                        freq_file.write(f"{stored_string}\n")
+                        word_attributes.add(stored_string)
 
 
 def build_word_forms_lmdb(loader_obj):

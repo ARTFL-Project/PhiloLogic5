@@ -10,6 +10,8 @@ entities_match = re.compile(r"&#?\w+;")
 
 def convert_entities(text):
     """Convert entities"""
+    if "&" not in text:  # no entity to convert
+        return text
 
     def fixup(m):
         text = m.group(0)

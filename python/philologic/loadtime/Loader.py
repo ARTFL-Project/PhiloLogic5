@@ -20,16 +20,17 @@ from json import dump
 import lmdb
 import lxml.etree
 import lz4.frame
+import numpy as np
 import pandas as pd
 import regex as re
 import spacy
 from black import FileMode, format_str
-from multiprocess import Pool
+from multiprocess import Pool, Process
 from orjson import loads
 from tqdm import tqdm
 
 from philologic.Config import MakeDBConfig, MakeWebConfig
-from philologic.loadtime.PostFilters import make_collocation_database, make_sql_table
+from philologic.loadtime.PostFilters import make_collocation_database, make_sql_table, open_lz4_lines
 from philologic.utils import (
     convert_entities,
     count_lines,
@@ -85,6 +86,95 @@ class ParserError(Exception):
         super().__init__(error_args)
 
 
+# Stored hit layout: sentence philo_id (first 6 ints), then page (pos_8), word position (pos_6) and byte offset (pos_7)
+HIT_COLUMN_ORDER = [0, 1, 2, 3, 4, 5, 8, 6, 7]
+DIGITS_AND_SPACE = b"0123456789 "
+PHILO_ID_PACK_CHUNK = 100000  # philo_ids held before packing them, bounding the memory used on top of the packed bytes
+
+
+def pack_philo_id(philo_id):
+    """Pack a philo_id (9 space-separated integers) into the 36 bytes stored in the index"""
+    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
+    return struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
+
+
+def pack_philo_ids(philo_ids):
+    """Pack a list of philo_ids (bytes) into the index format.
+    Same bytes as b"".join(pack_philo_id(philo_id.decode("utf-8")) for philo_id in philo_ids),
+    but the integers of longer lists are parsed all at once."""
+    if len(philo_ids) >= 16 and all(philo_id.count(b" ") == 8 for philo_id in philo_ids):
+        joined = b" ".join(philo_ids)
+        # Only digits and single spaces, 9 integers per philo_id, all fitting in a uint32
+        if not joined.translate(None, DIGITS_AND_SPACE):
+            try:
+                ids = np.fromstring(joined, dtype=np.int64, sep=" ")
+            except ValueError:
+                ids = None
+            if ids is not None and ids.size == 9 * len(philo_ids) and ids.max() <= 0xFFFFFFFF:
+                return ids.astype(np.uint32).reshape(-1, 9)[:, HIT_COLUMN_ORDER].tobytes()
+    # Short lists or unusual philo_ids: one by one, raising the same errors as before
+    return b"".join([pack_philo_id(philo_id.decode("utf-8")) for philo_id in philo_ids])
+
+
+def build_lemma_lookup_index(workdir, destination, lemma_count):
+    """Create a lemma lookup table where keys are philo_ids as bytes and values are lemmas in the form lemma:word.
+    Only reads the sorted lemmas file and writes its own database, so it runs alongside the rest of the index build."""
+    print(f"{time.ctime()}: Creating lemma lookup index...", flush=True)
+    lemma_db_env = lmdb.open(
+        f"{destination}/temp_lemma_lookup.lmdb",
+        map_size=2 * 1024 * 1024 * 1024 * 1024,
+        writemap=True,
+        sync=False,
+    )
+    commit_interval = 10000
+    count = 0
+    uncommitted = 0
+    lemma_txn = lemma_db_env.begin(write=True)
+
+    def store_lemma_lookups(lemma, philo_ids):
+        """Store one entry per philo_id (in file order), all with the same lemma:word value.
+        Commits after every commit_interval entries, as when storing entries one line at a time."""
+        nonlocal lemma_txn, count, uncommitted
+        lemma_utf8 = b"lemma:" + lemma
+        position = 0
+        while position < len(philo_ids):
+            batch = pack_philo_ids(philo_ids[position : position + commit_interval - uncommitted])
+            lemma_txn.cursor().putmulti((batch[start : start + 36], lemma_utf8) for start in range(0, len(batch), 36))
+            stored = len(batch) // 36
+            count += stored
+            uncommitted += stored
+            position += stored
+            if uncommitted == commit_interval:
+                lemma_txn.commit()
+                lemma_txn = lemma_db_env.begin(write=True)
+                uncommitted = 0
+
+    with open_lz4_lines(f"{workdir}/all_lemmas_sorted.lz4") as input_file:
+        current_lemma = None
+        philo_ids = []
+        for line in input_file:  # no progress bar: this runs alongside the other ones
+            _, word, philo_id, _ = line.strip().split(b"\t")
+            if word != current_lemma or len(philo_ids) == PHILO_ID_PACK_CHUNK:
+                if current_lemma is not None:
+                    store_lemma_lookups(current_lemma, philo_ids)
+                current_lemma = word
+                philo_ids = []
+            philo_ids.append(philo_id)
+        if current_lemma is not None:
+            store_lemma_lookups(current_lemma, philo_ids)
+        # The last transaction (the final count % commit_interval entries) has never been committed here:
+        # kept as is so the index doesn't change.
+        lemma_txn.abort()
+    print(f"{time.ctime()}: Stored {count} lemma lookup entries.", flush=True)
+
+    print(f"{time.ctime()}: Optimizing lemma lookup index for space...", flush=True)
+    os.mkdir(f"{destination}/lemmas.lmdb")
+    lemma_db_env.sync(True)  # Ensure all data is written to disk before compacting database
+    lemma_db_env.copy(f"{destination}/lemmas.lmdb", compact=True)
+    lemma_db_env.close()
+    os.system(f"rm -rf {destination}/temp_lemma_lookup.lmdb")
+
+
 class Loader:
     """Loader class"""
 
@@ -132,10 +222,13 @@ class Loader:
     suppress_word_attributes = set()
     word_attributes = []
     overflow_words = set()  # words which would overflow the limit for LMDB values
+    # (words file path, size, mtime, names of all attributes in its lines), as found by build_inverted_index
+    all_word_attribute_names = None
 
     @classmethod
     def set_class_attributes(cls, loader_options):
         """Set initial class attributes and return Loader object"""
+        cls.all_word_attribute_names = None
         cls.post_filters = list(loader_options["post_filters"])
         cls.debug = loader_options["debug"]
         cls.words_to_index = loader_options["words_to_index"]
@@ -606,8 +699,13 @@ class Loader:
             print("%s: parsing %d files." % (time.ctime(), len(cls.filequeue)))
         with tqdm(total=len(cls.filequeue), smoothing=0, leave=False, desc="Parsing files") as pbar:
             if cls.nlp is None:
+                # Parse the largest files first so a big file started last doesn't leave all but one worker idle.
+                # Files are parsed independently (each has its own id and outputs): the order doesn't change the output.
+                file_positions = sorted(
+                    range(len(cls.data_dicts)), key=lambda file_pos: cls.filequeue[file_pos]["size"], reverse=True
+                )
                 with Pool(workers) as pool:
-                    for _ in pool.imap_unordered(cls.parse_file, range(len(cls.data_dicts))):
+                    for _ in pool.imap_unordered(cls.parse_file, file_positions):
                         pbar.update()
             else:  # disable multiprocessing for spacy
                 for _ in map(cls.parse_file, range(len(cls.data_dicts))):
@@ -687,17 +785,26 @@ class Loader:
     def merge_objects(self):
         """Merge all parsed objects"""
         print("\n### Merge parser output ###")
-        print(f"{time.ctime()}: sorting words")
-        self.merge_files("words")
+        # With this few files, each merge is a single sort writing its own file (see merge_files), so they can
+        # run at the same time. With more files, each merge already runs several sorts in parallel.
+        if len(self.filequeue) <= (250 if sys.platform == "darwin" else 1000):
+            print(f"{time.ctime()}: sorting words, lemmas and objects", flush=True)
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                merges = [executor.submit(self.merge_files, file_type) for file_type in ("words", "lemmas", "toms")]
+                for merge in merges:
+                    merge.result()
+        else:
+            print(f"{time.ctime()}: sorting words")
+            self.merge_files("words")
 
-        print(f"{time.ctime()}: sorting lemmas")
-        self.merge_files("lemmas")
+            print(f"{time.ctime()}: sorting lemmas")
+            self.merge_files("lemmas")
 
-        print(f"{time.ctime()}: sorting objects", flush=True)
-        self.merge_files("toms")
+            print(f"{time.ctime()}: sorting objects", flush=True)
+            self.merge_files("toms")
         if self.debug is False:
             for toms_file in iglob(self.workdir + "/*toms.sorted"):
-                os.system(f"rm {toms_file}")
+                os.remove(toms_file)
 
         for object_type, extension in [
             ("pages", "pages"),
@@ -706,14 +813,17 @@ class Loader:
             ("lines", "lines"),
         ]:
             print(f"{time.ctime()}: joining {object_type}", flush=True)
-            if self.debug is False:
-                os.system(
-                    f'for i in $(find {self.workdir} -type f -name "*{extension}"); do cat $i >> {self.workdir}/all_{extension}; rm $i; done'
-                )
-            else:
-                os.system(
-                    f'for i in $(find {self.workdir} -type f -name "*{extension}"); do cat $i >> {self.workdir}/all_{extension}; done'
-                )
+            # Concatenate in find's order (which determines row order in the SQL tables), without a cat and rm per file
+            found_files = subprocess.run(
+                ["find", self.workdir, "-type", "f", "-name", f"*{extension}"], capture_output=True, check=False
+            ).stdout.split()
+            if found_files:
+                with open(f"{self.workdir}/all_{extension}", "ab") as joined_file:
+                    for found_file in found_files:
+                        with open(found_file, "rb") as object_file:
+                            shutil.copyfileobj(object_file, joined_file)
+                        if self.debug is False:
+                            os.remove(found_file)
 
     def merge_files(self, file_type, file_num=1000, verbose=True):
         """This function runs a multi-stage merge sort on words
@@ -766,6 +876,25 @@ class Loader:
         else:
             print(f"Merging {file_type} in batches of {file_num}...", flush=True)
         os.system(f"touch {self.workdir}/sorted.init")
+
+        if len(lists_of_files) == 1:
+            # A single batch: write its output directly to the final file. Merging it again with sort -m
+            # (the second stage below) would only copy a single sorted input.
+            command_list = " ".join([i[0] for i in lists_of_files[0]])
+            if file_type == "words":
+                output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
+                command = f'/bin/bash -c "{sort_command}{command_list} | lz4 -q > {output_file}"'
+            elif file_type == "lemmas":
+                output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
+                command = f'/bin/bash -c "{sort_command}{command_list} | lz4 -q > {output_file}"'
+            else:
+                output_file = os.path.join(self.workdir, "all_toms_sorted")
+                command = f'/bin/bash -c "{sort_command}{command_list} > {output_file}"'
+            status = subprocess.run(command, shell=True).returncode
+            if status != 0:
+                print(f"{file_type} sorting failed\nInterrupting database load...")
+                sys.exit()
+            return
         with tqdm(total=total_files, leave=False) as pbar:
 
             def run_batch(pos, object_list):
@@ -818,9 +947,12 @@ class Loader:
         """Count words in all files"""
         print("\n### Counting total words ###", flush=True)
         print(f"{time.ctime()}: counting words in all files...", flush=True)
-        cls.word_count = count_lines(f"{cls.workdir}/all_words_sorted.lz4", lz4=True)
-        print(f"{time.ctime()}: counting lemmas in all files...", flush=True)
-        cls.lemma_count = count_lines(f"{cls.workdir}/all_lemmas_sorted.lz4", lz4=True)
+        with ThreadPoolExecutor(max_workers=2) as executor:  # both counts run in parallel subprocesses
+            word_count = executor.submit(count_lines, f"{cls.workdir}/all_words_sorted.lz4", lz4=True)
+            print(f"{time.ctime()}: counting lemmas in all files...", flush=True)
+            lemma_count = executor.submit(count_lines, f"{cls.workdir}/all_lemmas_sorted.lz4", lz4=True)
+            cls.word_count = word_count.result()
+            cls.lemma_count = lemma_count.result()
 
     @classmethod
     def _write_overflow_file(cls, key, philo_ids):
@@ -831,49 +963,129 @@ class Loader:
             overflow_file.write(philo_ids)
 
     @classmethod
+    def _store_word_attributes(
+        cls, db_env, sorted_file, total, key_prefix, desc, commit_interval, overflow_limit, attribute_names=None
+    ):
+        """Store the philo_ids of each word (or lemma) and attribute value found in a sorted words (or lemmas) file,
+        under {key_prefix}{word}:{attribute}:{value} keys. Returns the number of keys stored.
+        attribute_names: optional set, updated with the names of all attributes in the file."""
+        count = 0
+        txn = db_env.begin(write=True)
+
+        def store(word, word_attributes, packed_attributes):
+            nonlocal count, txn
+            word_string = word.decode("utf-8")
+            for attribute, attribute_dict in word_attributes.items():
+                for attribute_value, philo_ids in attribute_dict.items():
+                    key = f"{key_prefix}{word_string}:{attribute}:{attribute_value}"
+                    packed_philo_ids = pack_philo_ids(philo_ids)
+                    if (attribute, attribute_value) in packed_attributes:
+                        packed_philo_ids = bytes(packed_attributes[(attribute, attribute_value)]) + packed_philo_ids
+                    if len(packed_philo_ids) > overflow_limit:
+                        cls._write_overflow_file(key, packed_philo_ids)
+                    else:
+                        txn.put(key.encode("utf-8"), packed_philo_ids)
+                    count += 1
+                    if count % commit_interval == 0:
+                        txn.commit()
+                        txn = db_env.begin(write=True)
+
+        with open_lz4_lines(sorted_file) as input_file:
+            word_attributes = {}  # attribute -> attribute value -> philo_ids (bytes) not packed yet
+            packed_attributes = {}  # (attribute, attribute value) -> philo_ids already packed, for long words
+            lines_in_word = 0
+            current_word = None
+            attributes_to_skip = cls.attributes_to_skip
+            for line in tqdm(input_file, total=total, desc=desc, leave=False):
+                _, word, philo_id, attributes = line.split(b"\t", 3)
+                attributes = loads(attributes)
+                if attribute_names is not None:
+                    attribute_names.update(attributes)
+                if word != current_word:
+                    if current_word is not None:
+                        store(current_word, word_attributes, packed_attributes)
+                    current_word = word
+                    word_attributes = {}
+                    packed_attributes = {}
+                    lines_in_word = 0
+                for attribute, attribute_value in attributes.items():
+                    if attribute in attributes_to_skip:
+                        continue
+                    if attribute not in word_attributes:
+                        word_attributes[attribute] = defaultdict(list)
+                    word_attributes[attribute][attribute_value].append(philo_id)
+                lines_in_word += 1
+                if lines_in_word % PHILO_ID_PACK_CHUNK == 0:  # very frequent word: pack what we have so far
+                    for attribute, attribute_dict in word_attributes.items():
+                        for attribute_value, philo_ids in attribute_dict.items():
+                            if philo_ids:
+                                packed = packed_attributes.setdefault((attribute, attribute_value), bytearray())
+                                packed += pack_philo_ids(philo_ids)
+                                philo_ids.clear()
+            # Handle the last set of words
+            if current_word is not None:
+                store(current_word, word_attributes, packed_attributes)
+        txn.commit()
+        return count
+
+    @classmethod
     def build_inverted_index(cls, commit_interval=5000):
         """Create inverted index"""
         print("\n### Create inverted index ###", flush=True)
+        lemma_lookup_process = None
+        if cls.lemma_count > 0:  # separate database built from the lemmas file only: build it in parallel
+            lemma_lookup_process = Process(
+                target=build_lemma_lookup_index, args=(cls.workdir, cls.destination, cls.lemma_count)
+            )
+            lemma_lookup_process.start()
         db_env = lmdb.open(
             f"{cls.destination}/temp_words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True, sync=False
         )  # 2TB limit
         overflow_limit = 360000000  # 36 bytes per philo_id, 10,000,000 philo_ids
         os.mkdir(f"{cls.destination}/overflow_words")
+        cls.all_word_attribute_names = None
 
+        # Lines are handled as bytes: the files are UTF-8, so splitting and comparing bytes gives the same results
+        # as on decoded strings, and keys are encoded back to the same bytes.
         print(f"{time.ctime()}: Creating word index...", flush=True)
-        with lz4.frame.open(f"{cls.workdir}/all_words_sorted.lz4") as input_file:
+        with open_lz4_lines(f"{cls.workdir}/all_words_sorted.lz4") as input_file:
             current_word = None
             count = 0
-            philo_ids = bytearray()
+            philo_ids = []  # philo_ids (bytes) not packed yet
+            packed_philo_ids = bytearray()
+            has_attributes = cls.has_attributes
             txn = db_env.begin(write=True)
             for line in tqdm(input_file, total=cls.word_count, desc="Storing words", leave=False):
-                line = line.decode("utf-8")  # type: ignore
-                _, word, philo_id, attribs = line.split("\t", 3)
-                local_word_attributes = {k for k in loads(attribs) if k not in cls.attributes_to_skip}
-                if local_word_attributes:
-                    cls.has_attributes = True
-                pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
-                word_id = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
+                _, word, philo_id, attribs = line.split(b"\t", 3)
+                if not has_attributes:  # stop checking once we know
+                    if any(k not in cls.attributes_to_skip for k in loads(attribs)):
+                        has_attributes = cls.has_attributes = True
                 if word != current_word:
                     if current_word is not None:
-                        if len(philo_ids) > overflow_limit:
-                            cls._write_overflow_file(current_word, philo_ids)
+                        packed_philo_ids += pack_philo_ids(philo_ids)
+                        if len(packed_philo_ids) > overflow_limit:
+                            cls._write_overflow_file(current_word.decode("utf-8"), packed_philo_ids)
                         else:
-                            txn.put(current_word.encode("utf-8"), philo_ids)
+                            txn.put(current_word, packed_philo_ids)
                         count += 1
                         if count % commit_interval == 0:
                             txn.commit()
                             txn = db_env.begin(write=True)
                     current_word = word
-                    philo_ids = bytearray()
-                philo_ids += word_id
+                    philo_ids = []
+                    packed_philo_ids = bytearray()
+                philo_ids.append(philo_id)
+                if len(philo_ids) == PHILO_ID_PACK_CHUNK:
+                    packed_philo_ids += pack_philo_ids(philo_ids)
+                    philo_ids = []
 
             # Commit any remaining words
-            if philo_ids:
-                if len(philo_ids) > overflow_limit:
-                    cls._write_overflow_file(current_word, philo_ids)
+            packed_philo_ids += pack_philo_ids(philo_ids)
+            if packed_philo_ids:
+                if len(packed_philo_ids) > overflow_limit:
+                    cls._write_overflow_file(current_word.decode("utf-8"), packed_philo_ids)
                 else:
-                    txn.put(current_word.encode("utf-8"), philo_ids)
+                    txn.put(current_word, packed_philo_ids)
                 count += 1
             txn.commit()
         print(f"{time.ctime()}: Stored {cls.word_count} words in {count} entries.", flush=True)
@@ -881,35 +1093,39 @@ class Loader:
         # Create lemmas index
         if cls.lemma_count > 0:
             print(f"{time.ctime()}: Creating lemma index...", flush=True)
-            with lz4.frame.open(f"{cls.workdir}/all_lemmas_sorted.lz4", "rb") as input_file:
+            with open_lz4_lines(f"{cls.workdir}/all_lemmas_sorted.lz4") as input_file:
                 txn = db_env.begin(write=True)
                 current_lemma = None
                 count = 0
-                philo_ids = bytearray()
+                philo_ids = []
+                packed_philo_ids = bytearray()
                 for line in tqdm(input_file, total=cls.lemma_count, leave=False, desc="Storing lemmas"):
-                    line = line.decode("utf-8")
-                    _, lemma, philo_id, _ = line.strip().split("\t")
-                    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
-                    lemma_id = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
+                    _, lemma, philo_id, _ = line.strip().split(b"\t")
                     if lemma != current_lemma:
                         if current_lemma is not None:
-                            if len(philo_ids) > overflow_limit:
-                                cls._write_overflow_file(f"lemma:{current_lemma}", philo_ids)
+                            packed_philo_ids += pack_philo_ids(philo_ids)
+                            if len(packed_philo_ids) > overflow_limit:
+                                cls._write_overflow_file(f"lemma:{current_lemma.decode('utf-8')}", packed_philo_ids)
                             else:
-                                txn.put(f"lemma:{current_lemma}".encode("utf-8"), philo_ids)
+                                txn.put(b"lemma:" + current_lemma, packed_philo_ids)
                             count += 1
                             if count % commit_interval == 0:
                                 txn.commit()
                                 txn = db_env.begin(write=True)
                         current_lemma = lemma
-                        philo_ids = bytearray()
-                    philo_ids += lemma_id
+                        philo_ids = []
+                        packed_philo_ids = bytearray()
+                    philo_ids.append(philo_id)
+                    if len(philo_ids) == PHILO_ID_PACK_CHUNK:
+                        packed_philo_ids += pack_philo_ids(philo_ids)
+                        philo_ids = []
                 # Commit any remaining lemmas
-                if philo_ids:
-                    if len(philo_ids) > overflow_limit:
-                        cls._write_overflow_file(f"lemma:{current_lemma}", philo_ids)
+                packed_philo_ids += pack_philo_ids(philo_ids)
+                if packed_philo_ids:
+                    if len(packed_philo_ids) > overflow_limit:
+                        cls._write_overflow_file(f"lemma:{current_lemma.decode('utf-8')}", packed_philo_ids)
                     else:
-                        txn.put(f"lemma:{current_lemma}".encode("utf-8"), philo_ids)
+                        txn.put(b"lemma:" + current_lemma, packed_philo_ids)
                     count += 1
                 txn.commit()
             print(f"{time.ctime()}: Stored {cls.lemma_count} lemmas in {count} entries.", flush=True)
@@ -917,99 +1133,40 @@ class Loader:
         # Add word attributes to LMDB database
         if cls.has_attributes is True:
             print(f"{time.ctime()}: Found word attributes, creating word attributes index...", flush=True)
-            with lz4.frame.open(f"{cls.workdir}/all_words_sorted.lz4") as input_file:
-                txn = db_env.begin(write=True)
-                word_attributes: dict[str, dict[str, bytes]] = {}
-                current_word = None
-                count = 0
-                for line in tqdm(input_file, total=cls.word_count, desc="Storing word attributes", leave=False):
-                    line = line.decode("utf-8")
-                    _, word, philo_id, attributes = line.split("\t", 3)
-                    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
-                    philo_id_bytes = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
-                    local_word_attributes = {
-                        k: v for k, v in loads(attributes).items() if k not in cls.attributes_to_skip
-                    }
-                    if word != current_word:
-                        if current_word is not None:
-                            for attribute, attribute_dict in word_attributes.items():
-                                for attribute_value, philo_ids in attribute_dict.items():
-                                    key = f"{current_word}:{attribute}:{attribute_value}"
-                                    if len(philo_ids) > overflow_limit:
-                                        cls._write_overflow_file(key, philo_ids)
-                                    else:
-                                        txn.put(key.encode("utf-8"), philo_ids)
-                                    count += 1
-                                    if count % commit_interval == 0:
-                                        txn.commit()
-                                        txn = db_env.begin(write=True)
-                        current_word = word
-                        word_attributes = {}
-                    for attribute, attribute_value in local_word_attributes.items():
-                        if attribute not in word_attributes:
-                            word_attributes[attribute] = defaultdict(bytearray)
-                        word_attributes[attribute][attribute_value] += philo_id_bytes
-
-                # Handle the last set of words
-                for attribute, attribute_dict in word_attributes.items():
-                    for attribute_value, philo_ids in attribute_dict.items():
-                        key = f"{current_word}:{attribute}:{attribute_value}"
-                        if len(philo_ids) > overflow_limit:
-                            cls._write_overflow_file(key, philo_ids)
-                        else:
-                            txn.put(key.encode("utf-8"), philo_ids)
-                        count += 1
-                txn.commit()
+            # Also collect the names of all attributes found in the file, used in post_processing
+            all_word_attribute_names = set()
+            words_file = f"{cls.workdir}/all_words_sorted.lz4"
+            count = cls._store_word_attributes(
+                db_env,
+                words_file,
+                cls.word_count,
+                "",
+                "Storing word attributes",
+                commit_interval,
+                overflow_limit,
+                attribute_names=all_word_attribute_names,
+            )
+            file_stat = os.stat(words_file)
+            cls.all_word_attribute_names = (
+                words_file,
+                file_stat.st_size,
+                file_stat.st_mtime_ns,
+                all_word_attribute_names,
+            )
             print(f"{time.ctime()}: Stored {count} word attributes.", flush=True)
 
         # Add word attributes to LMDB database with lemma info
         if cls.lemma_count > 0 and cls.has_attributes is True:
             print(f"{time.ctime()}: Creating lemma word attributes index...", flush=True)
-            with lz4.frame.open(f"{cls.workdir}/all_lemmas_sorted.lz4") as input_file:
-                txn = db_env.begin(write=True)
-                word_attributes = {}
-                current_word = None
-                count = 0
-                for line in tqdm(
-                    input_file, total=cls.lemma_count, desc="Creating lemma word attribute index", leave=False
-                ):
-                    line = line.decode("utf-8")
-                    _, lemma, philo_id, attributes = line.split("\t", 3)
-                    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
-                    philo_id_bytes = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
-                    local_word_attributes = {
-                        k: v for k, v in loads(attributes).items() if k not in cls.attributes_to_skip
-                    }
-                    if lemma != current_word:
-                        if current_word is not None:
-                            for attribute, attribute_dict in word_attributes.items():
-                                for attribute_value, philo_ids in attribute_dict.items():
-                                    key = f"lemma:{current_word}:{attribute}:{attribute_value}"
-                                    if len(philo_ids) > overflow_limit:
-                                        cls._write_overflow_file(key, philo_ids)
-                                    else:
-                                        txn.put(key.encode("utf-8"), philo_ids)
-                                    count += 1
-                                    if count % commit_interval == 0:
-                                        txn.commit()
-                                        txn = db_env.begin(write=True)
-                        current_word = lemma
-                        word_attributes = {}
-                    for attribute, attribute_value in local_word_attributes.items():
-                        if attribute not in word_attributes:
-                            word_attributes[attribute] = defaultdict(bytearray)
-                        word_attributes[attribute][attribute_value] += philo_id_bytes
-
-                # Handle the last set of words
-                for attribute, attribute_dict in word_attributes.items():
-                    for attribute_value, philo_ids in attribute_dict.items():
-                        key = f"lemma:{current_word}:{attribute}:{attribute_value}"
-                        if len(philo_ids) > overflow_limit:
-                            cls._write_overflow_file(key, philo_ids)
-                        else:
-                            txn.put(key.encode("utf-8"), philo_ids)
-                        count += 1
-                txn.commit()
+            count = cls._store_word_attributes(
+                db_env,
+                f"{cls.workdir}/all_lemmas_sorted.lz4",
+                cls.lemma_count,
+                "lemma:",
+                "Creating lemma word attribute index",
+                commit_interval,
+                overflow_limit,
+            )
             print(f"{time.ctime()}: Stored {count} lemma word attributes.", flush=True)
 
         print(f"{time.ctime()}: Optimizing word index for space...", flush=True)
@@ -1025,38 +1182,10 @@ class Loader:
         src_env.close()
         os.system(f"rm -rf {cls.destination}/temp_words.lmdb")
 
-        # Create a lemma lookup table where keys are philo_ids as bytes and values are lemmas in the form lemma:word
-        if cls.lemma_count > 0:
-            print(f"{time.ctime()}: Creating lemma lookup index...", flush=True)
-            lemma_db_env = lmdb.open(
-                f"{cls.destination}/temp_lemma_lookup.lmdb",
-                map_size=2 * 1024 * 1024 * 1024 * 1024,
-                writemap=True,
-                sync=False,
-            )
-            commit_interval = 10000
-            count = 0
-            with lz4.frame.open(f"{cls.workdir}/all_lemmas_sorted.lz4", "rb") as input_file:
-                lemma_txn = lemma_db_env.begin(write=True)
-                for line in tqdm(input_file, desc="Storing lemma/word mapping", leave=False, total=cls.lemma_count):
-                    line = line.decode("utf-8")
-                    _, word, philo_id, _ = line.strip().split("\t")
-                    lemma_utf8 = f"lemma:{word}".encode("utf-8")
-                    pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_6, pos_7, pos_8 = map(int, philo_id.split())
-                    lemma_id = struct.pack("9I", pos_0, pos_1, pos_2, pos_3, pos_4, pos_5, pos_8, pos_6, pos_7)
-                    lemma_txn.put(lemma_id, lemma_utf8)
-                    count += 1
-                    if count % commit_interval == 0:
-                        lemma_txn.commit()
-                        lemma_txn = lemma_db_env.begin(write=True)
-            print(f"{time.ctime()}: Stored {count} lemma lookup entries.", flush=True)
-
-            print(f"{time.ctime()}: Optimizing lemma lookup index for space...", flush=True)
-            os.mkdir(f"{cls.destination}/lemmas.lmdb")
-            lemma_db_env.sync(True)  # Ensure all data is written to disk before compacting database
-            lemma_db_env.copy(f"{cls.destination}/lemmas.lmdb", compact=True)
-            lemma_db_env.close()
-            os.system(f"rm -rf {cls.destination}/temp_lemma_lookup.lmdb")
+        if lemma_lookup_process is not None:
+            lemma_lookup_process.join()
+            if lemma_lookup_process.exitcode != 0:
+                raise RuntimeError("Building the lemma lookup index failed")
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""
@@ -1109,11 +1238,20 @@ class Loader:
         attributes_to_skip.update({"token", "position", "philo_type"})
         word_attributes = set()
         if cls.has_attributes is True:
-            with lz4.frame.open(f"{cls.workdir}/all_words_sorted.lz4") as input_file:
-                for line in input_file:
-                    line = line.decode("utf-8")
-                    _, _, _, attributes = line.split("\t", 3)
-                    word_attributes.update(loads(attributes).keys())
+            words_file = f"{cls.workdir}/all_words_sorted.lz4"
+            file_stat = os.stat(words_file)
+            if cls.all_word_attribute_names is not None and cls.all_word_attribute_names[:3] == (
+                words_file,
+                file_stat.st_size,
+                file_stat.st_mtime_ns,
+            ):  # already collected while building the word attributes index from this same file
+                word_attributes.update(cls.all_word_attribute_names[3])
+            else:
+                with lz4.frame.open(words_file) as input_file:
+                    for line in input_file:
+                        line = line.decode("utf-8")
+                        _, _, _, attributes = line.split("\t", 3)
+                        word_attributes.update(loads(attributes).keys())
         if cls.lemma_count > 0:
             word_attributes.add("lemma")
         cls.word_attributes = list(word_attributes.difference(attributes_to_skip))
@@ -1142,6 +1280,15 @@ class Loader:
         # Under gunicorn, Apache/Nginx only proxies requests — it never
         # serves files from the database directory directly.
 
+        # The web app build only depends on appConfig.json (not on the database), so it runs while we finish up
+        with open(os.path.join(self.web_app_dir, "appConfig.json"), "w") as app_config:
+            dump({"dbUrl": ""}, app_config)
+        npm = "/var/lib/philologic5/bin/npm"
+        web_app_build = subprocess.Popen(
+            f"cd {self.web_app_dir}; {npm} install > {self.web_app_dir}/web_app_build.log 2>&1 && {npm} run build >> {self.web_app_dir}/web_app_build.log 2>&1",
+            shell=True,
+        )
+
         self.write_db_config()
         if self.predefined_web_config is False:
             self.write_web_config()
@@ -1150,12 +1297,7 @@ class Loader:
 
         print("Building Web Client Application...", end=" ", flush=True)
         os.chdir(self.web_app_dir)
-        with open(os.path.join(self.web_app_dir, "appConfig.json"), "w") as app_config:
-            dump({"dbUrl": ""}, app_config)
-        npm = "/var/lib/philologic5/bin/npm"
-        os.system(
-            f"cd {self.web_app_dir}; {npm} install > {self.web_app_dir}/web_app_build.log 2>&1 && {npm} run build >> {self.web_app_dir}/web_app_build.log 2>&1"
-        )
+        web_app_build.wait()
         print("done.")
 
     def write_db_config(self):

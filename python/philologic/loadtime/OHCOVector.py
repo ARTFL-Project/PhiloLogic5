@@ -47,20 +47,27 @@ class CompoundRecord:
 
     def __str__(self):
         print_id = self.id
-        try:
+        if 0 in self.id:
             parent_index = self.id.index(0) - 1
-        except ValueError:
+        else:
             parent_index = len(self.id) - 1
-        parent_id = [x if i < parent_index else 0 for i, x in enumerate(self.id)]
+        parent_index = max(parent_index, 0)
+        parent_id = self.id[:parent_index] + [0] * (len(self.id) - parent_index)
         print_id.append(self.attrib.get("start_byte", 0))
         print_id.append(self.attrib.get("page", 0))
         self.attrib["parent"] = " ".join(map(str, parent_id))
         clean_attrib = {}
         for k, v in self.attrib.items():
-            try:
+            value_type = type(v)
+            if value_type is str:
                 clean_attrib[k] = " ".join(v.split())
-            except AttributeError:
+            elif value_type is int:  # no split method: avoid raising AttributeError below
                 clean_attrib[k] = v
+            else:
+                try:
+                    clean_attrib[k] = " ".join(v.split())
+                except AttributeError:
+                    clean_attrib[k] = v
         return f"{self.type}\t{self.name}\t{' '.join(map(str, print_id))}\t{dumps(clean_attrib).decode('utf8')}"
 
     def __getitem__(self, n):
@@ -210,7 +217,10 @@ class CompoundStack:
         else:
             self.stack.push(type, name, byte)
             if self.current_p:
-                self.stack[type]["page"] = self.current_p.id[1]
+                if type in self.stack.type_indices:  # the record we just pushed, without looking it up again
+                    self.stack.last_record["page"] = self.current_p.id[1]
+                else:
+                    self.stack[type]["page"] = self.current_p.id[1]
 
     def pull(self, text_obj_type, byte):
         """pull an object off the stack."""
@@ -251,8 +261,10 @@ class NewStack:
         self.out = out or sys.stdout
         self.factory = factory or Record
         self.last_record = None
+        self.type_indices = {}  # same as self.types.index(type), without scanning the list
 
-        for type in self.types:
+        for pos, type in enumerate(self.types):
+            self.type_indices.setdefault(type, pos)
             self.v.append(0)
             # self.v_max.append(0)
             if type[-1].isdigit():
@@ -278,8 +290,9 @@ class NewStack:
         return False
 
     def index(self, type):
-        if type in self.types:
-            return self.types.index(type)
+        i = self.type_indices.get(type)
+        if i is not None:
+            return i
         elif type in self.v_types:
             possible_types = self.v_types[type][:]
             possible_types.reverse()
@@ -291,12 +304,12 @@ class NewStack:
         raise IndexError
 
     def push(self, type, name, byte):
-        i = self.index(type)
-        if type in self.types:
-            while len(self) < i:
-                self.push(self.types[len(self)], "__philo_virtual", byte)
+        i = self.type_indices.get(type)
+        if i is not None:
+            while len(self.current_objects) < i:
+                self.push(self.types[len(self.current_objects)], "__philo_virtual", byte)
             # if we're currently in a node, we have to pull it first. and [implicitly] all its children
-            if type in self:
+            if len(self.current_objects) > i:  # type in self
                 self.pull(type, byte)
             # now we can create a new node.  increment field here ONLY TO MARK INITIALIZATION
             if self.v[i] == 0:
@@ -313,19 +326,22 @@ class NewStack:
                 if t not in self:
                     break
             self.push(t, name, byte)
+        else:
+            raise IndexError
 
     def pull(self, type, byte):
         # have to pull all descendants. recursively? no, too much overhead.  reverse order, real types.
-        i = self.index(type)
-        if type in self.types:
-            if type in self:
+        i = self.type_indices.get(type)
+        if i is not None:
+            if len(self.current_objects) > i:  # type in self
                 descendants = self.types[i + 1 :]
                 descendants.reverse()
                 for d in descendants:
                     self.pull(d, byte)
                 # print
-                self.current_objects[i].attrib["end_byte"] = byte
-                print(self.current_objects[i], file=self.out)
+                record = self.current_objects[i]
+                record.attrib["end_byte"] = byte
+                self.out.write(str(record) + "\n")  # same as print(record, file=self.out)
                 # self.v_max = [max(new, prev) for new, prev in zip(self.v_max, self.current_objects[i].getid())]
                 # we know all descendants have already been pulled.  so only have to reset the next one. and increment.
                 self.v[i] += 1
@@ -340,6 +356,8 @@ class NewStack:
                 if t in self and self[t].name != "__philo_virtual":
                     break
             self.pull(t, byte)
+        else:
+            raise IndexError
 
 
 class Record:

@@ -16,22 +16,24 @@ def get_word_counts(_, text):
     """Count words"""
     attrib_set = set()
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
-        object_types = ["doc", "div1", "div2", "div3", "para", "sent", "word"]
-        counts = [0 for i in range(5)]
+        object_types = {"doc": 0, "div1": 1, "div2": 2, "div3": 3, "para": 4}
+        # Words seen so far, and for each object type, the total when its count was last reset
+        total_words = 0
+        last_reset = [0 for i in range(5)]
         with open(text["raw"], encoding="utf8") as fh:
             for line in fh:
                 philo_type, word, philo_id, attrib = line.split("\t")
-                philo_id = philo_id.split()
-                record = Record(philo_type, word, philo_id)
-                record.attrib = loads(attrib)
-                for d, _ in enumerate(counts):
-                    if philo_type == "word":
-                        counts[d] += 1
-                    elif philo_type == object_types[d]:
-                        record.attrib["word_count"] = counts[d]
-                        counts[d] = 0
-                print(record, file=tmp_file)
-                attrib_set.update(record.attrib.keys())
+                attrib = loads(attrib)
+                if philo_type == "word":
+                    total_words += 1
+                else:
+                    d = object_types.get(philo_type)
+                    if d is not None:
+                        attrib["word_count"] = total_words - last_reset[d]
+                        last_reset[d] = total_words
+                # Same output as print(Record(philo_type, word, philo_id.split()), file=tmp_file)
+                tmp_file.write(f"{philo_type}\t{word}\t{' '.join(philo_id.split())}\t{dumps(attrib).decode('utf8')}\n")
+                attrib_set.update(attrib.keys())
     os.remove(text["raw"])
     os.rename(text["raw"] + ".tmp", text["raw"])
     return attrib_set
@@ -95,11 +97,11 @@ def get_lemmas(_, text):
         with open(text["raw"], encoding="utf8") as fh:
             for line in fh:
                 philo_type, _, philo_id, attribs = line.split("\t")
-                if philo_type != "word":
+                if philo_type != "word" or '"lemma"' not in attribs:  # no lemma key in this JSON object
                     continue
                 loaded_attribs = loads(attribs)
                 if "lemma" in loaded_attribs:
-                    print(f"lemma\t{loaded_attribs['lemma']}\t{philo_id}\t{attribs.strip()}", file=lemma_file)
+                    lemma_file.write(f"lemma\t{loaded_attribs['lemma']}\t{philo_id}\t{attribs.strip()}\n")
     os.system(f"lz4 -z -q {text['raw']}.lemma {text['raw']}.lemma.lz4 && rm {text['raw']}.lemma")
 
 
@@ -285,28 +287,27 @@ def store_words_and_philo_ids(loader_obj, text):
         # Path was already created
         pass
     filename = os.path.join(files_path, str(text["id"]))
-    with open(filename, "w", encoding="utf8") as output:
-        with open(text["raw"], encoding="utf8") as filehandle:
-            for line in filehandle:
-                philo_type, word, philo_id, attrib = line.split("\t")
-                if word == "__philo_virtual":
-                    continue
-                attrib = loads(attrib)
-                if philo_type in ("word", "punct"):
-                    word_obj = {
-                        "token": word,
-                        "position": philo_id,
-                        "start_byte": attrib["start_byte"],
-                        "end_byte": attrib["end_byte"],
-                        "philo_type": philo_type,
-                    }
-                    word_obj.update({k: v for k, v in attrib.items() if k not in attributes_to_skip})
-                    word_obj = dumps(word_obj).decode("utf-8")
-                    print(word_obj, file=output)
+    # Build the JSON lines file in memory and compress it directly, rather than writing it to disk and reading it back
+    output = bytearray()
+    with open(text["raw"], encoding="utf8") as filehandle:
+        for line in filehandle:
+            philo_type, word, philo_id, attrib = line.split("\t")
+            if word == "__philo_virtual":
+                continue
+            attrib = loads(attrib)
+            if philo_type in ("word", "punct"):
+                word_obj = {
+                    "token": word,
+                    "position": philo_id,
+                    "start_byte": attrib["start_byte"],
+                    "end_byte": attrib["end_byte"],
+                    "philo_type": philo_type,
+                }
+                word_obj.update({k: v for k, v in attrib.items() if k not in attributes_to_skip})
+                output += dumps(word_obj)
+                output += b"\n"
     with open(f"{filename}.lz4", "wb") as compressed_file:
-        with open(filename, "rb") as input_file:
-            compressed_file.write(lz4.frame.compress(input_file.read(), compression_level=4))
-        os.remove(filename)
+        compressed_file.write(lz4.frame.compress(output, compression_level=4))
 
 
 def generate_word_frequencies(loader_obj, text):

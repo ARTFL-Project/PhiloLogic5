@@ -326,6 +326,18 @@ entity_regex = [
 
 LINE_SPLITTER = re.compile(r"([^\n]+)")
 
+# Lowercased tag names which can match one of the tag regexes tested in XMLParser.tag_handler
+# (along with any name starting with "div" or "/div"). Tags with any other ASCII name are
+# guaranteed to match none of them, which lets tag_handler skip the regex cascade.
+HANDLED_TAG_NAMES = frozenset(
+    """text /text q /q p note epigraph /epigraph list sp /sp speaker argument /argument opener /opener closer /closer
+    stage /stage castlist add /add pb lg /lg l /l ab /ab s /s front /front body hyperdiv index date ref graphic""".split()
+    + [f"h{digit}" for digit in range(10)]
+)
+
+# Characters matched by the ending_punctuation character class (all ASCII), used to strip it without a regex call
+ENDING_PUNCTUATION_CHARS = frozenset(chr(i) for i in range(128) if ending_punctuation.match(chr(i)))
+
 
 class XMLParser:
     """Parses clean or dirty XML.
@@ -641,6 +653,16 @@ class XMLParser:
         if not self.skip_suppressed_tag(tag, tag_name):
             if not tag_name.startswith("/"):
                 self.current_tag = tag_name
+
+            # Fast path: all the tag regexes below start with "<" and a tag name. When the tag holds a single "<"
+            # (always the case for lines of self.content) and its name is ASCII and not in HANDLED_TAG_NAMES,
+            # none of them can match, so only the word tag attributes need handling.
+            if tag_name.isascii() and tag.startswith("<") and tag.find("<", 1) == -1:
+                lower_tag_name = tag_name.lower()
+                if lower_tag_name not in HANDLED_TAG_NAMES and not lower_tag_name.startswith(("div", "/div")):
+                    if self.current_tag == "w":
+                        self.word_tag_attributes = self.get_attributes(tag)
+                    return
 
             # print tag_name, start_byte
             # Handle <q> tags
@@ -1116,27 +1138,31 @@ class XMLParser:
 
             # we're splitting the line of words into distinct words
             # separated by "\n"
-            words = self.token_regex.sub(r"\n\1\n", words)
+            if self.token_regex.groups == 1:
+                # Same result as the sub below (the pattern's only group is the whole match), but faster
+                words = "\n".join(self.token_regex.split(words))
+            else:
+                words = self.token_regex.sub(r"\n\1\n", words)
 
             if self.break_apost:
                 words = words.replace("'", "\n'\n")
                 words = words.replace("’", "\n’\n")
 
-            words = newline_shortener.sub(r"\n", words)
-
             current_pos = self.bytes_read_in
             count = 0
             word_list = words.split("\n")
+            if len(word_list) > 2:
+                # Drop empty inner items: same as collapsing runs of newlines with newline_shortener before splitting
+                word_list = [word_list[0], *[w for w in word_list[1:-1] if w], word_list[-1]]
             last_word = ""
             next_word = ""
             if self.in_the_text:
+                word_list_length = len(word_list)
                 for word in word_list:
                     word_in_utf8 = word.encode("utf8")
                     word_length = len(word_in_utf8)
-                    try:
+                    if count + 1 < word_list_length:
                         next_word = word_list[count + 1]
-                    except IndexError:
-                        pass
                     count += 1
 
                     # Keep track of your bytes since this is where you are getting
@@ -1198,8 +1224,9 @@ class XMLParser:
                                     continue
                             self.v.push("word", word, word_pos)
                             if self.current_tag == "w":
+                                word_record = self.v["word"]
                                 for attrib, value in self.word_tag_attributes:
-                                    self.v["word"][attrib] = value
+                                    word_record[attrib] = value
                             elif self.lemmas is not None:
                                 if word not in self.lemmas:
                                     lower_word = word.lower()
@@ -1210,9 +1237,11 @@ class XMLParser:
                                 else:
                                     self.v["word"]["lemma"] = self.lemmas[word]
                             self.v.pull("word", current_pos)
-                    # Sentence break handler
-                    elif not self.in_line_group and not self.in_tagged_sentence:
-                        if self.is_word_sentence_breaker(word, last_word, next_word):
+                        is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
+                    else:
+                        is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
+                        # Sentence break handler
+                        if is_sentence_breaker and not self.in_line_group and not self.in_tagged_sentence:
                             # a little hack--we don't know the punctuation mark that will end a sentence
                             # until we encounter it--so instead, we let the push on "word" create a
                             # implicit philo_virtual sentence, then change its name once we actually encounter
@@ -1221,7 +1250,7 @@ class XMLParser:
                                 self.v.push("sent", word.replace("\t", " ").strip(), current_pos)
                             self.v["sent"].name = word.replace("\t", " ").strip()
                             self.v.pull("sent", current_pos + len(word.encode("utf8")))
-                    if self.is_word_sentence_breaker(word, last_word, next_word):
+                    if is_sentence_breaker:
                         self.last_sentence_marker = word.replace("\t", " ").strip()
                     if self.punct_regex.search(word):
                         punc_pos = current_pos - len(word.encode("utf8"))
@@ -1312,8 +1341,9 @@ class XMLParser:
         for attrib, value in attrib_matcher.findall(tag):
             # Replace ":" with "_" for attribute names since they are illegal in SQLite
             attrib = attrib.replace(":", "_")
-            value = self.remove_control_chars(value)
-            value = ending_punctuation.sub("", value.strip())
+            value = self.remove_control_chars(value).strip()
+            if value and value[-1] in ENDING_PUNCTUATION_CHARS:  # same as ending_punctuation.sub("", value)
+                value = value[:-1]
             value = convert_entities(value)
             value = value.replace('"', "")
             attribs.append((attrib, value))
@@ -1342,6 +1372,8 @@ class XMLParser:
                 next_line = self.content[look_ahead]
             except IndexError:
                 break
+            if "<" not in next_line:  # none of the tag regexes below can match
+                continue
             next_line = head_self_close_tag.sub("", next_line)
             if div_tag.search(next_line) or closed_div_tag.search(next_line):
                 break  # don't go past an open or close <div.
