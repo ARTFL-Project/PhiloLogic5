@@ -136,6 +136,16 @@ def claim_hitlist(filename):
         raise
 
 
+def being_produced(fh):
+    """Whether a producer holds its claim on the hitlist file open as fh."""
+    try:
+        fcntl.flock(fh, fcntl.LOCK_SH | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return True
+    fcntl.flock(fh, fcntl.LOCK_UN)
+    return False
+
+
 def finish_hitlist(filename, lock, message="1"):
     """Mark a hitlist produced under claim_hitlist() as complete, then release its claim."""
     if lock is not None:
@@ -323,15 +333,15 @@ class HitList(object):
         if self.done:
             pass
         else:
-            try:
-                os.stat(self.filename + ".done")
-                self.done = True
-            except OSError:
-                if self.produce is not None and time.monotonic() >= self.next_producer_check:
-                    self.next_producer_check = time.monotonic() + 1
-                    with claim_hitlist(self.filename) as lock:
-                        if lock is not None:  # its producer died before finishing it
-                            self.produce(lock=lock)
+            if os.path.exists(self.filename + ".done"):
+                # Only once its producer has let go: until then, the flag is one left behind by an earlier
+                # hitlist of the same name, which the producer is about to remove.
+                self.done = not being_produced(self.fh)
+            elif self.produce is not None and time.monotonic() >= self.next_producer_check:
+                self.next_producer_check = time.monotonic() + 1
+                with claim_hitlist(self.filename) as lock:
+                    if lock is not None:  # its producer died before finishing it
+                        self.produce(lock=lock)
             self.size = os.stat(self.filename).st_size  # in bytes
             self.count = int(self.size / self.hitsize)
 

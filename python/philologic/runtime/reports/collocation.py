@@ -582,8 +582,10 @@ def collocation_results(request, config):
     terms_file = f"{hits.filename}.terms"
     # .terms is written before the search produces any hit, so once the hitlist is done without it, it is not
     # coming: either no search ran (the metadata matched nothing) or cleanup removed it from a cached search.
-    while not os.path.exists(terms_file) and not os.path.exists(f"{hits.filename}.done"):
+    while not os.path.exists(terms_file):
         hits.update()  # which takes the search over if its producer died
+        if hits.done:
+            break
         time.sleep(0.1)
     if not os.path.exists(terms_file) and len(hits) > 0:
         rewrite_terms_file(db, request.q, hits.filename)
