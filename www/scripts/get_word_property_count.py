@@ -3,8 +3,8 @@ import io
 import os
 import sys
 
-import lmdb
 from philologic.runtime.DB import DB
+from philologic.runtime.lmdb_env import lmdb_env
 from philologic.runtime.Query import filter_philo_ids, get_word_array, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 from philologic.runtime.term_expansion import expand_query_not
@@ -130,8 +130,7 @@ def get_word_property_count(request, config):
 
         # Counting hits per property value needs no search unless the query is multi-word: the
         # count falls out of the size of each key's stored hit buffer, optionally filtered
-        # against the metadata corpus. Doing this in one thread with one open environment also
-        # keeps us from opening words.lmdb concurrently, which LMDB forbids within a process.
+        # against the metadata corpus.
         corpus_file, empty_corpus = get_corpus_file(db, request)
         if not empty_corpus:
             keys = {query: index_keys(db, query) for query in queries}
@@ -140,18 +139,13 @@ def get_word_property_count(request, config):
             direct = [q for q in queries if keys[q] is not None]
             if direct:
                 overflow_words = db.locals.overflow_words
-                env = lmdb.open(f"{db.path}/words.lmdb", readonly=True, lock=False, readahead=False)
-                try:
-                    with env.begin(buffers=True) as txn:
-                        for query in direct:
-                            try:
-                                counts[query] = count_hits(txn, keys[query], overflow_words, db.path, corpus_file)
-                            except Exception as e:
-                                print(f"Exception occurred during processing {query}: {e}", file=sys.stderr)
-                finally:
-                    env.close()
+                with lmdb_env(f"{db.path}/words.lmdb") as env, env.begin(buffers=True) as txn:
+                    for query in direct:
+                        try:
+                            counts[query] = count_hits(txn, keys[query], overflow_words, db.path, corpus_file)
+                        except Exception as e:
+                            print(f"Exception occurred during processing {query}: {e}", file=sys.stderr)
 
-            # Searches open words.lmdb themselves, so they have to run once ours is closed.
             for query in queries:
                 if keys[query] is not None:
                     continue
@@ -175,10 +169,9 @@ def get_word_property_count(request, config):
             raw_bytes=True,
             **request.metadata,
         )
-        lemma_db_env = lmdb.open(f"{config.db_path}/data/lemmas.lmdb", readonly=True, lock=False)
         lemma_count = {}
         total_count_per_lemma = {}
-        with lemma_db_env.begin() as txn:
+        with lmdb_env(f"{config.db_path}/data/lemmas.lmdb") as lemma_db_env, lemma_db_env.begin() as txn:
             for hit in hits:
                 lemma = txn.get(hit)
                 if lemma is not None:  # some hits may not have corresponding lemmas

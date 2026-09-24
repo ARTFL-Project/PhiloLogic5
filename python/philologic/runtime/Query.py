@@ -16,7 +16,6 @@ if not os.access(_cache_dir, os.W_OK):
     os.makedirs(_cache_dir, mode=0o755, exist_ok=True)
 os.environ["NUMBA_CACHE_DIR"] = _cache_dir
 
-import lmdb
 import numba
 import numpy as np
 import regex as re
@@ -24,6 +23,7 @@ import regex as re
 numba.config.CACHE_DIR = _cache_dir
 
 from philologic.runtime import HitList
+from philologic.runtime.lmdb_env import lmdb_env
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 
 
@@ -334,45 +334,44 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
     """Search for a single word in the database."""
     with open(f"{hitlist_filename}.terms", "r") as terms_file:
         words = terms_file.read().split()
-    env = lmdb.open(f"{db_path}/words.lmdb", readonly=True, lock=False, readahead=False)
-    if len(words) == 1:
-        with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
-            word = words[0]
-            if corpus_file is None:
-                if word not in overflow_words:
-                    buffer = txn.get(word.encode("utf8"))
-                    if buffer is not None:
-                        _write_with_early_flush(output_file, buffer)
+    with lmdb_env(f"{db_path}/words.lmdb") as env:
+        if len(words) == 1:
+            with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
+                word = words[0]
+                if corpus_file is None:
+                    if word not in overflow_words:
+                        buffer = txn.get(word.encode("utf8"))
+                        if buffer is not None:
+                            _write_with_early_flush(output_file, buffer)
+                    else:
+                        file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
+                        _stream_file_with_early_flush(file_path, output_file)
                 else:
-                    file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
-                    _stream_file_with_early_flush(file_path, output_file)
-            else:
-                word_array = get_word_array(txn, word, overflow_words, db_path)
-                filtered_philo_ids = filter_philo_ids(
-                    corpus_file,
-                    word_array,
-                )
-                _write_with_early_flush(output_file, filtered_philo_ids.tobytes())
-    else:
-        with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
-            arrays = _load_word_arrays(db_path, txn, words, overflow_words)
-            if not arrays:
-                pass
-            elif corpus_file is None:
-                # Phase 1: flush first 100 hits immediately via partial merge
-                early_hits, remaining = _partial_merge_first_n(arrays, 100)
-                output_file.write(early_hits.tobytes())
-                output_file.flush()
-                # Phase 2: full merge of remaining hits
-                remaining = [r for r in remaining if len(r) > 0]
-                if remaining:
-                    rest = _kway_merge_sorted_arrays(remaining)
-                    output_file.write(rest.tobytes())
-            else:
-                merged = _kway_merge_sorted_arrays(arrays) if len(arrays) > 1 else arrays[0]
-                merged = filter_philo_ids(corpus_file, merged)
-                _write_with_early_flush(output_file, merged.tobytes())
-    env.close()
+                    word_array = get_word_array(txn, word, overflow_words, db_path)
+                    filtered_philo_ids = filter_philo_ids(
+                        corpus_file,
+                        word_array,
+                    )
+                    _write_with_early_flush(output_file, filtered_philo_ids.tobytes())
+        else:
+            with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
+                arrays = _load_word_arrays(db_path, txn, words, overflow_words)
+                if not arrays:
+                    pass
+                elif corpus_file is None:
+                    # Phase 1: flush first 100 hits immediately via partial merge
+                    early_hits, remaining = _partial_merge_first_n(arrays, 100)
+                    output_file.write(early_hits.tobytes())
+                    output_file.flush()
+                    # Phase 2: full merge of remaining hits
+                    remaining = [r for r in remaining if len(r) > 0]
+                    if remaining:
+                        rest = _kway_merge_sorted_arrays(remaining)
+                        output_file.write(rest.tobytes())
+                else:
+                    merged = _kway_merge_sorted_arrays(arrays) if len(arrays) > 1 else arrays[0]
+                    merged = filter_philo_ids(corpus_file, merged)
+                    _write_with_early_flush(output_file, merged.tobytes())
 
 
 def get_word_array(txn, word, overflow_words, db_path):
