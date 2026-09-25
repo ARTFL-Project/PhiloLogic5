@@ -7,7 +7,6 @@ from .get_academic_citation import get_academic_citation
 from .get_bibliography import get_bibliography
 from .get_collocate_distribution import get_collocate_distribution
 from .get_custom_landing_page import get_custom_landing_page
-from .get_filter_list import get_filter_list
 from .get_frequency import get_frequency
 from .get_header import get_header
 from .get_hitlist_stats import get_hitlist_stats
@@ -22,6 +21,5 @@ from .get_term_groups import get_term_groups
 from .get_text_object import get_text_object
 from .get_total_results import get_total_results
 from .get_web_config import get_web_config
-from .get_word_frequency import get_word_frequency
 from .get_word_property_count import get_word_property_count
 from .lookup_word import lookup_word

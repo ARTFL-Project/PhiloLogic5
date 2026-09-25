@@ -19,7 +19,6 @@ from philologic.runtime.reports import (
     generate_text_object,
     generate_time_series,
     generate_toc_object,
-    generate_word_frequency,
     get_start_end_date,
     group_by_metadata,
     group_by_range,

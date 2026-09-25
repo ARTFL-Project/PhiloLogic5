@@ -6,7 +6,6 @@ from philologic.runtime.reports.time_series import generate_time_series, get_sta
 from philologic.runtime.reports.navigation import generate_text_object
 from philologic.runtime.reports.table_of_contents import generate_toc_object
 from philologic.runtime.reports.kwic import kwic_results, kwic_hit_object, kwic_to_csv
-from philologic.runtime.reports.generate_word_frequency import generate_word_frequency
 from philologic.runtime.reports.frequency import frequency_results
 from philologic.runtime.reports.collocation import collocation_results, collocation_to_csv
 from philologic.runtime.reports.landing_page import landing_page_bibliography, group_by_range, group_by_metadata
