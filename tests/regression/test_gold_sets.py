@@ -39,7 +39,7 @@ def load_gold_set_metadata(corpus: str, query_type: str) -> dict:
     path = GOLD_SETS_DIR / corpus / f"{query_type}.json"
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    return json.loads(path.read_text(encoding="utf8"))
 
 
 def get_available_gold_sets(corpus: str) -> list:

@@ -36,7 +36,7 @@ def query_worker(db_path, queries, truth, seconds, seed, report_path):
     rng = random.Random(seed)
     hot = rng.sample(range(len(queries)), min(4, len(queries)))
     stop = time.time() + seconds
-    with open(report_path, "a") as report:
+    with open(report_path, "a", encoding="utf8") as report:
         while time.time() < stop:
             i = rng.choice(hot) if rng.random() < 0.5 else rng.randrange(len(queries))
             try:

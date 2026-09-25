@@ -179,7 +179,7 @@ def _print_benchmark_comparison(terminalreporter, config):
     if not benchmarks:
         return
 
-    baseline = json.loads(baseline_file.read_text())
+    baseline = json.loads(baseline_file.read_text(encoding="utf8"))
 
     terminalreporter.write_line("")
     terminalreporter.write_line("=" * 70, bold=True)
@@ -249,4 +249,4 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     }
 
     report_file = reports_dir / f"report_{timestamp}.json"
-    report_file.write_text(json.dumps(summary, indent=2))
+    report_file.write_text(json.dumps(summary, indent=2), encoding="utf8")

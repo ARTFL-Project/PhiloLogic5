@@ -261,7 +261,7 @@ def _stress(db, seconds, kill_every=None, remove_every=None, workers=6):
     lines = []
     for report in reports:
         if report.exists():
-            for line in report.read_text().splitlines():
+            for line in report.read_text(encoding="utf8").splitlines():
                 try:
                     lines.append(json.loads(line))
                 except ValueError:  # the last line of a worker killed while writing it
