@@ -143,8 +143,10 @@ fi
 
 # Install Gunicorn WSGI server and Falcon web framework
 # Falcon ships pre-built Cython wheels on PyPI — binary install is ~5x faster at runtime
+# Major versions are capped so that a new one is adopted deliberately: they can change behavior
+# (Gunicorn 26 added a control socket that failed to start under www-data).
 echo "Installing Gunicorn and Falcon..."
-uv pip install gunicorn falcon --quiet
+uv pip install "gunicorn>=26.1,<27" "falcon>=4.3,<5" --quiet
 
 # Install test dependencies (without reinstalling philologic as editable)
 echo "Installing test dependencies..."
