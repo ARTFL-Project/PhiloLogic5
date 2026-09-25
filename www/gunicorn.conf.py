@@ -16,8 +16,8 @@ bind = "unix:/var/run/philologic/gunicorn.sock"
 # home directory, which www-data cannot write to. Services are managed via systemd/launchd.
 control_socket_disable = True
 
-# Worker processes — sync workers (one request per process, no threads).
-# This avoids LMDB "already open" errors that occur with threaded workers.
+# Worker processes — sync workers: each handles one request at a time. Searches run in background
+# threads of their worker either way, and threaded workers (worker_class = "gthread") work too.
 workers = min(multiprocessing.cpu_count(), 8)
 
 # Timeout (seconds) — long to accommodate large corpus searches
