@@ -156,10 +156,14 @@ On Linux, PhiloLogic5 runs behind Gunicorn, which listens on a Unix socket. You 
 
 #### Starting Gunicorn
 
+On systems running systemd, `install.sh` installs the `philologic5-gunicorn` service, enables it so that it starts at boot, and (re)starts it. To control it yourself:
+
 ```bash
-sudo systemctl enable philologic5-gunicorn
-sudo systemctl start philologic5-gunicorn
+sudo systemctl enable philologic5-gunicorn    # start at boot
+sudo systemctl restart philologic5-gunicorn
 ```
+
+Where systemd isn't running (in a container, for instance), no service is installed; start Gunicorn directly with `/var/lib/philologic5/philologic_env/bin/gunicorn --config /var/lib/philologic5/web_app/gunicorn.conf.py app:application`, as the Docker image's entrypoint does.
 
 Check status:
 

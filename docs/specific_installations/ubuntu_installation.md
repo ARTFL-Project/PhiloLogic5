@@ -36,9 +36,10 @@ sudo chown -R $USER:$USER /var/www/html/philologic5
 
 ### 4. Start Gunicorn
 
+`install.sh` has already enabled the `philologic5-gunicorn` service, so that it starts at boot, and started it. Check it with:
+
 ```bash
-sudo systemctl enable philologic5-gunicorn
-sudo systemctl start philologic5-gunicorn
+sudo systemctl status philologic5-gunicorn
 ```
 
 ### 5. Configure Apache as Reverse Proxy
