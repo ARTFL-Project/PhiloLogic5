@@ -100,16 +100,18 @@ def sort_hits(hits, dbh, sort_order, ascii_conversion):
     return np.argsort(ranks, kind="stable")
 
 
-def sorted_hitlist_file(hitlist, dbh, sort_order, ascii_conversion):
-    """Path of a copy of a complete hitlist with its hits sorted by sort_order, sorting them unless done already.
-    It is written whole under a temporary name, so readers only ever see it complete."""
+def open_sorted_hitlist(hitlist, dbh, sort_order, ascii_conversion):
+    """Open a copy of a complete hitlist with its hits sorted by sort_order, sorting them unless done already.
+    It is written whole under a temporary name, so readers only ever see it complete. Returns its path and file."""
     path = f"{hitlist.filename}.sorted.{','.join(sort_order)}"
-    if not os.path.exists(path):
-        hits = hitlist.read_array()
-        tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
-        hits[sort_hits(hits, dbh, sort_order, ascii_conversion)].tofile(tmp)
-        os.replace(tmp, path)
-    return path
+    while True:
+        try:
+            return path, open(path, "rb")
+        except FileNotFoundError:  # not sorted yet, or removed by the hitlist cleanup
+            hits = hitlist.read_array()
+            tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
+            hits[sort_hits(hits, dbh, sort_order, ascii_conversion)].tofile(tmp)
+            os.replace(tmp, path)
 
 
 class HitlistClaim:
@@ -161,6 +163,23 @@ def _create_locked(filename):
         os.remove(tmp)
 
 
+def _replace_locked(filename):
+    """Replace filename with a new, empty file with its flock already held. Returns the file descriptor."""
+    tmp = f"{filename}.{os.urandom(8).hex()}.claim"
+    fd = os.open(tmp, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o666)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)  # nobody else knows tmp, so this never waits
+        os.replace(tmp, filename)
+        return fd
+    except BaseException:
+        os.close(fd)
+        try:
+            os.remove(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 def _same_file(fd, path):
     try:
         st = os.stat(path)
@@ -177,8 +196,9 @@ def claim_hitlist(filename):
     Yields a HitlistClaim if the caller must produce the hitlist, None if it is done or being produced. The claim
     holds an exclusive flock on the hitlist, which the producer keeps until finish_hitlist() has written the .done
     flag. If the producer dies before that, the kernel releases the lock and the next claim takes the unfinished
-    hitlist over, so orphaned hitlists are told apart from ones still being produced, however long that takes. If
-    the caller fails before handing the claim over to its producer, the claim is undone.
+    hitlist over, so orphaned hitlists are told apart from ones still being produced, however long that takes. A
+    hitlist file is never changed once produced: taking one over replaces it with a new file. If the caller fails
+    before handing the claim over to its producer, the claim is undone.
     """
     while True:
         fd = _create_locked(filename)
@@ -202,23 +222,18 @@ def claim_hitlist(filename):
             os.close(fd)
             yield None
             return
-        # Orphaned by a producer that died: empty it in place and produce it again. Its readers keep it open and read
-        # the new content, which is the same since searches are deterministic.
+        # Orphaned by a producer that died: produce it again, into a new file replacing it (while we hold the old one,
+        # so that nobody else takes it over too). The old file is left as it is to its readers, who follow the
+        # replacement (see HitList.update): emptying it in place instead would also pull the hits from under the
+        # readers of a complete hitlist whose .done flag alone was removed, as the hitlist cleanup can do.
         try:
-            writable = os.open(filename, os.O_WRONLY)
-        except (PermissionError, FileNotFoundError):  # not ours to produce
+            new_fd = _replace_locked(filename)
+        except PermissionError:  # not ours to produce
             os.close(fd)
             yield None
             return
-        try:
-            replaced = not _same_file(writable, filename) or os.fstat(writable).st_ino != os.fstat(fd).st_ino
-            if not replaced:
-                os.ftruncate(writable, 0)
-        finally:
-            os.close(writable)
-        if replaced:
-            os.close(fd)
-            continue
+        os.close(fd)
+        fd = new_fd
         break
     for suffix in (".done", ".terms"):  # left behind by an earlier producer, or by a hitlist cleanup removed
         try:
@@ -353,8 +368,7 @@ class HitList(object):
         if self.sort_order:
             self.sort_order = [validate_column(col, dbh) for col in self.sort_order]
             self.finish()
-            self.data_file = sorted_hitlist_file(self, dbh, self.sort_order, ascii_conversion)
-            self.fh = open(self.data_file, "rb")
+            self.data_file, self.fh = open_sorted_hitlist(self, dbh, self.sort_order, ascii_conversion)
             self.position = 0
 
     def _open_hitlist(self):
