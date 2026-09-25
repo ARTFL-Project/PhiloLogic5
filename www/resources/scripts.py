@@ -23,7 +23,6 @@ JSON_SCRIPTS = {
     "get_academic_citation",
     "get_bibliography",
     "get_collocate_distribution",
-    "get_filter_list",
     "get_frequency",
     "get_hitlist_stats",
     "get_landing_page_content",
@@ -40,7 +39,6 @@ JSON_SCRIPTS = {
     "get_text_object",
     "get_total_results",
     "get_web_config",
-    "get_word_frequency",
     "get_word_property_count",
     "lookup_word",
 }
