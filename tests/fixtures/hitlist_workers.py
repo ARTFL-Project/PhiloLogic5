@@ -27,6 +27,9 @@ def fingerprint(hits):
 def query_worker(db_path, queries, truth, seconds, seed, report_path):
     """Run random queries for `seconds`, half of them from a small hot set so that identical queries overlap,
     and report every answer that differs from `truth` (the sequential answers) and every error."""
+    # Thread pools kept small before numpy and numba start them (see Server in test_web_concurrency.py)
+    os.environ["NUMBA_NUM_THREADS"] = "2"
+    os.environ["OPENBLAS_NUM_THREADS"] = "1"
     from philologic.runtime.DB import DB
 
     db = DB(db_path)

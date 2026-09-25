@@ -74,7 +74,8 @@ class TestFilesRemovedOrFailing:
     def test_corpus_removed_during_the_search(self, db):
         """The search keeps the metadata corpus it filters against, even once the file is gone."""
         expected = {
-            w: fingerprint(db.query(w, "single_term", "0", raw_results=True, year=ALL_YEARS)) for w in ("the", "and", "man")
+            w: fingerprint(db.query(w, "single_term", "0", raw_results=True, year=ALL_YEARS))
+            for w in ("the", "and", "man")
         }
         for i, word in enumerate(["the", "and", "man"] * 3):
             year = f"{1001 + i}-3000"  # a new corpus each time, with the same objects
