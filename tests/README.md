@@ -27,7 +27,8 @@ tests/
 │   └── folger-shakespeare/ # 38 Shakespeare plays
 ├── fixtures/                # Test infrastructure
 │   ├── corpus_manager.py   # On-demand corpus building with caching
-│   └── corpus_configs.py   # Corpus configurations
+│   ├── corpus_configs.py   # Corpus configurations
+│   └── hitlist_workers.py  # Worker processes for the hitlist concurrency tests
 ├── load_configs/            # Corpus-specific load configurations
 │   ├── shakespeare_config.py
 │   └── eltec_config.py
@@ -37,7 +38,8 @@ tests/
 ├── integration/             # Integration tests (require corpus)
 │   ├── test_loader_pipeline.py
 │   ├── test_query_methods.py
-│   └── test_metadata_filtering.py
+│   ├── test_metadata_filtering.py
+│   └── test_hitlist_concurrency.py  # Shared hitlists: concurrency, dying producers, cleanup
 ├── regression/              # Regression tests
 │   └── test_gold_sets.py
 ├── benchmarks/              # Performance tests
