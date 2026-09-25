@@ -221,7 +221,7 @@ def _collect_vectorized(hits, bin_path, colloc_dir, db):
         total = len(hits)
 
         # Read available raw hits from hitlist file
-        with open(hits.filename, "rb") as f:
+        with hits.open_raw() as f:
             f.seek(index * hits.hitsize)
             raw = f.read()
         n_bytes = len(raw) - (len(raw) % hits.hitsize)

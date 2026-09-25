@@ -230,18 +230,15 @@ def __filter_philo_ids_on_void(corpus_philo_ids, philo_ids):
     return matching_indices_void
 
 
-def filter_philo_ids(corpus_file, philo_ids) -> np.ndarray:
+def filter_philo_ids(corpus_philo_ids, philo_ids) -> np.ndarray:
     """Filter philo_ids to only include hits matching corpus metadata.
 
-    Both arrays are sorted by doc_id (column 0). We use bisect binary search
-    directly on the strided column view — O(m·log n) with no contiguous copy,
-    avoiding numpy searchsorted's implicit copy of the full column.
+    corpus_philo_ids are the object ids of the metadata corpus (see HitList.read_array). Both arrays are sorted by
+    doc_id (column 0). We use bisect binary search directly on the strided column view — O(m·log n) with no contiguous
+    copy, avoiding numpy searchsorted's implicit copy of the full column.
     """
     if len(philo_ids) == 0:
         return philo_ids
-    with open(corpus_file, "rb") as corpus:
-        buffer = corpus.read()
-        corpus_philo_ids = np.frombuffer(buffer, dtype="u4").reshape(-1, 7)
     if len(corpus_philo_ids) == 0:
         return np.empty((0, philo_ids.shape[1]), dtype=philo_ids.dtype)
 
@@ -330,7 +327,7 @@ def _stream_file_with_early_flush(source_path, output_file):
             output_file.write(chunk)
 
 
-def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
+def search_word(db_path, hitlist_filename, overflow_words, corpus=None):
     """Search for a single word in the database."""
     with open(f"{hitlist_filename}.terms", "r") as terms_file:
         words = terms_file.read().split()
@@ -338,7 +335,7 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
         if len(words) == 1:
             with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
                 word = words[0]
-                if corpus_file is None:
+                if corpus is None:
                     if word not in overflow_words:
                         buffer = txn.get(word.encode("utf8"))
                         if buffer is not None:
@@ -349,7 +346,7 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
                 else:
                     word_array = get_word_array(txn, word, overflow_words, db_path)
                     filtered_philo_ids = filter_philo_ids(
-                        corpus_file,
+                        corpus,
                         word_array,
                     )
                     _write_with_early_flush(output_file, filtered_philo_ids.tobytes())
@@ -358,7 +355,7 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
                 arrays = _load_word_arrays(db_path, txn, words, overflow_words)
                 if not arrays:
                     pass
-                elif corpus_file is None:
+                elif corpus is None:
                     # Phase 1: flush first 100 hits immediately via partial merge
                     early_hits, remaining = _partial_merge_first_n(arrays, 100)
                     output_file.write(early_hits.tobytes())
@@ -370,7 +367,7 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus_file=None):
                         output_file.write(rest.tobytes())
                 else:
                     merged = _kway_merge_sorted_arrays(arrays) if len(arrays) > 1 else arrays[0]
-                    merged = filter_philo_ids(corpus_file, merged)
+                    merged = filter_philo_ids(corpus, merged)
                     _write_with_early_flush(output_file, merged.tobytes())
 
 
@@ -426,8 +423,8 @@ def rewrite_terms_file(db, qs, filename):
 
 
 def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowercase_index,
-                method, method_arg, overflow_words, object_level, corpus_file, lock):
-    """Run search in a background thread. Always writes .done file, even on error."""
+                method, method_arg, overflow_words, object_level, corpus, lock):
+    """Run search in a background thread. Always finishes the hitlist: as failed if the search raises."""
     # Lazy imports to avoid circular dependency with multi_word_search
     from philologic.runtime.multi_word_search import (
         search_phrase, search_within_word_span, search_within_text_object,
@@ -438,28 +435,31 @@ def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowe
 
         method_arg = int(method_arg) if method_arg else 0
         if method == "single_term":
-            search_word(db_path, filename, overflow_words, corpus_file=corpus_file)
+            search_word(db_path, filename, overflow_words, corpus=corpus)
         elif method == "phrase_ordered":
-            search_phrase(db_path, filename, overflow_words, corpus_file=corpus_file)
+            search_phrase(db_path, filename, overflow_words, corpus=corpus)
         elif method == "phrase_unordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, False, corpus=corpus)
         elif method == "proxy_ordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, True, False, corpus_file=corpus_file)
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, True, False, corpus=corpus)
         elif method == "proxy_unordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, False, corpus_file=corpus_file)
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, False, corpus=corpus)
         elif method == "exact_cooc_ordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, True, True, corpus_file=corpus_file)
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, True, True, corpus=corpus)
         elif method == "exact_cooc_unordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, True, corpus_file=corpus_file)
+            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, True, corpus=corpus)
         elif method == "sentence_ordered":
-            search_within_text_object(db_path, filename, overflow_words, object_level, True, corpus_file=corpus_file)
+            search_within_text_object(db_path, filename, overflow_words, object_level, True, corpus=corpus)
         elif method == "sentence_unordered":
-            search_within_text_object(db_path, filename, overflow_words, object_level, False, corpus_file=corpus_file)
-    finally:
-        HitList.finish_hitlist(filename, lock, f"{method} search complete\n")
+            search_within_text_object(db_path, filename, overflow_words, object_level, False, corpus=corpus)
+    except BaseException:
+        # What it holds is not the result: don't let it pass for one, and have the next request search again
+        HitList.fail_hitlist(filename, lock)
+        raise
+    HitList.finish_hitlist(filename, lock, f"{method} search complete\n")
 
 
-def start_search(db, terms, filename, lock=None, corpus_file=None, method=None, method_arg=None, object_level="sent"):
+def start_search(db, terms, filename, lock=None, corpus=None, method=None, method_arg=None, object_level="sent"):
     """Start the search for terms into filename in a background thread, which releases lock (see
     HitList.claim_hitlist) once done. Returns the number of words per hit."""
     parsed = parse_query(terms, query_patterns=db.locals.query_patterns)
@@ -471,7 +471,7 @@ def start_search(db, terms, filename, lock=None, corpus_file=None, method=None, 
         args=(
             db.path, filename, split, frequency_file,
             db.locals.ascii_conversion, db.locals["lowercase_index"],
-            method, method_arg, db.locals.overflow_words, object_level, corpus_file, lock,
+            method, method_arg, db.locals.overflow_words, object_level, corpus, lock,
         ),
         daemon=True,
     )
@@ -484,7 +484,7 @@ def start_search(db, terms, filename, lock=None, corpus_file=None, method=None, 
 def query(
     db,
     terms,
-    corpus_file=None,
+    corpus=None,
     method=None,
     method_arg=None,
     filename="",
@@ -505,7 +505,7 @@ def query(
     if not os.path.exists(filename):
         Path(filename).touch()
 
-    words_per_hit = start_search(db, terms, filename, lock, corpus_file, method, method_arg, object_level)
+    words_per_hit = start_search(db, terms, filename, lock, corpus, method, method_arg, object_level)
 
     hits = HitList.HitList(
         filename,

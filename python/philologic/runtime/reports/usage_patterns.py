@@ -138,7 +138,7 @@ def _build_hit_bags(
         filter_set.update(f"{w}:{attribute}:{attribute_value}" for w in query_words)
         filter_set.add(f"{q}:{attribute}:{attribute_value}")
 
-    with open(hits.filename, "rb") as f:
+    with hits.open_raw() as f:
         raw = f.read()
     all_hits = np.frombuffer(raw, dtype=np.uint32).reshape(-1, hits.length)
 

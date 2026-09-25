@@ -99,7 +99,7 @@ def get_representative_passages(request, config):
     #   [8]     byte_offset of word 1 (main)
     #   [9]     word_pos of word 2 (sig)
     #   [10]    byte_offset of word 2 (sig)
-    with open(hits.filename, "rb") as f:
+    with hits.open_raw() as f:
         raw = f.read()
     if not raw:
         return _empty_response(request, total_in_group=0)
