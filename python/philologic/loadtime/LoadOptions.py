@@ -150,7 +150,7 @@ class LoadOptions:
         args = parser.parse_args(argv[1:])
         self.values["dbname"] = args.dbname
         if args.file_list is True:
-            with open(args.files[-1]) as fh:
+            with open(args.files[-1], encoding="utf8") as fh:
                 for file_path in fh:
                     self.values["files"].append(file_path.strip())
         elif len(args.files) == 1 and os.path.isdir(args.files[0]):
@@ -168,7 +168,7 @@ class LoadOptions:
         self.values["db_destination"] = os.path.join(self.database_root, self.dbname)
         self.values["data_destination"] = os.path.join(self.db_destination, "data")
         if args.web_config is not None:
-            with open(args.web_config) as f:
+            with open(args.web_config, encoding="utf8") as f:
                 self.values["web_config"] = f.read()
         if args.load_config is not None:
             preconfigured_filters = False
@@ -246,7 +246,7 @@ class LoadConfig:
                 if value or value is False:
                     if a == "words_to_index":
                         word_list = set()
-                        with open(value) as fh:
+                        with open(value, encoding="utf8") as fh:
                             for line in fh:
                                 word_list.add(line.strip())
                         self.config["words_to_index"] = word_list

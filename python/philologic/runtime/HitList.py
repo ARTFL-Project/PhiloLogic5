@@ -268,7 +268,7 @@ def finish_hitlist(filename, lock, message="1"):
     if lock is not None:
         lock.hand_over()  # complete (or, if writing .done fails, orphaned) from here on: never undone by the claimer
     try:
-        with open(filename + ".done", "w") as flag:
+        with open(filename + ".done", "w", encoding="utf8") as flag:
             flag.write(message)
     finally:
         if lock is not None:
@@ -290,7 +290,7 @@ def fail_hitlist(filename, lock):
 def _read_flag(filename):
     """The content of a hitlist's .done flag, or None if it has none."""
     try:
-        with open(filename + ".done") as flag:
+        with open(filename + ".done", encoding="utf8") as flag:
             return flag.read()
     except FileNotFoundError:
         return None

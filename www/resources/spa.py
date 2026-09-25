@@ -17,7 +17,7 @@ def _build_misconfig_page(traceback, config_file):
     template_path = os.path.join(os.path.dirname(__file__), "..", "app", "misconfiguration.html")
     if not os.path.exists(template_path):
         return f"<pre>Configuration error in {config_file}:\n{traceback}</pre>"
-    with open(template_path) as f:
+    with open(template_path, encoding="utf8") as f:
         html_page = f.read()
     html_page = html_page.replace("$TRACEBACK", traceback)
     html_page = html_page.replace("$config_FILE", config_file)

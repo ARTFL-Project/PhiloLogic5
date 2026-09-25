@@ -11,6 +11,6 @@ def count_lines(file_path, lz4=False):
         cmd = f"lz4 -dc {file_path} | wc -l | awk '{{print $1}}'"
     else:
         cmd = f"wc -l {file_path} | awk '{{print $1}}'"
-    process = subprocess.run(cmd, shell=True, text=True, capture_output=True)
+    process = subprocess.run(cmd, shell=True, text=True, capture_output=True, encoding="utf8")
     count = int(process.stdout.strip())
     return count

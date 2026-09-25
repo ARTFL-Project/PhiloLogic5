@@ -240,6 +240,6 @@ if __name__ == "__main__":
     import sys
 
     for file in sys.argv[1:]:
-        root = parse(open(file))
+        root = parse(open(file, encoding="utf8"))
         print("parsed %s successfully." % file)
 #        print et.tostring(root,encoding="utf8")
