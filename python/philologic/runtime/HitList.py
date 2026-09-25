@@ -38,12 +38,15 @@ def sort_hits(hits, dbh, sort_order, ascii_conversion):
     Sort fields describe one object type (e.g. doc for author and title), so rather than hits, we sort those
     objects, then give each hit the rank of the deepest one containing it. Ties, and hits within an object, keep
     their load order; hits in no such object come last.
+
+    Like HitWrapper, a hit's value for a field is that of the deepest object of the field's type containing it
+    which has one: a div3 without a head shows its div2's or div1's, so it is sorted by that value too.
     """
-    philo_types = set()
+    field_types = []
     for field in sort_order:
         philo_type = dbh.locals["metadata_types"][field]
-        philo_types |= {"div1", "div2", "div3"} if philo_type == "div" else {philo_type}
-    philo_types = sorted(validate_philo_type(t) for t in philo_types)
+        field_types.append({"div1", "div2", "div3"} if philo_type == "div" else {philo_type})
+    philo_types = sorted(validate_philo_type(t) for t in set().union(*field_types))
     cursor = dbh.dbh.cursor()
     cursor.execute(
         f"select philo_id, philo_type, {', '.join(sort_order)} from toms "
@@ -51,11 +54,30 @@ def sort_hits(hits, dbh, sort_order, ascii_conversion):
         philo_types,
     )
     rows = cursor.fetchall()
-    object_order = sorted(range(len(rows)), key=lambda i: [sort_key(rows[i][f], ascii_conversion) for f in sort_order])
-    object_ranks = np.empty(len(rows), dtype=np.int64)
-    object_ranks[object_order] = np.arange(len(rows))
     object_ids = np.array([[int(i) for i in row["philo_id"].split()[:7]] for row in rows], dtype=np.uint32).reshape(-1, 7)
     depths = np.array([obj_dict[row["philo_type"]] for row in rows])
+
+    missing = sort_key(None, ascii_conversion)
+    keys_by_id = {}  # object id -> its sort keys, with the ones it lacks taken from the objects containing it
+    object_keys = [None] * len(rows)
+    id_lists = object_ids.tolist()
+    for i in np.argsort(depths, kind="stable").tolist():  # containing objects first
+        row = rows[i]
+        philo_id = tuple(id_lists[i][: depths[i]])
+        keys = [
+            sort_key(row[f], ascii_conversion) if row["philo_type"] in types else missing
+            for f, types in zip(sort_order, field_types)
+        ]
+        if missing in keys:
+            for d in range(len(philo_id) - 1, 0, -1):  # the deepest containing object, its keys inherited already
+                parent = keys_by_id.get(philo_id[:d])
+                if parent is not None:
+                    keys = [p if k == missing else k for k, p in zip(keys, parent)]
+                    break
+        keys_by_id[philo_id] = object_keys[i] = keys
+    object_order = sorted(range(len(rows)), key=object_keys.__getitem__)
+    object_ranks = np.empty(len(rows), dtype=np.int64)
+    object_ranks[object_order] = np.arange(len(rows))
 
     ranks = np.full(len(hits), len(rows), dtype=np.int64)
     unranked = np.ones(len(hits), dtype=bool)
