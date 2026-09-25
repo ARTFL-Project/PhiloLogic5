@@ -68,8 +68,7 @@ class Server:
             "loglevel = 'info'\n"
             "capture_output = True\n"
         )
-        # Thread pools kept small, NUMBA_NUM_THREADS as in www/gunicorn.conf.py: otherwise each worker starts one
-        # OpenBLAS thread per core, which spin after each call and use many cores' worth of CPU for nothing.
+        # Thread pools capped as in www/gunicorn.conf.py (which this test's config doesn't load)
         env = dict(
             os.environ,
             PHILOLOGIC_DB_ROOT=str(db_root),

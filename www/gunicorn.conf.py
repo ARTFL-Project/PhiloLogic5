@@ -42,6 +42,10 @@ capture_output = True
 # Numba JIT thread count — cap to avoid contention across workers
 os.environ.setdefault("NUMBA_NUM_THREADS", "2")
 
+# OpenBLAS thread count: otherwise each worker starts one OpenBLAS thread per core (loaded along with Numba), which
+# spin after each call. PhiloLogic does no dense linear algebra for them to speed up: they only burn CPU.
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
+
 # Numba cache directory — must be set BEFORE import numba (which happens
 # during preload_app). Otherwise Numba writes to __pycache__ next to the
 # source file, which the web server user cannot write to.
