@@ -263,17 +263,20 @@ if [ "$IS_MACOS" = true ]; then
         echo "  sudo launchctl bootout system/$PLIST_LABEL"
     fi
 
-elif [ -d /run/systemd/system ] && command -v systemctl &> /dev/null; then
+elif [ -d /run/systemd/system ]; then
+    # systemd is the running init (what sd_booted() checks). Merely having its files, as in the Docker image,
+    # is not enough: systemctl would fail there.
     sudo cp "$SCRIPT_DIR/philologic5-gunicorn.service" /etc/systemd/system/
     sudo systemctl daemon-reload
-    if systemctl is-active --quiet philologic5-gunicorn 2>/dev/null; then
-        echo "Restarting philologic5-gunicorn service..."
-        sudo systemctl restart philologic5-gunicorn
+    # Start at boot, and (re)start now so that the new installation is served
+    sudo systemctl enable philologic5-gunicorn
+    if sudo systemctl restart philologic5-gunicorn; then
+        echo -e "\n## GUNICORN SERVICE ENABLED AND STARTED ##"
+    else
+        echo -e "\n## WARNING: THE GUNICORN SERVICE FAILED TO START ##"
+        echo "See: sudo journalctl -u philologic5-gunicorn"
     fi
-    echo -e "\n## GUNICORN SERVICE INSTALLED ##"
-    echo "To enable and start the WSGI server:"
-    echo "  sudo systemctl enable philologic5-gunicorn"
-    echo "  sudo systemctl start philologic5-gunicorn"
+    echo "Check it with: sudo systemctl status philologic5-gunicorn"
     echo ""
     echo "Configure your web server as a reverse proxy to the Gunicorn socket."
     echo "A single rule covers ALL databases under the PhiloLogic URL root."
@@ -304,6 +307,14 @@ elif [ -d /run/systemd/system ] && command -v systemctl &> /dev/null; then
     echo ""
     echo "  Adjust the URL prefix (/philologic5) to match your url_root setting"
     echo "  in /etc/philologic/philologic5.cfg"
+
+else
+    # No service manager to install into: a container (the Docker image's entrypoint runs Gunicorn itself),
+    # or a system not booted with systemd
+    echo -e "\n## NO SERVICE INSTALLED ##"
+    echo "systemd is not running here (e.g. in a container), so Gunicorn was not installed as a service."
+    echo "Start it with:"
+    echo "  /var/lib/philologic5/philologic_env/bin/gunicorn --config /var/lib/philologic5/web_app/gunicorn.conf.py app:application"
 fi
 
 echo -e "\n## INSTALLATION COMPLETE ##"
