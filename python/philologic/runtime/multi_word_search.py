@@ -734,7 +734,7 @@ def _phrase_process_doc(group_doc_slices, n_groups, rare_group_idx, out_cols):
     )
 
 
-def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
+def search_phrase(db_path, hitlist_filename, overflow_words, corpus=None):
     """Phrase searches where words need to be in a specific order.
 
     Scans only the rarest word group for document boundaries, then uses
@@ -746,13 +746,13 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
 
     # Single word: delegate to search_word
     if n_groups <= 1:
-        search_word(db_path, hitlist_filename, overflow_words, corpus_file=corpus_file)
+        search_word(db_path, hitlist_filename, overflow_words, corpus=corpus)
         return
 
     out_cols = 9 + 2 * (n_groups - 1)
 
     with lmdb_env(f"{db_path}/words.lmdb") as env, env.begin(buffers=True) as txn:
-        if corpus_file is None:
+        if corpus is None:
             # Merge-free Phase 1 + merged Phase 2 for early flush
             group_arrays = [_load_word_arrays(db_path, txn, g, overflow_words) for g in word_groups]
             group_counts = [sum(len(a) for a in arrays) for arrays in group_arrays]
@@ -852,7 +852,7 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
                 hits = _load_word_group_hits(db_path, txn, group, overflow_words)
                 all_hits.append(hits)
 
-            all_hits = [filter_philo_ids(corpus_file, hits) for hits in all_hits]
+            all_hits = [filter_philo_ids(corpus, hits) for hits in all_hits]
 
             if any(len(h) == 0 for h in all_hits):
                 return
@@ -900,7 +900,7 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus_file=None):
                             flushed = True
 
 
-def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus_file=None):
+def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus=None):
     """Search for co-occurrences of multiple words within n words of each other in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
 
@@ -909,21 +909,21 @@ def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_o
 
     # Use document-level approach for all cases
     _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
-                               cooc_order=cooc_order, corpus_file=corpus_file,
+                               cooc_order=cooc_order, corpus=corpus,
                                max_distance=n, exact_distance=exact_distance)
 
 
-def search_within_text_object(db_path, hitlist_filename, overflow_words, level, cooc_order, corpus_file=None):
+def search_within_text_object(db_path, hitlist_filename, overflow_words, level, cooc_order, corpus=None):
     """Search for co-occurrences of multiple words in the same sentence in the database."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
 
     # Use document-level approach for all cases
     _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
-                               cooc_order=cooc_order, corpus_file=corpus_file, level=level)
+                               cooc_order=cooc_order, corpus=corpus, level=level)
 
 
 def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
-                                cooc_order, corpus_file, level=None, distance_check=None,
+                                cooc_order, corpus, level=None, distance_check=None,
                                 max_distance=0, exact_distance=False):
     """Document-level co-occurrence search using numpy optimization.
 
@@ -939,7 +939,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
         word_groups: List of word groups from the query
         overflow_words: Set of overflow words
         cooc_order: Whether to enforce query order
-        corpus_file: Optional corpus filter file
+        corpus: Optional object ids of the metadata corpus hits must be in
         level: Text object level ("sent", "para") - only used for sentence/para search
         distance_check: Deprecated, use max_distance/exact_distance instead
         max_distance: Maximum word distance (0 = no limit, 1 = consecutive, n = within n words)
@@ -952,7 +952,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
     # Keep transaction open for the entire processing to use zero-copy views
     with lmdb_env(f"{db_path}/words.lmdb") as env, env.begin(buffers=True) as txn:
         # For 2-group case: use merge-free early flush then full merge
-        if n_groups == 2 and corpus_file is None:
+        if n_groups == 2 and corpus is None:
             # Load per-form arrays without merging (instant, zero-copy)
             group_arrays = [_load_word_arrays(db_path, txn, g, overflow_words) for g in word_groups]
             group_counts = [sum(len(a) for a in arrays) for arrays in group_arrays]
@@ -1083,9 +1083,9 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
             group_arrays = [_load_word_arrays(db_path, txn, g, overflow_words) for g in word_groups]
 
             # For corpus-filtered: filter each form individually
-            if corpus_file is not None:
+            if corpus is not None:
                 for g in range(n_groups):
-                    group_arrays[g] = [filter_philo_ids(corpus_file, arr) for arr in group_arrays[g]]
+                    group_arrays[g] = [filter_philo_ids(corpus, arr) for arr in group_arrays[g]]
                     group_arrays[g] = [arr for arr in group_arrays[g] if len(arr) > 0]
 
             # Compute per-group total hit counts

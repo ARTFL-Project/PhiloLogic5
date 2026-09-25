@@ -194,7 +194,7 @@ def __count_hits_by_level(hits, object_level):
     prev_id = None
     prev_count = 0
 
-    with open(hits.filename, "rb") as f:
+    with hits.open_raw() as f:
         while True:
             chunk = f.read(hits.length * 4 * CHUNK_SIZE)
             if not chunk:

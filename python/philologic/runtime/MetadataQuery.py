@@ -87,8 +87,7 @@ def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, asc
         corpus_fh.close()
     except Exception as e:
         print(str(e), file=sys.stderr)
-        # should clean up file
-        HitList.finish_hitlist(filename, lock)
+        HitList.fail_hitlist(filename, lock)  # not an empty corpus: have the next request query it again
         return NoHits()
     HitList.finish_hitlist(filename, lock)
     return HitList.HitList(filename, 0, db, raw=raw_results, sort_order=sort_order, ascii_conversion=ascii_conversion)

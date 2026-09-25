@@ -92,9 +92,7 @@ class DB:
             return
 
         offset_bytes = hits.hitsize * (start - 1)
-        with open(hits.data_file, "rb") as f:
-            f.seek(offset_bytes)
-            raw_data = f.read(hits.hitsize * hit_count)
+        raw_data = hits.read_data(offset_bytes, hits.hitsize * hit_count)
         raw_hits = [
             struct.unpack(hits.format, raw_data[i * hits.hitsize : (i + 1) * hits.hitsize])
             for i in range(len(raw_data) // hits.hitsize)
@@ -259,6 +257,9 @@ class DB:
         else:
             corpus = None
         if qs:
+            # The search filters its hits against the corpus's object ids, read here from the file its HitList has
+            # open: by name, the hitlist cleanup could remove the corpus before or while the search reads it.
+            corpus_ids = corpus.read_array() if corpus is not None else None
             hash.update(qs.encode("utf8"))
             hash.update(method.encode("utf8"))
             hash.update(str(method_arg).encode("utf8"))
@@ -272,7 +273,7 @@ class DB:
                     return Query.query(
                         self,
                         qs,
-                        corpus_file=corpus_file,
+                        corpus=corpus_ids,
                         method=method,
                         method_arg=method_arg,
                         filename=search_file,
@@ -299,7 +300,7 @@ class DB:
                     self,
                     qs,
                     search_file,
-                    corpus_file=corpus_file,
+                    corpus=corpus_ids,
                     method=method,
                     method_arg=method_arg,
                 ),

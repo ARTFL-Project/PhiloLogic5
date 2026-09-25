@@ -44,7 +44,7 @@ def get_hitlist_stats(request, config):
         prev_per_level.setdefault(obj_level, None)
 
     total_results = 0
-    with open(hits.filename, "rb") as f:
+    with hits.open_raw() as f:
         while True:
             chunk = f.read(hits.length * 4 * CHUNK_SIZE)
             if not chunk:

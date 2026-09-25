@@ -15,6 +15,12 @@ from .sql_validation import validate_column, validate_philo_type
 
 obj_dict = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
+FAILED = "failed\n"  # the .done flag of a hitlist whose production failed (see fail_hitlist)
+
+
+class HitlistFailed(Exception):
+    """The search or metadata query producing a hitlist failed, so what it holds is not its result."""
+
 
 def sort_key(value, ascii_conversion):
     """Sort key of a metadata value: numbers in numeric order, then text regardless of case (and of accents with
@@ -94,12 +100,12 @@ def sort_hits(hits, dbh, sort_order, ascii_conversion):
     return np.argsort(ranks, kind="stable")
 
 
-def sorted_hitlist_file(filename, length, dbh, sort_order, ascii_conversion):
-    """Path of a copy of a complete hitlist file with its hits sorted by sort_order, sorting them unless done
-    already. It is written whole under a temporary name, so readers only ever see it complete."""
-    path = f"{filename}.sorted.{','.join(sort_order)}"
+def sorted_hitlist_file(hitlist, dbh, sort_order, ascii_conversion):
+    """Path of a copy of a complete hitlist with its hits sorted by sort_order, sorting them unless done already.
+    It is written whole under a temporary name, so readers only ever see it complete."""
+    path = f"{hitlist.filename}.sorted.{','.join(sort_order)}"
     if not os.path.exists(path):
-        hits = np.fromfile(filename, dtype=np.uint32).reshape(-1, length)
+        hits = hitlist.read_array()
         tmp = f"{path}.{os.getpid()}.{threading.get_ident()}.tmp"
         hits[sort_hits(hits, dbh, sort_order, ascii_conversion)].tofile(tmp)
         os.replace(tmp, path)
@@ -112,6 +118,7 @@ class HitlistClaim:
     def __init__(self, fd):
         self.fd = fd
         self.handed_over = False
+        self._lock = threading.Lock()
 
     def hand_over(self):
         """Record that a producer now owns the claim and will finish_hitlist() it on every path, so that the claimer
@@ -119,9 +126,12 @@ class HitlistClaim:
         self.handed_over = True
 
     def release(self):
-        if self.fd is not None:
-            os.close(self.fd)
-            self.fd = None
+        # The claimer and its producer thread can both get here: close the descriptor only once, since closing it
+        # again could close a file another thread has just opened under the same number.
+        with self._lock:
+            fd, self.fd = self.fd, None
+        if fd is not None:
+            os.close(fd)
 
 
 def _create_locked(filename):
@@ -250,6 +260,49 @@ def finish_hitlist(filename, lock, message="1"):
             lock.release()
 
 
+def fail_hitlist(filename, lock):
+    """Mark a hitlist whose production failed, so that its readers raise HitlistFailed rather than take what it holds
+    for its result, and remove it, so that the next request for it produces it again."""
+    fd = lock.fd if lock is not None else None
+    if fd is not None and _same_file(fd, filename):
+        try:
+            os.remove(filename)
+        except FileNotFoundError:
+            pass
+    finish_hitlist(filename, lock, FAILED)
+
+
+def _read_flag(filename):
+    """The content of a hitlist's .done flag, or None if it has none."""
+    try:
+        with open(filename + ".done") as flag:
+            return flag.read()
+    except FileNotFoundError:
+        return None
+
+
+class _RawReader:
+    """File-like reader of a hitlist's bytes, from the file a HitList has open (see HitList.open_raw)."""
+
+    def __init__(self, hitlist):
+        self.hitlist = hitlist
+        self.offset = 0
+
+    def seek(self, offset):
+        self.offset = offset
+
+    def read(self, size=-1):
+        data = self.hitlist.read_raw(self.offset, size)
+        self.offset += len(data)
+        return data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
 class HitList(object):
     """Iterable containing philologic hits"""
 
@@ -284,7 +337,10 @@ class HitList(object):
         self.dbh = dbh
         self.encoding = encoding or "utf-8"
         self.length = 7 + 2 * (words)
-        self.fh = open(self.filename, "rb")  # need a full path here.
+        # The hitlist file. Its status and content are read from this open file rather than by name, since the
+        # hitlist cleanup can remove the name at any time (see update() for what happens then).
+        self.hitlist_fh = self._open_hitlist()
+        self.fh = self.hitlist_fh  # the file hits are read from: the hitlist, or once complete, a sorted copy
         self.format = "%dI" % self.length  # short for object id's, int for byte offset.
         self.hitsize = struct.calcsize(self.format)
         self.doc = doc
@@ -293,15 +349,47 @@ class HitList(object):
         self.done = False
         self.update()
 
-        # The file hits are read from: the hitlist itself, or once complete, a copy sorted by sort_order
         self.data_file = self.filename
         if self.sort_order:
             self.sort_order = [validate_column(col, dbh) for col in self.sort_order]
             self.finish()
-            self.data_file = sorted_hitlist_file(self.filename, self.length, dbh, self.sort_order, ascii_conversion)
-            self.fh.close()
+            self.data_file = sorted_hitlist_file(self, dbh, self.sort_order, ascii_conversion)
             self.fh = open(self.data_file, "rb")
             self.position = 0
+
+    def _open_hitlist(self):
+        """Open the hitlist file, producing it again if it was removed (by the hitlist cleanup) before we got to it."""
+        while True:
+            try:
+                return open(self.filename, "rb")
+            except FileNotFoundError:
+                if self.produce is None:
+                    raise
+                with claim_hitlist(self.filename) as lock:
+                    if lock is not None:
+                        self.produce(lock=lock)
+
+    def _follow_replacement(self):
+        """If the hitlist's name now refers to another file, i.e. ours was removed (by the hitlist cleanup, or because
+        producing it failed) and the hitlist is being produced again, read that one instead: it has the same hits.
+        Returns whether it did."""
+        try:
+            current = os.stat(self.filename)
+        except FileNotFoundError:
+            return False
+        ours = os.fstat(self.hitlist_fh.fileno())
+        if (current.st_dev, current.st_ino) == (ours.st_dev, ours.st_ino):
+            return False
+        try:
+            fh = open(self.filename, "rb")
+        except FileNotFoundError:
+            return False
+        old, self.hitlist_fh = self.hitlist_fh, fh
+        if self.fh is old:
+            self.fh = fh
+            self.position = -1  # seek again before reading the next hit
+        old.close()
+        return True
 
     def __getitem__(self, n):
         self.update()
@@ -371,22 +459,50 @@ class HitList(object):
         if self.done:
             pass
         else:
-            if os.path.exists(self.filename + ".done"):
-                # Only once its producer has let go: until then, the flag is one left behind by an earlier
-                # hitlist of the same name, which the producer is about to remove.
-                self.done = not being_produced(self.fh)
-            elif self.produce is not None and time.monotonic() >= self.next_producer_check:
-                self.next_producer_check = time.monotonic() + 1
-                with claim_hitlist(self.filename) as lock:
-                    if lock is not None:  # its producer died before finishing it
-                        self.produce(lock=lock)
-            self.size = os.stat(self.filename).st_size  # in bytes
+            if not self._follow_replacement():
+                flag = _read_flag(self.filename)
+                if flag is not None:
+                    # Only once its producer has let go: until then, the flag is one left behind by an earlier
+                    # hitlist of the same name, which the producer is about to remove.
+                    if not being_produced(self.hitlist_fh):
+                        if flag == FAILED:
+                            raise HitlistFailed(f"producing {self.filename} failed")
+                        self.done = True
+                elif self.produce is not None and time.monotonic() >= self.next_producer_check:
+                    self.next_producer_check = time.monotonic() + 1
+                    with claim_hitlist(self.filename) as lock:
+                        if lock is not None:  # its producer died before finishing it, or it was removed
+                            self.produce(lock=lock)
+            self.size = os.fstat(self.hitlist_fh.fileno()).st_size  # in bytes
             self.count = int(self.size / self.hitsize)
 
     def finish(self):
         while not self.done:
             self.update()
             time.sleep(0.01)
+
+    def _read_at(self, fh, offset, size):
+        fh.seek(offset)
+        self.position = -1  # hits are read from these files too: seek again before reading the next one
+        return fh.read(size)
+
+    def read_raw(self, offset=0, size=-1):
+        """The hitlist's bytes from offset, as its producer wrote them (in load order, whatever the sort), read from
+        the file this HitList has open: unlike reading it by name, this survives the hitlist cleanup removing it."""
+        return self._read_at(self.hitlist_fh, offset, size)
+
+    def read_data(self, offset=0, size=-1):
+        """Like read_raw, but in this HitList's order: from its sorted copy if it has a sort order."""
+        return self._read_at(self.fh, offset, size)
+
+    def read_array(self):
+        """All the hits of the complete hitlist, in load order, as rows of an array."""
+        self.finish()
+        return np.frombuffer(self.read_raw(), dtype=np.uint32).reshape(-1, self.length)
+
+    def open_raw(self):
+        """A file-like reader of read_raw(), for code written to read the hitlist file."""
+        return _RawReader(self)
 
     def readhit(self, n):
         # reads hitlist into buffer, unpacks

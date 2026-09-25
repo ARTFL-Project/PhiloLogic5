@@ -319,7 +319,7 @@ def _vectorized_collocation(
     # Bulk read hitlist
     hits.finish()
 
-    with open(hits.filename, "rb") as f:
+    with hits.open_raw() as f:
         raw = f.read()
 
     all_hits = np.frombuffer(raw, dtype=np.uint32).reshape(-1, hits.length)

@@ -55,15 +55,15 @@ def index_keys(db, group):
     return [key for key in expanded.getvalue().split("\n") if key]
 
 
-def count_hits(txn, keys, overflow_words, db_path, corpus_file):
-    """Count the hits stored under `keys`, restricted to `corpus_file` when there is one.
+def count_hits(txn, keys, overflow_words, db_path, corpus):
+    """Count the hits stored under `keys`, restricted to the objects of `corpus` when there is one.
 
     Each key holds the hits for one word form, so the forms are disjoint and the counts add up
     the same way the search's merge of those arrays would.
     """
     count = 0
     for key in keys:
-        if corpus_file is None:
+        if corpus is None:
             # No metadata filter: the hit count is just the size of the stored hit buffer,
             # so we never have to materialize the array.
             if key in overflow_words:
@@ -79,7 +79,7 @@ def count_hits(txn, keys, overflow_words, db_path, corpus_file):
             continue
         word_array = get_word_array(txn, key, overflow_words, db_path)
         if len(word_array):
-            count += len(filter_philo_ids(corpus_file, word_array))
+            count += len(filter_philo_ids(corpus, word_array))
     return count
 
 
@@ -95,11 +95,11 @@ def has_metadata(metadata):
     return False
 
 
-def get_corpus_file(db, request):
-    """Resolve the metadata filter to a corpus hitlist once, shared by every property value.
+def get_corpus(db, request):
+    """Resolve the metadata filter to a corpus once, shared by every property value.
 
-    Returns (corpus_file, empty): `corpus_file` is None when no metadata is set, and
-    `empty` is True when the metadata matches nothing, in which case every count is 0.
+    Returns (corpus, empty): `corpus` holds the object ids of the corpus, or is None when no metadata is set,
+    and `empty` is True when the metadata matches nothing, in which case every count is 0.
     """
     if not has_metadata(request.metadata):
         return None, False
@@ -110,7 +110,8 @@ def get_corpus_file(db, request):
     corpus.finish()
     if len(corpus) == 0 or not getattr(corpus, "filename", None):
         return None, True
-    return corpus.filename, False
+    # Read from the file the HitList has open: by name, the hitlist cleanup could remove it while we count
+    return corpus.read_array(), False
 
 
 def get_word_property_count(request, config):
@@ -131,7 +132,7 @@ def get_word_property_count(request, config):
 
         # Counting hits per property value needs no search: the count falls out of the size of each
         # key's stored hit buffer, optionally filtered against the metadata corpus.
-        corpus_file, empty_corpus = get_corpus_file(db, request)
+        corpus, empty_corpus = get_corpus(db, request)
         if not empty_corpus and None not in groups.values():
             keys = {value: index_keys(db, group) for value, group in groups.items()}
             overflow_words = db.locals.overflow_words
@@ -139,7 +140,7 @@ def get_word_property_count(request, config):
                 for value, group in groups.items():
                     query = " ".join(token for _, token in group)
                     try:
-                        count = count_hits(txn, keys[value], overflow_words, db.path, corpus_file)
+                        count = count_hits(txn, keys[value], overflow_words, db.path, corpus)
                     except Exception as e:
                         print(f"Exception occurred during processing {query}: {e}", file=sys.stderr)
                         continue
