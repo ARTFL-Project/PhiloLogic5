@@ -39,7 +39,8 @@ tests/
 │   ├── test_loader_pipeline.py
 │   ├── test_query_methods.py
 │   ├── test_metadata_filtering.py
-│   └── test_hitlist_concurrency.py  # Shared hitlists: concurrency, dying producers, cleanup
+│   ├── test_hitlist_concurrency.py  # Shared hitlists: concurrency, dying producers, cleanup
+│   └── test_web_concurrency.py      # The web app (Gunicorn) under concurrent requests and dying workers
 ├── regression/              # Regression tests
 │   └── test_gold_sets.py
 ├── benchmarks/              # Performance tests
