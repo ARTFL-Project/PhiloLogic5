@@ -90,7 +90,10 @@ class ExportResultsResource:
         csv_output = ""
 
         if request.report == "bibliography":
-            results = _bibliography_results(request, config)["results"]
+            bibliography = _bibliography_results(request, config)
+            if isinstance(bibliography, tuple):  # bibliography_results returns (result_dict, hits)
+                bibliography = bibliography[0]
+            results = bibliography["results"]
             csv_output = bibliography_to_csv(results)
         elif request.report == "concordance":
             results = _concordance_results(request, config)["results"]
