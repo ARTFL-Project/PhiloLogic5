@@ -1604,7 +1604,7 @@ if __name__ == "__main__":
     for docid, fn in enumerate(files, 1):
         print(docid, fn, file=sys.stderr)
         size = os.path.getsize(fn)
-        fh = open(fn)
+        fh = open(fn, encoding="utf8")
         parser = XMLParser(
             sys.stdout,
             docid,

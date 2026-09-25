@@ -10,5 +10,5 @@ def get_custom_landing_page(request, config):
         return ""
     if not os.path.isfile(file_path):
         return ""
-    with open(file_path) as f:
+    with open(file_path, encoding="utf8") as f:
         return f.read()

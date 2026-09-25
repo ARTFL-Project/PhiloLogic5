@@ -429,7 +429,7 @@ def run_tests():
     ]
 
     # Create test config with all necessary patterns
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf8") as f:
         f.write(
             """
 # Test access config with real-world examples

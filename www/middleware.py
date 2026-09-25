@@ -23,7 +23,7 @@ from wsgi_helpers import resolve
 _CONFIG_FILE = "/etc/philologic/philologic5.cfg"
 if "PHILOLOGIC_DB_ROOT" not in os.environ and os.path.exists(_CONFIG_FILE):
     _config = {}
-    with open(_CONFIG_FILE) as _f:
+    with open(_CONFIG_FILE, encoding="utf8") as _f:
         exec(_f.read(), _config)
     _db_root = _config.get("database_root")
     if _db_root and _db_root != "None":

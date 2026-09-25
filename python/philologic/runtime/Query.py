@@ -329,7 +329,7 @@ def _stream_file_with_early_flush(source_path, output_file):
 
 def search_word(db_path, hitlist_filename, overflow_words, corpus=None):
     """Search for a single word in the database."""
-    with open(f"{hitlist_filename}.terms", "r") as terms_file:
+    with open(f"{hitlist_filename}.terms", "r", encoding="utf8") as terms_file:
         words = terms_file.read().split()
     with lmdb_env(f"{db_path}/words.lmdb") as env:
         if len(words) == 1:
@@ -384,7 +384,7 @@ def get_word_array(txn, word, overflow_words, db_path):
 
 def get_word_groups(terms_file):
     word_groups = []
-    with open(terms_file, "r") as terms_file:
+    with open(terms_file, "r", encoding="utf8") as terms_file:
         word_group = []
         for line in terms_file:
             word = line.strip()
@@ -409,7 +409,7 @@ def write_terms_file(filename, split, frequency_file, ascii_conversion, lowercas
 
     terms_tmp = f"{filename}.terms.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
-        with open(terms_tmp, "w") as terms_file:
+        with open(terms_tmp, "w", encoding="utf8") as terms_file:
             expand_query_not(split, frequency_file, terms_file, ascii_conversion, lowercase_index)
     finally:
         os.replace(terms_tmp, f"{filename}.terms")

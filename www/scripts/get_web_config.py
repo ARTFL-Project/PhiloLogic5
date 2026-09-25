@@ -16,7 +16,7 @@ def time_series_tester(config):
     """Test if we have at least two distinct values for time series"""
     frequencies_file = os.path.join(config.db_path, f"data/frequencies/{config.time_series_year_field}_frequencies")
     if os.path.exists(frequencies_file):
-        with open(frequencies_file) as input_file:
+        with open(frequencies_file, encoding="utf8") as input_file:
             line_count = sum(1 for _ in input_file)
         if line_count > 1:
             return True

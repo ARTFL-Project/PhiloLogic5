@@ -131,7 +131,7 @@ if __name__ == "__main__":
     for fn in sys.argv[1:]:
         file_count += 1
         census = TagCensus()
-        census.parse(open(fn).read())
+        census.parse(open(fn, encoding="utf8").read())
         print(fn)
         print(census)
         if total:

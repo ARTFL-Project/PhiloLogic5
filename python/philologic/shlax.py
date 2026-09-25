@@ -176,7 +176,7 @@ class node:
 
 if __name__ == "__main__":
     for file in sys.argv[1:]:
-        f = open(file)
+        f = open(file, encoding="utf8")
         s = f.read()
         l = []
         f.seek(0)  # reset the filehandle.

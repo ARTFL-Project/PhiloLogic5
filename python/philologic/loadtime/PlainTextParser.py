@@ -197,7 +197,7 @@ if __name__ == "__main__":
     for docid, fn in enumerate(sys.argv[1:], 1):
         print(docid, fn, file=sys.stderr)
         size = os.path.getsize(fn)
-        fh = open(fn)
+        fh = open(fn, encoding="utf8")
         parser = PlainTextParser(
             sys.stdout,
             docid,

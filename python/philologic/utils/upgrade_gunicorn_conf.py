@@ -36,7 +36,7 @@ def _load_conf_values(path):
     for settings in MERGEABLE_SETTINGS.  Ignores function calls, imports, and
     computed values — no code is executed.
     """
-    with open(path) as f:
+    with open(path, encoding="utf8") as f:
         tree = ast.parse(f.read(), filename=path)
 
     values = {}
@@ -62,7 +62,7 @@ def _load_conf_names(path):
     Unlike _load_conf_values, this returns names even for non-literal values
     (e.g. min(cpu_count(), 4)), so we can detect which settings exist in the file.
     """
-    with open(path) as f:
+    with open(path, encoding="utf8") as f:
         tree = ast.parse(f.read(), filename=path)
     names = set()
     for node in ast.iter_child_nodes(tree):
@@ -79,7 +79,7 @@ def _replace_setting_in_file(filepath, name, value):
 
     Finds the line matching `name = ...` and replaces it with the new value.
     """
-    with open(filepath) as f:
+    with open(filepath, encoding="utf8") as f:
         content = f.read()
 
     # Match the assignment line: `name = <anything>` (not inside a comment)
@@ -88,7 +88,7 @@ def _replace_setting_in_file(filepath, name, value):
     new_content, count = pattern.subn(replacement, content)
 
     if count > 0:
-        with open(filepath, "w") as f:
+        with open(filepath, "w", encoding="utf8") as f:
             f.write(new_content)
         return True
     return False

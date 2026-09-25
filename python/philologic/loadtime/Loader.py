@@ -194,7 +194,7 @@ class Loader:
                     getattr(config_obj, attribute), collections.abc.Callable
                 ):
                     already_configured_values[attribute] = getattr(config_obj, attribute)
-            with open(load_config_path, "a") as load_config_copy:
+            with open(load_config_path, "a", encoding="utf8") as load_config_copy:
                 print(
                     "\n\n## The values below were also used for loading ##",
                     file=load_config_copy,
@@ -210,7 +210,7 @@ class Loader:
                             file=load_config_copy,
                         )
         else:
-            with open(load_config_path, "w") as load_config_copy:
+            with open(load_config_path, "w", encoding="utf8") as load_config_copy:
                 print("#!/var/lib/philologic5/philologic_env/bin/python3", file=load_config_copy)
                 print(
                     '"""This is a dump of the default configuration used to load this database,',
@@ -234,7 +234,7 @@ class Loader:
         if "web_config" in loader_options:
             web_config_path = os.path.join(loader_options["data_destination"], "web_config.cfg")
             print("\nSaving predefined web_config.cfg file to %s..." % web_config_path)
-            with open(web_config_path, "w") as w:
+            with open(web_config_path, "w", encoding="utf8") as w:
                 w.write(loader_options["web_config"])
             self.predefined_web_config = True
         else:
@@ -441,7 +441,7 @@ class Loader:
         for file in tqdm(os.scandir(self.textdir), total=doc_count, leave=False, desc=prefix):
             data = {}
             header = ""
-            with open(file.path) as fh:
+            with open(file.path, encoding="utf8") as fh:
                 for line in fh:
                     start_scan = re.search(r"<teiheader>|<temphead>|<head>", line, re.IGNORECASE)
                     end_scan = re.search(r"</teiheader>|<\/?temphead>|</head>", line, re.IGNORECASE)
@@ -1151,7 +1151,7 @@ class Loader:
 
         print("Building Web Client Application...", end=" ", flush=True)
         os.chdir(self.web_app_dir)
-        with open(os.path.join(self.web_app_dir, "appConfig.json"), "w") as app_config:
+        with open(os.path.join(self.web_app_dir, "appConfig.json"), "w", encoding="utf8") as app_config:
             dump({"dbUrl": ""}, app_config)
         npm = "/var/lib/philologic5/bin/npm"
         os.system(
@@ -1190,7 +1190,7 @@ class Loader:
         db_values["overflow_words"] = self.overflow_words
 
         db_config = MakeDBConfig(filename, **db_values)
-        with open(filename, "w") as db_file:
+        with open(filename, "w", encoding="utf8") as db_file:
             try:
                 print(format_str(str(db_config), mode=FileMode()), file=db_file)
             except:
