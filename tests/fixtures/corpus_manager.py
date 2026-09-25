@@ -146,7 +146,7 @@ class CorpusManager:
             return False
 
         try:
-            manifest = json.loads(manifest_path.read_text())
+            manifest = json.loads(manifest_path.read_text(encoding="utf8"))
             if manifest.get("hash") != expected_hash:
                 print(f"Cache miss: {corpus_path.name} — hash mismatch (cached={manifest.get('hash')}, expected={expected_hash})")
                 return False
@@ -289,7 +289,7 @@ class CorpusManager:
             "build_timestamp": datetime.now().isoformat(),
             "file_count": len(source_files),
         }
-        (dest_path / self.MANIFEST_FILE).write_text(json.dumps(manifest, indent=2))
+        (dest_path / self.MANIFEST_FILE).write_text(json.dumps(manifest, indent=2), encoding="utf8")
 
     def clear_cache(self) -> None:
         """Clear all cached corpora."""
@@ -312,7 +312,7 @@ class CorpusManager:
                 manifest_path = item / self.MANIFEST_FILE
                 if manifest_path.exists():
                     try:
-                        manifest = json.loads(manifest_path.read_text())
+                        manifest = json.loads(manifest_path.read_text(encoding="utf8"))
                         manifest["path"] = str(item)
                         cached.append(manifest)
                     except json.JSONDecodeError:

@@ -259,7 +259,7 @@ def generate_for_corpus(corpus_name: str, db_path: Path = None, output_dir: Path
 
         # Save metadata JSON for this query type
         metadata_file = output_dir / f"{query_type}.json"
-        metadata_file.write_text(json.dumps(metadata, indent=2))
+        metadata_file.write_text(json.dumps(metadata, indent=2), encoding="utf8")
         print(f"  Metadata saved to {metadata_file}")
 
     print(f"\nGold sets generated successfully in {output_dir}")

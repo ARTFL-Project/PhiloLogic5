@@ -37,6 +37,7 @@ def run_benchmarks():
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf8",
     )
     print(result.stdout)
     if result.returncode != 0:
@@ -47,7 +48,7 @@ def run_benchmarks():
 
 def parse_benchmark_results(results_file: Path) -> dict:
     """Parse pytest-benchmark JSON output and extract medians."""
-    data = json.loads(results_file.read_text())
+    data = json.loads(results_file.read_text(encoding="utf8"))
 
     baseline = {
         "metadata": {
@@ -100,7 +101,7 @@ def main():
         print(f"  {name}: {median_ms:.2f}ms (median)")
 
     # Save baseline
-    BASELINE_FILE.write_text(json.dumps(baseline, indent=2))
+    BASELINE_FILE.write_text(json.dumps(baseline, indent=2), encoding="utf8")
     print(f"\nBaseline saved to {BASELINE_FILE}")
 
     # Cleanup

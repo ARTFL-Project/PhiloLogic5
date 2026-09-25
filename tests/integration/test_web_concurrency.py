@@ -66,7 +66,8 @@ class Server:
             "control_socket_disable = True\n"
             f"errorlog = '{self.log}'\n"
             "loglevel = 'info'\n"
-            "capture_output = True\n"
+            "capture_output = True\n",
+            encoding="utf8",
         )
         # Thread pools kept small, NUMBA_NUM_THREADS as in www/gunicorn.conf.py: otherwise each worker starts one
         # OpenBLAS thread per core, which spin after each call and use many cores' worth of CPU for nothing.
@@ -93,7 +94,7 @@ class Server:
         deadline = time.time() + 60
         while not self._up():
             if self.process.poll() is not None or time.time() > deadline:
-                raise RuntimeError(f"gunicorn did not start:\n{self.log.read_text() if self.log.exists() else ''}")
+                raise RuntimeError(f"gunicorn did not start:\n{self.log.read_text(encoding='utf8') if self.log.exists() else ''}")
             time.sleep(0.2)
 
     def _up(self):
@@ -114,7 +115,7 @@ class Server:
 
     def workers(self):
         """Pids of the live workers, from the log (portable, unlike /proc)."""
-        pids = {int(p) for p in re.findall(r"Booting worker with pid: (\d+)", self.log.read_text())}
+        pids = {int(p) for p in re.findall(r"Booting worker with pid: (\d+)", self.log.read_text(encoding="utf8"))}
         alive = []
         for pid in pids:
             try:
@@ -126,7 +127,7 @@ class Server:
 
     def errors(self):
         """Tracebacks logged by the app (a killed worker is only reported, not a traceback)."""
-        return [line for line in self.log.read_text().splitlines() if "Traceback" in line]
+        return [line for line in self.log.read_text(encoding="utf8").splitlines() if "Traceback" in line]
 
     def stop(self):
         self.process.send_signal(signal.SIGTERM)

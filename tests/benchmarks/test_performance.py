@@ -58,7 +58,7 @@ def clear_hitlists(db_path):
 def load_baseline() -> dict:
     """Load baseline performance data."""
     if BASELINE_FILE.exists():
-        return json.loads(BASELINE_FILE.read_text())
+        return json.loads(BASELINE_FILE.read_text(encoding="utf8"))
     return {}
 
 
