@@ -295,7 +295,8 @@ class HitList(object):
         self.update()
         # need to handle negative offsets.
         slice_position = n.start or 0
-        self.seek(slice_position)
+        # No seek here: readhit() waits for each hit and positions the file itself, and its IndexError ends the
+        # slice, so a slice past the end is empty (like a list's) instead of raising.
         while True:
             if n.stop is not None:
                 if slice_position >= n.stop:
