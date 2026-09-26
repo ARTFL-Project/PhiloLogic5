@@ -44,6 +44,7 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
         db_destination = os.path.join(loader_obj.destination, db_file)
         line_count = count_lines(file_in)
         conn = sqlite3.connect(db_destination, detect_types=sqlite3.PARSE_DECLTYPES)
+        conn.execute("PRAGMA cache_size=-1000000")  # 1 GB of page cache: indexes of large tables build faster
         conn.text_factory = str
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
