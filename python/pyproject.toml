@@ -19,7 +19,7 @@ dependencies = [
     "lxml",
     "python-levenshtein",
     "natsort",
-    "multiprocess",
+    "dill",
     "tqdm",
     "orjson",
     "black",

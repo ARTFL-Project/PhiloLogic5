@@ -3,6 +3,11 @@
 import os
 import sys
 
+from philologic.utils import start_worker_server
+
+# Start the server load workers are forked from now, so that its imports run while this process does its own
+start_worker_server(["philologic.loadtime.Loader"])
+
 from philologic.loadtime.Loader import Loader, setup_db_dir
 from philologic.loadtime.LoadOptions import CONFIG_FILE, LoadOptions
 

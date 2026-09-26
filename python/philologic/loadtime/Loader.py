@@ -6,6 +6,7 @@ import collections
 import datetime
 import hashlib
 import os
+import pickle
 import shutil
 import sqlite3
 import struct
@@ -16,7 +17,9 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from glob import iglob
 from json import dump
+from types import FunctionType
 
+import dill
 import lmdb
 import lxml.etree
 import lz4.frame
@@ -40,6 +43,7 @@ from philologic.utils import (
     process_pool,
     run_shell,
     sort_list,
+    start_worker_server,
     thread_pool,
 )
 
@@ -175,6 +179,45 @@ def build_lemma_lookup_index(workdir, destination, lemma_count):
     os.system(f"rm -rf {destination}/temp_lemma_lookup.lmdb")
 
 
+# Loader class attributes which parse workers don't get: they are sent the files to parse one at a time, and don't use
+# the spaCy model (with one, files are parsed in the loading process)
+ATTRIBUTES_NOT_SENT_TO_WORKERS = {"filequeue", "data_dicts", "nlp"}
+worker_loader = None  # Loader class of a parse worker, set up by init_parse_worker
+
+
+def pickle_loader_state(loader_class):
+    """Pickle a Loader class and its class attributes (set by set_class_attributes, set_file_data...), so that
+    parse workers get the same state as the loading process. Attributes pickle can't handle (closures in load filters,
+    classes and functions of load configs...) are pickled by dill, by value."""
+    attributes = {}
+    for klass in reversed(loader_class.__mro__[: loader_class.__mro__.index(Loader) + 1]):
+        for name, value in vars(klass).items():
+            if name.startswith("__") or name in ATTRIBUTES_NOT_SENT_TO_WORKERS:
+                continue
+            if not isinstance(value, (FunctionType, classmethod, staticmethod, property)):
+                attributes[name] = value
+    pickled_attributes = {}
+    for name, value in attributes.items():
+        try:
+            pickled_attributes[name] = pickle.dumps(value)
+        except (pickle.PicklingError, AttributeError, TypeError):
+            pickled_attributes[name] = dill.dumps(value)
+    return dill.dumps(loader_class), pickled_attributes
+
+
+def init_parse_worker(pickled_class, pickled_attributes):
+    """Give the Loader class of a parse worker the state pickled by pickle_loader_state"""
+    global worker_loader
+    worker_loader = dill.loads(pickled_class)
+    for name, pickled_value in pickled_attributes.items():
+        setattr(worker_loader, name, dill.loads(pickled_value))
+
+
+def parse_in_worker(text, metadata):
+    """Parse a file in a parse worker"""
+    return worker_loader.parse_text(text, metadata)
+
+
 class Loader:
     """Loader class"""
 
@@ -228,6 +271,7 @@ class Loader:
     @classmethod
     def set_class_attributes(cls, loader_options):
         """Set initial class attributes and return Loader object"""
+        start_worker_server(["philologic.loadtime.Loader"])
         cls.all_word_attribute_names = None
         cls.post_filters = list(loader_options["post_filters"])
         cls.debug = loader_options["debug"]
@@ -704,8 +748,11 @@ class Loader:
                 file_positions = sorted(
                     range(len(cls.data_dicts)), key=lambda file_pos: cls.filequeue[file_pos]["size"], reverse=True
                 )
-                with process_pool(workers) as pool:
-                    for parsed_file in as_completed([pool.submit(cls.parse_file, pos) for pos in file_positions]):
+                with process_pool(workers, init_parse_worker, pickle_loader_state(cls)) as pool:
+                    parsed_files = [
+                        pool.submit(parse_in_worker, cls.filequeue[pos], cls.data_dicts[pos]) for pos in file_positions
+                    ]
+                    for parsed_file in as_completed(parsed_files):
                         parsed_file.result()
                         pbar.update()
             else:  # disable multiprocessing for spacy
@@ -717,8 +764,11 @@ class Loader:
     @classmethod
     def parse_file(cls, file_pos):
         """Parse a single file"""
-        text = cls.filequeue[file_pos]
-        metadata = cls.data_dicts[file_pos]
+        return cls.parse_text(cls.filequeue[file_pos], cls.data_dicts[file_pos])
+
+    @classmethod
+    def parse_text(cls, text, metadata):
+        """Parse a single file, given its filequeue entry and metadata"""
         options = text["options"]
         if "options" in metadata:  # cleanup, should do above.
             del metadata["options"]

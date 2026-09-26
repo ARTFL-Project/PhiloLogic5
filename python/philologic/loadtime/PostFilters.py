@@ -10,10 +10,10 @@ import struct as _struct
 import time
 from collections import Counter, defaultdict
 from contextlib import contextmanager, nullcontext
+from functools import partial
 
 import lmdb
 import lz4.frame
-import multiprocess as mp
 import numpy as np
 import pandas as pd
 import regex as re
@@ -718,72 +718,79 @@ def normalized_metadata_frequencies(loader_obj):
             pass
 
 
+def tfidf_text_sections(text, text_object_level_int):
+    """Get the text sections of a words_and_philo_ids file, as #TOK#-separated words or lemmas"""
+    text_path, token_type = text
+    with lz4.frame.open(text_path) as input_file:
+        words = []
+        current_text_section = None
+        text_sections = []
+        for line in input_file:
+            word_obj = loads(line.decode("utf8"))  # type: ignore
+            if word_obj["philo_type"] == "word":
+                text_section_id = list(map(int, word_obj["position"].split()[:text_object_level_int]))
+                if text_section_id != current_text_section:
+                    if current_text_section is not None:
+                        text_sections.append("#TOK#".join(words))
+                        words = []
+                    current_text_section = text_section_id
+                if token_type == "word":
+                    words.append(word_obj["token"])
+                elif token_type == "lemma":
+                    try:
+                        words.append(f'lemma_{word_obj["lemma"]}')
+                    except KeyError:
+                        continue
+        if text_section_id:
+            text_sections.append("#TOK#".join(words))
+    return text_sections
+
+
+def tfidf_philo_ids(text_path, text_object_level_int):
+    """Get the philo_ids of the text sections of a words_and_philo_ids file"""
+    with lz4.frame.open(text_path) as input_file:
+        philo_ids = []
+        current_text_section = None
+        for line in input_file:
+            word_obj = loads(line.decode("utf8"))
+            if word_obj["philo_type"] == "word":
+                text_section_id = " ".join(word_obj["position"].split()[:text_object_level_int])
+                if text_section_id != current_text_section:
+                    if current_text_section is not None:
+                        philo_ids.append(current_text_section)
+                    current_text_section = text_section_id
+        philo_ids.append(current_text_section)
+    return philo_ids
+
+
 def tfidf_per_doc(loader_obj):
     """Get the TF-IDF vectors for each doc"""
     path = os.path.join(loader_obj.destination, "words_and_philo_ids")
     text_object_levels = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5}
     text_object_level_int = text_object_levels[loader_obj.default_object_level]
 
-    def get_text(text):
-        text_path, token_type = text
-        with lz4.frame.open(text_path) as input_file:
-            words = []
-            current_text_section = None
-            text_sections = []
-            for line in input_file:
-                word_obj = loads(line.decode("utf8"))  # type: ignore
-                if word_obj["philo_type"] == "word":
-                    text_section_id = list(map(int, word_obj["position"].split()[:text_object_level_int]))
-                    if text_section_id != current_text_section:
-                        if current_text_section is not None:
-                            text_sections.append("#TOK#".join(words))
-                            words = []
-                        current_text_section = text_section_id
-                    if token_type == "word":
-                        words.append(word_obj["token"])
-                    elif token_type == "lemma":
-                        try:
-                            words.append(f'lemma_{word_obj["lemma"]}')
-                        except KeyError:
-                            continue
-            if text_section_id:
-                text_sections.append("#TOK#".join(words))
-        return text_sections
-
+    # Both are in the order of paths, so that each text section's vector is stored under its own philo_id
     def get_text_sections(paths):
-        pool = mp.Pool(loader_obj.cores)
         total_texts = sum(1 for _ in os.scandir(path))
-        with tqdm(total=total_texts, leave=False, desc="Gathering texts") as pbar:
-            for text_sections in pool.imap_unordered(get_text, paths):
-                for text_section in text_sections:
-                    yield text_section
-                pbar.update()
-        pool.close()
-
-    def get_philo_ids(text_path):
-        with lz4.frame.open(text_path) as input_file:
-            philo_ids = []
-            current_text_section = None
-            for line in input_file:
-                word_obj = loads(line.decode("utf8"))
-                if word_obj["philo_type"] == "word":
-                    text_section_id = " ".join(word_obj["position"].split()[:text_object_level_int])
-                    if text_section_id != current_text_section:
-                        if current_text_section is not None:
-                            philo_ids.append(current_text_section)
-                        current_text_section = text_section_id
-            philo_ids.append(current_text_section)
-        return philo_ids
+        with process_pool(loader_obj.cores) as pool:
+            files = pool.map(partial(tfidf_text_sections, text_object_level_int=text_object_level_int), paths)
+            with tqdm(total=total_texts, leave=False, desc="Gathering texts") as pbar:
+                for text_sections in files:
+                    for text_section in text_sections:
+                        yield text_section
+                    pbar.update()
 
     def get_text_philo_ids(paths):
-        pool = mp.Pool(loader_obj.cores)
         total_texts = sum(1 for _ in os.scandir(path))
-        with tqdm(total=total_texts, leave=False, desc="Gathering philo_ids") as pbar:
-            for philo_ids in pool.imap_unordered(get_philo_ids, [p[0] for p in paths]):
-                for philo_id in philo_ids:
-                    yield philo_id
-                pbar.update()
-        pool.close()
+        with process_pool(loader_obj.cores) as pool:
+            files = pool.map(
+                partial(tfidf_philo_ids, text_object_level_int=text_object_level_int), [p[0] for p in paths]
+            )
+            with tqdm(total=total_texts, leave=False, desc="Gathering philo_ids") as pbar:
+                for philo_ids in files:
+                    for philo_id in philo_ids:
+                        yield philo_id
+                    pbar.update()
 
     token_types = ["word"]
     if loader_obj.lemma_count > 0:
