@@ -531,8 +531,15 @@ def init_parse_worker(pickled_class, pickled_attributes, workers):
 
 
 def parse_in_worker(text, metadata):
-    """Parse a file in a parse worker"""
-    return worker_loader.parse_text(text, metadata)
+    """Parse a file in a parse worker. Returns the number of lines of its words and lemmas files."""
+    worker_loader.parse_text(text, metadata)
+    return text["word_lines"], text["lemma_lines"]
+
+
+def count_newlines(path, lz4_compressed=False):
+    """Number of lines of a file, counted as wc -l does"""
+    with (lz4.frame.open if lz4_compressed else open)(path, "rb") as input_file:
+        return sum(block.count(b"\n") for block in iter(lambda: input_file.read(1 << 24), b""))
 
 
 class Loader:
@@ -578,6 +585,7 @@ class Loader:
     word_count = 0
     lemma_count = 0
     precomputed_files = {}  # frequency file key -> file written while building the index, see frequency_file_key
+    parsed_line_counts = None  # [lines of the words files, of the lemmas files] of the files parsed by parse_files
     has_attributes = False
     nlp = None
     spacy_model = None  # spaCy model loaded by each parse worker, when not running on the GPU
@@ -1062,9 +1070,11 @@ class Loader:
             )
             sys.exit(1)
         os.chdir(cls.workdir)
+        cls.parsed_line_counts = None
         if verbose is True:
             print("\n\n### Parsing files ###")
             print("%s: parsing %d files." % (time.ctime(), len(cls.filequeue)))
+        line_counts = [0, 0]  # lines of the words and lemmas files of the files parsed so far
         with tqdm(total=len(cls.filequeue), smoothing=0, leave=False, desc="Parsing files") as pbar:
             if cls.nlp is None:
                 # Parse the largest files first so a big file started last doesn't leave all but one worker idle.
@@ -1077,11 +1087,17 @@ class Loader:
                         pool.submit(parse_in_worker, cls.filequeue[pos], cls.data_dicts[pos]) for pos in file_positions
                     ]
                     for parsed_file in as_completed(parsed_files):
-                        parsed_file.result()
+                        word_lines, lemma_lines = parsed_file.result()
+                        line_counts[0] += word_lines
+                        line_counts[1] += lemma_lines
                         pbar.update()
             else:  # the spaCy model runs on the GPU: files are tagged in this process only
-                for _ in map(cls.parse_file, range(len(cls.data_dicts))):
+                for file_pos in range(len(cls.data_dicts)):
+                    cls.parse_file(file_pos)
+                    line_counts[0] += cls.filequeue[file_pos]["word_lines"]
+                    line_counts[1] += cls.filequeue[file_pos]["lemma_lines"]
                     pbar.update()
+        cls.parsed_line_counts = line_counts
         if verbose is True:
             print("%s: done parsing" % time.ctime())
 
@@ -1151,6 +1167,10 @@ class Loader:
             except Exception:
                 raise ParserError(f"{text['name']} has caused parser to die.")
 
+        # Lines of its words and lemmas files, merged into those count_words would otherwise count
+        text["word_lines"] = count_newlines(text["words"])
+        lemma_file = text["raw"] + ".lemma.lz4"
+        text["lemma_lines"] = count_newlines(lemma_file, lz4_compressed=True) if os.path.exists(lemma_file) else 0
         run_shell("lz4 --rm -c -q -3 %s > %s" % (text["words"], text["words"] + ".lz4"))
         if cls.debug is False:
             os.remove(text["raw"])
@@ -1310,6 +1330,10 @@ class Loader:
         """Count words in all files"""
         print("\n### Counting total words ###", flush=True)
         print(f"{time.ctime()}: counting words in all files...", flush=True)
+        if cls.parsed_line_counts is not None:  # counted file by file by parse_files
+            print(f"{time.ctime()}: counting lemmas in all files...", flush=True)
+            cls.word_count, cls.lemma_count = cls.parsed_line_counts
+            return
         with ThreadPoolExecutor(max_workers=2) as executor:  # both counts run in parallel subprocesses
             word_count = executor.submit(count_lines, f"{cls.workdir}/all_words_sorted.lz4", lz4=True)
             print(f"{time.ctime()}: counting lemmas in all files...", flush=True)
