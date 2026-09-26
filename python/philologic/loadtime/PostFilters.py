@@ -9,7 +9,7 @@ import sqlite3
 import struct as _struct
 import time
 from collections import Counter, defaultdict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 import lmdb
 import lz4.frame
@@ -22,7 +22,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 from unidecode import unidecode
 
-from philologic.utils import count_lines
+from philologic.utils import count_lines, process_pool
 
 
 @contextmanager
@@ -210,10 +210,9 @@ def make_collocation_database(loader_obj, db_destination):
     ]
     jobs = [(path, list(loader_obj.word_attributes)) for path in raw_words_files]
     workers = max(1, getattr(loader_obj, "cores", 1) or 1)
-    pool = mp.Pool(workers) if workers > 1 and len(jobs) > 1 else None
-    try:
+    with process_pool(workers) if workers > 1 and len(jobs) > 1 else nullcontext() as pool:
         if pool is not None:
-            file_results = pool.imap(collocation_file_arrays, jobs, chunksize=max(1, len(jobs) // (workers * 16)))
+            file_results = pool.map(collocation_file_arrays, jobs, chunksize=max(1, len(jobs) // (workers * 16)))
         else:
             file_results = map(collocation_file_arrays, jobs)
         with tqdm(
@@ -249,10 +248,6 @@ def make_collocation_database(loader_obj, db_destination):
 
                 word_count += file_word_count
                 pbar.update(file_word_count)
-    finally:
-        if pool is not None:
-            pool.close()
-            pool.join()
 
     # Final sentence offset
     sent_offsets.append(np.array([word_count], dtype=np.uint64))
@@ -562,13 +557,10 @@ def lemma_and_attribute_frequencies(loader_obj):
         )
 
     # Each file is written from a single input file by its own process
-    processes = [mp.Process(target=function, args=args) for function, args in jobs]
-    for process in processes:
-        process.start()
-    for process in processes:
-        process.join()
-    if any(process.exitcode != 0 for process in processes):
-        raise RuntimeError("Writing lemma and word attribute frequency files failed")
+    if jobs:
+        with process_pool(len(jobs)) as pool:
+            for job in [pool.submit(function, *args) for function, args in jobs]:
+                job.result()
 
 
 def write_lemma_frequencies(sorted_file, output_path):

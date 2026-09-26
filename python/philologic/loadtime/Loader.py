@@ -25,7 +25,6 @@ import pandas as pd
 import regex as re
 import spacy
 from black import FileMode, format_str
-from multiprocess import Pool, Process
 from orjson import loads
 from tqdm import tqdm
 
@@ -38,7 +37,10 @@ from philologic.utils import (
     extract_integer,
     load_module,
     pretty_print,
+    process_pool,
+    run_shell,
     sort_list,
+    thread_pool,
 )
 
 SORT_BY_WORD = "-k 2,2"
@@ -702,8 +704,9 @@ class Loader:
                 file_positions = sorted(
                     range(len(cls.data_dicts)), key=lambda file_pos: cls.filequeue[file_pos]["size"], reverse=True
                 )
-                with Pool(workers) as pool:
-                    for _ in pool.imap_unordered(cls.parse_file, file_positions):
+                with process_pool(workers) as pool:
+                    for parsed_file in as_completed([pool.submit(cls.parse_file, pos) for pos in file_positions]):
+                        parsed_file.result()
                         pbar.update()
             else:  # disable multiprocessing for spacy
                 for _ in map(cls.parse_file, range(len(cls.data_dicts))):
@@ -766,16 +769,15 @@ class Loader:
             with open(text["newpath"], "r", newline="", encoding="utf8") as input_file:
                 try:
                     parser.parse(input_file)
-                except RuntimeError:
-                    print("parse failure...", file=sys.stderr)
-                    exit(1)
+                except RuntimeError as error:
+                    raise ParserError(f"{text['name']} failed to parse") from error
         for f in filters:
             try:
                 f(cls, text)
             except Exception:
                 raise ParserError(f"{text['name']} has caused parser to die.")
 
-        os.system("lz4 --rm -c -q -3 %s > %s" % (text["words"], text["words"] + ".lz4"))
+        run_shell("lz4 --rm -c -q -3 %s > %s" % (text["words"], text["words"] + ".lz4"))
         if cls.debug is False:
             os.remove(text["raw"])
         return text["results"]
@@ -787,7 +789,7 @@ class Loader:
         # run at the same time. With more files, each merge already runs several sorts in parallel.
         if len(self.filequeue) <= (250 if sys.platform == "darwin" else 1000):
             print(f"{time.ctime()}: sorting words, lemmas and objects", flush=True)
-            with ThreadPoolExecutor(max_workers=3) as executor:
+            with thread_pool(3) as executor:
                 merges = [executor.submit(self.merge_files, file_type) for file_type in ("words", "lemmas", "toms")]
                 for merge in merges:
                     merge.result()
@@ -881,17 +883,14 @@ class Loader:
             command_list = " ".join([i[0] for i in lists_of_files[0]])
             if file_type == "words":
                 output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
-                command = f'/bin/bash -c "{sort_command}{command_list} | lz4 -q > {output_file}"'
+                command = f"{sort_command}{command_list} | lz4 -q > {output_file}"
             elif file_type == "lemmas":
                 output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
-                command = f'/bin/bash -c "{sort_command}{command_list} | lz4 -q > {output_file}"'
+                command = f"{sort_command}{command_list} | lz4 -q > {output_file}"
             else:
                 output_file = os.path.join(self.workdir, "all_toms_sorted")
-                command = f'/bin/bash -c "{sort_command}{command_list} > {output_file}"'
-            status = subprocess.run(command, shell=True).returncode
-            if status != 0:
-                print(f"{file_type} sorting failed\nInterrupting database load...")
-                sys.exit()
+                command = f"{sort_command}{command_list} > {output_file}"
+            run_shell(command, description=f"{file_type} sorting")
             return
         with tqdm(total=total_files, leave=False) as pbar:
 
@@ -899,30 +898,25 @@ class Loader:
                 command_list = " ".join([i[0] for i in object_list])
                 output = os.path.join(self.workdir, f"sorted.{pos}.split")
                 args = sort_command + command_list
-                command = f'/bin/bash -c "{args} | lz4 -3 -q >{output}"'
-                result = subprocess.run(command, shell=True)
-                return pos, len(object_list), result.returncode
+                run_shell(f"{args} | lz4 -3 -q >{output}", description=f"{file_type} sorting")
+                return len(object_list)
 
-            with ThreadPoolExecutor(max_workers=4) as executor:
+            with thread_pool(4) as executor:
                 futures = [executor.submit(run_batch, pos, obj_list) for pos, obj_list in enumerate(lists_of_files)]
                 for future in as_completed(futures):
-                    pos, batch_size, returncode = future.result()
-                    if returncode != 0:
-                        print(f"{file_type} sorting failed\nInterrupting database load...")
-                        sys.exit()
-                    pbar.update(batch_size)
+                    pbar.update(future.result())
 
         # WARNING: we are technically limited by the file descriptor limit (1024), which should be equivalent to 1,024,000 files.
         sorted_files = " ".join([f"<(lz4cat -q --rm {i})" for i in iglob(f"{self.workdir}/*.split")])
         if file_type == "words":
             output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
-            command = f'/bin/bash -c "{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
+            command = f"{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"
         elif file_type == "lemmas":
             output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
-            command = f'/bin/bash -c "{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
+            command = f"{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"
         else:
             output_file = os.path.join(self.workdir, "all_toms_sorted")
-            command = f'/bin/bash -c "{final_sort_command} {sorted_files} > {output_file}"'
+            command = f"{final_sort_command} {sorted_files} > {output_file}"
         if verbose is True:
             print(
                 f"{time.ctime()}: Merging all merged sorted files (this may take a while)...",
@@ -930,10 +924,7 @@ class Loader:
                 end=" ",
             )
 
-        status = os.system(command)
-        if status != 0:
-            print(f"{file_type} sorting failed\nInterrupting database load...")
-            sys.exit()
+        run_shell(command, description=f"{file_type} sorting")
         print("done.", flush=True)
 
         for sorted_file in os.scandir(self.workdir):
@@ -1030,12 +1021,17 @@ class Loader:
     def build_inverted_index(cls, commit_interval=5000):
         """Create inverted index"""
         print("\n### Create inverted index ###", flush=True)
-        lemma_lookup_process = None
-        if cls.lemma_count > 0:  # separate database built from the lemmas file only: build it in parallel
-            lemma_lookup_process = Process(
-                target=build_lemma_lookup_index, args=(cls.workdir, cls.destination, cls.lemma_count)
-            )
-            lemma_lookup_process.start()
+        with process_pool(1) as pool:
+            lemma_lookup = None
+            if cls.lemma_count > 0:  # separate database built from the lemmas file only: build it in parallel
+                lemma_lookup = pool.submit(build_lemma_lookup_index, cls.workdir, cls.destination, cls.lemma_count)
+            cls._build_word_index(commit_interval)
+            if lemma_lookup is not None:
+                lemma_lookup.result()
+
+    @classmethod
+    def _build_word_index(cls, commit_interval):
+        """Store words, lemmas and their attributes in words.lmdb"""
         db_env = lmdb.open(
             f"{cls.destination}/temp_words.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True, sync=False
         )  # 2TB limit
@@ -1180,11 +1176,6 @@ class Loader:
         src_env.close()
         os.system(f"rm -rf {cls.destination}/temp_words.lmdb")
 
-        if lemma_lookup_process is not None:
-            lemma_lookup_process.join()
-            if lemma_lookup_process.exitcode != 0:
-                raise RuntimeError("Building the lemma lookup index failed")
-
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""
         for table in self.tables:
@@ -1295,7 +1286,8 @@ class Loader:
 
         print("Building Web Client Application...", end=" ", flush=True)
         os.chdir(self.web_app_dir)
-        web_app_build.wait()
+        if web_app_build.wait() != 0:
+            raise RuntimeError(f"Building the web client application failed, see {self.web_app_dir}web_app_build.log")
         print("done.")
 
     def write_db_config(self):
@@ -1334,7 +1326,7 @@ class Loader:
                 print(format_str(str(db_config), mode=FileMode()), file=db_file)
             except:
                 print(str(db_config))
-                exit()
+                raise
         print("wrote database info to %s." % (filename))
 
     def write_web_config(self):

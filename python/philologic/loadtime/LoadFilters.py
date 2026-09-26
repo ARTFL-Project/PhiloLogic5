@@ -9,6 +9,9 @@ from orjson import dumps, loads
 from spacy.tokens import Doc as SpacyDoc
 
 from philologic.loadtime.OHCOVector import Record
+from philologic.utils import run_shell
+
+RG_OK_STATUSES = (0, 1)  # rg exits with 1 when no line matches
 
 
 # Default filters
@@ -48,7 +51,7 @@ def generate_words_sorted(loader_obj, text):
         loader_obj.sort_by_id,
         text["words"],
     )
-    os.system(wordcommand)
+    run_shell(wordcommand, ok_statuses=RG_OK_STATUSES)
 
 
 def spacy_tagger(loader_obj, text):
@@ -102,7 +105,7 @@ def get_lemmas(_, text):
                 loaded_attribs = loads(attribs)
                 if "lemma" in loaded_attribs:
                     lemma_file.write(f"lemma\t{loaded_attribs['lemma']}\t{philo_id}\t{attribs.strip()}\n")
-    os.system(f"lz4 -z -q {text['raw']}.lemma {text['raw']}.lemma.lz4 && rm {text['raw']}.lemma")
+    run_shell(f"lz4 -z -q {text['raw']}.lemma {text['raw']}.lemma.lz4 && rm {text['raw']}.lemma")
 
 
 def make_sorted_toms(*philo_types):
@@ -116,7 +119,7 @@ def make_sorted_toms(*philo_types):
             loader_obj.sort_by_id,
             text["sortedtoms"],
         )
-        os.system(tomscommand)
+        run_shell(tomscommand, ok_statuses=RG_OK_STATUSES)
 
     return sorted_toms
 
@@ -169,7 +172,7 @@ def prev_next_obj(*philo_types):
             loader_obj.sort_by_id,
             text["sortedtoms"],
         )
-        os.system(tomscommand)
+        run_shell(tomscommand, ok_statuses=RG_OK_STATUSES)
         os.remove(temp_file)
         return attrib_set
 
@@ -179,7 +182,7 @@ def prev_next_obj(*philo_types):
 def generate_pages(_, text):
     """Generate separate page file"""
     pagescommand = 'cat %s | rg "^page" > %s' % (text["raw"], text["pages"])
-    os.system(pagescommand)
+    run_shell(pagescommand, ok_statuses=RG_OK_STATUSES)
 
 
 def prev_next_page(_, text):
@@ -221,19 +224,19 @@ def prev_next_page(_, text):
 def generate_refs(_, text):
     """Generate ref file"""
     refscommand = 'cat %s | rg "^ref" > %s' % (text["raw"], text["refs"])
-    os.system(refscommand)
+    run_shell(refscommand, ok_statuses=RG_OK_STATUSES)
 
 
 def generate_graphics(_, text):
     """Generate graphics file"""
     refscommand = 'cat %s | rg "^graphic" > %s' % (text["raw"], text["graphics"])
-    os.system(refscommand)
+    run_shell(refscommand, ok_statuses=RG_OK_STATUSES)
 
 
 def generate_lines(_, text):
     """Generate lines file"""
     lines_command = 'cat %s | rg "^line" > %s' % (text["raw"], text["lines"])
-    os.system(lines_command)
+    run_shell(lines_command, ok_statuses=RG_OK_STATUSES)
 
 
 def suppress_word_attributes(loader_obj, text):

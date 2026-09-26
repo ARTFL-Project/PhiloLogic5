@@ -2,7 +2,7 @@
 
 """Count number of lines in a file using subprocess module."""
 
-import subprocess
+from .processes import run_shell
 
 
 def count_lines(file_path, lz4=False):
@@ -11,6 +11,6 @@ def count_lines(file_path, lz4=False):
         cmd = f"lz4 -dc {file_path} | wc -l | awk '{{print $1}}'"
     else:
         cmd = f"wc -l {file_path} | awk '{{print $1}}'"
-    process = subprocess.run(cmd, shell=True, text=True, capture_output=True, encoding="utf8")
+    process = run_shell(cmd, capture_output=True)
     count = int(process.stdout.strip())
     return count
