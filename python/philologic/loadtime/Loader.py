@@ -453,33 +453,40 @@ def index_word_attributes(
     return count, overflow_keys, attribute_names
 
 
-def merge_indexes(index_paths, merged_path, commit_interval):
+# Bytes stored per transaction when merging index parts, plus one more value of at most OVERFLOW_LIMIT bytes:
+# without a writemap, a transaction keeps the pages it writes in memory, up to a limit
+MERGE_COMMIT_BYTES = 64 * 1024 * 1024
+
+
+def merge_indexes(index_paths, merged_path):
     """Store the entries of several LMDB databases in a new one, in key order. A key found in several of them gets
-    its value in the last one, as when they were all built in a single database, one after the other."""
+    its value in the last one, as when they were all built in a single database, one after the other.
+    Stored in key order, the entries fill the new database's pages: it doesn't need compacting."""
     envs = [lmdb.open(path, readonly=True, lock=False) for path in index_paths]
     txns = [env.begin() for env in envs]
-    merged_env = open_index(merged_path)
+    merged_env = lmdb.open(merged_path, map_size=2 * 1024 * 1024 * 1024 * 1024, sync=False)
     entries = heapq.merge(
         *(((key, -position, value) for key, value in txn.cursor()) for position, txn in enumerate(txns))
     )
     txn = merged_env.begin(write=True)
     previous_key = None
-    count = 0
+    uncommitted_bytes = 0
     for key, _, value in entries:
         if key == previous_key:  # already stored, with its value in a later database
             continue
-        txn.put(key, value, append=True)
-        previous_key = key
-        count += 1
-        if count % commit_interval == 0:
+        if uncommitted_bytes + len(value) > MERGE_COMMIT_BYTES and uncommitted_bytes:
             txn.commit()
             txn = merged_env.begin(write=True)
+            uncommitted_bytes = 0
+        txn.put(key, value, append=True)
+        uncommitted_bytes += len(key) + len(value)
+        previous_key = key
     txn.commit()
     for read_txn, env in zip(txns, envs):
         read_txn.abort()
         env.close()
-    return merged_env
-
+    merged_env.sync(True)
+    merged_env.close()
 
 # Loader class attributes which parse workers don't get: they are sent the files to parse one at a time, and don't use
 # the spaCy model (with one, files are parsed in the loading process)
@@ -1426,24 +1433,18 @@ class Loader:
                     print(f"{time.ctime()}: Stored {count} lemma word attributes.", flush=True)
                     merged_parts.append("lemma_attributes")
 
-            # Merge the parts in the order they used to be built in, one after the other
-            print(f"{time.ctime()}: Merging word index parts and optimizing it for space...", flush=True)
-            db_env = merge_indexes(
-                [part_paths[part] for part in merged_parts], f"{cls.destination}/temp_words.lmdb", commit_interval
-            )
+            if len(merged_parts) > 1:  # merge the parts in the order they used to be built in, one after the other
+                print(f"{time.ctime()}: Merging word index parts...", flush=True)
+                merge_indexes([part_paths[part] for part in merged_parts], f"{cls.destination}/words.lmdb")
+            else:
+                print(f"{time.ctime()}: Optimizing word index for space...", flush=True)
+                os.mkdir(f"{cls.destination}/words.lmdb")
+                # Reopen env without writemap to compact the database
+                src_env = lmdb.open(part_paths["words"], readonly=True)
+                src_env.copy(f"{cls.destination}/words.lmdb", compact=True)
+                src_env.close()
             for part in parts:
                 shutil.rmtree(part_paths[part])
-            os.mkdir(f"{cls.destination}/words.lmdb")
-            db_env.sync(True)  # Ensure all data is written to disk
-            db_env.close()
-            # Reopen env without writemap to compact the database
-            src_env = lmdb.open(
-                f"{cls.destination}/temp_words.lmdb",
-                readonly=True,
-            )
-            src_env.copy(f"{cls.destination}/words.lmdb", compact=True)
-            src_env.close()
-            os.system(f"rm -rf {cls.destination}/temp_words.lmdb")
 
             if lemma_lookup is not None:
                 lemma_lookup.result()
