@@ -26,7 +26,6 @@ import lz4.frame
 import numpy as np
 import pandas as pd
 import regex as re
-import spacy
 from black import FileMode, format_str
 from orjson import loads
 from tqdm import tqdm
@@ -302,6 +301,8 @@ class Loader:
             except KeyError:  # option hasn't been set
                 pass
         if loader_options["spacy_model"]:
+            import spacy  # only imported when used: importing it takes about a second
+
             spacy.prefer_gpu()
             cls.nlp = spacy.load(loader_options["spacy_model"], disable=["tokenizer"])
         cls.suppress_word_attributes = set(loader_options["suppress_word_attributes"])

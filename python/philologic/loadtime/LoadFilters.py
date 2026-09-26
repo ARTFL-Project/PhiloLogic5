@@ -6,7 +6,6 @@ from collections import Counter
 
 import lz4.frame
 from orjson import dumps, loads
-from spacy.tokens import Doc as SpacyDoc
 
 from philologic.loadtime.OHCOVector import Record
 from philologic.utils import run_shell
@@ -56,6 +55,7 @@ def generate_words_sorted(loader_obj, text):
 
 def spacy_tagger(loader_obj, text):
     """Tag words with Spacy"""
+    from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
 
     def process_file():
         with open(text["raw"], encoding="utf8") as fh:
