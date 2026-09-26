@@ -2,6 +2,7 @@
 """Standard PhiloLogic5 loader.
 Calls all parsing functions and stores data in index"""
 
+import array
 import collections
 import datetime
 import hashlib
@@ -130,38 +131,73 @@ def pack_philo_ids(philo_ids):
     return b"".join([pack_philo_id(philo_id.decode("utf-8")) for philo_id in philo_ids])
 
 
+LEMMA_LOOKUP_BATCH = 20000000  # lemma lookup entries sorted in memory at once (about 2 GB)
+LEMMA_LOOKUP_COMMIT = 500000  # lemma lookup entries stored per transaction
+
+
+def sort_lemma_lookups(keys, positions):
+    """Sort lemma lookup keys (a bytes-like object of 36-byte keys) with the positions of their values, in the byte
+    order of LMDB keys. Of equal keys (a philo_id found twice), only the last one is kept, as it would overwrite the
+    others."""
+    keys = np.frombuffer(keys, dtype="S36")  # fixed-size strings: compared byte by byte, as LMDB keys
+    order = np.argsort(keys, kind="stable")
+    keys, positions = keys[order], positions[order]
+    last = np.ones(len(keys), dtype=bool)
+    last[:-1] = keys[1:] != keys[:-1]
+    if last.all():
+        return keys, positions
+    return keys[last], positions[last]
+
+
+def merge_lemma_lookup_runs(runs, chunk_size=LEMMA_LOOKUP_COMMIT):
+    """Merge sorted runs of lemma lookups (paths of the .npy files of their keys and value positions), yielding
+    (keys, positions) in key order, chunk by chunk. Of equal keys, the one of the last run is kept."""
+    keys = [np.load(keys_path, mmap_mode="r") for keys_path, _ in runs]
+    positions = [np.load(positions_path, mmap_mode="r") for _, positions_path in runs]
+    starts = [0] * len(runs)
+    while any(start < len(run_keys) for start, run_keys in zip(starts, keys)):
+        heads = [run_keys[start : start + chunk_size] for start, run_keys in zip(starts, keys)]
+        # Keys can be output up to the smallest last key of a head with more keys after it (excluded: its equals
+        # in other runs may not be in their heads)
+        bounds = [head[-1] for head, start, run_keys in zip(heads, starts, keys) if start + len(head) < len(run_keys)]
+        taken_keys, taken_positions = [], []
+        for run, head in enumerate(heads):
+            taken = len(head) if not bounds else np.searchsorted(head, min(bounds), side="left")
+            taken_keys.append(head[:taken])
+            taken_positions.append(positions[run][starts[run] : starts[run] + taken])
+            starts[run] += taken
+        # Runs are concatenated in file order, so the stable sort keeps equal keys in file order too
+        chunk_keys, chunk_positions = np.concatenate(taken_keys), np.concatenate(taken_positions)
+        yield sort_lemma_lookups(chunk_keys.tobytes(), chunk_positions)
+
+
 def build_lemma_lookup_index(workdir, destination, lemma_count):
     """Create a lemma lookup table where keys are philo_ids as bytes and values are lemmas in the form lemma:word.
-    Only reads the sorted lemmas file and writes its own database, so it runs alongside the rest of the index build."""
+    Only reads the sorted lemmas file and writes its own database, so it runs alongside the rest of the index build.
+    Entries are sorted by key (in batches, merged afterwards, for large corpora) and stored in that order: this fills
+    the database pages, without having to compact it."""
     print(f"{time.ctime()}: Creating lemma lookup index...", flush=True)
-    lemma_db_env = lmdb.open(
-        f"{destination}/temp_lemma_lookup.lmdb",
-        map_size=2 * 1024 * 1024 * 1024 * 1024,
-        writemap=True,
-        sync=False,
-    )
-    commit_interval = 10000
+    values = []  # lemma:word values, in file order
+    keys = bytearray()  # keys of the batch being read, 36 bytes each
+    positions = array.array("I")  # positions of their values
+    runs = []  # sorted batches saved to disk
     count = 0
-    uncommitted = 0
-    lemma_txn = lemma_db_env.begin(write=True)
 
-    def store_lemma_lookups(lemma, philo_ids):
-        """Store one entry per philo_id (in file order), all with the same lemma:word value.
-        Commits after every commit_interval entries, as when storing entries one line at a time."""
-        nonlocal lemma_txn, count, uncommitted
-        lemma_utf8 = b"lemma:" + lemma
-        position = 0
-        while position < len(philo_ids):
-            batch = pack_philo_ids(philo_ids[position : position + commit_interval - uncommitted])
-            lemma_txn.cursor().putmulti((batch[start : start + 36], lemma_utf8) for start in range(0, len(batch), 36))
-            stored = len(batch) // 36
-            count += stored
-            uncommitted += stored
-            position += stored
-            if uncommitted == commit_interval:
-                lemma_txn.commit()
-                lemma_txn = lemma_db_env.begin(write=True)
-                uncommitted = 0
+    def save_run():
+        nonlocal keys, positions
+        run_keys, run_positions = sort_lemma_lookups(keys, np.frombuffer(positions, dtype=np.uint32))
+        run = (f"{workdir}/lemma_lookup_keys_{len(runs)}.npy", f"{workdir}/lemma_lookup_positions_{len(runs)}.npy")
+        np.save(run[0], run_keys)
+        np.save(run[1], run_positions)
+        runs.append(run)
+        keys, positions = bytearray(), array.array("I")
+
+    def store_lemma_lookups(philo_ids):
+        nonlocal count
+        packed = pack_philo_ids(philo_ids)
+        keys.extend(packed)
+        positions.extend([len(values) - 1] * (len(packed) // 36))
+        count += len(packed) // 36
 
     with open_lz4_lines(f"{workdir}/all_lemmas_sorted.lz4") as input_file:
         current_lemma = None
@@ -170,22 +206,41 @@ def build_lemma_lookup_index(workdir, destination, lemma_count):
             _, word, philo_id, _ = line.strip().split(b"\t")
             if word != current_lemma or len(philo_ids) == PHILO_ID_PACK_CHUNK:
                 if current_lemma is not None:
-                    store_lemma_lookups(current_lemma, philo_ids)
+                    store_lemma_lookups(philo_ids)
+                if len(positions) >= LEMMA_LOOKUP_BATCH:
+                    save_run()
+                if word != current_lemma:
+                    values.append(b"lemma:" + word)
                 current_lemma = word
                 philo_ids = []
             philo_ids.append(philo_id)
         if current_lemma is not None:
-            store_lemma_lookups(current_lemma, philo_ids)
-        lemma_txn.commit()  # Commit the remaining entries
-    print(f"{time.ctime()}: Stored {count} lemma lookup entries.", flush=True)
+            store_lemma_lookups(philo_ids)
+    if runs:  # several batches: merge them
+        save_run()
+        sorted_chunks = merge_lemma_lookup_runs(runs)
+    else:
+        sorted_chunks = [sort_lemma_lookups(keys, np.frombuffer(positions, dtype=np.uint32))]
+    del keys, positions
 
-    print(f"{time.ctime()}: Optimizing lemma lookup index for space...", flush=True)
-    os.mkdir(f"{destination}/lemmas.lmdb")
-    lemma_db_env.sync(True)  # Ensure all data is written to disk before compacting database
-    lemma_db_env.copy(f"{destination}/lemmas.lmdb", compact=True)
+    lemma_db_env = lmdb.open(f"{destination}/lemmas.lmdb", map_size=2 * 1024 * 1024 * 1024 * 1024, sync=False)
+    for chunk_keys, chunk_positions in sorted_chunks:
+        chunk_keys = chunk_keys.tobytes()
+        for start in range(0, len(chunk_positions), LEMMA_LOOKUP_COMMIT):
+            with lemma_db_env.begin(write=True) as lemma_txn:
+                lemma_txn.cursor().putmulti(
+                    (
+                        (chunk_keys[position * 36 : position * 36 + 36], values[chunk_positions[position]])
+                        for position in range(start, min(start + LEMMA_LOOKUP_COMMIT, len(chunk_positions)))
+                    ),
+                    append=True,
+                )
+    lemma_db_env.sync(True)
     lemma_db_env.close()
-    os.system(f"rm -rf {destination}/temp_lemma_lookup.lmdb")
-
+    for run in runs:
+        for path in run:
+            os.remove(path)
+    print(f"{time.ctime()}: Stored {count} lemma lookup entries.", flush=True)
 
 OVERFLOW_LIMIT = 360000000  # 36 bytes per philo_id, 10,000,000 philo_ids: more go to an overflow file
 PROGRESS_INTERVAL = 100000  # lines read by an index worker between progress reports
@@ -1334,12 +1389,14 @@ class Loader:
                 )
             total = 2 * cls.word_count + (2 * cls.lemma_count if cls.lemma_count > 0 else 0)
             with tqdm(total=total, desc="Storing words, lemmas and their attributes", leave=False) as pbar:
-                pending = parts.values()
-                while pending:
-                    done, pending = wait(pending, timeout=0.5, return_when=FIRST_EXCEPTION)
+                jobs = [*parts.values(), *(job for _, _, job in frequency_files)]
+                if lemma_lookup is not None:
+                    jobs.append(lemma_lookup)
+                while not all(part.done() for part in parts.values()):
+                    done, _ = wait(jobs, timeout=0.5, return_when=FIRST_EXCEPTION)
                     pbar.update(progress.value - pbar.n)
-                    for part in done:
-                        part.result()  # raises the error of a part which failed
+                    for job in done:
+                        job.result()  # raises the error of a job which failed
 
             count, overflow_keys, has_attributes = parts["words"].result()
             cls.overflow_words.update(overflow_keys)
