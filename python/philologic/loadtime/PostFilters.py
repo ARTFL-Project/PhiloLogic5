@@ -557,11 +557,31 @@ def lemma_and_attribute_frequencies(loader_obj):
             )
         )
 
+    # Files already written by the same function from the same input, while the index was built, are reused
+    precomputed_files = getattr(loader_obj, "precomputed_files", {})
+    remaining_jobs = []
+    for function, args in jobs:
+        precomputed_file = precomputed_files.get(frequency_file_key(function, args))
+        if precomputed_file is not None and os.path.exists(precomputed_file):
+            os.replace(precomputed_file, args[1])
+        else:
+            remaining_jobs.append((function, args))
+    jobs = remaining_jobs
+
     # Each file is written from a single input file by its own process
     if jobs:
         with process_pool(len(jobs)) as pool:
             for job in [pool.submit(function, *args) for function, args in jobs]:
                 job.result()
+
+
+def frequency_file_key(function, args):
+    """What determines the file written by a frequency file job (function, (input file, output path, other arguments)):
+    the function, the input file (unchanged since) and the other arguments"""
+    input_file, _, *other_args = args
+    file_stat = os.stat(input_file)
+    other_args = tuple(tuple(sorted(arg)) if isinstance(arg, (set, frozenset)) else arg for arg in other_args)
+    return function.__name__, input_file, file_stat.st_size, file_stat.st_mtime_ns, other_args
 
 
 def write_lemma_frequencies(sorted_file, output_path):

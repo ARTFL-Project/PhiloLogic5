@@ -32,7 +32,14 @@ from orjson import loads
 from tqdm import tqdm
 
 from philologic.Config import MakeDBConfig, MakeWebConfig
-from philologic.loadtime.PostFilters import make_collocation_database, make_sql_table, open_lz4_lines
+from philologic.loadtime.PostFilters import (
+    frequency_file_key,
+    make_collocation_database,
+    make_sql_table,
+    open_lz4_lines,
+    write_lemma_frequencies,
+    write_unique_word_attributes,
+)
 from philologic.utils import (
     convert_entities,
     count_lines,
@@ -508,6 +515,7 @@ class Loader:
     }
     word_count = 0
     lemma_count = 0
+    precomputed_files = {}  # frequency file key -> file written while building the index, see frequency_file_key
     has_attributes = False
     nlp = None
     spacy_model = None  # spaCy model loaded by each parse worker, when not running on the GPU
@@ -1263,7 +1271,27 @@ class Loader:
             for part in ("words", "lemmas", "word_attributes", "lemma_attributes")
         }
         progress = shared_value("q", 0)
-        with process_pool(5 if cls.lemma_count > 0 else 2, init_index_worker, (progress,)) as pool:
+        with process_pool(8 if cls.lemma_count > 0 else 3, init_index_worker, (progress,)) as pool:
+            # The lemma and word attribute frequency files are also written from the sorted files alone: write them
+            # alongside, for PostFilters.lemma_and_attribute_frequencies to use
+            frequency_jobs = [
+                (
+                    write_unique_word_attributes,
+                    (words_file, f"{cls.workdir}/word_attributes", "", cls.attributes_to_skip),
+                )
+            ]
+            if cls.lemma_count > 0:
+                frequency_jobs.append((write_lemma_frequencies, (lemmas_file, f"{cls.workdir}/lemmas")))
+                frequency_jobs.append(
+                    (
+                        write_unique_word_attributes,
+                        (lemmas_file, f"{cls.workdir}/lemma_word_attributes", "lemma:", cls.attributes_to_skip),
+                    )
+                )
+            frequency_files = [
+                (frequency_file_key(function, args), args[1], pool.submit(function, *args))
+                for function, args in frequency_jobs
+            ]
             lemma_lookup = None
             if cls.lemma_count > 0:  # separate database built from the lemmas file only
                 lemma_lookup = pool.submit(build_lemma_lookup_index, cls.workdir, cls.destination, cls.lemma_count)
@@ -1362,6 +1390,10 @@ class Loader:
 
             if lemma_lookup is not None:
                 lemma_lookup.result()
+            cls.precomputed_files = {}
+            for key, path, job in frequency_files:
+                job.result()
+                cls.precomputed_files[key] = path
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""
