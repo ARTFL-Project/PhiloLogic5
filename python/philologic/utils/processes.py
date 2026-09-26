@@ -39,6 +39,11 @@ def start_worker_server(preload=()):
         multiprocessing.forkserver.ensure_running()
 
 
+def shared_value(typecode, value):
+    """multiprocessing.Value which can be given to the workers of a process_pool, as an argument of its initializer"""
+    return multiprocessing.get_context(START_METHOD).Value(typecode, value)
+
+
 def _init_worker(environment, initializer, initargs):
     """Give a worker the environment of the process which created its pool, then run the pool's initializer"""
     os.environ.clear()
