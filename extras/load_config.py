@@ -243,8 +243,10 @@ lowercase_index = True
 lemma_file = ""
 
 # Define a SpaCy model to use for lemmatization, part-of-speech tagging, and named entity recognition.
-# Note that using SpaCy disables multiprocessing for parsing.
-# Only official SpaCy models are supported. If using a SpaCy Transformer model, make sure to set cores to 1.
+# Unless the model runs on the GPU, each parsing process (see cores) loads its own copy of the model, and the
+# threads the model would use in a single process are shared out among them: memory use grows with cores.
+# On the GPU, files are tagged in a single process.
+# Only official SpaCy models are supported.
 spacy_model = ""
 
 ###########################################

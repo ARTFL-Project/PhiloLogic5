@@ -204,12 +204,20 @@ def pickle_loader_state(loader_class):
     return dill.dumps(loader_class), pickled_attributes
 
 
-def init_parse_worker(pickled_class, pickled_attributes):
-    """Give the Loader class of a parse worker the state pickled by pickle_loader_state"""
+def init_parse_worker(pickled_class, pickled_attributes, workers):
+    """Give the Loader class of a parse worker the state pickled by pickle_loader_state, and its own spaCy model"""
     global worker_loader
     worker_loader = dill.loads(pickled_class)
     for name, pickled_value in pickled_attributes.items():
         setattr(worker_loader, name, dill.loads(pickled_value))
+    if worker_loader.spacy_model:
+        import spacy
+
+        worker_loader.nlp = spacy.load(worker_loader.spacy_model, disable=["tokenizer"])
+        if "torch" in sys.modules:  # share out the threads torch would use in a single process among the workers
+            import torch
+
+            torch.set_num_threads(max(1, torch.get_num_threads() // workers))
 
 
 def parse_in_worker(text, metadata):
@@ -261,6 +269,7 @@ class Loader:
     lemma_count = 0
     has_attributes = False
     nlp = None
+    spacy_model = None  # spaCy model loaded by each parse worker, when not running on the GPU
     suppress_word_attributes = set()
     word_attributes = []
     overflow_words = set()  # words which would overflow the limit for LMDB values
@@ -300,11 +309,14 @@ class Loader:
                 cls.parser_config[option] = loader_options[option]
             except KeyError:  # option hasn't been set
                 pass
+        cls.spacy_model = None
         if loader_options["spacy_model"]:
             import spacy  # only imported when used: importing it takes about a second
 
-            spacy.prefer_gpu()
-            cls.nlp = spacy.load(loader_options["spacy_model"], disable=["tokenizer"])
+            if spacy.prefer_gpu():  # files are then tagged in this process only, see parse_files
+                cls.nlp = spacy.load(loader_options["spacy_model"], disable=["tokenizer"])
+            else:
+                cls.spacy_model = loader_options["spacy_model"]
         cls.suppress_word_attributes = set(loader_options["suppress_word_attributes"])
         return cls(**loader_options)
 
@@ -749,14 +761,14 @@ class Loader:
                 file_positions = sorted(
                     range(len(cls.data_dicts)), key=lambda file_pos: cls.filequeue[file_pos]["size"], reverse=True
                 )
-                with process_pool(workers, init_parse_worker, pickle_loader_state(cls)) as pool:
+                with process_pool(workers, init_parse_worker, (*pickle_loader_state(cls), workers)) as pool:
                     parsed_files = [
                         pool.submit(parse_in_worker, cls.filequeue[pos], cls.data_dicts[pos]) for pos in file_positions
                     ]
                     for parsed_file in as_completed(parsed_files):
                         parsed_file.result()
                         pbar.update()
-            else:  # disable multiprocessing for spacy
+            else:  # the spaCy model runs on the GPU: files are tagged in this process only
                 for _ in map(cls.parse_file, range(len(cls.data_dicts))):
                     pbar.update()
         if verbose is True:
