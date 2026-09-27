@@ -71,6 +71,7 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
         line_count = count_lines(file_in)
         conn = sqlite3.connect(db_destination, detect_types=sqlite3.PARSE_DECLTYPES)
         conn.execute("PRAGMA cache_size=-1000000")  # 1 GB of page cache: indexes of large tables build faster
+        conn.execute("PRAGMA synchronous=OFF")  # no syncing at each statement: the file is synced once complete
         conn.text_factory = str
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -125,6 +126,11 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
                     pass
         conn.commit()
         conn.close()
+        db_file_descriptor = os.open(db_destination, os.O_RDONLY)
+        try:
+            os.fsync(db_file_descriptor)
+        finally:
+            os.close(db_file_descriptor)
 
         if not loader_obj.debug:
             os.system(f"rm {file_in}")
