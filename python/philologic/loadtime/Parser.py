@@ -189,8 +189,7 @@ closed_div_tag = re.compile(r"<\/div", re.I)
 para_tag = re.compile(r"<p\W", re.I)
 quote_tag = re.compile(r"<q[ >]", re.I)
 closed_quote_tag = re.compile(r"</q>", re.I)
-parag_tag = re.compile(r"<p>", re.I)
-parag_with_attrib_tag = re.compile(r"<p ", re.I)
+parag_tag = re.compile(r"<p[ >]", re.I)  # <p> or <p with attributes...>
 closed_para_tag = re.compile(r"</p>", re.I)
 note_tag = re.compile(r"<note\W", re.I)
 closed_note_tag = re.compile(r"</note>", re.I)
@@ -244,6 +243,12 @@ check_if_char_word = re.compile(r"\p{L}", re.I)
 cap_char_or_num = re.compile(r"[A-Z0-9]")  # Capitals
 ending_punctuation = re.compile(r"[%s]$" % string.punctuation.replace(")", "").replace("]", ""))
 add_tag = re.compile(r"<add\W", re.I)
+closed_add_tag = re.compile(r"\A</add>\Z")
+# Tags named exactly index, date, ref or graphic
+index_tag = re.compile(r"<index(?!\w)")
+date_tag = re.compile(r"<date(?!\w)")
+ref_tag = re.compile(r"<ref(?!\w)")
+graphic_tag = re.compile(r"<graphic(?!\w)")
 seg_attrib = re.compile(r"<seg \w+=", re.I)
 abbrev_expand = re.compile(r'(<abbr .*expan=")([^"]*)("[^>]*>)([^>]*)(</abbr>)', re.I | re.M)
 semi_colon_strip = re.compile(r"\A;?(\w+);?\Z")
@@ -326,67 +331,54 @@ entity_regex = [
 LINE_SPLITTER = re.compile(r"([^\n]+)")
 
 
-def tag_pattern(*regexes):
-    """Match of a tag handler (see TAG_HANDLERS): the tag matches one of the regexes"""
-    return lambda tag, tag_name: any(regex.search(tag) is not None for regex in regexes)
-
-
-def tag_named(name):
-    """Match of a tag handler: the tag's name is name"""
-    return lambda tag, tag_name: tag_name == name
-
-
-# Handlers of XMLParser.tag_handler: lowercased tag name ("div" and "/div" for all the names starting with them) ->
-# (match which the tag must be, XMLParser method handling it, the method's other arguments). A tag matches one handler
-# at most: each matches tags starting with a different name.
+# Handlers of XMLParser.tag_handler: tag name (lowercased; "div" and "/div" stand for all the names starting with them)
+# -> (regex which the tag must match, handler method). The regexes match tags starting with different names: a tag has
+# one handler at most.
 TAG_HANDLERS = {
-    "text": (tag_pattern(text_tag), "handle_text", ()),
-    "/text": (tag_pattern(closed_text_tag), "handle_text_end", ()),
-    "q": (tag_pattern(quote_tag), "handle_quote", ()),
-    "/q": (tag_pattern(closed_quote_tag), "handle_quote_end", ()),
-    "p": (tag_pattern(parag_tag, parag_with_attrib_tag), "handle_paragraph", ()),
-    "note": (tag_pattern(note_tag), "handle_note", ()),
-    "/note": (tag_pattern(closed_note_tag), "handle_note_end", ()),
-    # Other paragraph objects: (skipped inside objects blocking deeper ones, blocks deeper objects)
-    "epigraph": (tag_pattern(epigraph_tag), "handle_paragraph_object", (False, True)),
-    "list": (tag_pattern(list_tag), "handle_paragraph_object", (True, False)),
-    "sp": (tag_pattern(sp_tag), "handle_paragraph_object", (False, True)),
-    "argument": (tag_pattern(argument_tag), "handle_paragraph_object", (False, True)),
-    "opener": (tag_pattern(opener_tag), "handle_paragraph_object", (False, True)),
-    "closer": (tag_pattern(closer_tag), "handle_paragraph_object", (False, True)),
-    "stage": (tag_pattern(stage_tag), "handle_paragraph_object", (True, False)),
-    "castlist": (tag_pattern(castlist_tag), "handle_paragraph_object", (False, False)),
-    "add": (tag_pattern(add_tag), "handle_paragraph_object", (False, True)),
-    # and their ends: (skipped inside objects blocking deeper ones, unblocks deeper objects)
-    "/epigraph": (tag_pattern(closed_epigraph_tag), "handle_paragraph_object_end", (False, True)),
-    "/sp": (tag_pattern(closed_sp_tag), "handle_paragraph_object_end", (False, True)),
-    "/argument": (tag_pattern(closed_argument_tag), "handle_paragraph_object_end", (False, True)),
-    "/opener": (tag_pattern(closed_opener_tag), "handle_paragraph_object_end", (False, True)),
-    "/closer": (tag_pattern(closed_closer_tag), "handle_paragraph_object_end", (False, True)),
-    "/stage": (tag_pattern(closed_stage_tag), "handle_paragraph_object_end", (True, False)),
-    "/add": (lambda tag, tag_name: tag == "</add>", "handle_paragraph_object_end", (False, True)),
-    "speaker": (tag_pattern(speaker_tag), "handle_speaker", ()),
-    "pb": (tag_pattern(page_tag), "handle_page", ()),
-    "lg": (tag_pattern(line_group_tag), "handle_line_group", ()),
-    "/lg": (tag_pattern(closed_line_group), "handle_line_group_end", ()),
-    "l": (tag_pattern(line_tag), "handle_line", ()),
-    "/l": (tag_pattern(closed_line_tag), "handle_line_end", ()),
-    "ab": (tag_pattern(ab_tag), "handle_ab", ()),
-    "/ab": (tag_pattern(closed_ab_tag), "handle_ab_end", ()),
-    "s": (tag_pattern(sentence_tag), "handle_sentence", ()),
-    "/s": (tag_pattern(closed_sentence_tag), "handle_sentence_end", ()),
-    "front": (tag_pattern(front_tag), "handle_front", ()),
-    "/front": (tag_pattern(closed_front_tag), "handle_front_end", ()),
-    "body": (tag_pattern(body_tag), "handle_body", ()),
-    "hyperdiv": (tag_pattern(hyper_div_tag), "handle_hyperdiv", ()),
-    "/div": (tag_pattern(closed_div_tag), "handle_div_end", ()),
-    "div": (tag_pattern(div_tag), "handle_div", ()),
-    "index": (tag_named("index"), "handle_index", ()),
-    "date": (tag_named("date"), "handle_date", ()),
-    "ref": (tag_named("ref"), "handle_ref", ()),
-    "graphic": (tag_named("graphic"), "handle_graphic", ()),
+    "text": (text_tag, "handle_text"),
+    "/text": (closed_text_tag, "handle_text_end"),
+    "q": (quote_tag, "handle_quote"),
+    "/q": (closed_quote_tag, "handle_quote_end"),
+    "p": (parag_tag, "handle_paragraph"),
+    "note": (note_tag, "handle_note"),
+    "/note": (closed_note_tag, "handle_note_end"),
+    "castlist": (castlist_tag, "handle_paragraph_object"),
+    "sp": (sp_tag, "handle_blocking_paragraph_object"),
+    "/sp": (closed_sp_tag, "handle_blocking_paragraph_object_end"),
+    "epigraph": (epigraph_tag, "handle_blocking_paragraph_object"),
+    "/epigraph": (closed_epigraph_tag, "handle_blocking_paragraph_object_end"),
+    "argument": (argument_tag, "handle_blocking_paragraph_object"),
+    "/argument": (closed_argument_tag, "handle_blocking_paragraph_object_end"),
+    "opener": (opener_tag, "handle_blocking_paragraph_object"),
+    "/opener": (closed_opener_tag, "handle_blocking_paragraph_object_end"),
+    "closer": (closer_tag, "handle_blocking_paragraph_object"),
+    "/closer": (closed_closer_tag, "handle_blocking_paragraph_object_end"),
+    "add": (add_tag, "handle_blocking_paragraph_object"),
+    "/add": (closed_add_tag, "handle_blocking_paragraph_object_end"),
+    "list": (list_tag, "handle_inner_paragraph_object"),
+    "stage": (stage_tag, "handle_inner_paragraph_object"),
+    "/stage": (closed_stage_tag, "handle_inner_paragraph_object_end"),
+    "speaker": (speaker_tag, "handle_speaker"),
+    "pb": (page_tag, "handle_page"),
+    "lg": (line_group_tag, "handle_line_group"),
+    "/lg": (closed_line_group, "handle_line_group_end"),
+    "l": (line_tag, "handle_line"),
+    "/l": (closed_line_tag, "handle_line_end"),
+    "ab": (ab_tag, "handle_ab"),
+    "/ab": (closed_ab_tag, "handle_ab_end"),
+    "s": (sentence_tag, "handle_sentence"),
+    "/s": (closed_sentence_tag, "handle_sentence_end"),
+    "front": (front_tag, "handle_front"),
+    "/front": (closed_front_tag, "handle_front_end"),
+    "body": (body_tag, "handle_body"),
+    "hyperdiv": (hyper_div_tag, "handle_hyperdiv"),
+    "div": (div_tag, "handle_div"),
+    "/div": (closed_div_tag, "handle_div_end"),
+    "index": (index_tag, "handle_index"),
+    "date": (date_tag, "handle_date"),
+    "ref": (ref_tag, "handle_ref"),
+    "graphic": (graphic_tag, "handle_graphic"),
 }
-ALL_TAG_HANDLERS = list(dict.fromkeys(TAG_HANDLERS.values()))  # each handler once
 
 # Characters matched by the ending_punctuation character class (all ASCII), used to strip it without a regex call
 ENDING_PUNCTUATION_CHARS = frozenset(chr(i) for i in range(128) if ending_punctuation.match(chr(i)))
@@ -744,16 +736,23 @@ class XMLParser:
         if self.current_tag == "w":
             self.word_tag_attributes = self.get_attributes(tag)
 
+        # The handler for its name, if the tag matches its regex
         if tag_name.isascii():
             name = tag_name.lower()
-            handler = TAG_HANDLERS.get("/div" if name.startswith("/div") else "div" if name.startswith("div") else name)
-            handlers = (handler,) if handler is not None else ()
-        else:  # other letters can match the handlers' ASCII names, ignoring case: try all of them
-            handlers = ALL_TAG_HANDLERS
-        for matches, method, args in handlers:
-            if matches(tag, tag_name):
-                getattr(self, method)(tag, tag_name, start_byte, *args)
-                break
+            if name.startswith("div"):  # div_tag and closed_div_tag match all names starting with div
+                name = "div"
+            elif name.startswith("/div"):
+                name = "/div"
+            handler = TAG_HANDLERS.get(name)
+            if handler is not None:
+                pattern, method = handler
+                if pattern.search(tag):
+                    getattr(self, method)(tag, tag_name, start_byte)
+        else:  # ignoring case, letters other than ASCII ones can match the regexes: try them all
+            for pattern, method in TAG_HANDLERS.values():
+                if pattern.search(tag):
+                    getattr(self, method)(tag, tag_name, start_byte)
+                    break
 
     # Tag handlers (see TAG_HANDLERS): each gets the tag, its name and its start byte
 
@@ -781,31 +780,37 @@ class XMLParser:
         self.get_object_attributes(tag, tag_name, "para")
         self.open_para = True
 
-    def handle_paragraph_object(self, tag, tag_name, start_byte, skipped_in_blocking_objects, blocks_deeper_objects):
-        """Objects other than <p> made paragraph objects"""
-        if skipped_in_blocking_objects and self.no_deeper_objects:
-            return
+    def handle_paragraph_object(self, tag, tag_name, start_byte):
+        """Tags other than <p> made paragraph objects"""
         if self.open_para:  # account for unclosed paragraph tags
             self.close_para(start_byte)
         self.open_para = True
         self.v.push("para", tag_name, start_byte)
         self.get_object_attributes(tag, tag_name, "para")
-        if blocks_deeper_objects:
-            self.no_deeper_objects = True
 
-    def handle_paragraph_object_end(
-        self, tag, tag_name, start_byte, skipped_in_blocking_objects, unblocks_deeper_objects
-    ):
-        if skipped_in_blocking_objects and self.no_deeper_objects:
-            return
+    def handle_blocking_paragraph_object(self, tag, tag_name, start_byte):
+        """Paragraph objects in which there are no deeper objects (sp, epigraph...)"""
+        self.handle_paragraph_object(tag, tag_name, start_byte)
+        self.no_deeper_objects = True
+
+    def handle_blocking_paragraph_object_end(self, tag, tag_name, start_byte):
         self.close_para(self.bytes_read_in)
-        if unblocks_deeper_objects:
-            self.no_deeper_objects = False
+        self.no_deeper_objects = False
         self.open_para = False
+
+    def handle_inner_paragraph_object(self, tag, tag_name, start_byte):
+        """Paragraph objects unless inside blocking ones (list, stage)"""
+        if not self.no_deeper_objects:
+            self.handle_paragraph_object(tag, tag_name, start_byte)
+
+    def handle_inner_paragraph_object_end(self, tag, tag_name, start_byte):
+        if not self.no_deeper_objects:
+            self.close_para(self.bytes_read_in)
+            self.open_para = False
 
     def handle_note(self, tag, tag_name, start_byte):
         """Notes: paragraph objects, in which paragraphs are not objects"""
-        self.handle_paragraph_object(tag, tag_name, start_byte, False, False)
+        self.handle_paragraph_object(tag, tag_name, start_byte)
         self.in_a_note = True
 
     def handle_note_end(self, tag, tag_name, start_byte):
@@ -850,7 +855,7 @@ class XMLParser:
             return
         if self.break_sent_in_line_group:
             self.in_line_group = True
-        self.handle_paragraph_object(tag, tag_name, start_byte, False, False)
+        self.handle_paragraph_object(tag, tag_name, start_byte)
 
     def handle_line_group_end(self, tag, tag_name, start_byte):
         self.in_line_group = False
