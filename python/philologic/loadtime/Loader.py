@@ -494,6 +494,13 @@ def join_unique_lines(paths, output_path):
             os.remove(path)
 
 
+def index_entries(txn, position):
+    """Entries of the database at position in the list merged by merge_indexes: for the same key, those of later
+    databases come first"""
+    for key, value in txn.cursor():
+        yield key, -position, value
+
+
 def merge_indexes(index_paths, merged_path):
     """Store the entries of several LMDB databases in a new one, in key order. A key found in several of them gets
     its value in the last one, as when they were all built in a single database, one after the other.
@@ -501,9 +508,7 @@ def merge_indexes(index_paths, merged_path):
     envs = [lmdb.open(path, readonly=True, lock=False) for path in index_paths]
     txns = [env.begin() for env in envs]
     merged_env = lmdb.open(merged_path, map_size=2 * 1024 * 1024 * 1024 * 1024, sync=False)
-    entries = heapq.merge(
-        *(((key, -position, value) for key, value in txn.cursor()) for position, txn in enumerate(txns))
-    )
+    entries = heapq.merge(*(index_entries(txn, position) for position, txn in enumerate(txns)))
     txn = merged_env.begin(write=True)
     previous_key = None
     uncommitted_bytes = 0
