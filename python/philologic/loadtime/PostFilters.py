@@ -464,14 +464,34 @@ def make_collocation_database(loader_obj, db_destination):
     print(f"{time.ctime()}: Collocation database built successfully.")
 
 
+def write_word_frequency_table(words_file, output_path):
+    """Write the number of lines of each run of lines of the same word in a sorted words file, most frequent first"""
+    run_shell(
+        f"cut -f 2 <(lz4cat {words_file}) | uniq -c | LANG=C sort -S 25% -rn -k 1,1> {output_path}",
+        description="Generating word frequencies",
+    )
+
+
+def write_word_frequency_table_from_runs(runs, output_path):
+    """Write the table of write_word_frequency_table from the (word, lines) of the runs of lines of the same word:
+    same lines as uniq -c, in the same order as sort -rn -k 1,1 (whose last resort comparison of whole lines, in
+    reverse, orders words with the same count)."""
+    table = sorted(((count, b"%7d %s" % (count, word)) for word, count in runs), reverse=True)
+    with open(output_path, "wb") as output:
+        output.write(b"".join(line + b"\n" for _, line in table))
+
+
 def word_frequencies(loader_obj):
     """Generate word frequencies"""
     print("%s: Generating word frequencies..." % time.ctime())
-    # Generate frequency table
-    run_shell(
-        f"cut -f 2 <(lz4cat {loader_obj.workdir}/all_words_sorted.lz4) | uniq -c | LANG=C sort -S 25% -rn -k 1,1> {loader_obj.workdir}/all_frequencies",
-        description="Generating word frequencies",
-    )
+    # Generate frequency table, unless it was written while building the index, from the same words file
+    words_file, table = f"{loader_obj.workdir}/all_words_sorted.lz4", f"{loader_obj.workdir}/all_frequencies"
+    precomputed_files = getattr(loader_obj, "precomputed_files", {})
+    precomputed_table = precomputed_files.get(frequency_file_key(write_word_frequency_table, (words_file, table)))
+    if precomputed_table is not None and os.path.exists(precomputed_table):
+        os.replace(precomputed_table, table)
+    else:
+        write_word_frequency_table(words_file, table)
     frequencies = loader_obj.destination + "/frequencies"
     os.system("mkdir %s" % frequencies)
     with open(frequencies + "/word_frequencies", "w", encoding="utf8") as output, open(

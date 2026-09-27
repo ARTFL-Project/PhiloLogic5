@@ -41,6 +41,8 @@ from philologic.loadtime.PostFilters import (
     open_lz4_lines,
     write_lemma_frequencies,
     write_unique_word_attributes,
+    write_word_frequency_table,
+    write_word_frequency_table_from_runs,
 )
 from philologic.loadtime.split_sorted import sort_key
 from philologic.utils import (
@@ -279,10 +281,12 @@ def index_words(
     words_file, index_path, overflow_dir, has_attributes, attributes_to_skip, commit_interval, byte_range=None
 ):
     """Store the philo_ids of each word of a sorted words file (or of a byte range of whole words) in a new LMDB
-    database, under the word. Returns the number of entries, the keys written to overflow files instead, and whether
-    words have attributes other than attributes_to_skip (checked unless has_attributes is already True)."""
+    database, under the word. Returns the number of entries, the keys written to overflow files instead, whether
+    words have attributes other than attributes_to_skip (checked unless has_attributes is already True), and the
+    (word, lines) of each run of lines of the same word (see PostFilters.write_word_frequency_table_from_runs)."""
     db_env = open_index(index_path)
     overflow_keys = []
+    runs = []
     # Lines are handled as bytes: the files are UTF-8, so splitting and comparing bytes gives the same results
     # as on decoded strings, and keys are encoded back to the same bytes.
     with open_lz4_lines(words_file, byte_range) as input_file:
@@ -300,6 +304,7 @@ def index_words(
             if word != current_word:
                 if current_word is not None:
                     packed_philo_ids += pack_philo_ids(philo_ids)
+                    runs.append((current_word, len(packed_philo_ids) // 36))
                     if len(packed_philo_ids) > OVERFLOW_LIMIT:
                         write_overflow_file(overflow_dir, current_word.decode("utf-8"), packed_philo_ids)
                         overflow_keys.append(current_word.decode("utf-8"))
@@ -322,6 +327,7 @@ def index_words(
         # Commit any remaining words
         packed_philo_ids += pack_philo_ids(philo_ids)
         if packed_philo_ids:
+            runs.append((current_word, len(packed_philo_ids) // 36))
             if len(packed_philo_ids) > OVERFLOW_LIMIT:
                 write_overflow_file(overflow_dir, current_word.decode("utf-8"), packed_philo_ids)
                 overflow_keys.append(current_word.decode("utf-8"))
@@ -331,7 +337,7 @@ def index_words(
         txn.commit()
     report_progress(line_number % PROGRESS_INTERVAL)
     db_env.close()
-    return count, overflow_keys, has_attributes
+    return count, overflow_keys, has_attributes, runs
 
 
 def index_lemmas(lemmas_file, index_path, overflow_dir, commit_interval):
@@ -1582,14 +1588,19 @@ class Loader:
 
             word_parts = [f"words.{part}" for part in range(len(word_ranges))]
             attribute_parts = [f"word_attributes.{part}" for part in range(len(word_ranges))]
-            count = 0
+            count, runs = 0, []
             for part in word_parts:
-                part_count, overflow_keys, has_attributes = parts[part].result()
+                part_count, overflow_keys, has_attributes, part_runs = parts[part].result()
                 count += part_count
                 cls.overflow_words.update(overflow_keys)
                 if has_attributes:
                     cls.has_attributes = True
+                runs.extend(part_runs)
             print(f"{time.ctime()}: Stored {cls.word_count} words in {count} entries.", flush=True)
+            # The table of word frequencies, for PostFilters.word_frequencies: the parts counted the words
+            frequency_table = f"{cls.workdir}/word_frequency_table"
+            write_word_frequency_table_from_runs(runs, frequency_table)
+            del runs
             merged_parts = list(word_parts)
             if cls.lemma_count > 0:
                 count, overflow_keys = parts["lemmas"].result()
@@ -1645,6 +1656,8 @@ class Loader:
                 write_unique_word_attributes, (words_file, word_attributes_file, "", cls.attributes_to_skip)
             )
             cls.precomputed_files[key] = word_attributes_file
+            key = frequency_file_key(write_word_frequency_table, (words_file, f"{cls.workdir}/all_frequencies"))
+            cls.precomputed_files[key] = frequency_table
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""
