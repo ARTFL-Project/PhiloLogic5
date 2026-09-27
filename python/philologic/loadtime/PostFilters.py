@@ -59,6 +59,9 @@ def open_lz4_lines(path, byte_range=None):
         source.close()
 
 
+SQL_INSERT_BATCH = 10000  # rows inserted by make_sql_table at once, at most
+
+
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
     """SQL Loader function"""
 
@@ -80,6 +83,20 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
         else:
             query = f"create table if not exists {table} (philo_type, philo_name, philo_id, philo_seq)"
         cursor.execute(query)
+        # Consecutive rows with the same columns are inserted together. As when inserting rows one by one, columns
+        # are added before the first row which has them, when the table has no such column (SQLite ignores the case
+        # of ASCII letters in column names, as bytes.lower does)
+        table_columns = {i[1].encode("utf-8").lower() for i in cursor.execute(f"PRAGMA table_info({table})")}
+        batch_columns, batch = None, []
+
+        def insert_batch():
+            if batch:
+                insert = (
+                    f"INSERT INTO {table} ({','.join(batch_columns)}) values ({','.join('?' * len(batch_columns))});"
+                )
+                cursor.executemany(insert, batch)
+                batch.clear()
+
         with tqdm(total=line_count, leave=False) as pbar:
             with open(file_in, encoding="utf8") as input_file:
                 for sequence, line in enumerate(input_file):
@@ -91,22 +108,26 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
                         row["philo_name"] = philo_name
                         row["philo_id"] = " ".join(fields[:depth])
                         row["philo_seq"] = sequence
-                        insert = f"INSERT INTO {table} ({','.join(list(row.keys()))}) values ({','.join('?' for i in range(len(row)))});"
-                        try:
-                            cursor.execute(insert, list(row.values()))
-                        except sqlite3.OperationalError:
-                            cursor.execute(f"PRAGMA table_info({table})")
-                            column_list = [i[1] for i in cursor]
-                            for column in row:
-                                if column not in column_list:
-                                    if column not in loader_obj.parser_config["metadata_sql_types"]:
-                                        cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} text;")
-                                    else:
-                                        cursor.execute(
-                                            f"ALTER TABLE {table} ADD COLUMN {column} {loader_obj.parser_config['metadata_sql_types'][column]};"
-                                        )
-                            cursor.execute(insert, list(row.values()))
+                        columns = tuple(row)
+                        if columns != batch_columns or len(batch) == SQL_INSERT_BATCH:
+                            insert_batch()
+                            if columns != batch_columns:
+                                if any(column.encode("utf-8").lower() not in table_columns for column in columns):
+                                    cursor.execute(f"PRAGMA table_info({table})")
+                                    column_list = [i[1] for i in cursor]
+                                    for column in columns:
+                                        if column not in column_list:
+                                            if column not in loader_obj.parser_config["metadata_sql_types"]:
+                                                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} text;")
+                                            else:
+                                                cursor.execute(
+                                                    f"ALTER TABLE {table} ADD COLUMN {column} {loader_obj.parser_config['metadata_sql_types'][column]};"
+                                                )
+                                            table_columns.add(column.encode("utf-8").lower())
+                                batch_columns = columns
+                        batch.append(tuple(row.values()))
                     pbar.update()
+                insert_batch()
         conn.commit()
 
         if indices is not None:
