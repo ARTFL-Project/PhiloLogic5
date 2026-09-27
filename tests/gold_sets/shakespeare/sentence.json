@@ -1,7 +1,7 @@
 {
   "corpus": "shakespeare",
   "query_type": "sentence",
-  "generated_date": "2026-03-07T14:18:50.363733",
+  "generated_date": "2026-09-27T15:31:36.603182",
   "philologic_version": "5.1.0.1",
   "description": "Gold set for sentence queries on shakespeare corpus",
   "test_cases": [
