@@ -326,14 +326,71 @@ entity_regex = [
 
 LINE_SPLITTER = re.compile(r"([^\n]+)")
 
-# Lowercased tag names which can match one of the tag regexes tested in XMLParser.tag_handler
-# (along with any name starting with "div" or "/div"). Tags with any other ASCII name are
-# guaranteed to match none of them, which lets tag_handler skip the regex cascade.
-HANDLED_TAG_NAMES = frozenset(
-    """text /text q /q p note /note epigraph /epigraph list sp /sp speaker argument /argument opener /opener closer /closer
-    stage /stage castlist add /add pb lg /lg l /l ab /ab s /s front /front body hyperdiv index date ref graphic""".split()
-    + [f"h{digit}" for digit in range(10)]
-)
+
+def tag_pattern(*regexes):
+    """Match of a tag handler (see TAG_HANDLERS): the tag matches one of the regexes"""
+    return lambda tag, tag_name: any(regex.search(tag) is not None for regex in regexes)
+
+
+def tag_named(name):
+    """Match of a tag handler: the tag's name is name"""
+    return lambda tag, tag_name: tag_name == name
+
+
+HTML_HEADING = (tag_pattern(h_tag), "handle_html_heading", ())
+
+# Handlers of XMLParser.tag_handler: lowercased tag name ("div" and "/div" for all the names starting with them) ->
+# (match which the tag must be, XMLParser method handling it, the method's other arguments). A tag matches one handler
+# at most: each matches tags starting with a different name.
+TAG_HANDLERS = {
+    "text": (tag_pattern(text_tag), "handle_text", ()),
+    "/text": (tag_pattern(closed_text_tag), "handle_text_end", ()),
+    "q": (tag_pattern(quote_tag), "handle_quote", ()),
+    "/q": (tag_pattern(closed_quote_tag), "handle_quote_end", ()),
+    "p": (tag_pattern(parag_tag, parag_with_attrib_tag), "handle_paragraph", ()),
+    "note": (tag_pattern(note_tag), "handle_note", ()),
+    "/note": (tag_pattern(closed_note_tag), "handle_note_end", ()),
+    # Other paragraph objects: (skipped inside objects blocking deeper ones, blocks deeper objects)
+    "epigraph": (tag_pattern(epigraph_tag), "handle_paragraph_object", (False, True)),
+    "list": (tag_pattern(list_tag), "handle_paragraph_object", (True, False)),
+    "sp": (tag_pattern(sp_tag), "handle_paragraph_object", (False, True)),
+    "argument": (tag_pattern(argument_tag), "handle_paragraph_object", (False, True)),
+    "opener": (tag_pattern(opener_tag), "handle_paragraph_object", (False, True)),
+    "closer": (tag_pattern(closer_tag), "handle_paragraph_object", (False, True)),
+    "stage": (tag_pattern(stage_tag), "handle_paragraph_object", (True, False)),
+    "castlist": (tag_pattern(castlist_tag), "handle_paragraph_object", (False, False)),
+    "add": (tag_pattern(add_tag), "handle_paragraph_object", (False, True)),
+    # and their ends: (skipped inside objects blocking deeper ones, unblocks deeper objects)
+    "/epigraph": (tag_pattern(closed_epigraph_tag), "handle_paragraph_object_end", (False, True)),
+    "/sp": (tag_pattern(closed_sp_tag), "handle_paragraph_object_end", (False, True)),
+    "/argument": (tag_pattern(closed_argument_tag), "handle_paragraph_object_end", (False, True)),
+    "/opener": (tag_pattern(closed_opener_tag), "handle_paragraph_object_end", (False, True)),
+    "/closer": (tag_pattern(closed_closer_tag), "handle_paragraph_object_end", (False, True)),
+    "/stage": (tag_pattern(closed_stage_tag), "handle_paragraph_object_end", (True, False)),
+    "/add": (lambda tag, tag_name: tag == "</add>", "handle_paragraph_object_end", (False, True)),
+    "speaker": (tag_pattern(speaker_tag), "handle_speaker", ()),
+    "pb": (tag_pattern(page_tag), "handle_page", ()),
+    "lg": (tag_pattern(line_group_tag), "handle_line_group", ()),
+    "/lg": (tag_pattern(closed_line_group), "handle_line_group_end", ()),
+    "l": (tag_pattern(line_tag), "handle_line", ()),
+    "/l": (tag_pattern(closed_line_tag), "handle_line_end", ()),
+    "ab": (tag_pattern(ab_tag), "handle_ab", ()),
+    "/ab": (tag_pattern(closed_ab_tag), "handle_ab_end", ()),
+    "s": (tag_pattern(sentence_tag), "handle_sentence", ()),
+    "/s": (tag_pattern(closed_sentence_tag), "handle_sentence_end", ()),
+    "front": (tag_pattern(front_tag), "handle_front", ()),
+    "/front": (tag_pattern(closed_front_tag), "handle_front_end", ()),
+    "body": (tag_pattern(body_tag), "handle_body", ()),
+    "hyperdiv": (tag_pattern(hyper_div_tag), "handle_hyperdiv", ()),
+    **dict.fromkeys((f"h{digit}" for digit in range(10)), HTML_HEADING),
+    "/div": (tag_pattern(closed_div_tag), "handle_div_end", ()),
+    "div": (tag_pattern(div_tag), "handle_div", ()),
+    "index": (tag_named("index"), "handle_index", ()),
+    "date": (tag_named("date"), "handle_date", ()),
+    "ref": (tag_named("ref"), "handle_ref", ()),
+    "graphic": (tag_named("graphic"), "handle_graphic", ()),
+}
+ALL_TAG_HANDLERS = list(dict.fromkeys(TAG_HANDLERS.values()))  # each handler once
 
 # Characters matched by the ending_punctuation character class (all ASCII), used to strip it without a regex call
 ENDING_PUNCTUATION_CHARS = frozenset(chr(i) for i in range(128) if ending_punctuation.match(chr(i)))
@@ -683,472 +740,370 @@ class XMLParser:
         return not page_tag.search(tag)
 
     def tag_handler(self, tag):
-        """Tag handler for parser."""
+        """Tag handler for parser: runs the handler of the tag (see TAG_HANDLERS), if it has one."""
         start_byte = self.bytes_read_in - len(tag.encode("utf8"))
         try:
             tag_name = tag_matcher.findall(tag)[0]
         except IndexError:
             tag_name = "unparsable_tag"
-        if not self.skip_suppressed_tag(tag, tag_name):
-            if not tag_name.startswith("/"):
-                self.current_tag = tag_name
+        if self.skip_suppressed_tag(tag, tag_name):
+            return
+        if not tag_name.startswith("/"):
+            self.current_tag = tag_name
 
-            # Fast path: all the tag regexes below start with "<" and a tag name. When the tag holds a single "<"
-            # (always the case for lines of self.content) and its name is ASCII and not in HANDLED_TAG_NAMES,
-            # none of them can match, so only the word tag attributes need handling.
-            if tag_name.isascii() and tag.startswith("<") and tag.find("<", 1) == -1:
-                lower_tag_name = tag_name.lower()
-                if lower_tag_name not in HANDLED_TAG_NAMES and not lower_tag_name.startswith(("div", "/div")):
-                    if self.current_tag == "w":
-                        self.word_tag_attributes = self.get_attributes(tag)
-                    return
+        # Word tags: store attributes to be attached to the actual word in word_handler. Tags closed after a word
+        # tag clear them (current_tag only changes with opening tags).
+        if self.current_tag == "w":
+            self.word_tag_attributes = self.get_attributes(tag)
 
-            # print tag_name, start_byte
-            # Handle <q> tags
-            if text_tag.search(tag) and self.in_text_quote:
-                self.in_quote_text_tag = True
-            if closed_text_tag.search(tag):
-                self.in_quote_text_tag = False
-            if quote_tag.search(tag):
-                self.in_text_quote = True
-            if closed_quote_tag.search(tag):
-                self.in_text_quote = False
+        if tag_name.isascii():
+            name = tag_name.lower()
+            handler = TAG_HANDLERS.get("/div" if name.startswith("/div") else "div" if name.startswith("div") else name)
+            handlers = (handler,) if handler is not None else ()
+        else:  # other letters can match the handlers' ASCII names, ignoring case: try all of them
+            handlers = ALL_TAG_HANDLERS
+        for matches, method, args in handlers:
+            if matches(tag, tag_name):
+                getattr(self, method)(tag, tag_name, start_byte, *args)
+                break
 
-            # Word tags: store attributes to be attached to the actual word in word_handler. Tags closed after a word
-            # tag clear them (current_tag only changes with opening tags), and are handled below as any other.
-            if self.current_tag == "w":
-                self.word_tag_attributes = self.get_attributes(tag)
+    # Tag handlers (see TAG_HANDLERS): each gets the tag, its name and its start byte
 
-            # Paragraphs
-            if parag_tag.search(tag) or parag_with_attrib_tag.search(tag):
-                do_this_para = True
-                if self.in_a_note:
-                    do_this_para = False
-                if self.no_deeper_objects:
-                    do_this_para = False
-                if do_this_para:
-                    if self.open_para:  # account for unclosed paragraph tags
-                        para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                        self.close_para(para_end_byte)
-                    self.v.push("para", tag_name, start_byte)
-                    self.get_object_attributes(tag, tag_name, "para")
-                    self.open_para = True
+    def handle_text(self, tag, tag_name, start_byte):
+        """<text> inside a <q>"""
+        if self.in_text_quote:
+            self.in_quote_text_tag = True
 
-            # Notes: treat as para objects and set flag to not set paras in notes.
-            elif note_tag.search(tag):
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-                self.in_a_note = True
-            elif closed_note_tag.search(tag):
-                if self.in_a_note:  # paragraphs are objects again after the note
-                    self.close_para(self.bytes_read_in)
-                    self.in_a_note = False
+    def handle_text_end(self, tag, tag_name, start_byte):
+        self.in_quote_text_tag = False
 
-            # Epigraph: treat as paragraph objects
-            elif epigraph_tag.search(tag):
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-                self.no_deeper_objects = True
-            elif closed_epigraph_tag.search(tag):
-                self.close_para(self.bytes_read_in)
-                self.no_deeper_objects = False
-                self.open_para = False
+    def handle_quote(self, tag, tag_name, start_byte):
+        self.in_text_quote = True
 
-            # LIST: treat as para objects
-            elif list_tag.search(tag) and not self.no_deeper_objects:
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
+    def handle_quote_end(self, tag, tag_name, start_byte):
+        self.in_text_quote = False
 
-            # SPEECH BREAKS: treat them as para objects
-            elif sp_tag.search(tag):
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-                self.no_deeper_objects = True
-            elif closed_sp_tag.search(tag):
-                self.close_para(self.bytes_read_in)
-                self.no_deeper_objects = False
-                self.open_para = False
+    def handle_paragraph(self, tag, tag_name, start_byte):
+        """Paragraphs, but in notes and objects blocking deeper objects"""
+        if self.in_a_note or self.no_deeper_objects:
+            return
+        if self.open_para:  # account for unclosed paragraph tags
+            self.close_para(start_byte)
+        self.v.push("para", tag_name, start_byte)
+        self.get_object_attributes(tag, tag_name, "para")
+        self.open_para = True
 
-            # Speaker tags: we attach them to the parent <sp>
-            elif speaker_tag.search(tag):
-                if self.open_para:
-                    read_more = True
-                    next_line_num = self.line_count
-                    speaker_name = ""
-                    while read_more:
-                        next_line = self.content[next_line_num]
-                        if next_line.startswith("<"):  # we've reached the next tag
-                            break
-                        speaker_name += next_line.strip()
-                        next_line_num += 1
-                    speaker_name = re.sub(r"\.$", "", speaker_name)  # trailing period often found in speaker names
-                    self.v["para"]["speaker"] = speaker_name.title()
+    def handle_paragraph_object(self, tag, tag_name, start_byte, skipped_in_blocking_objects, blocks_deeper_objects):
+        """Objects other than <p> made paragraph objects"""
+        if skipped_in_blocking_objects and self.no_deeper_objects:
+            return
+        if self.open_para:  # account for unclosed paragraph tags
+            self.close_para(start_byte)
+        self.open_para = True
+        self.v.push("para", tag_name, start_byte)
+        self.get_object_attributes(tag, tag_name, "para")
+        if blocks_deeper_objects:
+            self.no_deeper_objects = True
 
-            # ARGUMENT BREAKS: treat them as para objects
-            elif argument_tag.search(tag):
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-                self.no_deeper_objects = True
-            elif closed_argument_tag.search(tag):
-                self.close_para(self.bytes_read_in)
-                self.no_deeper_objects = False
-                self.open_para = False
+    def handle_paragraph_object_end(
+        self, tag, tag_name, start_byte, skipped_in_blocking_objects, unblocks_deeper_objects
+    ):
+        if skipped_in_blocking_objects and self.no_deeper_objects:
+            return
+        self.close_para(self.bytes_read_in)
+        if unblocks_deeper_objects:
+            self.no_deeper_objects = False
+        self.open_para = False
 
-            # OPENER BREAKS: treat them as para objects
-            elif opener_tag.search(tag):
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-                self.no_deeper_objects = True
-            elif closed_opener_tag.search(tag):
-                self.close_para(self.bytes_read_in)
-                self.no_deeper_objects = False
-                self.open_para = False
+    def handle_note(self, tag, tag_name, start_byte):
+        """Notes: paragraph objects, in which paragraphs are not objects"""
+        self.handle_paragraph_object(tag, tag_name, start_byte, False, False)
+        self.in_a_note = True
 
-            # CLOSER BREAKS: treat them as para objects
-            elif closer_tag.search(tag):
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-                self.no_deeper_objects = True
-            elif closed_closer_tag.search(tag):
-                self.close_para(self.bytes_read_in)
-                self.no_deeper_objects = False
-                self.open_para = False
+    def handle_note_end(self, tag, tag_name, start_byte):
+        if self.in_a_note:  # paragraphs are objects again after the note
+            self.close_para(self.bytes_read_in)
+            self.in_a_note = False
 
-            # STAGE DIRECTIONS: treat them as para objects
-            # TODO: what to do with stage direction??? deactivated to avoid clashing with <sp> tags
-            elif stage_tag.search(tag) and not self.no_deeper_objects:
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-            elif closed_stage_tag.search(tag) and not self.no_deeper_objects:
-                self.close_para(self.bytes_read_in)
-                self.open_para = False
+    def handle_speaker(self, tag, tag_name, start_byte):
+        """Speaker tags: we attach them to the parent <sp>"""
+        if self.open_para:
+            next_line_num = self.line_count
+            speaker_name = ""
+            while True:
+                next_line = self.content[next_line_num]
+                if next_line.startswith("<"):  # we've reached the next tag
+                    break
+                speaker_name += next_line.strip()
+                next_line_num += 1
+            speaker_name = re.sub(r"\.$", "", speaker_name)  # trailing period often found in speaker names
+            self.v["para"]["speaker"] = speaker_name.title()
 
-            # CAST LIST: treat them as para objects
-            elif castlist_tag.search(tag):
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
+    def handle_page(self, tag, tag_name, start_byte):
+        """Page breaks: this updates the current page tag, its n attribute "na" if not found"""
+        if self.open_page:
+            self.v.pull("page", start_byte)
+            self.open_page = False
+        self.v.push("page", tag_name, start_byte)
+        self.get_object_attributes(tag, tag_name, "page")
+        try:
+            n = self.v["page"]["n"]
+            n = n.replace(" ", "_").replace("-", "_").lower()
+            if not n:
+                n = "na"
+        except KeyError:
+            n = "na"
+        self.v["page"]["n"] = n
+        self.open_page = True
 
-            # Handle <add> tags as a para.
-            elif add_tag.search(tag):
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-                self.no_deeper_objects = True
-            elif tag == "</add>":
-                self.close_para(self.bytes_read_in)
-                self.no_deeper_objects = False
+    def handle_line_group(self, tag, tag_name, start_byte):
+        """Line groups: paragraph objects, in which lines can break sentences (see handle_line)"""
+        if self.no_deeper_objects:
+            return
+        if self.break_sent_in_line_group:
+            self.in_line_group = True
+        self.handle_paragraph_object(tag, tag_name, start_byte, False, False)
 
-            # PAGE BREAKS: this updates the currentpagetag or sets it to "na" if not found.
-            elif page_tag.search(tag):
-                if self.open_page:
-                    page_end_tag = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.v.pull("page", page_end_tag)
-                    self.open_page = False
-                self.v.push("page", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "page")
-                try:
-                    n = self.v["page"]["n"]
-                    n = n.replace(" ", "_").replace("-", "_").lower()
-                    if not n:
-                        n = "na"
-                except KeyError:
-                    n = "na"
-                self.v["page"]["n"] = n
-                self.open_page = True
+    def handle_line_group_end(self, tag, tag_name, start_byte):
+        self.in_line_group = False
+        self.close_para(self.bytes_read_in)
 
-            # LINE GROUP TAGS: treat linegroups same a paragraphs, set or unset the global
-            # variable self.in_line_group.
-            elif line_group_tag.search(tag) and not self.no_deeper_objects:
-                if self.break_sent_in_line_group:
-                    self.in_line_group = True
-                if self.open_para:  # account for unclosed paragraph tags
-                    para_end_byte = self.bytes_read_in - len(tag.encode("utf8"))
-                    self.close_para(para_end_byte)
-                self.open_para = True
-                self.v.push("para", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "para")
-            elif closed_line_group.search(tag):
-                self.in_line_group = False
-                self.close_para(self.bytes_read_in)
+    def handle_line(self, tag, tag_name, start_byte):
+        """Lines: line objects, and sentences in line groups when break_sent_in_line_group"""
+        if self.in_line_group and self.break_sent_in_line_group:
+            self.v.push("sent", tag_name, start_byte)
+            self.v.pull("sent", self.bytes_read_in)
+        # Create line parallel object
+        self.v.push("line", tag_name, start_byte)
+        self.get_object_attributes(tag, tag_name, "line")
+        self.v["line"].attrib["doc_id"] = self.docid
 
-            # END LINE TAG: use this to break "sentences" if self.in_line_group.  This is
-            # if to set searching in line groups to lines rather than sentences.
-            elif line_tag.search(tag):
-                if self.in_line_group and self.break_sent_in_line_group:
-                    self.v.push("sent", tag_name, start_byte)
-                    self.v.pull("sent", self.bytes_read_in)
-                # Create line parallel object
-                self.v.push("line", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "line")
-                self.v["line"].attrib["doc_id"] = self.docid
-            elif closed_line_tag.search(tag):
-                if self.in_line_group and self.break_sent_in_line_group:
-                    self.v.pull("sent", self.bytes_read_in)
-                self.v.pull("line", self.bytes_read_in)
+    def handle_line_end(self, tag, tag_name, start_byte):
+        if self.in_line_group and self.break_sent_in_line_group:
+            self.v.pull("sent", self.bytes_read_in)
+        self.v.pull("line", self.bytes_read_in)
 
-            if ab_tag.search(tag):
-                # Create line parallel object
-                self.v.push("line", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "line")
-                self.v["line"].attrib["doc_id"] = self.docid
-            elif closed_ab_tag.search(tag):
-                self.v.pull("line", self.bytes_read_in)
+    def handle_ab(self, tag, tag_name, start_byte):
+        """Anonymous blocks: line objects"""
+        self.v.push("line", tag_name, start_byte)
+        self.get_object_attributes(tag, tag_name, "line")
+        self.v["line"].attrib["doc_id"] = self.docid
 
-            # SENTENCE TAG: <s> </s>.  We have never seen a sample of these
-            # but let's add the required code to note the beginning of a new
-            # sentence and to turn off automatic sentence tagging
-            elif sentence_tag.search(tag):
-                if self.open_sent or self.in_tagged_sentence:
-                    self.close_sent(self.bytes_read_in)
-                self.v.push("sent", tag_name, start_byte)
-                self.in_tagged_sentence = True
-                self.open_sent = True
-            elif closed_sentence_tag.search(tag):
-                self.close_sent(self.bytes_read_in)
-                self.in_tagged_sentence = False
-                self.open_sent = False
+    def handle_ab_end(self, tag, tag_name, start_byte):
+        self.v.pull("line", self.bytes_read_in)
 
-            # TODO: handle docbody
+    def handle_sentence(self, tag, tag_name, start_byte):
+        """Sentence tags: a new sentence, which turns off automatic sentence tagging"""
+        if self.open_sent or self.in_tagged_sentence:
+            self.close_sent(self.bytes_read_in)
+        self.v.push("sent", tag_name, start_byte)
+        self.in_tagged_sentence = True
+        self.open_sent = True
 
-            # FRONT: Treat <front as a <div
-            # TODO : test for inner divs as in Philo3???
-            elif front_tag.search(tag):
-                if self.open_div1:
-                    self.close_div1(start_byte)
-                self.in_front_matter = True
-                self.v.push("div1", "front", start_byte)
-                self.current_div_id = self.v["div1"].id
-                self.get_object_attributes(tag, tag_name, "div1")
-                self.context_div_level = 1
-                self.open_div1 = True
-            elif closed_front_tag.search(tag):
-                self.in_front_matter = False
-                self.context_div_level = 0
+    def handle_sentence_end(self, tag, tag_name, start_byte):
+        self.close_sent(self.bytes_read_in)
+        self.in_tagged_sentence = False
+        self.open_sent = False
+
+    def handle_front(self, tag, tag_name, start_byte):
+        """Front: treated as a div1"""
+        if self.open_div1:
+            self.close_div1(start_byte)
+        self.in_front_matter = True
+        self.v.push("div1", "front", start_byte)
+        self.current_div_id = self.v["div1"].id
+        self.get_object_attributes(tag, tag_name, "div1")
+        self.context_div_level = 1
+        self.open_div1 = True
+
+    def handle_front_end(self, tag, tag_name, start_byte):
+        self.in_front_matter = False
+        self.context_div_level = 0
+        self.close_div1(self.bytes_read_in)
+
+    def handle_body(self, tag, tag_name, start_byte):
+        """Body: a div1 when the document has no divs"""
+        if self.got_a_div:
+            return
+        self.v.push("div1", tag_name, start_byte)
+        self.current_div_id = self.v["div1"].id
+        self.context_div_level = 1
+        self.v["div1"].attrib["philo_div1_id"] = " ".join(str(i) for i in self.v["div1"].id[:2])
+        self.open_div1 = True
+        div_head = self.get_div_head(tag)
+        if "[NA]" in div_head or "[na]" in div_head:
+            div_head = "Document Body"
+        self.v["div1"]["head"] = div_head
+
+    def handle_hyperdiv(self, tag, tag_name, start_byte):
+        """HyperDiv: a Brown WWP construct, a place to put information related to the body of the text which doesn't
+        appear directly within its flow (footnotes, acrostics, castlist information required for the who attribute
+        of <speaker>...): a div1"""
+        if self.open_div1:
+            self.close_div1(start_byte)
+        self.context_div_level = 1
+        self.open_div1 = True
+        self.v.push("div1", tag_name, start_byte)
+        self.current_div_id = self.v["div1"].id
+        self.v["div1"]["head"] = "[HyperDiv]"
+
+    def handle_html_heading(self, tag, tag_name, start_byte):
+        """h1, h2, h3 tags of HTML files: divs, of what follows them (so implicitly closed)"""
+        if self.file_type != "html":
+            return
+        self.context_div_level = int(h_tag.search(tag).groups()[0])
+        if self.context_div_level > 3:
+            self.content_div_level = 3
+        if self.context_div_level == 1:
+            if self.open_div1:
+                self.close_div1(start_byte)
+            self.open_div1 = True
+        elif self.context_div_level == 2:
+            if self.open_div2:
+                self.close_div2(start_byte)
+            self.open_div2 = True
+        elif self.context_div_level == 3:
+            if self.open_div3:
+                self.close_div3(start_byte)
+            self.open_div3 = True
+        current_div = f"div{self.context_div_level}"
+        self.v.push(current_div, tag_name, start_byte)
+        look_ahead = self.line_count
+        read_more = True
+        div_head = ""
+        while read_more:
+            try:
+                next_line = self.content[look_ahead]
+            except IndexError:
+                break
+            if re.search(r"</h1|h2|h3>", next_line, re.I):
+                break
+            div_head += next_line
+            look_ahead += 1
+        div_head = self.clear_char_ents(div_head)
+        div_head = self.latin1_ents_to_utf8(div_head)
+        div_head = self.convert_other_ents(div_head)
+        div_head = re.sub(r"\n?<[^>]*>\n?", "", div_head)
+        div_head = div_head.replace("_", "")
+        div_head = div_head.replace("\t", "")
+        div_head = " ".join(div_head.split())  # remove double or more spaces
+        div_head = div_head.replace("[", "").replace("]", "")
+        div_head = div_head.replace('"', "")
+        div_head = div_head.strip()
+        div_head = self.remove_control_chars(div_head)
+        div_head = convert_entities(div_head)
+        div_head = div_head.replace('"', "")
+        self.v[current_div]["head"] = div_head
+
+    def handle_div_end(self, tag, tag_name, start_byte):
+        if "div1" in tag_name:
+            if self.in_front_matter:
+                self.close_div2(self.bytes_read_in)
+            else:
                 self.close_div1(self.bytes_read_in)
+        elif "div2" in tag_name:
+            if self.in_front_matter:
+                self.close_div3(self.bytes_read_in)
+            else:
+                self.close_div2(self.bytes_read_in)
+        elif "div3" in tag_name:
+            self.close_div3(self.bytes_read_in)
+        self.context_div_level -= 1
+        self.no_deeper_objects = False
 
-            # BODY TAG: Let's set it as a <div object if we have no divs in the document.
-            # These tend to carry on as FRONTMATTER. Don't have to check for lower divs, etc.
-            elif body_tag.search(tag) and not self.got_a_div:
-                self.v.push("div1", tag_name, start_byte)
-                self.current_div_id = self.v["div1"].id
-                self.context_div_level = 1
-                self.v["div1"].attrib["philo_div1_id"] = " ".join(str(i) for i in self.v["div1"].id[:2])
-                self.open_div1 = True
-                div_head = self.get_div_head(tag)
-                if "[NA]" in div_head or "[na]" in div_head:
-                    div_head = "Document Body"
-                self.v["div1"]["head"] = div_head
+    def handle_div(self, tag, tag_name, start_byte):
+        """Divs: division levels, from their number (1, 2 or 3) or else their depth, with the <head> found in them"""
+        self.context_div_level += 1
+        if self.context_div_level > 3:
+            if self.open_div3:
+                self.close_div3(start_byte)
+            self.context_div_level = 3
+        if self.context_div_level < 1:
+            self.context_div_level = 1
 
-            # HyperDiv: This is a Brown WWP construct. It is defined as a place to put
-            # a number of different kinds of information which are related to the body
-            # of the text but do not appear directly within its flow, for instance footnotes,
-            # acrostics, and castlist information which is not printed in the text but
-            # is required to provide IDREFs for the who attribute on <speaker>.
-            elif hyper_div_tag.search(tag):
-                if self.open_div1:
-                    self.close_div1(start_byte)
-                self.context_div_level = 1
-                self.open_div1 = True
-                self.v.push("div1", tag_name, start_byte)
-                self.current_div_id = self.v["div1"].id
-                self.v["div1"]["head"] = "[HyperDiv]"
+        div_level = tag_name[-1]
+        if not div_level.isdigit():
+            div_level = self.context_div_level
+        elif div_level == "0" or int(div_level) > 3:
+            div_level = self.context_div_level
+        else:
+            div_level = int(div_level)
+        # <Front is top level div1, so inner divs should be div2s or div3s
+        if self.in_front_matter:
+            div_level = self.context_div_level
+        self.context_div_level = div_level
 
-            # h1, h2, h3 tags should be considered markers for divs in HTML files
-            # what follows the h tags are the content for that div, so we use implied close
-            if self.file_type == "html" and h_tag.search(tag):
-                self.context_div_level = int(h_tag.search(tag).groups()[0])
-                if self.context_div_level > 3:
-                    self.content_div_level = 3
-                if self.context_div_level == 1:
-                    if self.open_div1:
-                        self.close_div1(start_byte)
-                    self.open_div1 = True
-                elif self.context_div_level == 2:
-                    if self.open_div2:
-                        self.close_div2(start_byte)
-                    self.open_div2 = True
-                elif self.context_div_level == 3:
-                    if self.open_div3:
-                        self.close_div3(start_byte)
-                    self.open_div3 = True
-                current_div = f"div{self.context_div_level}"
-                self.v.push(current_div, tag_name, start_byte)
-                look_ahead = self.line_count
-                read_more = True
-                div_head = ""
-                while read_more:
-                    try:
-                        next_line = self.content[look_ahead]
-                    except IndexError:
-                        break
-                    if re.search(r"</h1|h2|h3>", next_line, re.I):
-                        break
-                    div_head += next_line
-                    look_ahead += 1
-                div_head = self.clear_char_ents(div_head)
-                div_head = self.latin1_ents_to_utf8(div_head)
-                div_head = self.convert_other_ents(div_head)
-                div_head = re.sub(r"\n?<[^>]*>\n?", "", div_head)
-                div_head = div_head.replace("_", "")
-                div_head = div_head.replace("\t", "")
-                div_head = " ".join(div_head.split())  # remove double or more spaces
-                div_head = div_head.replace("[", "").replace("]", "")
-                div_head = div_head.replace('"', "")
-                div_head = div_head.strip()
-                div_head = self.remove_control_chars(div_head)
-                div_head = convert_entities(div_head)
-                div_head = div_head.replace('"', "")
-                self.v[current_div]["head"] = div_head
+        # TODO: ignore divs inside of internal text tags.  Setable
+        # from configuration.  But we will bump the para and sent args
+        div_type = "div%d" % div_level
+        if div_type == "div1":
+            if self.open_div1:
+                self.close_div1(start_byte)
+            self.open_div1 = True
+            self.v.push("div1", tag_name, start_byte)
+            self.current_div_id = self.v["div1"].id
+            self.v["div1"]["head"] = self.get_div_head(tag)
+            self.get_object_attributes(tag, tag_name, object_type="div1")
+        elif div_type == "div2":
+            if self.open_div2:
+                self.close_div2(start_byte)
+            self.open_div2 = True
+            self.v.push("div2", tag_name, start_byte)
+            self.current_div_id = self.v["div2"].id
+            self.v["div2"]["head"] = self.get_div_head(tag)
+            self.get_object_attributes(tag, tag_name, object_type="div2")
+        else:
+            if self.open_div3:
+                self.close_div3(start_byte)
+            self.open_div3 = True
+            self.v.push("div3", tag_name, start_byte)
+            self.current_div_id = self.v["div3"].id
+            self.v["div3"]["head"] = self.get_div_head(tag)
+            self.get_object_attributes(tag, tag_name, object_type="div3")
 
-            # DIV TAGS: set division levels and print out div info. A couple of assumptions:
-            # - I assume divs are numbered 1,2,3.
-            # - I output <head> info where I find it.  This could also be modified to output
-            #   a structured table record with div type, and other attributes, along with
-            #   the Philoid and head for searching under document levels.
-            elif closed_div_tag.search(tag):
-                if "div1" in tag_name:
-                    if self.in_front_matter:
-                        self.close_div2(self.bytes_read_in)
-                    else:
-                        self.close_div1(self.bytes_read_in)
-                elif "div2" in tag_name:
-                    if self.in_front_matter:
-                        self.close_div3(self.bytes_read_in)
-                    else:
-                        self.close_div2(self.bytes_read_in)
-                elif "div3" in tag_name:
-                    self.close_div3(self.bytes_read_in)
-                self.context_div_level -= 1
-                self.no_deeper_objects = False
-            elif div_tag.search(tag):
-                self.context_div_level += 1
-                if self.context_div_level > 3:
-                    if self.open_div3:
-                        self.close_div3(start_byte)
-                    self.context_div_level = 3
-                if self.context_div_level < 1:
-                    self.context_div_level = 1
+        if "type" in self.v[div_type]:
+            if self.v[div_type]["type"] == "notes":
+                self.no_deeper_objects = True
 
-                div_level = tag_name[-1]
-                if not div_level.isdigit():
-                    div_level = self.context_div_level
-                elif div_level == "0" or int(div_level) > 3:
-                    div_level = self.context_div_level
-                else:
-                    div_level = int(div_level)
-                # <Front is top level div1, so inner divs should be div2s or div3s
-                if self.in_front_matter:
-                    div_level = self.context_div_level
-                self.context_div_level = div_level
+    def handle_index(self, tag, tag_name, start_byte):
+        """Index tags inside a div: attributes describing it (the type attribute's value in the value attribute)"""
+        if self.context_div_level == 0:
+            return
+        attrib = dict(self.get_attributes(tag))
+        div = f"div{self.context_div_level}"
+        if "type" in attrib:
+            if attrib["type"] in self.metadata_to_parse["div"]:
+                try:
+                    self.set_metadata_value(div, attrib["type"], attrib["value"])
+                except KeyError:
+                    pass
+        else:
+            for metadata_name, metadata_value in attrib.items():
+                self.set_metadata_value(div, metadata_name, metadata_value)
 
-                # TODO: ignore divs inside of internal text tags.  Setable
-                # from configuration.  But we will bump the para and sent args
-                div_type = "div%d" % div_level
-                if div_type == "div1":
-                    if self.open_div1:
-                        self.close_div1(start_byte)
-                    self.open_div1 = True
-                    self.v.push("div1", tag_name, start_byte)
-                    self.current_div_id = self.v["div1"].id
-                    self.v["div1"]["head"] = self.get_div_head(tag)
-                    self.get_object_attributes(tag, tag_name, object_type="div1")
-                elif div_type == "div2":
-                    if self.open_div2:
-                        self.close_div2(start_byte)
-                    self.open_div2 = True
-                    self.v.push("div2", tag_name, start_byte)
-                    self.current_div_id = self.v["div2"].id
-                    self.v["div2"]["head"] = self.get_div_head(tag)
-                    self.get_object_attributes(tag, tag_name, object_type="div2")
-                else:
-                    if self.open_div3:
-                        self.close_div3(start_byte)
-                    self.open_div3 = True
-                    self.v.push("div3", tag_name, start_byte)
-                    self.current_div_id = self.v["div3"].id
-                    self.v["div3"]["head"] = self.get_div_head(tag)
-                    self.get_object_attributes(tag, tag_name, object_type="div3")
+    def handle_date(self, tag, tag_name, start_byte):
+        """Dates: attributes of the current div"""
+        div = f"div{self.context_div_level}"
+        for attrib_name, attrib_value in self.get_attributes(tag):
+            if attrib_name == "value" or attrib_name == "when":
+                if "div_date" not in self.v[div].attrib:
+                    self.set_metadata_value(div, "div_date", attrib_value)
+            else:
+                attrib_name = f"div_{attrib_name}"
+                if attrib_name not in self.v[div].attrib:
+                    self.v[div].attrib[attrib_name] = attrib_value
 
-                if "type" in self.v[div_type]:
-                    if self.v[div_type]["type"] == "notes":
-                        self.no_deeper_objects = True
+    def handle_ref(self, tag, tag_name, start_byte):
+        self.v.push("ref", tag_name, start_byte)
+        self.get_object_attributes(tag, tag_name, "ref")
+        self.v["ref"].attrib["parent"] = " ".join([str(i) for i in self.current_div_id])
+        self.v.pull("ref", self.bytes_read_in)
 
-                # We are handling the case of index tags containing attributes which describe the parent div
-                # the type attrib has its value in the value attrib
-            elif tag_name == "index" and self.context_div_level != 0:
-                attrib = dict(self.get_attributes(tag))
-                div = f"div{self.context_div_level}"
-                if "type" in attrib:
-                    if attrib["type"] in self.metadata_to_parse["div"]:
-                        try:
-                            self.set_metadata_value(div, attrib["type"], attrib["value"])
-                        except KeyError:
-                            pass
-                else:
-                    for metadata_name, metadata_value in attrib.items():
-                        self.set_metadata_value(div, metadata_name, metadata_value)
-
-            elif tag_name == "date":
-                div = f"div{self.context_div_level}"
-                for attrib_name, attrib_value in self.get_attributes(tag):
-                    if attrib_name == "value" or attrib_name == "when":
-                        if "div_date" not in self.v[div].attrib:
-                            self.set_metadata_value(div, "div_date", attrib_value)
-                    else:
-                        attrib_name = f"div_{attrib_name}"
-                        if attrib_name not in self.v[div].attrib:
-                            self.v[div].attrib[attrib_name] = attrib_value
-
-            elif tag_name == "ref":
-                self.v.push("ref", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "ref")
-                self.v["ref"].attrib["parent"] = " ".join([str(i) for i in self.current_div_id])
-                self.v.pull("ref", self.bytes_read_in)
-
-            elif tag_name == "graphic":
-                self.v.push("graphic", tag_name, start_byte)
-                self.get_object_attributes(tag, tag_name, "graphic")
-                self.v["graphic"].attrib["parent"] = " ".join([str(i) for i in self.current_div_id])
-                self.v.pull("graphic", self.bytes_read_in)
+    def handle_graphic(self, tag, tag_name, start_byte):
+        self.v.push("graphic", tag_name, start_byte)
+        self.get_object_attributes(tag, tag_name, "graphic")
+        self.v["graphic"].attrib["parent"] = " ".join([str(i) for i in self.current_div_id])
+        self.v.pull("graphic", self.bytes_read_in)
 
     def set_metadata_value(self, object_level, metadata, value):
         try:

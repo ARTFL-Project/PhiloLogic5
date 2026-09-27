@@ -51,16 +51,29 @@ SNIPPETS = {
     "</body></text>",
     "refs_and_graphics": '<text><body><div><p>see <ref target="#n1">note</ref> <graphic url="a.png"/></p></div>'
     "</body></text>",
+    "div_metadata": '<text><body><div type="letter"><index type="author" value="Bob"/><date when="1850-01-02" '
+    'n="3"/><p>t</p></div><index type="n" value="x"/></body></text>',
+    "tag_name_variants": "<text><body><div><sp><p>x</p></sp ><q/>y<q>z</q><ſp>ſ</ſp><add>w</add></ADD> v<list>l"
+    "</list></div></body></text>",
+    # XMLParser ignores file_type for now (its file_type parameter is never read): the XML behavior
+    "html_headings": (
+        "<html><head><title>t</title></head><body><h1>One</h1><p>a</p><h2>Two</h2><p>b</p><h1 class='x'>Three</h1>"
+        "<p>c</p></body></html>",
+        {"file_type": "html"},
+    ),
     "text_outside_body": "<TEI><teiHeader><title>Not indexed</title></teiHeader><text><body><p>indexed</p>"
     "</body></text></TEI>",
 }
 
 
-def parse(xml):
+def parse(snippet):
+    """Output lines of the parser for a snippet: a document, or (a document, other parser options)"""
+    xml, options = snippet if isinstance(snippet, tuple) else (snippet, {})
     output = io.StringIO()
-    XMLParser(
-        output, 1, len(xml.encode("utf8")), known_metadata={"filename": "snippet.xml"}, metadata_sql_types={}
-    ).parse(io.StringIO(xml))
+    parser = XMLParser(
+        output, 1, len(xml.encode("utf8")), known_metadata={"filename": "snippet.xml"}, metadata_sql_types={}, **options
+    )
+    parser.parse(io.StringIO(xml))
     return output.getvalue().splitlines()
 
 
@@ -74,7 +87,8 @@ def test_parser_output(name):
 if __name__ == "__main__":
     if "--update" in sys.argv:
         EXPECTED.write_text(
-            json.dumps({name: parse(xml) for name, xml in SNIPPETS.items()}, indent=1, ensure_ascii=False) + "\n",
+            json.dumps({name: parse(snippet) for name, snippet in SNIPPETS.items()}, indent=1, ensure_ascii=False)
+            + "\n",
             encoding="utf8",
         )
         print(f"recorded the output of {len(SNIPPETS)} snippets in {EXPECTED}")
