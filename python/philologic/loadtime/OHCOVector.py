@@ -46,29 +46,28 @@ class CompoundRecord:
         self.attrib = {}
 
     def __str__(self):
-        print_id = self.id
-        if 0 in self.id:
-            parent_index = self.id.index(0) - 1
-        else:
-            parent_index = len(self.id) - 1
-        parent_index = max(parent_index, 0)
-        parent_id = self.id[:parent_index] + [0] * (len(self.id) - parent_index)
-        print_id.append(self.attrib.get("start_byte", 0))
-        print_id.append(self.attrib.get("page", 0))
-        self.attrib["parent"] = " ".join(map(str, parent_id))
+        id, attrib = self.id, self.attrib
+        parent_index = (id.index(0) if 0 in id else len(id)) - 1
+        if parent_index < 0:
+            parent_index = 0
+        id_strings = [str(i) for i in id]
+        attrib["parent"] = " ".join(id_strings[:parent_index] + ["0"] * (len(id) - parent_index))
+        start_byte, page = attrib.get("start_byte", 0), attrib.get("page", 0)
+        id.append(start_byte)  # the printed id, which the record keeps
+        id.append(page)
         clean_attrib = {}
-        for k, v in self.attrib.items():
+        for k, v in attrib.items():
             value_type = type(v)
-            if value_type is str:
-                clean_attrib[k] = " ".join(v.split())
-            elif value_type is int:  # no split method: avoid raising AttributeError below
+            if value_type is int:  # no split method: avoid raising AttributeError below
                 clean_attrib[k] = v
+            elif value_type is str:
+                clean_attrib[k] = " ".join(v.split())
             else:
                 try:
                     clean_attrib[k] = " ".join(v.split())
                 except AttributeError:
                     clean_attrib[k] = v
-        return f"{self.type}\t{self.name}\t{' '.join(map(str, print_id))}\t{dumps(clean_attrib).decode('utf8')}"
+        return f"{self.type}\t{self.name}\t{' '.join(id_strings)} {start_byte} {page}\t{dumps(clean_attrib).decode('utf8')}"
 
     def __getitem__(self, n):
         return self.attrib[n]

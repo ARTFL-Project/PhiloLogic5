@@ -1,17 +1,21 @@
 """Unit tests for XMLParser."""
 
 import io
+import random
 import sys
 from pathlib import Path
 
 import pytest
+from orjson import dumps
 
 # Add PhiloLogic to path
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
+from philologic.loadtime.OHCOVector import CompoundRecord
 from philologic.loadtime.Parser import (
     XMLParser,
+    control_char_re,
     DEFAULT_TAG_TO_OBJ_MAP,
     DEFAULT_METADATA_TO_PARSE,
     DEFAULT_DOC_XPATHS,
@@ -63,6 +67,7 @@ class TestTokenRegex:
     def test_token_regex_matches_words(self):
         """Test that TOKEN_REGEX matches basic words."""
         import regex as re
+
         pattern = re.compile(TOKEN_REGEX)
 
         # Should match simple words
@@ -72,6 +77,7 @@ class TestTokenRegex:
     def test_token_regex_matches_unicode(self):
         """Test that TOKEN_REGEX matches unicode characters."""
         import regex as re
+
         pattern = re.compile(TOKEN_REGEX)
 
         # Should match accented characters
@@ -82,6 +88,7 @@ class TestTokenRegex:
     def test_token_regex_matches_numbers(self):
         """Test that TOKEN_REGEX matches numbers."""
         import regex as re
+
         pattern = re.compile(TOKEN_REGEX)
 
         # Should match numbers
@@ -91,6 +98,7 @@ class TestTokenRegex:
     def test_token_regex_matches_entities(self):
         """Test that TOKEN_REGEX handles entity patterns."""
         import regex as re
+
         pattern = re.compile(TOKEN_REGEX)
 
         # Should match entity-like patterns
@@ -142,3 +150,89 @@ class TestMetadataExtraction:
         assert "create_date" in DEFAULT_DOC_XPATHS
         assert "pub_date" in DEFAULT_DOC_XPATHS
         assert len(DEFAULT_DOC_XPATHS["pub_date"]) > 0
+
+
+def plain_parser(**parse_options):
+    return XMLParser(io.StringIO(), 1, 1, metadata_sql_types={}, **parse_options)
+
+
+@pytest.mark.unit
+class TestTagExceptions:
+    """cleanup_content only tries the tag exceptions regex where matches can start: same content as trying it
+    everywhere (with tag_exceptions.sub)"""
+
+    def test_used_with_default_options(self):
+        assert plain_parser().tag_exception_starts is not None
+        assert plain_parser(token_regex=TOKEN_REGEX).tag_exception_starts is not None
+        assert plain_parser(token_regex=r"\w+").tag_exception_starts is None
+        assert plain_parser(tag_exceptions=[r"(<hi>)"]).tag_exception_starts is None
+
+    def test_same_content_as_regex_sub(self):
+        pieces = ["a", "b", "é", "1", "&", ";", " ", "ͅ", "<hi>", "</hi>", "<i>", "<sup>", "<hi rend='x'>", "<"]
+        pieces += [">", "</emph>", "<orig>", "<b>", "<lb/>"]
+        rng = random.Random(5)
+        fast, plain = plain_parser(), plain_parser()
+        plain.tag_exception_starts = None
+        for _ in range(20000):
+            content = "".join(rng.choice(pieces) for _ in range(rng.randrange(1, 16)))
+            fast.content = plain.content = content
+            fast.cleanup_content()
+            plain.cleanup_content()
+            assert fast.content == plain.content, repr(content)
+
+
+@pytest.mark.unit
+def test_remove_control_chars():
+    """Same as removing them with control_char_re, for every character"""
+    parser = plain_parser()
+    for code_point in range(0x110000):
+        if not 0xD800 <= code_point <= 0xDFFF:
+            text = f"a{chr(code_point)}b"
+            assert parser.remove_control_chars(text) == control_char_re.sub("", text)
+
+
+def compound_record_str(record):
+    """CompoundRecord.__str__ as it was, to compare with"""
+    print_id = record.id
+    if 0 in record.id:
+        parent_index = record.id.index(0) - 1
+    else:
+        parent_index = len(record.id) - 1
+    parent_index = max(parent_index, 0)
+    parent_id = record.id[:parent_index] + [0] * (len(record.id) - parent_index)
+    print_id.append(record.attrib.get("start_byte", 0))
+    print_id.append(record.attrib.get("page", 0))
+    record.attrib["parent"] = " ".join(map(str, parent_id))
+    clean_attrib = {}
+    for k, v in record.attrib.items():
+        value_type = type(v)
+        if value_type is str:
+            clean_attrib[k] = " ".join(v.split())
+        elif value_type is int:
+            clean_attrib[k] = v
+        else:
+            try:
+                clean_attrib[k] = " ".join(v.split())
+            except AttributeError:
+                clean_attrib[k] = v
+    return f"{record.type}\t{record.name}\t{' '.join(map(str, print_id))}\t{dumps(clean_attrib).decode('utf8')}"
+
+
+@pytest.mark.unit
+def test_compound_record_str():
+    """Same line, and same record afterwards, as before"""
+    values = [0, 1, 1234, "x", " a  b\t", "é f", 1.5, None, ["a"], True, "", "1 2 0 0"]
+    for seed in range(20000):
+        records = []
+        for _ in range(2):
+            rng = random.Random(seed)
+            record = CompoundRecord(
+                rng.choice(["word", "div1"]), rng.choice(["w", "a b"]), [rng.choice([0, 1, 37]) for _ in range(7)]
+            )
+            for key in rng.sample(["start_byte", "end_byte", "page", "parent", "head", "lemma"], rng.randrange(7)):
+                record.attrib[key] = rng.choice(values)
+            records.append(record)
+        new, old = records
+        for _ in range(2):  # the printed id grows at each call
+            assert str(new) == compound_record_str(old)
+            assert new.id == old.id and new.attrib == old.attrib

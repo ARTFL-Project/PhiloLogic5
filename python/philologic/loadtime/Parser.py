@@ -338,6 +338,32 @@ HANDLED_TAG_NAMES = frozenset(
 # Characters matched by the ending_punctuation character class (all ASCII), used to strip it without a regex call
 ENDING_PUNCTUATION_CHARS = frozenset(chr(i) for i in range(128) if ending_punctuation.match(chr(i)))
 
+TOKEN_CHAR = re.compile(r"[\p{L}\p{M}\p{N}&;]", re.I)  # a character of a TOKEN_REGEX token
+
+
+def replace_tag_exceptions(content, tag_exceptions, tag_exception_starts, replacement):
+    """Same as tag_exceptions.sub(replacement, content), faster. Matches start with a TOKEN_REGEX token, then a tag
+    found by tag_exception_starts (which the token ends before): only the token before such a tag, from its start
+    (and after the last match), can start one."""
+    output, pos = [], 0
+    tag_start = tag_exception_starts.search(content)
+    while tag_start:
+        tag_position = tag_start.start()
+        token_start = tag_position - 1  # the token's last character
+        if token_start >= pos:
+            while token_start > pos and TOKEN_CHAR.match(content, token_start - 1):
+                token_start -= 1
+            for match_start in range(token_start, tag_position):
+                match = tag_exceptions.match(content, match_start)
+                if match:
+                    output.append(content[pos:match_start])
+                    output.append(replacement(match))
+                    pos = match.end()
+                    break
+        tag_start = tag_exception_starts.search(content, max(tag_position + 1, pos))
+    output.append(content[pos:])
+    return "".join(output)
+
 
 class XMLParser:
     """Parses clean or dirty XML.
@@ -435,17 +461,25 @@ class XMLParser:
         else:
             tag_exceptions = TAG_EXCEPTIONS
 
+        tags_start_with_bracket = all(tag.startswith("<") for tag in tag_exceptions)
         tag_exceptions = "|".join(tag_exceptions)
         try:
             compiled_tag = re.compile(
                 rf'({parse_options["token_regex"]})({tag_exceptions})({parse_options["token_regex"]})({tag_exceptions})({parse_options["token_regex"]})?',
                 re.I | re.M,
             )
+            tag_token_regex = parse_options["token_regex"]
         except:
             compiled_tag = re.compile(
                 rf"({TOKEN_REGEX})({tag_exceptions})({TOKEN_REGEX})({tag_exceptions})({TOKEN_REGEX})?", re.I | re.M
             )
+            tag_token_regex = TOKEN_REGEX
         self.tag_exceptions = compiled_tag
+        # With TOKEN_REGEX and tags starting with "<", matches start in the token before one of the tags: finding these
+        # tags first saves trying a match everywhere (see replace_tag_exceptions)
+        self.tag_exception_starts = None
+        if tag_token_regex == TOKEN_REGEX and tags_start_with_bracket:
+            self.tag_exception_starts = re.compile(rf"(?<={TOKEN_CHAR.pattern})(?:{tag_exceptions})", re.I | re.M)
 
         if "join_hyphen_in_words" in parse_options:
             self.join_hyphen_in_words = parse_options["join_hyphen_in_words"]
@@ -579,7 +613,12 @@ class XMLParser:
             else:
                 return f"""{m[0]}{m[2]}{"_" * (len(m[1])+len(m[3]))}"""
 
-        self.content = self.tag_exceptions.sub(lambda match: replace_tag(match.groups()), self.content)
+        if self.tag_exception_starts is not None:
+            self.content = replace_tag_exceptions(
+                self.content, self.tag_exceptions, self.tag_exception_starts, lambda match: replace_tag(match.groups())
+            )
+        else:
+            self.content = self.tag_exceptions.sub(lambda match: replace_tag(match.groups()), self.content)
 
         # Add newlines to the beginning and end of all tags
         self.content = self.content.replace("<", "\n<").replace(">", ">\n")
@@ -1623,6 +1662,8 @@ class XMLParser:
         return text
 
     def remove_control_chars(self, text):
+        if text.isprintable():  # control characters aren't printable: nothing to remove
+            return text
         return control_char_re.sub("", text)
 
 
