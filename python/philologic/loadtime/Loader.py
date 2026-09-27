@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 import zlib
-from collections import defaultdict
+from collections import Counter, defaultdict
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, as_completed, wait
 from glob import iglob
 from json import dump
@@ -35,10 +35,12 @@ from tqdm import tqdm
 
 from philologic.Config import MakeDBConfig, MakeWebConfig
 from philologic.loadtime.PostFilters import (
+    count_lemma_runs,
     frequency_file_key,
     make_collocation_database,
     make_sql_table,
     open_lz4_lines,
+    write_lemma_counts,
     write_lemma_frequencies,
     write_unique_word_attributes,
     write_word_frequency_table,
@@ -65,7 +67,8 @@ SORT_BY_ID = "-k 3,3n -k 4,4n -k 5,5n -k 6,6n -k 7,7n -k 8,8n -k 9,9n"
 OBJECT_TYPES = ["doc", "div1", "div2", "div3", "para", "sent", "word"]
 
 BLOCKSIZE = 2048  # index block size.  Don't alter.
-SPLIT_SORTED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "split_sorted.py")  # run by merge_word_ranges
+SPLIT_SORTED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "split_sorted.py")  # run by merge_ranges
+RANGE_ATTRIBUTES = {"words": "word_ranges", "lemmas": "lemma_ranges"}  # Loader attributes where merge_ranges keeps them
 INDEX_CUTOFF = 10  # index frequency cutoff.  Don't alter.
 
 DEFAULT_TABLES = ("toms", "pages", "refs", "graphics", "lines")
@@ -340,12 +343,12 @@ def index_words(
     return count, overflow_keys, has_attributes, runs
 
 
-def index_lemmas(lemmas_file, index_path, overflow_dir, commit_interval):
-    """Store the philo_ids of each lemma of a sorted lemmas file in a new LMDB database, under lemma:{lemma}.
-    Returns the number of entries and the keys written to overflow files instead."""
+def index_lemmas(lemmas_file, index_path, overflow_dir, commit_interval, byte_range=None):
+    """Store the philo_ids of each lemma of a sorted lemmas file (or of a byte range of whole lemmas of it) in a new
+    LMDB database, under lemma:{lemma}. Returns the number of entries and the keys written to overflow files instead."""
     db_env = open_index(index_path)
     overflow_keys = []
-    with open_lz4_lines(lemmas_file) as input_file:
+    with open_lz4_lines(lemmas_file, byte_range) as input_file:
         txn = db_env.begin(write=True)
         current_lemma = None
         count = 0
@@ -564,21 +567,21 @@ def init_parse_worker(pickled_class, pickled_attributes, workers):
 
 
 def parse_in_worker(text, metadata):
-    """Parse a file in a parse worker. Returns the number of lines of its words and lemmas files, and a sample of the
-    sort keys of its words (see count_and_sample_lines)."""
+    """Parse a file in a parse worker. Returns the number of lines of its words and lemmas files, and samples of the
+    sort keys of their lines (see count_and_sample_lines)."""
     worker_loader.parse_text(text, metadata)
-    return text["word_lines"], text["lemma_lines"], text["word_sample"]
+    return text["word_lines"], text["lemma_lines"], text["word_sample"], text["lemma_sample"]
 
 
 WORD_SAMPLE_INTERVAL = 1000  # a word of each words file sampled every WORD_SAMPLE_INTERVAL lines
 
 
-def count_and_sample_lines(path, name):
-    """Number of lines of a sorted words file, counted as wc -l does, and the sort keys of one line out of
+def count_and_sample_lines(path, name, lz4_compressed=False):
+    """Number of lines of a words (or lemmas) file, counted as wc -l does, and the sort keys of one line out of
     WORD_SAMPLE_INTERVAL, from a line which depends on the file name: files with fewer lines are sampled as well."""
     count, sample, rest = 0, [], b""
     next_sample = zlib.crc32(name.encode("utf-8")) % WORD_SAMPLE_INTERVAL
-    with open(path, "rb") as input_file:
+    with (lz4.frame.open if lz4_compressed else open)(path, "rb") as input_file:
         for block in iter(lambda: input_file.read(1 << 24), b""):
             lines = (rest + block).split(b"\n")
             rest = lines.pop()  # not ended by a newline yet
@@ -587,12 +590,6 @@ def count_and_sample_lines(path, name):
                 next_sample += WORD_SAMPLE_INTERVAL
             count += len(lines)
     return count, sample
-
-
-def count_newlines(path, lz4_compressed=False):
-    """Number of lines of a file, counted as wc -l does"""
-    with (lz4.frame.open if lz4_compressed else open)(path, "rb") as input_file:
-        return sum(block.count(b"\n") for block in iter(lambda: input_file.read(1 << 24), b""))
 
 
 class Loader:
@@ -640,7 +637,9 @@ class Loader:
     precomputed_files = {}  # frequency file key -> file written while building the index, see frequency_file_key
     parsed_line_counts = None  # [lines of the words files, of the lemmas files] of the files parsed by parse_files
     word_sample = None  # sort keys of a sample of the words of the files parsed by parse_files
+    lemma_sample = None  # and of their lemmas
     word_ranges = None  # (start, end) positions of the word ranges in all_words_sorted.lz4, see merge_files
+    lemma_ranges = None  # and of the lemma ranges in all_lemmas_sorted.lz4
     has_attributes = False
     nlp = None
     spacy_model = None  # spaCy model loaded by each parse worker, when not running on the GPU
@@ -1126,12 +1125,12 @@ class Loader:
             sys.exit(1)
         os.chdir(cls.workdir)
         cls.parsed_line_counts = None
-        cls.word_sample = None
+        cls.word_sample = cls.lemma_sample = None
         if verbose is True:
             print("\n\n### Parsing files ###")
             print("%s: parsing %d files." % (time.ctime(), len(cls.filequeue)))
         line_counts = [0, 0]  # lines of the words and lemmas files of the files parsed so far
-        word_samples = []  # sort keys of a sample of their words
+        word_samples, lemma_samples = [], []  # sort keys of a sample of the lines of these files
         with tqdm(total=len(cls.filequeue), smoothing=0, leave=False, desc="Parsing files") as pbar:
             if cls.nlp is None:
                 # Parse the largest files first so a big file started last doesn't leave all but one worker idle.
@@ -1144,10 +1143,11 @@ class Loader:
                         pool.submit(parse_in_worker, cls.filequeue[pos], cls.data_dicts[pos]) for pos in file_positions
                     ]
                     for parsed_file in as_completed(parsed_files):
-                        word_lines, lemma_lines, word_sample = parsed_file.result()
+                        word_lines, lemma_lines, word_sample, lemma_sample = parsed_file.result()
                         line_counts[0] += word_lines
                         line_counts[1] += lemma_lines
                         word_samples.extend(word_sample)
+                        lemma_samples.extend(lemma_sample)
                         pbar.update()
             else:  # the spaCy model runs on the GPU: files are tagged in this process only
                 for file_pos in range(len(cls.data_dicts)):
@@ -1155,9 +1155,10 @@ class Loader:
                     line_counts[0] += cls.filequeue[file_pos]["word_lines"]
                     line_counts[1] += cls.filequeue[file_pos]["lemma_lines"]
                     word_samples.extend(cls.filequeue[file_pos]["word_sample"])
+                    lemma_samples.extend(cls.filequeue[file_pos]["lemma_sample"])
                     pbar.update()
         cls.parsed_line_counts = line_counts
-        cls.word_sample = word_samples
+        cls.word_sample, cls.lemma_sample = word_samples, lemma_samples
         if verbose is True:
             print("%s: done parsing" % time.ctime())
 
@@ -1230,7 +1231,9 @@ class Loader:
         # Lines of its words and lemmas files, merged into those count_words would otherwise count
         text["word_lines"], text["word_sample"] = count_and_sample_lines(text["words"], text["name"])
         lemma_file = text["raw"] + ".lemma.lz4"
-        text["lemma_lines"] = count_newlines(lemma_file, lz4_compressed=True) if os.path.exists(lemma_file) else 0
+        text["lemma_lines"], text["lemma_sample"] = 0, []
+        if os.path.exists(lemma_file):
+            text["lemma_lines"], text["lemma_sample"] = count_and_sample_lines(lemma_file, text["name"], True)
         run_shell("lz4 --rm -c -q %s > %s" % (text["words"], text["words"] + ".lz4"))
         if cls.debug is False:
             os.remove(text["raw"])
@@ -1324,15 +1327,15 @@ class Loader:
             lists_of_files.append(files)
 
         total_files = sum(len(files) for files in lists_of_files)
-        if file_type == "words":
-            type(self).word_ranges = None
-            boundaries = self.word_range_boundaries()
+        if file_type in ("words", "lemmas"):
+            setattr(type(self), RANGE_ATTRIBUTES[file_type], None)
+            boundaries = self.range_boundaries(file_type)
             if boundaries:
                 print(
-                    f"{time.ctime()}: Merging words in batches of {file_num}, in {len(boundaries) + 1} ranges...",
+                    f"{time.ctime()}: Merging {file_type} in batches of {file_num}, in {len(boundaries) + 1} ranges...",
                     flush=True,
                 )
-                self.merge_word_ranges(sort_command, final_sort_command, lists_of_files, boundaries)
+                self.merge_ranges(file_type, sort_command, final_sort_command, lists_of_files, boundaries)
                 return
         # Then we run the merge sort on each chunk of 500 files and compress the result
         if verbose is True:
@@ -1401,41 +1404,45 @@ class Loader:
                 os.unlink(sorted_file.path)
 
     @classmethod
-    def word_range_boundaries(cls):
-        """Sort keys splitting the words into ranges of about the same number of lines (one range per two cores, at
-        least 4), from the words sampled by parse_files. None without a sample."""
-        if not cls.word_sample:
+    def range_boundaries(cls, file_type):
+        """Sort keys splitting the words (or lemmas) into ranges of about the same number of lines (one range per two
+        cores, at least 4), from the lines sampled by parse_files. None without a sample."""
+        sample = cls.word_sample if file_type == "words" else cls.lemma_sample
+        if not sample:
             return None
-        sample = sorted(cls.word_sample)
+        sample = sorted(sample)
         ranges = max(4, cls.cores // 2)
         return sorted({sample[len(sample) * i // ranges] for i in range(1, ranges)})
 
-    def merge_word_ranges(self, sort_command, final_sort_command, lists_of_files, boundaries):
-        """Merge the words files into all_words_sorted.lz4 by ranges of words: the output of each batch merge is split
-        into ranges (see split_sorted), the batches of each range are merged by their own sort, all ranges at once,
-        and the ranges are joined in order. Their positions in all_words_sorted.lz4 are kept in word_ranges, for
-        build_inverted_index to index each range in its own process."""
-        boundaries_file = os.path.join(self.workdir, "word_range_boundaries")
+    def merge_ranges(self, file_type, sort_command, final_sort_command, lists_of_files, boundaries):
+        """Merge the words (or lemmas) files into all_words_sorted.lz4 (all_lemmas_sorted.lz4) by ranges: the output of
+        each batch sort is split into ranges (see split_sorted), the batches of each range are merged by their own
+        sort, all ranges at once, and the ranges are joined in order. Their positions in the file are kept in
+        word_ranges (lemma_ranges), for build_inverted_index to index each range in its own process."""
+        boundaries_file = os.path.join(self.workdir, f"{file_type}_range_boundaries")
         with open(boundaries_file, "wb") as output:
             output.write(b"".join(boundary + b"\n" for boundary in boundaries))
         splitter = f"{sys.executable} {SPLIT_SORTED} {boundaries_file}"
 
         def merge_batch(pos, object_list):
             command_list = " ".join([i[0] for i in object_list])
-            run_shell(f"{sort_command}{command_list} | {splitter} sorted.{pos}", description="words sorting")
+            run_shell(
+                f"{sort_command}{command_list} | {splitter} {file_type}.{pos}", description=f"{file_type} sorting"
+            )
             return len(object_list)
 
         with tqdm(total=sum(len(files) for files in lists_of_files), leave=False) as pbar:
-            with thread_pool(max(4, self.cores // 2)) as executor:
+            # Merges of sorted files each take a core and little memory; the lemma files are sorted, with more memory
+            with thread_pool(4 if file_type == "lemmas" else max(4, self.cores // 2)) as executor:
                 batches = [executor.submit(merge_batch, pos, files) for pos, files in enumerate(lists_of_files)]
                 for batch in as_completed(batches):
                     pbar.update(batch.result())
 
         def merge_range(index):
-            """Merge the batches of a range into all_words_sorted.{index}: its path, None if the range has no words"""
-            inputs = [f"sorted.{pos}.{index}" for pos in range(len(lists_of_files))]
+            """Merge the batches of a range into all_{file_type}_sorted.{index}: its path, None if the range is empty"""
+            inputs = [f"{file_type}.{pos}.{index}" for pos in range(len(lists_of_files))]
             inputs = [name for name in inputs if os.path.exists(os.path.join(self.workdir, name))]
-            output = os.path.join(self.workdir, f"all_words_sorted.{index}")
+            output = os.path.join(self.workdir, f"all_{file_type}_sorted.{index}")
             if len(inputs) == 1:  # nothing to merge it with
                 os.rename(os.path.join(self.workdir, inputs[0]), output)
             elif inputs:
@@ -1443,7 +1450,7 @@ class Loader:
                 run_shell(
                     f"{final_sort_command}--batch-size={len(inputs)} -b --compress-program=lz4 {sorted_files}"
                     f" | lz4 -q -B4 > {output}",
-                    description="words sorting",
+                    description=f"{file_type} sorting",
                 )
             return output if inputs else None
 
@@ -1451,16 +1458,16 @@ class Loader:
             range_files = list(executor.map(merge_range, range(len(boundaries) + 1)))
 
         # Join the ranges (lz4 frames, one after the other) in order
-        word_ranges = []
-        with open(os.path.join(self.workdir, "all_words_sorted.lz4"), "wb") as output:
+        ranges = []
+        with open(os.path.join(self.workdir, f"all_{file_type}_sorted.lz4"), "wb") as output:
             for range_file in range_files:
                 if range_file is not None:
                     start = output.tell()
                     with open(range_file, "rb") as range_input:
                         shutil.copyfileobj(range_input, output, 1 << 24)
                     os.remove(range_file)
-                    word_ranges.append((start, output.tell()))
-        type(self).word_ranges = word_ranges
+                    ranges.append((start, output.tell()))
+        setattr(type(self), RANGE_ATTRIBUTES[file_type], ranges)
 
     @classmethod
     def count_words(cls):
@@ -1489,32 +1496,36 @@ class Loader:
         cls.all_word_attribute_names = None
         words_file = f"{cls.workdir}/all_words_sorted.lz4"
         lemmas_file = f"{cls.workdir}/all_lemmas_sorted.lz4"
-        # Words are indexed by ranges, in their own processes, when merge_files merged them by ranges
+        # Words and lemmas are indexed by ranges, in their own processes, when merge_files merged them by ranges
         word_ranges = cls.word_ranges or [None]
-        part_paths = {"lemmas": f"{cls.destination}/temp_index_lemmas.lmdb"}
-        part_paths["lemma_attributes"] = f"{cls.destination}/temp_index_lemma_attributes.lmdb"
+        lemma_ranges = (cls.lemma_ranges or [None]) if cls.lemma_count > 0 else []
+        part_paths = {}
         for part in range(len(word_ranges)):
             part_paths[f"words.{part}"] = f"{cls.destination}/temp_index_words.{part}.lmdb"
             part_paths[f"word_attributes.{part}"] = f"{cls.destination}/temp_index_word_attributes.{part}.lmdb"
+        for part in range(len(lemma_ranges)):
+            part_paths[f"lemmas.{part}"] = f"{cls.destination}/temp_index_lemmas.{part}.lmdb"
+            part_paths[f"lemma_attributes.{part}"] = f"{cls.destination}/temp_index_lemma_attributes.{part}.lmdb"
         progress = shared_value("q", 0)
-        workers = 3 * len(word_ranges) + (5 if cls.lemma_count > 0 else 0)  # all the jobs below at once
+        workers = 3 * len(word_ranges) + 4 * len(lemma_ranges) + (1 if lemma_ranges else 0)  # all the jobs at once
         with process_pool(workers, init_index_worker, (progress,)) as pool:
             # The lemma and word attribute frequency files are also written from the sorted files alone: write them
-            # alongside, for PostFilters.lemma_and_attribute_frequencies to use
-            frequency_jobs = []
-            if cls.lemma_count > 0:
-                frequency_jobs.append((write_lemma_frequencies, (lemmas_file, f"{cls.workdir}/lemmas")))
-                frequency_jobs.append(
-                    (
+            # alongside, by ranges too, for PostFilters.lemma_and_attribute_frequencies to use
+            lemma_counts = [pool.submit(count_lemma_runs, lemmas_file, byte_range) for byte_range in lemma_ranges]
+            lemma_attribute_files = [
+                (
+                    f"{cls.workdir}/lemma_word_attributes.{part}",
+                    pool.submit(
                         write_unique_word_attributes,
-                        (lemmas_file, f"{cls.workdir}/lemma_word_attributes", "lemma:", cls.attributes_to_skip),
-                    )
+                        lemmas_file,
+                        f"{cls.workdir}/lemma_word_attributes.{part}",
+                        "lemma:",
+                        cls.attributes_to_skip,
+                        byte_range,
+                    ),
                 )
-            frequency_files = [
-                (frequency_file_key(function, args), args[1], pool.submit(function, *args))
-                for function, args in frequency_jobs
+                for part, byte_range in enumerate(lemma_ranges)
             ]
-            # The word attributes one by ranges of words too, joined afterwards (see join_unique_lines)
             word_attribute_files = [
                 (
                     f"{cls.workdir}/word_attributes.{part}",
@@ -1533,20 +1544,22 @@ class Loader:
             if cls.lemma_count > 0:  # separate database built from the lemmas file only
                 lemma_lookup = pool.submit(build_lemma_lookup_index, cls.workdir, cls.destination, cls.lemma_count)
             parts = {}
-            if cls.lemma_count > 0:
+            if lemma_ranges:
                 print(f"{time.ctime()}: Creating lemma index...", flush=True)
-                parts["lemmas"] = pool.submit(
-                    index_lemmas, lemmas_file, part_paths["lemmas"], overflow_dir, commit_interval
+            for part, byte_range in enumerate(lemma_ranges):
+                parts[f"lemmas.{part}"] = pool.submit(
+                    index_lemmas, lemmas_file, part_paths[f"lemmas.{part}"], overflow_dir, commit_interval, byte_range
                 )
-                parts["lemma_attributes"] = pool.submit(
+                parts[f"lemma_attributes.{part}"] = pool.submit(
                     index_word_attributes,
                     lemmas_file,
-                    part_paths["lemma_attributes"],
+                    part_paths[f"lemma_attributes.{part}"],
                     overflow_dir,
                     "lemma:",
                     cls.attributes_to_skip,
                     commit_interval,
                     False,
+                    byte_range,
                 )
             print(f"{time.ctime()}: Creating word index...", flush=True)
             for part, byte_range in enumerate(word_ranges):
@@ -1575,7 +1588,8 @@ class Loader:
             with tqdm(total=total, desc="Storing words, lemmas and their attributes", leave=False) as pbar:
                 jobs = [
                     *parts.values(),
-                    *(job for _, _, job in frequency_files),
+                    *lemma_counts,
+                    *(job for _, job in lemma_attribute_files),
                     *(job for _, job in word_attribute_files),
                 ]
                 if lemma_lookup is not None:
@@ -1602,11 +1616,14 @@ class Loader:
             write_word_frequency_table_from_runs(runs, frequency_table)
             del runs
             merged_parts = list(word_parts)
-            if cls.lemma_count > 0:
-                count, overflow_keys = parts["lemmas"].result()
-                cls.overflow_words.update(overflow_keys)
+            if lemma_ranges:
+                count = 0
+                for part in range(len(lemma_ranges)):
+                    part_count, overflow_keys = parts[f"lemmas.{part}"].result()
+                    count += part_count
+                    cls.overflow_words.update(overflow_keys)
                 print(f"{time.ctime()}: Stored {cls.lemma_count} lemmas in {count} entries.", flush=True)
-                merged_parts.append("lemmas")
+                merged_parts.extend(f"lemmas.{part}" for part in range(len(lemma_ranges)))
             if cls.has_attributes is True:
                 count, all_word_attribute_names = 0, set()
                 for part in attribute_parts:
@@ -1623,11 +1640,14 @@ class Loader:
                 )
                 print(f"{time.ctime()}: Found word attributes: stored {count} word attributes.", flush=True)
                 merged_parts.extend(attribute_parts)
-                if cls.lemma_count > 0:
-                    count, overflow_keys, _ = parts["lemma_attributes"].result()
-                    cls.overflow_words.update(overflow_keys)
+                if lemma_ranges:
+                    count = 0
+                    for part in range(len(lemma_ranges)):
+                        part_count, overflow_keys, _ = parts[f"lemma_attributes.{part}"].result()
+                        count += part_count
+                        cls.overflow_words.update(overflow_keys)
                     print(f"{time.ctime()}: Stored {count} lemma word attributes.", flush=True)
-                    merged_parts.append("lemma_attributes")
+                    merged_parts.extend(f"lemma_attributes.{part}" for part in range(len(lemma_ranges)))
 
             if len(merged_parts) > 1:  # merge the parts in the order they used to be built in, one after the other
                 print(f"{time.ctime()}: Merging word index parts...", flush=True)
@@ -1645,9 +1665,22 @@ class Loader:
             if lemma_lookup is not None:
                 lemma_lookup.result()
             cls.precomputed_files = {}
-            for key, path, job in frequency_files:
-                job.result()
-                cls.precomputed_files[key] = path
+            if lemma_ranges:  # counts of consecutive ranges added up in order: see write_lemma_counts
+                lemma_count = Counter()
+                for job in lemma_counts:
+                    lemma_count.update(job.result())
+                lemma_frequencies_file = f"{cls.workdir}/lemmas"
+                write_lemma_counts(lemma_count, lemma_frequencies_file)
+                key = frequency_file_key(write_lemma_frequencies, (lemmas_file, lemma_frequencies_file))
+                cls.precomputed_files[key] = lemma_frequencies_file
+                for _, job in lemma_attribute_files:
+                    job.result()
+                lemma_attributes_file = f"{cls.workdir}/lemma_word_attributes"
+                join_unique_lines([path for path, _ in lemma_attribute_files], lemma_attributes_file)
+                key = frequency_file_key(
+                    write_unique_word_attributes, (lemmas_file, lemma_attributes_file, "lemma:", cls.attributes_to_skip)
+                )
+                cls.precomputed_files[key] = lemma_attributes_file
             for _, job in word_attribute_files:
                 job.result()
             word_attributes_file = f"{cls.workdir}/word_attributes"

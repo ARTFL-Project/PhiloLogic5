@@ -633,10 +633,23 @@ def frequency_file_key(function, args):
 
 def write_lemma_frequencies(sorted_file, output_path):
     """Write lemma:{lemma} for each lemma of a sorted lemmas file, most frequent first"""
+    write_lemma_counts(count_lemma_runs(sorted_file), output_path)
+
+
+def write_lemma_counts(lemma_count, output_path):
+    """Write lemma:{lemma} for each lemma counted by count_lemma_runs, most frequent first. Counts of consecutive
+    ranges of lemmas can be added up (Counter.update, in order) first: same order of first occurrence."""
+    with open(output_path, "w", encoding="utf8") as freq_file:
+        for lemma, _ in lemma_count.most_common():
+            freq_file.write(f"lemma:{lemma.decode('utf-8')}\n")
+
+
+def count_lemma_runs(sorted_file, byte_range=None):
+    """Count the lines of each lemma of a sorted lemmas file (or of a byte range of whole lemmas of it)"""
     # Count runs of identical lemmas (the file is sorted), keyed by lemma bytes. Keys are inserted in order
     # of first occurrence, so most_common() orders ties as when counting line by line.
     lemma_count = Counter()
-    with open_lz4_lines(sorted_file) as input_file:
+    with open_lz4_lines(sorted_file, byte_range) as input_file:
         current_lemma = None
         run_length = 0
         for line in input_file:
@@ -649,9 +662,7 @@ def write_lemma_frequencies(sorted_file, output_path):
             run_length += 1
         if current_lemma is not None:
             lemma_count[current_lemma] += run_length
-    with open(output_path, "w", encoding="utf8") as freq_file:
-        for lemma, _ in lemma_count.most_common():
-            freq_file.write(f"lemma:{lemma.decode('utf-8')}\n")
+    return lemma_count
 
 
 def write_unique_word_attributes(sorted_file, output_path, prefix, attributes_to_skip, byte_range=None):
