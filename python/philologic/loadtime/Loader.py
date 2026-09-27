@@ -1171,7 +1171,7 @@ class Loader:
         text["word_lines"] = count_newlines(text["words"])
         lemma_file = text["raw"] + ".lemma.lz4"
         text["lemma_lines"] = count_newlines(lemma_file, lz4_compressed=True) if os.path.exists(lemma_file) else 0
-        run_shell("lz4 --rm -c -q -3 %s > %s" % (text["words"], text["words"] + ".lz4"))
+        run_shell("lz4 --rm -c -q %s > %s" % (text["words"], text["words"] + ".lz4"))
         if cls.debug is False:
             os.remove(text["raw"])
         return text["results"]
@@ -1234,8 +1234,8 @@ class Loader:
                 open_file_command = "lz4cat --rm"
             else:
                 open_file_command = "lz4cat"
-            sort_command = f"LANG=C sort -S 7% -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
-            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
         elif file_type == "lemmas":
             suffix = "/*raw.lemma.lz4"
             if self.debug is False:
@@ -1243,12 +1243,15 @@ class Loader:
             else:
                 open_file_command = "lz4cat"
             sort_command = f"LANG=C sort -S 7% -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
-            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
         else:  # sorting for toms
             suffix = "/*.toms.sorted"
             open_file_command = "cat"
-            sort_command = f"LANG=C sort -S 7% -m -T {self.workdir} {self.sort_by_id} "
-            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_id} "
+            sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_id} "
+        # sort merges at most --batch-size inputs at once (16 by default), through temporary files for more:
+        # let it merge all the files of a batch, and all batches, in a single pass
+        sort_command += f"--batch-size={file_num} "
 
         # First we split the sort workload into chunks of 1000 (default defined in the file_num keyword)
         for f in iglob(self.workdir + suffix):
@@ -1277,10 +1280,10 @@ class Loader:
             command_list = " ".join([i[0] for i in lists_of_files[0]])
             if file_type == "words":
                 output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
-                command = f"{sort_command}{command_list} | lz4 -q > {output_file}"
+                command = f"{sort_command}{command_list} | lz4 -q -B4 > {output_file}"
             elif file_type == "lemmas":
                 output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
-                command = f"{sort_command}{command_list} | lz4 -q > {output_file}"
+                command = f"{sort_command}{command_list} | lz4 -q -B4 > {output_file}"
             else:
                 output_file = os.path.join(self.workdir, "all_toms_sorted")
                 command = f"{sort_command}{command_list} > {output_file}"
@@ -1292,22 +1295,24 @@ class Loader:
                 command_list = " ".join([i[0] for i in object_list])
                 output = os.path.join(self.workdir, f"sorted.{pos}.split")
                 args = sort_command + command_list
-                run_shell(f"{args} | lz4 -3 -q >{output}", description=f"{file_type} sorting")
+                run_shell(f"{args} | lz4 -q -B4 >{output}", description=f"{file_type} sorting")
                 return len(object_list)
 
-            with thread_pool(4) as executor:
+            # Merges of sorted files each take a core and little memory; the lemma files are sorted, with more memory
+            with thread_pool(4 if file_type == "lemmas" else max(4, self.cores // 2)) as executor:
                 futures = [executor.submit(run_batch, pos, obj_list) for pos, obj_list in enumerate(lists_of_files)]
                 for future in as_completed(futures):
                     pbar.update(future.result())
 
         # WARNING: we are technically limited by the file descriptor limit (1024), which should be equivalent to 1,024,000 files.
         sorted_files = " ".join([f"<(lz4cat -q --rm {i})" for i in iglob(f"{self.workdir}/*.split")])
+        final_sort_command += f"--batch-size={max(2, len(lists_of_files))} "
         if file_type == "words":
             output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
-            command = f"{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"
+            command = f"{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q -B4 > {output_file}"
         elif file_type == "lemmas":
             output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
-            command = f"{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"
+            command = f"{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q -B4 > {output_file}"
         else:
             output_file = os.path.join(self.workdir, "all_toms_sorted")
             command = f"{final_sort_command} {sorted_files} > {output_file}"
