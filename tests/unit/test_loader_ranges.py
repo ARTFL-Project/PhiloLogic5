@@ -8,6 +8,7 @@ import io
 import json
 import os
 import random
+import resource
 import shlex
 import shutil
 import subprocess
@@ -37,6 +38,7 @@ from philologic.loadtime.Loader import (
     index_word_attributes,
     index_words,
     join_unique_lines,
+    merge_batch_size,
     merge_indexes,
 )
 from philologic.loadtime.PostFilters import (
@@ -337,6 +339,18 @@ class TestRangeBoundaries:
         assert loader.range_boundaries("lemmas") == [b"\tsame"]
         loader.cores = 32
         assert len(loader.range_boundaries("words")) == 15
+
+
+def test_merge_batch_size(monkeypatch):
+    """Batches of files fit the limit on open files: sort has each file's pipe open, and opens it"""
+    monkeypatch.setattr(sys, "platform", "linux")
+    infinity = resource.RLIM_INFINITY
+    for limits, batch_size in [((1 << 20, 1 << 20), 1000), ((infinity, infinity), 1000), ((1024, infinity), 480)]:
+        monkeypatch.setattr(loader_module.resource, "getrlimit", lambda _, limits=limits: limits)
+        assert merge_batch_size() == batch_size
+        assert merge_batch_size(3) == 3
+    monkeypatch.setattr(sys, "platform", "darwin")
+    assert merge_batch_size() == 250
 
 
 class TestBuildByRanges:

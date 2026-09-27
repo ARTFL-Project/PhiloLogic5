@@ -4,6 +4,7 @@ ignored or leaving the caller waiting forever."""
 import multiprocessing
 import multiprocessing.forkserver
 import os
+import resource
 import subprocess
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from contextlib import contextmanager
@@ -29,6 +30,23 @@ def run_shell(command, description=None, ok_statuses=(0,), capture_output=False)
             message += f": {process.stderr.strip()}"
         raise RuntimeError(message)
     return process
+
+
+def raise_open_files_limit():
+    """Raise the limit on the files this process, and the processes it starts, can have open, as far as allowed:
+    merges of sorted files keep a lot of them open. Returns the new limit (resource.RLIM_INFINITY if unlimited)."""
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    for limit in (hard, 1 << 20, 10240):  # macOS doesn't allow a process an unlimited (or too high) limit
+        if soft == resource.RLIM_INFINITY or (limit != resource.RLIM_INFINITY and soft >= limit):
+            break  # already that high
+        if hard != resource.RLIM_INFINITY and limit > hard:
+            continue
+        try:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (limit, hard))
+            break
+        except (ValueError, OSError):
+            continue
+    return resource.getrlimit(resource.RLIMIT_NOFILE)[0]
 
 
 def start_worker_server(preload=()):

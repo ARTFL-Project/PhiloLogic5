@@ -1,6 +1,8 @@
 """Unit tests for philologic.utils.processes: shell commands and pools of workers which fail loudly."""
 
 import os
+import resource
+import subprocess
 import sys
 import time
 from concurrent.futures.process import BrokenProcessPool
@@ -13,7 +15,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.loadtime.Loader import init_index_worker, report_progress
-from philologic.utils.processes import process_pool, run_shell, shared_value, thread_pool
+from philologic.utils.processes import process_pool, raise_open_files_limit, run_shell, shared_value, thread_pool
 
 pytestmark = pytest.mark.unit
 
@@ -100,3 +102,26 @@ class TestThreadPool:
                 raise KeyError("stop")
         assert time.time() - start < 5
         assert running.done() and all(job.cancelled() for job in pending)
+
+
+def test_raise_open_files_limit():
+    """A process started with a low limit on open files raises it as far as it may"""
+    hard = resource.getrlimit(resource.RLIMIT_NOFILE)[1]
+    if hard != resource.RLIM_INFINITY and hard <= 256:
+        pytest.skip("the hard limit is too low to lower the soft limit")
+    code = (
+        "import resource; from philologic.utils import raise_open_files_limit; "
+        "print(raise_open_files_limit(), *resource.getrlimit(resource.RLIMIT_NOFILE))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=True,
+        env={**os.environ, "PYTHONPATH": str(REPO_ROOT / "python")},
+        preexec_fn=lambda: resource.setrlimit(resource.RLIMIT_NOFILE, (256, hard)),
+    )
+    returned, soft, new_hard = map(int, result.stdout.split())
+    assert returned == soft and new_hard == hard
+    assert soft == hard or (hard == resource.RLIM_INFINITY and soft >= 10240)
+    assert raise_open_files_limit() == resource.getrlimit(resource.RLIMIT_NOFILE)[0]

@@ -9,6 +9,7 @@ import hashlib
 import heapq
 import os
 import pickle
+import resource
 import shutil
 import sqlite3
 import struct
@@ -55,6 +56,7 @@ from philologic.utils import (
     load_module,
     pretty_print,
     process_pool,
+    raise_open_files_limit,
     run_shell,
     shared_value,
     sort_list,
@@ -249,6 +251,7 @@ def build_lemma_lookup_index(workdir, destination, lemma_count):
         for path in run:
             os.remove(path)
     print(f"{time.ctime()}: Stored {count} lemma lookup entries.", flush=True)
+
 
 OVERFLOW_LIMIT = 360000000  # 36 bytes per philo_id, 10,000,000 philo_ids: more go to an overflow file
 PROGRESS_INTERVAL = 100000  # lines read by an index worker between progress reports
@@ -529,6 +532,7 @@ def merge_indexes(index_paths, merged_path):
     merged_env.sync(True)
     merged_env.close()
 
+
 # Loader class attributes which parse workers don't get: they are sent the files to parse one at a time, and don't use
 # the spaCy model (with one, files are parsed in the loading process)
 ATTRIBUTES_NOT_SENT_TO_WORKERS = {"filequeue", "data_dicts", "nlp"}
@@ -576,6 +580,19 @@ def parse_in_worker(text, metadata):
     sort keys of their lines (see count_and_sample_lines)."""
     worker_loader.parse_text(text, metadata)
     return text["word_lines"], text["lemma_lines"], text["word_sample"], text["lemma_sample"]
+
+
+def merge_batch_size(file_num=1000):
+    """Files merge_files merges with a single sort, at most: file_num (250 on macOS), fewer if the limit on open files
+    is too low for them. sort gets each file through a pipe from lz4cat, which it has open and opens again: it needs two
+    file descriptors per file. Lacking them, it would merge a few files at a time through a temporary file, copying
+    all it merged so far each time."""
+    if sys.platform == "darwin":
+        file_num = 250
+    open_files_limit = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+    if open_files_limit != resource.RLIM_INFINITY:
+        file_num = min(file_num, (open_files_limit - 64) // 2)
+    return max(2, file_num)
 
 
 WORD_SAMPLE_INTERVAL = 1000  # a word of each words file sampled every WORD_SAMPLE_INTERVAL lines
@@ -657,6 +674,7 @@ class Loader:
     @classmethod
     def set_class_attributes(cls, loader_options):
         """Set initial class attributes and return Loader object"""
+        raise_open_files_limit()  # for the merges of many files (see merge_batch_size)
         start_worker_server(["philologic.loadtime.Loader"])
         cls.all_word_attribute_names = None
         cls.post_filters = list(loader_options["post_filters"])
@@ -1249,7 +1267,7 @@ class Loader:
         print("\n### Merge parser output ###")
         # With this few files, each merge is a single sort writing its own file (see merge_files), so they can
         # run at the same time. With more files, each merge already runs several sorts in parallel.
-        if len(self.filequeue) <= (250 if sys.platform == "darwin" else 1000):
+        if len(self.filequeue) <= merge_batch_size():
             print(f"{time.ctime()}: sorting words, lemmas and objects", flush=True)
             with thread_pool(3) as executor:
                 merges = [executor.submit(self.merge_files, file_type) for file_type in ("words", "lemmas", "toms")]
@@ -1292,8 +1310,7 @@ class Loader:
         Since PhiloLogic can potentially merge thousands of files, we need to split
         the sorting stage into multiple steps to avoid running out of file descriptors
         """
-        if sys.platform == "darwin":
-            file_num = 250
+        file_num = merge_batch_size(file_num)
         lists_of_files = []
         files = []
         if file_type == "words":
