@@ -28,6 +28,8 @@ SNIPPETS = {
     "</body></text>",
     "unclosed_paragraphs": "<text><body><div><p>one<p>two<p>three</div></body></text>",
     "notes": '<text><body><div><p>text<note n="1">a note <p>inside</p></note> more</p></div></body></text>',
+    "paragraphs_after_notes": "<text><body><div><p>one<note>n <p>in note</p></note> after</p><p>two</p><p>three</p>"
+    "</div></body></text>",
     "speech_and_stage": "<text><body><div><sp><speaker>Hamlet.</speaker><p>To be</p></sp><stage>Exit.</stage>"
     "</div></body></text>",
     "line_groups": "<text><body><div><lg><l>first line</l><l>second line</l></lg></div></body></text>",

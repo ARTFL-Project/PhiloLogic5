@@ -330,7 +330,7 @@ LINE_SPLITTER = re.compile(r"([^\n]+)")
 # (along with any name starting with "div" or "/div"). Tags with any other ASCII name are
 # guaranteed to match none of them, which lets tag_handler skip the regex cascade.
 HANDLED_TAG_NAMES = frozenset(
-    """text /text q /q p note epigraph /epigraph list sp /sp speaker argument /argument opener /opener closer /closer
+    """text /text q /q p note /note epigraph /epigraph list sp /sp speaker argument /argument opener /opener closer /closer
     stage /stage castlist add /add pb lg /lg l /l ab /ab s /s front /front body hyperdiv index date ref graphic""".split()
     + [f"h{digit}" for digit in range(10)]
 )
@@ -742,6 +742,10 @@ class XMLParser:
                 self.v.push("para", tag_name, start_byte)
                 self.get_object_attributes(tag, tag_name, "para")
                 self.in_a_note = True
+            elif closed_note_tag.search(tag):
+                if self.in_a_note:  # paragraphs are objects again after the note
+                    self.close_para(self.bytes_read_in)
+                    self.in_a_note = False
 
             # Epigraph: treat as paragraph objects
             elif epigraph_tag.search(tag):
