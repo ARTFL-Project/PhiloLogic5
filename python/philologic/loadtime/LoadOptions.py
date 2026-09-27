@@ -129,7 +129,8 @@ class LoadOptions:
             "--file-type",
             type=str,
             dest="file_type",
-            help="Define file type for parsing: plain_text, xml, or html",
+            choices=["xml", "plain_text"],
+            help="Define file type for parsing: xml or plain_text",
             default="xml",
         )
         parser.add_argument(

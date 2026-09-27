@@ -247,7 +247,6 @@ add_tag = re.compile(r"<add\W", re.I)
 seg_attrib = re.compile(r"<seg \w+=", re.I)
 abbrev_expand = re.compile(r'(<abbr .*expan=")([^"]*)("[^>]*>)([^>]*)(</abbr>)', re.I | re.M)
 semi_colon_strip = re.compile(r"\A;?(\w+);?\Z")
-h_tag = re.compile(r"<h(\d)>", re.I)
 
 ## Build a list of control characters to remove
 ## http://stackoverflow.com/questions/92438/stripping-non-printable-characters-from-a-string-in-python/93029#93029
@@ -337,8 +336,6 @@ def tag_named(name):
     return lambda tag, tag_name: tag_name == name
 
 
-HTML_HEADING = (tag_pattern(h_tag), "handle_html_heading", ())
-
 # Handlers of XMLParser.tag_handler: lowercased tag name ("div" and "/div" for all the names starting with them) ->
 # (match which the tag must be, XMLParser method handling it, the method's other arguments). A tag matches one handler
 # at most: each matches tags starting with a different name.
@@ -382,7 +379,6 @@ TAG_HANDLERS = {
     "/front": (tag_pattern(closed_front_tag), "handle_front_end", ()),
     "body": (tag_pattern(body_tag), "handle_body", ()),
     "hyperdiv": (tag_pattern(hyper_div_tag), "handle_hyperdiv", ()),
-    **dict.fromkeys((f"h{digit}" for digit in range(10)), HTML_HEADING),
     "/div": (tag_pattern(closed_div_tag), "handle_div_end", ()),
     "div": (tag_pattern(div_tag), "handle_div", ()),
     "index": (tag_named("index"), "handle_index", ()),
@@ -436,7 +432,6 @@ class XMLParser:
         known_metadata={},
         tag_to_obj_map=DEFAULT_TAG_TO_OBJ_MAP,
         metadata_to_parse=DEFAULT_METADATA_TO_PARSE,
-        file_type="xml",
         lowercase_index=True,
         lemmas=None,
         **parse_options,
@@ -471,11 +466,6 @@ class XMLParser:
             self.defined_words_to_index = True
         else:
             self.defined_words_to_index = False
-
-        if "file_type" in parse_options:
-            self.file_type = parse_options["file_type"]
-        else:
-            self.file_type = "xml"
 
         # List of global variables used for the tag handler
         if "token_regex" in parse_options:
@@ -620,8 +610,6 @@ class XMLParser:
             # of the <docbody tag.  We can add more.
             if self.in_the_text is False:
                 if text_tag.search(line) or doc_body_tag.search(line) or body_tag.search(line):
-                    self.in_the_text = True
-                elif self.file_type == "html" and closed_head_tag.search(line):
                     self.in_the_text = True
 
             self.line_count += 1
@@ -946,54 +934,6 @@ class XMLParser:
         self.v.push("div1", tag_name, start_byte)
         self.current_div_id = self.v["div1"].id
         self.v["div1"]["head"] = "[HyperDiv]"
-
-    def handle_html_heading(self, tag, tag_name, start_byte):
-        """h1, h2, h3 tags of HTML files: divs, of what follows them (so implicitly closed)"""
-        if self.file_type != "html":
-            return
-        self.context_div_level = int(h_tag.search(tag).groups()[0])
-        if self.context_div_level > 3:
-            self.content_div_level = 3
-        if self.context_div_level == 1:
-            if self.open_div1:
-                self.close_div1(start_byte)
-            self.open_div1 = True
-        elif self.context_div_level == 2:
-            if self.open_div2:
-                self.close_div2(start_byte)
-            self.open_div2 = True
-        elif self.context_div_level == 3:
-            if self.open_div3:
-                self.close_div3(start_byte)
-            self.open_div3 = True
-        current_div = f"div{self.context_div_level}"
-        self.v.push(current_div, tag_name, start_byte)
-        look_ahead = self.line_count
-        read_more = True
-        div_head = ""
-        while read_more:
-            try:
-                next_line = self.content[look_ahead]
-            except IndexError:
-                break
-            if re.search(r"</h1|h2|h3>", next_line, re.I):
-                break
-            div_head += next_line
-            look_ahead += 1
-        div_head = self.clear_char_ents(div_head)
-        div_head = self.latin1_ents_to_utf8(div_head)
-        div_head = self.convert_other_ents(div_head)
-        div_head = re.sub(r"\n?<[^>]*>\n?", "", div_head)
-        div_head = div_head.replace("_", "")
-        div_head = div_head.replace("\t", "")
-        div_head = " ".join(div_head.split())  # remove double or more spaces
-        div_head = div_head.replace("[", "").replace("]", "")
-        div_head = div_head.replace('"', "")
-        div_head = div_head.strip()
-        div_head = self.remove_control_chars(div_head)
-        div_head = convert_entities(div_head)
-        div_head = div_head.replace('"', "")
-        self.v[current_div]["head"] = div_head
 
     def handle_div_end(self, tag, tag_name, start_byte):
         if "div1" in tag_name:
@@ -1646,7 +1586,6 @@ if __name__ == "__main__":
             tag_to_obj_map=DEFAULT_TAG_TO_OBJ_MAP,
             metadata_to_parse=DEFAULT_METADATA_TO_PARSE,
             metadata_sql_types={},
-            file_type="html",
             token_regex=r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+",
         )
         parser.parse(fh)

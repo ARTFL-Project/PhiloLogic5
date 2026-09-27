@@ -55,12 +55,6 @@ SNIPPETS = {
     'n="3"/><p>t</p></div><index type="n" value="x"/></body></text>',
     "tag_name_variants": "<text><body><div><sp><p>x</p></sp ><q/>y<q>z</q><ſp>ſ</ſp><add>w</add></ADD> v<list>l"
     "</list></div></body></text>",
-    # XMLParser ignores file_type for now (its file_type parameter is never read): the XML behavior
-    "html_headings": (
-        "<html><head><title>t</title></head><body><h1>One</h1><p>a</p><h2>Two</h2><p>b</p><h1 class='x'>Three</h1>"
-        "<p>c</p></body></html>",
-        {"file_type": "html"},
-    ),
     "text_outside_body": "<TEI><teiHeader><title>Not indexed</title></teiHeader><text><body><p>indexed</p>"
     "</body></text></TEI>",
 }
