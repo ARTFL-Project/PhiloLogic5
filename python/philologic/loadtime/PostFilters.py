@@ -25,12 +25,38 @@ from unidecode import unidecode
 from philologic.utils import count_lines, process_pool, run_shell
 
 
+class ByteRange(io.RawIOBase):
+    """The bytes of a file from start to end, as a file"""
+
+    def __init__(self, path, start, end):
+        self.file = open(path, "rb")
+        self.file.seek(start)
+        self.remaining = end - start
+
+    def readable(self):
+        return True
+
+    def readinto(self, buffer):
+        with memoryview(buffer) as view:
+            read = self.file.readinto(view[: min(len(view), self.remaining)])
+        self.remaining -= read
+        return read
+
+    def close(self):
+        self.file.close()
+        super().close()
+
+
 @contextmanager
-def open_lz4_lines(path):
+def open_lz4_lines(path, byte_range=None):
     """Open an lz4 compressed file to iterate over its lines: same lines as iterating over lz4.frame.open(path),
-    but about twice as fast thanks to a larger read buffer."""
-    with lz4.frame.open(path) as compressed_file:
+    but about twice as fast thanks to a larger read buffer. byte_range: (start, end) of whole lz4 frames of the file
+    to read only."""
+    source = path if byte_range is None else io.BufferedReader(ByteRange(path, *byte_range), buffer_size=1 << 20)
+    with lz4.frame.open(source) as compressed_file:
         yield io.BufferedReader(compressed_file, buffer_size=1 << 20)
+    if byte_range is not None:
+        source.close()
 
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
@@ -608,12 +634,12 @@ def write_lemma_frequencies(sorted_file, output_path):
             freq_file.write(f"lemma:{lemma.decode('utf-8')}\n")
 
 
-def write_unique_word_attributes(sorted_file, output_path, prefix, attributes_to_skip):
-    """Write each distinct {prefix}{word}:{attribute}:{value} string found in a sorted words or lemmas file,
-    in order of first occurrence."""
+def write_unique_word_attributes(sorted_file, output_path, prefix, attributes_to_skip, byte_range=None):
+    """Write each distinct {prefix}{word}:{attribute}:{value} string found in a sorted words or lemmas file (or in a
+    byte range of whole words of it), in order of first occurrence."""
     word_attributes = set()
     with open(output_path, "w", encoding="utf8") as freq_file:
-        with open_lz4_lines(sorted_file) as input_file:
+        with open_lz4_lines(sorted_file, byte_range) as input_file:
             current_word = None
             for line in input_file:
                 _, word, _, attributes = line.split(b"\t", 3)

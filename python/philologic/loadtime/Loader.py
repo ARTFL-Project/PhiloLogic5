@@ -15,6 +15,7 @@ import struct
 import subprocess
 import sys
 import time
+import zlib
 from collections import defaultdict
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, as_completed, wait
 from glob import iglob
@@ -41,6 +42,7 @@ from philologic.loadtime.PostFilters import (
     write_lemma_frequencies,
     write_unique_word_attributes,
 )
+from philologic.loadtime.split_sorted import sort_key
 from philologic.utils import (
     convert_entities,
     count_lines,
@@ -61,6 +63,7 @@ SORT_BY_ID = "-k 3,3n -k 4,4n -k 5,5n -k 6,6n -k 7,7n -k 8,8n -k 9,9n"
 OBJECT_TYPES = ["doc", "div1", "div2", "div3", "para", "sent", "word"]
 
 BLOCKSIZE = 2048  # index block size.  Don't alter.
+SPLIT_SORTED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "split_sorted.py")  # run by merge_word_ranges
 INDEX_CUTOFF = 10  # index frequency cutoff.  Don't alter.
 
 DEFAULT_TABLES = ("toms", "pages", "refs", "graphics", "lines")
@@ -272,15 +275,17 @@ def write_overflow_file(overflow_dir, key, philo_ids):
         overflow_file.write(philo_ids)
 
 
-def index_words(words_file, index_path, overflow_dir, has_attributes, attributes_to_skip, commit_interval):
-    """Store the philo_ids of each word of a sorted words file in a new LMDB database, under the word.
-    Returns the number of entries, the keys written to overflow files instead, and whether words have attributes
-    other than attributes_to_skip (checked unless has_attributes is already True)."""
+def index_words(
+    words_file, index_path, overflow_dir, has_attributes, attributes_to_skip, commit_interval, byte_range=None
+):
+    """Store the philo_ids of each word of a sorted words file (or of a byte range of whole words) in a new LMDB
+    database, under the word. Returns the number of entries, the keys written to overflow files instead, and whether
+    words have attributes other than attributes_to_skip (checked unless has_attributes is already True)."""
     db_env = open_index(index_path)
     overflow_keys = []
     # Lines are handled as bytes: the files are UTF-8, so splitting and comparing bytes gives the same results
     # as on decoded strings, and keys are encoded back to the same bytes.
-    with open_lz4_lines(words_file) as input_file:
+    with open_lz4_lines(words_file, byte_range) as input_file:
         current_word = None
         count = 0
         line_number = 0
@@ -380,11 +385,19 @@ def index_lemmas(lemmas_file, index_path, overflow_dir, commit_interval):
 
 
 def index_word_attributes(
-    sorted_file, index_path, overflow_dir, key_prefix, attributes_to_skip, commit_interval, collect_attribute_names
+    sorted_file,
+    index_path,
+    overflow_dir,
+    key_prefix,
+    attributes_to_skip,
+    commit_interval,
+    collect_attribute_names,
+    byte_range=None,
 ):
-    """Store the philo_ids of each word (or lemma) and attribute value found in a sorted words (or lemmas) file in a
-    new LMDB database, under {key_prefix}{word}:{attribute}:{value} keys. Returns the number of entries, the keys
-    written to overflow files instead, and if collect_attribute_names, the names of all attributes in the file."""
+    """Store the philo_ids of each word (or lemma) and attribute value found in a sorted words (or lemmas) file (or
+    in a byte range of whole words of it) in a new LMDB database, under {key_prefix}{word}:{attribute}:{value} keys.
+    Returns the number of entries, the keys written to overflow files instead, and if collect_attribute_names, the
+    names of all attributes in the file."""
     db_env = open_index(index_path)
     overflow_keys = []
     attribute_names = set() if collect_attribute_names else None
@@ -410,7 +423,7 @@ def index_word_attributes(
                     txn.commit()
                     txn = db_env.begin(write=True)
 
-    with open_lz4_lines(sorted_file) as input_file:
+    with open_lz4_lines(sorted_file, byte_range) as input_file:
         word_attributes = {}  # attribute -> attribute value -> philo_ids (bytes) not packed yet
         packed_attributes = {}  # (attribute, attribute value) -> philo_ids already packed, for long words
         lines_in_word = 0
@@ -456,6 +469,20 @@ def index_word_attributes(
 # Bytes stored per transaction when merging index parts, plus one more value of at most OVERFLOW_LIMIT bytes:
 # without a writemap, a transaction keeps the pages it writes in memory, up to a limit
 MERGE_COMMIT_BYTES = 64 * 1024 * 1024
+
+
+def join_unique_lines(paths, output_path):
+    """Write the lines of files one after the other, but for lines already written, and delete the files: the output
+    of write_unique_word_attributes on consecutive ranges of words, as if on all of them."""
+    written = set()
+    with open(output_path, "wb") as output:
+        for path in paths:
+            with open(path, "rb") as input_file:
+                for line in input_file:
+                    if line not in written:
+                        written.add(line)
+                        output.write(line)
+            os.remove(path)
 
 
 def merge_indexes(index_paths, merged_path):
@@ -531,9 +558,29 @@ def init_parse_worker(pickled_class, pickled_attributes, workers):
 
 
 def parse_in_worker(text, metadata):
-    """Parse a file in a parse worker. Returns the number of lines of its words and lemmas files."""
+    """Parse a file in a parse worker. Returns the number of lines of its words and lemmas files, and a sample of the
+    sort keys of its words (see count_and_sample_lines)."""
     worker_loader.parse_text(text, metadata)
-    return text["word_lines"], text["lemma_lines"]
+    return text["word_lines"], text["lemma_lines"], text["word_sample"]
+
+
+WORD_SAMPLE_INTERVAL = 1000  # a word of each words file sampled every WORD_SAMPLE_INTERVAL lines
+
+
+def count_and_sample_lines(path, name):
+    """Number of lines of a sorted words file, counted as wc -l does, and the sort keys of one line out of
+    WORD_SAMPLE_INTERVAL, from a line which depends on the file name: files with fewer lines are sampled as well."""
+    count, sample, rest = 0, [], b""
+    next_sample = zlib.crc32(name.encode("utf-8")) % WORD_SAMPLE_INTERVAL
+    with open(path, "rb") as input_file:
+        for block in iter(lambda: input_file.read(1 << 24), b""):
+            lines = (rest + block).split(b"\n")
+            rest = lines.pop()  # not ended by a newline yet
+            while next_sample < count + len(lines):
+                sample.append(sort_key(lines[next_sample - count]))
+                next_sample += WORD_SAMPLE_INTERVAL
+            count += len(lines)
+    return count, sample
 
 
 def count_newlines(path, lz4_compressed=False):
@@ -586,6 +633,8 @@ class Loader:
     lemma_count = 0
     precomputed_files = {}  # frequency file key -> file written while building the index, see frequency_file_key
     parsed_line_counts = None  # [lines of the words files, of the lemmas files] of the files parsed by parse_files
+    word_sample = None  # sort keys of a sample of the words of the files parsed by parse_files
+    word_ranges = None  # (start, end) positions of the word ranges in all_words_sorted.lz4, see merge_files
     has_attributes = False
     nlp = None
     spacy_model = None  # spaCy model loaded by each parse worker, when not running on the GPU
@@ -1071,10 +1120,12 @@ class Loader:
             sys.exit(1)
         os.chdir(cls.workdir)
         cls.parsed_line_counts = None
+        cls.word_sample = None
         if verbose is True:
             print("\n\n### Parsing files ###")
             print("%s: parsing %d files." % (time.ctime(), len(cls.filequeue)))
         line_counts = [0, 0]  # lines of the words and lemmas files of the files parsed so far
+        word_samples = []  # sort keys of a sample of their words
         with tqdm(total=len(cls.filequeue), smoothing=0, leave=False, desc="Parsing files") as pbar:
             if cls.nlp is None:
                 # Parse the largest files first so a big file started last doesn't leave all but one worker idle.
@@ -1087,17 +1138,20 @@ class Loader:
                         pool.submit(parse_in_worker, cls.filequeue[pos], cls.data_dicts[pos]) for pos in file_positions
                     ]
                     for parsed_file in as_completed(parsed_files):
-                        word_lines, lemma_lines = parsed_file.result()
+                        word_lines, lemma_lines, word_sample = parsed_file.result()
                         line_counts[0] += word_lines
                         line_counts[1] += lemma_lines
+                        word_samples.extend(word_sample)
                         pbar.update()
             else:  # the spaCy model runs on the GPU: files are tagged in this process only
                 for file_pos in range(len(cls.data_dicts)):
                     cls.parse_file(file_pos)
                     line_counts[0] += cls.filequeue[file_pos]["word_lines"]
                     line_counts[1] += cls.filequeue[file_pos]["lemma_lines"]
+                    word_samples.extend(cls.filequeue[file_pos]["word_sample"])
                     pbar.update()
         cls.parsed_line_counts = line_counts
+        cls.word_sample = word_samples
         if verbose is True:
             print("%s: done parsing" % time.ctime())
 
@@ -1168,7 +1222,7 @@ class Loader:
                 raise ParserError(f"{text['name']} has caused parser to die.")
 
         # Lines of its words and lemmas files, merged into those count_words would otherwise count
-        text["word_lines"] = count_newlines(text["words"])
+        text["word_lines"], text["word_sample"] = count_and_sample_lines(text["words"], text["name"])
         lemma_file = text["raw"] + ".lemma.lz4"
         text["lemma_lines"] = count_newlines(lemma_file, lz4_compressed=True) if os.path.exists(lemma_file) else 0
         run_shell("lz4 --rm -c -q %s > %s" % (text["words"], text["words"] + ".lz4"))
@@ -1264,6 +1318,16 @@ class Loader:
             lists_of_files.append(files)
 
         total_files = sum(len(files) for files in lists_of_files)
+        if file_type == "words":
+            type(self).word_ranges = None
+            boundaries = self.word_range_boundaries()
+            if boundaries:
+                print(
+                    f"{time.ctime()}: Merging words in batches of {file_num}, in {len(boundaries) + 1} ranges...",
+                    flush=True,
+                )
+                self.merge_word_ranges(sort_command, final_sort_command, lists_of_files, boundaries)
+                return
         # Then we run the merge sort on each chunk of 500 files and compress the result
         if verbose is True:
             print(
@@ -1331,6 +1395,68 @@ class Loader:
                 os.unlink(sorted_file.path)
 
     @classmethod
+    def word_range_boundaries(cls):
+        """Sort keys splitting the words into ranges of about the same number of lines (one range per two cores, at
+        least 4), from the words sampled by parse_files. None without a sample."""
+        if not cls.word_sample:
+            return None
+        sample = sorted(cls.word_sample)
+        ranges = max(4, cls.cores // 2)
+        return sorted({sample[len(sample) * i // ranges] for i in range(1, ranges)})
+
+    def merge_word_ranges(self, sort_command, final_sort_command, lists_of_files, boundaries):
+        """Merge the words files into all_words_sorted.lz4 by ranges of words: the output of each batch merge is split
+        into ranges (see split_sorted), the batches of each range are merged by their own sort, all ranges at once,
+        and the ranges are joined in order. Their positions in all_words_sorted.lz4 are kept in word_ranges, for
+        build_inverted_index to index each range in its own process."""
+        boundaries_file = os.path.join(self.workdir, "word_range_boundaries")
+        with open(boundaries_file, "wb") as output:
+            output.write(b"".join(boundary + b"\n" for boundary in boundaries))
+        splitter = f"{sys.executable} {SPLIT_SORTED} {boundaries_file}"
+
+        def merge_batch(pos, object_list):
+            command_list = " ".join([i[0] for i in object_list])
+            run_shell(f"{sort_command}{command_list} | {splitter} sorted.{pos}", description="words sorting")
+            return len(object_list)
+
+        with tqdm(total=sum(len(files) for files in lists_of_files), leave=False) as pbar:
+            with thread_pool(max(4, self.cores // 2)) as executor:
+                batches = [executor.submit(merge_batch, pos, files) for pos, files in enumerate(lists_of_files)]
+                for batch in as_completed(batches):
+                    pbar.update(batch.result())
+
+        def merge_range(index):
+            """Merge the batches of a range into all_words_sorted.{index}: its path, None if the range has no words"""
+            inputs = [f"sorted.{pos}.{index}" for pos in range(len(lists_of_files))]
+            inputs = [name for name in inputs if os.path.exists(os.path.join(self.workdir, name))]
+            output = os.path.join(self.workdir, f"all_words_sorted.{index}")
+            if len(inputs) == 1:  # nothing to merge it with
+                os.rename(os.path.join(self.workdir, inputs[0]), output)
+            elif inputs:
+                sorted_files = " ".join(f"<(lz4cat -q --rm {name})" for name in inputs)
+                run_shell(
+                    f"{final_sort_command}--batch-size={len(inputs)} -b --compress-program=lz4 {sorted_files}"
+                    f" | lz4 -q -B4 > {output}",
+                    description="words sorting",
+                )
+            return output if inputs else None
+
+        with thread_pool(len(boundaries) + 1) as executor:
+            range_files = list(executor.map(merge_range, range(len(boundaries) + 1)))
+
+        # Join the ranges (lz4 frames, one after the other) in order
+        word_ranges = []
+        with open(os.path.join(self.workdir, "all_words_sorted.lz4"), "wb") as output:
+            for range_file in range_files:
+                if range_file is not None:
+                    start = output.tell()
+                    with open(range_file, "rb") as range_input:
+                        shutil.copyfileobj(range_input, output, 1 << 24)
+                    os.remove(range_file)
+                    word_ranges.append((start, output.tell()))
+        type(self).word_ranges = word_ranges
+
+    @classmethod
     def count_words(cls):
         """Count words in all files"""
         print("\n### Counting total words ###", flush=True)
@@ -1357,20 +1483,19 @@ class Loader:
         cls.all_word_attribute_names = None
         words_file = f"{cls.workdir}/all_words_sorted.lz4"
         lemmas_file = f"{cls.workdir}/all_lemmas_sorted.lz4"
-        part_paths = {
-            part: f"{cls.destination}/temp_index_{part}.lmdb"
-            for part in ("words", "lemmas", "word_attributes", "lemma_attributes")
-        }
+        # Words are indexed by ranges, in their own processes, when merge_files merged them by ranges
+        word_ranges = cls.word_ranges or [None]
+        part_paths = {"lemmas": f"{cls.destination}/temp_index_lemmas.lmdb"}
+        part_paths["lemma_attributes"] = f"{cls.destination}/temp_index_lemma_attributes.lmdb"
+        for part in range(len(word_ranges)):
+            part_paths[f"words.{part}"] = f"{cls.destination}/temp_index_words.{part}.lmdb"
+            part_paths[f"word_attributes.{part}"] = f"{cls.destination}/temp_index_word_attributes.{part}.lmdb"
         progress = shared_value("q", 0)
-        with process_pool(8 if cls.lemma_count > 0 else 3, init_index_worker, (progress,)) as pool:
+        workers = 3 * len(word_ranges) + (5 if cls.lemma_count > 0 else 0)  # all the jobs below at once
+        with process_pool(workers, init_index_worker, (progress,)) as pool:
             # The lemma and word attribute frequency files are also written from the sorted files alone: write them
             # alongside, for PostFilters.lemma_and_attribute_frequencies to use
-            frequency_jobs = [
-                (
-                    write_unique_word_attributes,
-                    (words_file, f"{cls.workdir}/word_attributes", "", cls.attributes_to_skip),
-                )
-            ]
+            frequency_jobs = []
             if cls.lemma_count > 0:
                 frequency_jobs.append((write_lemma_frequencies, (lemmas_file, f"{cls.workdir}/lemmas")))
                 frequency_jobs.append(
@@ -1383,31 +1508,25 @@ class Loader:
                 (frequency_file_key(function, args), args[1], pool.submit(function, *args))
                 for function, args in frequency_jobs
             ]
+            # The word attributes one by ranges of words too, joined afterwards (see join_unique_lines)
+            word_attribute_files = [
+                (
+                    f"{cls.workdir}/word_attributes.{part}",
+                    pool.submit(
+                        write_unique_word_attributes,
+                        words_file,
+                        f"{cls.workdir}/word_attributes.{part}",
+                        "",
+                        cls.attributes_to_skip,
+                        byte_range,
+                    ),
+                )
+                for part, byte_range in enumerate(word_ranges)
+            ]
             lemma_lookup = None
             if cls.lemma_count > 0:  # separate database built from the lemmas file only
                 lemma_lookup = pool.submit(build_lemma_lookup_index, cls.workdir, cls.destination, cls.lemma_count)
-            print(f"{time.ctime()}: Creating word index...", flush=True)
-            parts = {
-                "words": pool.submit(
-                    index_words,
-                    words_file,
-                    part_paths["words"],
-                    overflow_dir,
-                    cls.has_attributes,
-                    cls.attributes_to_skip,
-                    commit_interval,
-                ),
-                "word_attributes": pool.submit(
-                    index_word_attributes,
-                    words_file,
-                    part_paths["word_attributes"],
-                    overflow_dir,
-                    "",
-                    cls.attributes_to_skip,
-                    commit_interval,
-                    True,
-                ),
-            }
+            parts = {}
             if cls.lemma_count > 0:
                 print(f"{time.ctime()}: Creating lemma index...", flush=True)
                 parts["lemmas"] = pool.submit(
@@ -1423,9 +1542,36 @@ class Loader:
                     commit_interval,
                     False,
                 )
+            print(f"{time.ctime()}: Creating word index...", flush=True)
+            for part, byte_range in enumerate(word_ranges):
+                parts[f"words.{part}"] = pool.submit(
+                    index_words,
+                    words_file,
+                    part_paths[f"words.{part}"],
+                    overflow_dir,
+                    cls.has_attributes,
+                    cls.attributes_to_skip,
+                    commit_interval,
+                    byte_range,
+                )
+                parts[f"word_attributes.{part}"] = pool.submit(
+                    index_word_attributes,
+                    words_file,
+                    part_paths[f"word_attributes.{part}"],
+                    overflow_dir,
+                    "",
+                    cls.attributes_to_skip,
+                    commit_interval,
+                    True,
+                    byte_range,
+                )
             total = 2 * cls.word_count + (2 * cls.lemma_count if cls.lemma_count > 0 else 0)
             with tqdm(total=total, desc="Storing words, lemmas and their attributes", leave=False) as pbar:
-                jobs = [*parts.values(), *(job for _, _, job in frequency_files)]
+                jobs = [
+                    *parts.values(),
+                    *(job for _, _, job in frequency_files),
+                    *(job for _, job in word_attribute_files),
+                ]
                 if lemma_lookup is not None:
                     jobs.append(lemma_lookup)
                 while not all(part.done() for part in parts.values()):
@@ -1434,19 +1580,29 @@ class Loader:
                     for job in done:
                         job.result()  # raises the error of a job which failed
 
-            count, overflow_keys, has_attributes = parts["words"].result()
-            cls.overflow_words.update(overflow_keys)
-            if has_attributes:
-                cls.has_attributes = True
+            word_parts = [f"words.{part}" for part in range(len(word_ranges))]
+            attribute_parts = [f"word_attributes.{part}" for part in range(len(word_ranges))]
+            count = 0
+            for part in word_parts:
+                part_count, overflow_keys, has_attributes = parts[part].result()
+                count += part_count
+                cls.overflow_words.update(overflow_keys)
+                if has_attributes:
+                    cls.has_attributes = True
             print(f"{time.ctime()}: Stored {cls.word_count} words in {count} entries.", flush=True)
+            merged_parts = list(word_parts)
             if cls.lemma_count > 0:
                 count, overflow_keys = parts["lemmas"].result()
                 cls.overflow_words.update(overflow_keys)
                 print(f"{time.ctime()}: Stored {cls.lemma_count} lemmas in {count} entries.", flush=True)
-            merged_parts = ["words", "lemmas"] if cls.lemma_count > 0 else ["words"]
+                merged_parts.append("lemmas")
             if cls.has_attributes is True:
-                count, overflow_keys, all_word_attribute_names = parts["word_attributes"].result()
-                cls.overflow_words.update(overflow_keys)
+                count, all_word_attribute_names = 0, set()
+                for part in attribute_parts:
+                    part_count, overflow_keys, attribute_names = parts[part].result()
+                    count += part_count
+                    cls.overflow_words.update(overflow_keys)
+                    all_word_attribute_names.update(attribute_names)
                 file_stat = os.stat(words_file)
                 cls.all_word_attribute_names = (
                     words_file,
@@ -1455,7 +1611,7 @@ class Loader:
                     all_word_attribute_names,
                 )
                 print(f"{time.ctime()}: Found word attributes: stored {count} word attributes.", flush=True)
-                merged_parts.append("word_attributes")
+                merged_parts.extend(attribute_parts)
                 if cls.lemma_count > 0:
                     count, overflow_keys, _ = parts["lemma_attributes"].result()
                     cls.overflow_words.update(overflow_keys)
@@ -1469,7 +1625,7 @@ class Loader:
                 print(f"{time.ctime()}: Optimizing word index for space...", flush=True)
                 os.mkdir(f"{cls.destination}/words.lmdb")
                 # Reopen env without writemap to compact the database
-                src_env = lmdb.open(part_paths["words"], readonly=True)
+                src_env = lmdb.open(part_paths[merged_parts[0]], readonly=True)
                 src_env.copy(f"{cls.destination}/words.lmdb", compact=True)
                 src_env.close()
             for part in parts:
@@ -1481,6 +1637,14 @@ class Loader:
             for key, path, job in frequency_files:
                 job.result()
                 cls.precomputed_files[key] = path
+            for _, job in word_attribute_files:
+                job.result()
+            word_attributes_file = f"{cls.workdir}/word_attributes"
+            join_unique_lines([path for path, _ in word_attribute_files], word_attributes_file)
+            key = frequency_file_key(
+                write_unique_word_attributes, (words_file, word_attributes_file, "", cls.attributes_to_skip)
+            )
+            cls.precomputed_files[key] = word_attributes_file
 
     def setup_sql_load(self, verbose=True):
         """Setup SQLite DB creation"""
@@ -1566,14 +1730,6 @@ class Loader:
         os.mkdir(self.destination + "/hitlists/")
         os.chmod(self.destination + "/hitlists/", 0o777)
         os.chmod(os.path.join(self.destination, "TEXT"), 0o775)
-
-        # Note: the lemmas / word_attributes / lemma_word_attributes frequency
-        # files are now written by the lemma_and_attribute_frequencies post-filter
-        # (in post_processing), so build_word_forms_lmdb can consume them.
-
-        # Note: data/.htaccess ("deny from all") is no longer needed.
-        # Under gunicorn, Apache/Nginx only proxies requests — it never
-        # serves files from the database directory directly.
 
         # The web app build only depends on appConfig.json (not on the database), so it runs while we finish up
         with open(os.path.join(self.web_app_dir, "appConfig.json"), "w", encoding="utf8") as app_config:
