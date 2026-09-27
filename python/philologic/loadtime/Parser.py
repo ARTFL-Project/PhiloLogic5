@@ -714,12 +714,13 @@ class XMLParser:
             if closed_quote_tag.search(tag):
                 self.in_text_quote = False
 
-            # Word tags: store attributes to be attached to the actual word in word_handler
+            # Word tags: store attributes to be attached to the actual word in word_handler. Tags closed after a word
+            # tag clear them (current_tag only changes with opening tags), and are handled below as any other.
             if self.current_tag == "w":
                 self.word_tag_attributes = self.get_attributes(tag)
 
             # Paragraphs
-            elif parag_tag.search(tag) or parag_with_attrib_tag.search(tag):
+            if parag_tag.search(tag) or parag_with_attrib_tag.search(tag):
                 do_this_para = True
                 if self.in_a_note:
                     do_this_para = False

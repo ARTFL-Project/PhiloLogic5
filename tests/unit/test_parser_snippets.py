@@ -32,6 +32,8 @@ SNIPPETS = {
     "</div></body></text>",
     "speech_and_stage": "<text><body><div><sp><speaker>Hamlet.</speaker><p>To be</p></sp><stage>Exit.</stage>"
     "</div></body></text>",
+    "speech_with_word_tags": "<text><body><div><sp><speaker>A</speaker><l><w>one</w> <w>two</w></l></sp>"
+    "<stage>exit</stage></div></body></text>",
     "line_groups": "<text><body><div><lg><l>first line</l><l>second line</l></lg></div></body></text>",
     "pages": '<text><body><div><pb n="12 b"/><p>page text</p><pb/><p>more</p><pb n="Ⅳ-2"/></div></body></text>',
     "sentences": "<text><body><div><p>Mr. Smith went home. He left! Did he? Yes, 1.5 times. It is a.b c. End"

@@ -152,6 +152,21 @@
   "div1\tdiv\t1 1 0 0 0 0 0 12 0\t{\"start_byte\":12,\"head\":\"[NA]\",\"philo_div1_id\":\"1 1\",\"end_byte\":104,\"parent\":\"1 0 0 0 0 0 0\"}",
   "doc\ttext\t1 0 0 0 0 0 0 0 0\t{\"start_byte\":0,\"filename\":\"snippet.xml\",\"philo_doc_id\":\"1\",\"end_byte\":104,\"parent\":\"0 0 0 0 0 0 0\"}"
  ],
+ "speech_with_word_tags": [
+  "word\ta\t1 1 1 1 1 1 1 30 0\t{\"start_byte\":30,\"end_byte\":31,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "word\tone\t1 1 1 1 1 1 2 47 0\t{\"start_byte\":47,\"end_byte\":50,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "word\ttwo\t1 1 1 1 1 1 3 58 0\t{\"start_byte\":58,\"end_byte\":61,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "line\tl\t1 0 0 0 0 0 0 0 1\t{\"start_byte\":41,\"doc_id\":1,\"end_byte\":69}",
+  "sent\t__philo_virtual\t1 1 1 1 1 1 0 30 0\t{\"start_byte\":30,\"end_byte\":74,\"parent\":\"1 1 1 1 1 0 0\"}",
+  "para\tsp\t1 1 1 1 1 0 0 17 0\t{\"start_byte\":17,\"speaker\":\"A\",\"end_byte\":74,\"parent\":\"1 1 1 1 0 0 0\"}",
+  "word\texit\t1 1 1 1 2 1 1 81 0\t{\"start_byte\":81,\"end_byte\":85,\"parent\":\"1 1 1 1 2 1 0\"}",
+  "sent\t__philo_virtual\t1 1 1 1 2 1 0 81 0\t{\"start_byte\":81,\"end_byte\":93,\"parent\":\"1 1 1 1 2 0 0\"}",
+  "para\tstage\t1 1 1 1 2 0 0 74 0\t{\"start_byte\":74,\"end_byte\":93,\"parent\":\"1 1 1 1 0 0 0\"}",
+  "div3\t__philo_virtual\t1 1 1 1 0 0 0 17 0\t{\"start_byte\":17,\"end_byte\":113,\"parent\":\"1 1 1 0 0 0 0\"}",
+  "div2\t__philo_virtual\t1 1 1 0 0 0 0 17 0\t{\"start_byte\":17,\"end_byte\":113,\"parent\":\"1 1 0 0 0 0 0\"}",
+  "div1\tdiv\t1 1 0 0 0 0 0 12 0\t{\"start_byte\":12,\"head\":\"[NA]\",\"philo_div1_id\":\"1 1\",\"end_byte\":113,\"parent\":\"1 0 0 0 0 0 0\"}",
+  "doc\ttext\t1 0 0 0 0 0 0 0 0\t{\"start_byte\":0,\"filename\":\"snippet.xml\",\"philo_doc_id\":\"1\",\"end_byte\":113,\"parent\":\"0 0 0 0 0 0 0\"}"
+ ],
  "line_groups": [
   "word\tfirst\t1 1 1 1 1 1 1 24 0\t{\"start_byte\":24,\"end_byte\":29,\"parent\":\"1 1 1 1 1 1 0\"}",
   "word\tline\t1 1 1 1 1 1 2 30 0\t{\"start_byte\":30,\"end_byte\":34,\"parent\":\"1 1 1 1 1 1 0\"}",
