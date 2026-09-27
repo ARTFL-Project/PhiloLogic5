@@ -181,52 +181,15 @@ CHARS_NOT_TO_INDEX = r"[\[\{\]\}]"
 join_hyphen_with_lb = re.compile(r"(\&shy;[\n \t]*<lb\/>)", re.I | re.M)
 join_hyphen = re.compile(r"(\&shy;[\n \t]*)", re.I | re.M)
 text_tag = re.compile(r"<text\W", re.I)
-closed_text_tag = re.compile(r"</text\W", re.I)
 doc_body_tag = re.compile(r"<docbody", re.I)
 body_tag = re.compile(r"<body\W", re.I)
 div_tag = re.compile(r"<div", re.I)
 closed_div_tag = re.compile(r"<\/div", re.I)
 para_tag = re.compile(r"<p\W", re.I)
-quote_tag = re.compile(r"<q[ >]", re.I)
-closed_quote_tag = re.compile(r"</q>", re.I)
-parag_tag = re.compile(r"<p[ >]", re.I)  # <p> or <p with attributes...>
-closed_para_tag = re.compile(r"</p>", re.I)
-note_tag = re.compile(r"<note\W", re.I)
-closed_note_tag = re.compile(r"</note>", re.I)
-epigraph_tag = re.compile(r"<epigraph\W", re.I)
-closed_epigraph_tag = re.compile(r"</epigraph>", re.I)
-list_tag = re.compile(r"<list\W", re.I)
-closed_list_tag = re.compile(r"</list>", re.I)
-sp_tag = re.compile(r"<sp\W", re.I)
-closed_sp_tag = re.compile(r"</sp>", re.I)
-speaker_tag = re.compile(r"<speaker\W", re.I)
-closed_speaker_tag = re.compile(r"</speaker>")
-argument_tag = re.compile(r"<argument\W", re.I)
-closed_argument_tag = re.compile(r"</argument>", re.I)
-opener_tag = re.compile(r"<opener\W", re.I)
-closed_opener_tag = re.compile(r"</opener\W", re.I)
-closer_tag = re.compile(r"<closer\W", re.I)
-closed_closer_tag = re.compile(r"</closer\W", re.I)
-stage_tag = re.compile(r"<stage\W", re.I)
-closed_stage_tag = re.compile(r"</stage\W", re.I)
-castlist_tag = re.compile(r"<castlist\W", re.I)
-closed_castlist_tag = re.compile(r"</castlist\W", re.I)
 page_tag = re.compile(r"<pb\W", re.I)
-n_attribute = re.compile(r'n="([^"]*)', re.I)
-line_group_tag = re.compile(r"<lg\W", re.I)
-closed_line_group = re.compile(r"</lg\W", re.I)
-line_tag = re.compile(r"<l\W", re.I)
-ab_tag = re.compile(r"<ab\W", re.I)
-closed_line_tag = re.compile(r"</l\W", re.I)
-closed_ab_tag = re.compile(r"</ab\W", re.I)
-sentence_tag = re.compile(r"<s\W", re.I)
-closed_sentence_tag = re.compile(r"</s\W", re.I)
-front_tag = re.compile(r"<front\W", re.I)
-closed_front_tag = re.compile(r"</front\W", re.I)
 attrib_matcher = re.compile(r"""(\S+)="?((?:.(?!"?\s+(?:\S+)=|[>"]))+.)"?""", re.I)
 tag_matcher = re.compile(r"<(\/?\w+)[^>]*>?", re.I)
 head_self_close_tag = re.compile(r"<head\/>", re.I)
-closed_div_tag = re.compile(r"<\/div", re.I)
 head_tag = re.compile(r"<head", re.I)
 closed_head_tag = re.compile(r"<\/head>", re.I)
 apost_ent = re.compile(r"\&apos;", re.I)
@@ -235,21 +198,10 @@ inverted_ent = re.compile(r"\&inverted([a-zA-Z0-9]);", re.I)
 supp_ent = re.compile(r"&supp([a-z0-9]);", re.I)
 ligatures_ent = re.compile(r"\&([A-Za-z][A-Za-z])lig;", re.I)
 type_attrib = re.compile(r'type="([^"]*)"', re.I)
-hyper_div_tag = re.compile(r"<hyperdiv\W", re.I)
-div_num_tag = re.compile(r"<div(.)", re.I)
 char_ents = re.compile(r"\&[a-zA-Z0-9\#][a-zA-Z0-9]*;", re.I)
-newline_shortener = re.compile(r"\n\n*")
 check_if_char_word = re.compile(r"\p{L}", re.I)
 cap_char_or_num = re.compile(r"[A-Z0-9]")  # Capitals
 ending_punctuation = re.compile(r"[%s]$" % string.punctuation.replace(")", "").replace("]", ""))
-add_tag = re.compile(r"<add\W", re.I)
-closed_add_tag = re.compile(r"\A</add>\Z")
-# Tags named exactly index, date, ref or graphic
-index_tag = re.compile(r"<index(?!\w)")
-date_tag = re.compile(r"<date(?!\w)")
-ref_tag = re.compile(r"<ref(?!\w)")
-graphic_tag = re.compile(r"<graphic(?!\w)")
-seg_attrib = re.compile(r"<seg \w+=", re.I)
 abbrev_expand = re.compile(r'(<abbr .*expan=")([^"]*)("[^>]*>)([^>]*)(</abbr>)', re.I | re.M)
 semi_colon_strip = re.compile(r"\A;?(\w+);?\Z")
 
@@ -328,56 +280,54 @@ entity_regex = [
     re.compile(r"(\&sun;)", re.I),
 ]
 
-LINE_SPLITTER = re.compile(r"([^\n]+)")
-
 
 # Handlers of XMLParser.tag_handler: tag name (lowercased; "div" and "/div" stand for all the names starting with them)
 # -> (regex which the tag must match, handler method). The regexes match tags starting with different names: a tag has
 # one handler at most.
 TAG_HANDLERS = {
     "text": (text_tag, "handle_text"),
-    "/text": (closed_text_tag, "handle_text_end"),
-    "q": (quote_tag, "handle_quote"),
-    "/q": (closed_quote_tag, "handle_quote_end"),
-    "p": (parag_tag, "handle_paragraph"),
-    "note": (note_tag, "handle_note"),
-    "/note": (closed_note_tag, "handle_note_end"),
-    "castlist": (castlist_tag, "handle_paragraph_object"),
-    "sp": (sp_tag, "handle_blocking_paragraph_object"),
-    "/sp": (closed_sp_tag, "handle_blocking_paragraph_object_end"),
-    "epigraph": (epigraph_tag, "handle_blocking_paragraph_object"),
-    "/epigraph": (closed_epigraph_tag, "handle_blocking_paragraph_object_end"),
-    "argument": (argument_tag, "handle_blocking_paragraph_object"),
-    "/argument": (closed_argument_tag, "handle_blocking_paragraph_object_end"),
-    "opener": (opener_tag, "handle_blocking_paragraph_object"),
-    "/opener": (closed_opener_tag, "handle_blocking_paragraph_object_end"),
-    "closer": (closer_tag, "handle_blocking_paragraph_object"),
-    "/closer": (closed_closer_tag, "handle_blocking_paragraph_object_end"),
-    "add": (add_tag, "handle_blocking_paragraph_object"),
-    "/add": (closed_add_tag, "handle_blocking_paragraph_object_end"),
-    "list": (list_tag, "handle_inner_paragraph_object"),
-    "stage": (stage_tag, "handle_inner_paragraph_object"),
-    "/stage": (closed_stage_tag, "handle_inner_paragraph_object_end"),
-    "speaker": (speaker_tag, "handle_speaker"),
+    "/text": (re.compile(r"</text\W", re.I), "handle_text_end"),
+    "q": (re.compile(r"<q[ >]", re.I), "handle_quote"),
+    "/q": (re.compile(r"</q>", re.I), "handle_quote_end"),
+    "p": (re.compile(r"<p[ >]", re.I), "handle_paragraph"),
+    "note": (re.compile(r"<note\W", re.I), "handle_note"),
+    "/note": (re.compile(r"</note>", re.I), "handle_note_end"),
+    "castlist": (re.compile(r"<castlist\W", re.I), "handle_paragraph_object"),
+    "sp": (re.compile(r"<sp\W", re.I), "handle_blocking_paragraph_object"),
+    "/sp": (re.compile(r"</sp>", re.I), "handle_blocking_paragraph_object_end"),
+    "epigraph": (re.compile(r"<epigraph\W", re.I), "handle_blocking_paragraph_object"),
+    "/epigraph": (re.compile(r"</epigraph>", re.I), "handle_blocking_paragraph_object_end"),
+    "argument": (re.compile(r"<argument\W", re.I), "handle_blocking_paragraph_object"),
+    "/argument": (re.compile(r"</argument>", re.I), "handle_blocking_paragraph_object_end"),
+    "opener": (re.compile(r"<opener\W", re.I), "handle_blocking_paragraph_object"),
+    "/opener": (re.compile(r"</opener\W", re.I), "handle_blocking_paragraph_object_end"),
+    "closer": (re.compile(r"<closer\W", re.I), "handle_blocking_paragraph_object"),
+    "/closer": (re.compile(r"</closer\W", re.I), "handle_blocking_paragraph_object_end"),
+    "add": (re.compile(r"<add\W", re.I), "handle_blocking_paragraph_object"),
+    "/add": (re.compile(r"\A</add>\Z"), "handle_blocking_paragraph_object_end"),
+    "list": (re.compile(r"<list\W", re.I), "handle_inner_paragraph_object"),
+    "stage": (re.compile(r"<stage\W", re.I), "handle_inner_paragraph_object"),
+    "/stage": (re.compile(r"</stage\W", re.I), "handle_inner_paragraph_object_end"),
+    "speaker": (re.compile(r"<speaker\W", re.I), "handle_speaker"),
     "pb": (page_tag, "handle_page"),
-    "lg": (line_group_tag, "handle_line_group"),
-    "/lg": (closed_line_group, "handle_line_group_end"),
-    "l": (line_tag, "handle_line"),
-    "/l": (closed_line_tag, "handle_line_end"),
-    "ab": (ab_tag, "handle_ab"),
-    "/ab": (closed_ab_tag, "handle_ab_end"),
-    "s": (sentence_tag, "handle_sentence"),
-    "/s": (closed_sentence_tag, "handle_sentence_end"),
-    "front": (front_tag, "handle_front"),
-    "/front": (closed_front_tag, "handle_front_end"),
+    "lg": (re.compile(r"<lg\W", re.I), "handle_line_group"),
+    "/lg": (re.compile(r"</lg\W", re.I), "handle_line_group_end"),
+    "l": (re.compile(r"<l\W", re.I), "handle_line"),
+    "/l": (re.compile(r"</l\W", re.I), "handle_line_end"),
+    "ab": (re.compile(r"<ab\W", re.I), "handle_ab"),
+    "/ab": (re.compile(r"</ab\W", re.I), "handle_ab_end"),
+    "s": (re.compile(r"<s\W", re.I), "handle_sentence"),
+    "/s": (re.compile(r"</s\W", re.I), "handle_sentence_end"),
+    "front": (re.compile(r"<front\W", re.I), "handle_front"),
+    "/front": (re.compile(r"</front\W", re.I), "handle_front_end"),
     "body": (body_tag, "handle_body"),
-    "hyperdiv": (hyper_div_tag, "handle_hyperdiv"),
+    "hyperdiv": (re.compile(r"<hyperdiv\W", re.I), "handle_hyperdiv"),
     "div": (div_tag, "handle_div"),
     "/div": (closed_div_tag, "handle_div_end"),
-    "index": (index_tag, "handle_index"),
-    "date": (date_tag, "handle_date"),
-    "ref": (ref_tag, "handle_ref"),
-    "graphic": (graphic_tag, "handle_graphic"),
+    "index": (re.compile(r"<index(?!\w)"), "handle_index"),
+    "date": (re.compile(r"<date(?!\w)"), "handle_date"),
+    "ref": (re.compile(r"<ref(?!\w)"), "handle_ref"),
+    "graphic": (re.compile(r"<graphic(?!\w)"), "handle_graphic"),
 }
 
 # Characters matched by the ending_punctuation character class (all ASCII), used to strip it without a regex call
@@ -1096,7 +1046,7 @@ class XMLParser:
             count = 0
             word_list = words.split("\n")
             if len(word_list) > 2:
-                # Drop empty inner items: same as collapsing runs of newlines with newline_shortener before splitting
+                # Drop empty inner items: same as collapsing runs of newlines before splitting
                 word_list = [word_list[0], *[w for w in word_list[1:-1] if w], word_list[-1]]
             last_word = ""
             next_word = ""
