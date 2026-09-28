@@ -293,6 +293,7 @@ TAG_HANDLERS = {
     "note": (re.compile(r"<note\W", re.I), "handle_note"),
     "/note": (re.compile(r"</note>", re.I), "handle_note_end"),
     "castlist": (re.compile(r"<castlist\W", re.I), "handle_paragraph_object"),
+    "/castlist": (re.compile(r"</castlist\W", re.I), "handle_paragraph_object_end"),
     "sp": (re.compile(r"<sp\W", re.I), "handle_blocking_paragraph_object"),
     "/sp": (re.compile(r"</sp>", re.I), "handle_blocking_paragraph_object_end"),
     "epigraph": (re.compile(r"<epigraph\W", re.I), "handle_blocking_paragraph_object"),
@@ -306,6 +307,7 @@ TAG_HANDLERS = {
     "add": (re.compile(r"<add\W", re.I), "handle_blocking_paragraph_object"),
     "/add": (re.compile(r"\A</add>\Z"), "handle_blocking_paragraph_object_end"),
     "list": (re.compile(r"<list\W", re.I), "handle_inner_paragraph_object"),
+    "/list": (re.compile(r"</list\W", re.I), "handle_inner_paragraph_object_end"),
     "stage": (re.compile(r"<stage\W", re.I), "handle_inner_paragraph_object"),
     "/stage": (re.compile(r"</stage\W", re.I), "handle_inner_paragraph_object_end"),
     "speaker": (re.compile(r"<speaker\W", re.I), "handle_speaker"),
@@ -737,6 +739,9 @@ class XMLParser:
         self.open_para = True
         self.v.push("para", tag_name, start_byte)
         self.get_object_attributes(tag, tag_name, "para")
+
+    def handle_paragraph_object_end(self, tag, tag_name, start_byte):
+        self.close_para(self.bytes_read_in)
 
     def handle_blocking_paragraph_object(self, tag, tag_name, start_byte):
         """Paragraph objects in which there are no deeper objects (sp, epigraph...)"""

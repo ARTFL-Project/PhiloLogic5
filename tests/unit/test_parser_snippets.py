@@ -30,6 +30,8 @@ SNIPPETS = {
     "notes": '<text><body><div><p>text<note n="1">a note <p>inside</p></note> more</p></div></body></text>',
     "paragraphs_after_notes": "<text><body><div><p>one<note>n <p>in note</p></note> after</p><p>two</p><p>three</p>"
     "</div></body></text>",
+    "paragraphs_after_lists": "<text><body><div><list><item>a</item></list>after list<castlist><castItem>c"
+    "</castItem></castlist>after castlist<sp><list><item>b</item></list>in sp</sp></div></body></text>",
     "speech_and_stage": "<text><body><div><sp><speaker>Hamlet.</speaker><p>To be</p></sp><stage>Exit.</stage>"
     "</div></body></text>",
     "speech_with_word_tags": "<text><body><div><sp><speaker>A</speaker><l><w>one</w> <w>two</w></l></sp>"
