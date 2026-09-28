@@ -229,8 +229,15 @@ def sequential_answers(server, reqs):
     return answers
 
 
+def hitlist_dir(eltec_db_path):
+    """The corpus's hitlist directory, where the server (with the same global config) writes."""
+    from philologic.runtime.hitlist_dir import get_hitlist_dir
+
+    return Path(get_hitlist_dir(str(eltec_db_path)))
+
+
 def clear_hitlists(eltec_db_path):
-    for f in (Path(eltec_db_path) / "hitlists").iterdir():
+    for f in hitlist_dir(eltec_db_path).iterdir():
         try:
             f.unlink()
         except FileNotFoundError:
@@ -257,7 +264,7 @@ def chaos(server, stop, kill_every=None, age_every=None, eltec_db_path=None):
             next_kill = now + kill_every
         if age_every and now >= next_age:
             old = now - 11 * 60
-            for f in (Path(eltec_db_path) / "hitlists").iterdir():
+            for f in hitlist_dir(eltec_db_path).iterdir():
                 try:
                     os.utime(f, (old, old))
                 except FileNotFoundError:
