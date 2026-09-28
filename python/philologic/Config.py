@@ -169,6 +169,10 @@ DB_LOCALS_DEFAULTS = {
         "value": None,
         "comment": "# Custom query tokenization patterns. When set, overrides the default patterns in QuerySyntax.parse_query.\n# Must be a list of (label, regex) tuples, e.g. [(\"TERM\", r'[^\\s\"]+'), ...].\n# When None, the built-in default patterns are used.",
     },
+    "hitlist_dir": {
+        "value": None,
+        "comment": "# A directory for this database's search results caches (hitlists), which go in a subdirectory named after the database.\n# When None, the hitlist_dir of the global config (philologic5.cfg) is used if set, else this database's data/hitlists/.",
+    },
 }
 DB_LOCALS_HEADER = """
    #########################################################\n

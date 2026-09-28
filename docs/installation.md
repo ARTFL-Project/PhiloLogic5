@@ -158,6 +158,8 @@ hitlist_dir = "/var/cache/philologic5/hitlists/"
 
 Each database's hitlists then go in a subdirectory named after the database, created when first needed. Don't point two PhiloLogic installs that could have databases with the same name at the same `hitlist_dir`. Restart the web app after changing it.
 
+A database can also set `hitlist_dir` in its own `data/db.locals.py`, which then comes first for that database (its hitlists go in a subdirectory named after it there too). Reloading the database rewrites `db.locals.py`, so set it again after a reload.
+
 ## Web Server Configuration
 
 ### Linux

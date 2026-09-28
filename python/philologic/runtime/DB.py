@@ -51,7 +51,7 @@ class DB:
     @property
     def hitlist_dir(self):
         """Where this database's hitlists go (see philologic.runtime.hitlist_dir)"""
-        return get_hitlist_dir(self.path)
+        return get_hitlist_dir(self.path, self.locals)
 
     def __getitem__(self, item):
         if self.width != 9:  # verify this isn't a page id
