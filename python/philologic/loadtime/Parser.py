@@ -335,6 +335,14 @@ TAG_HANDLERS = {
 # Characters matched by the ending_punctuation character class (all ASCII), used to strip it without a regex call
 ENDING_PUNCTUATION_CHARS = frozenset(chr(i) for i in range(128) if ending_punctuation.match(chr(i)))
 
+xml_comment = re.compile(r"<!--.*?-->", re.S)
+
+
+def blank_bytes(match):
+    """As many spaces as the matched text has bytes in UTF-8"""
+    return " " * len(match.group().encode("utf8"))
+
+
 TOKEN_CHAR = re.compile(r"[\p{L}\p{M}\p{N}&;]", re.I)  # a character of a TOKEN_REGEX token
 
 
@@ -526,7 +534,8 @@ class XMLParser:
     def parse(self, text_input):
         """Top level function for reading a file and printing out the output."""
         self.input = text_input
-        self.content = text_input.read()
+        # Comments are neither markup nor text: blank them, keeping the byte offsets of what follows
+        self.content = xml_comment.sub(blank_bytes, text_input.read())
         if div_tag.search(self.content):
             self.got_a_div = True
         if para_tag.search(self.content):

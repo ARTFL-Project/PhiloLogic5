@@ -57,6 +57,9 @@ SNIPPETS = {
     'n="3"/><p>t</p></div><index type="n" value="x"/></body></text>',
     "tag_name_variants": "<text><body><div><sp><p>x</p></sp ><q/>y<q>z</q><ſp>ſ</ſp><add>w</add></ADD> v<list>l"
     "</list></div></body></text>",
+    "comments": "<text><body><div><p>one <!-- <p> hidden --> two <!-- é\n<div> --> three</p></div><!-- unclosed"
+    "</body></text>",
+    "comment_mentioning_div": "<text><body><!-- <div> --><p>no divs</p></body></text>",
     "text_outside_body": "<TEI><teiHeader><title>Not indexed</title></teiHeader><text><body><p>indexed</p>"
     "</body></text></TEI>",
 }

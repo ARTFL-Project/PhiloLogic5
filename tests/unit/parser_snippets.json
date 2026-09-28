@@ -397,6 +397,27 @@
   "div1\tdiv\t1 1 0 0 0 0 0 12 0\t{\"start_byte\":12,\"head\":\"[NA]\",\"philo_div1_id\":\"1 1\",\"end_byte\":115,\"parent\":\"1 0 0 0 0 0 0\"}",
   "doc\ttext\t1 0 0 0 0 0 0 0 0\t{\"start_byte\":0,\"filename\":\"snippet.xml\",\"philo_doc_id\":\"1\",\"end_byte\":115,\"parent\":\"0 0 0 0 0 0 0\"}"
  ],
+ "comments": [
+  "word\tone\t1 1 1 1 1 1 1 20 0\t{\"start_byte\":20,\"end_byte\":23,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "word\ttwo\t1 1 1 1 1 1 2 44 0\t{\"start_byte\":44,\"end_byte\":47,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "word\tthree\t1 1 1 1 1 1 3 66 0\t{\"start_byte\":66,\"end_byte\":71,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "sent\t__philo_virtual\t1 1 1 1 1 1 0 20 0\t{\"start_byte\":20,\"end_byte\":108,\"parent\":\"1 1 1 1 1 0 0\"}",
+  "para\tp\t1 1 1 1 1 0 0 17 0\t{\"start_byte\":17,\"end_byte\":108,\"parent\":\"1 1 1 1 0 0 0\"}",
+  "div3\t__philo_virtual\t1 1 1 1 0 0 0 17 0\t{\"start_byte\":17,\"end_byte\":108,\"parent\":\"1 1 1 0 0 0 0\"}",
+  "div2\t__philo_virtual\t1 1 1 0 0 0 0 17 0\t{\"start_byte\":17,\"end_byte\":108,\"parent\":\"1 1 0 0 0 0 0\"}",
+  "div1\tdiv\t1 1 0 0 0 0 0 12 0\t{\"start_byte\":12,\"head\":\"[NA]\",\"philo_div1_id\":\"1 1\",\"end_byte\":108,\"parent\":\"1 0 0 0 0 0 0\"}",
+  "doc\ttext\t1 0 0 0 0 0 0 0 0\t{\"start_byte\":0,\"filename\":\"snippet.xml\",\"philo_doc_id\":\"1\",\"end_byte\":108,\"parent\":\"0 0 0 0 0 0 0\"}"
+ ],
+ "comment_mentioning_div": [
+  "word\tno\t1 1 1 1 1 1 1 29 0\t{\"start_byte\":29,\"end_byte\":31,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "word\tdivs\t1 1 1 1 1 1 2 32 0\t{\"start_byte\":32,\"end_byte\":36,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "sent\t__philo_virtual\t1 1 1 1 1 1 0 29 0\t{\"start_byte\":29,\"end_byte\":54,\"parent\":\"1 1 1 1 1 0 0\"}",
+  "para\tp\t1 1 1 1 1 0 0 26 0\t{\"start_byte\":26,\"end_byte\":54,\"parent\":\"1 1 1 1 0 0 0\"}",
+  "div3\t__philo_virtual\t1 1 1 1 0 0 0 26 0\t{\"start_byte\":26,\"end_byte\":54,\"parent\":\"1 1 1 0 0 0 0\"}",
+  "div2\t__philo_virtual\t1 1 1 0 0 0 0 26 0\t{\"start_byte\":26,\"end_byte\":54,\"parent\":\"1 1 0 0 0 0 0\"}",
+  "div1\tbody\t1 1 0 0 0 0 0 6 0\t{\"start_byte\":6,\"philo_div1_id\":\"1 1\",\"head\":\"Document Body\",\"end_byte\":54,\"parent\":\"1 0 0 0 0 0 0\"}",
+  "doc\ttext\t1 0 0 0 0 0 0 0 0\t{\"start_byte\":0,\"filename\":\"snippet.xml\",\"philo_doc_id\":\"1\",\"end_byte\":54,\"parent\":\"0 0 0 0 0 0 0\"}"
+ ],
  "text_outside_body": [
   "word\tindexed\t1 1 1 1 1 1 1 69 0\t{\"start_byte\":69,\"end_byte\":76,\"parent\":\"1 1 1 1 1 1 0\"}",
   "sent\t__philo_virtual\t1 1 1 1 1 1 0 69 0\t{\"start_byte\":69,\"end_byte\":100,\"parent\":\"1 1 1 1 1 0 0\"}",
