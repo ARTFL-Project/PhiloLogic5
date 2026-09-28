@@ -16,11 +16,12 @@ from random import randint
 import falcon
 
 from philologic.runtime import WebConfig, WSGIHandler
+from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.HitWrapper import SHARED_CACHE
 from wsgi_helpers import resolve
 
 # Read central config to find the database root directory.
-_CONFIG_FILE = "/etc/philologic/philologic5.cfg"
+_CONFIG_FILE = os.environ.get("PHILOLOGIC_CONFIG", "/etc/philologic/philologic5.cfg")
 if "PHILOLOGIC_DB_ROOT" not in os.environ and os.path.exists(_CONFIG_FILE):
     _config = {}
     with open(_CONFIG_FILE, encoding="utf8") as _f:
@@ -119,7 +120,7 @@ class CleanupMiddleware:
         db_path = getattr(req.context, "db_path", None)
         if db_path is None:
             return
-        hitlist_dir = os.path.join(db_path, "data/hitlists")
+        hitlist_dir = get_hitlist_dir(os.path.join(db_path, "data"))
         if not os.path.isdir(hitlist_dir):
             return
         now = datetime.datetime.now()

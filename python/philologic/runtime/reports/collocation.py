@@ -587,13 +587,13 @@ def collocation_results(request, config):
         if None in all_collocates:
             del all_collocates[None]
         # Cache full Counter to disk; return only top 100 for display
-        file_path = create_file_path(request, "", config.db_path)
+        file_path = create_file_path(request, "", db.hitlist_dir)
         atomic_pickle_dump(all_collocates, file_path)
         collocation_object["collocates"] = all_collocates.most_common(100)
         collocation_object["file_path"] = file_path
     else:
         unique_tids, unique_counts, group_bounds, group_names = result
-        file_path = create_file_path(request, map_field, config.db_path, ext=".npz")
+        file_path = create_file_path(request, map_field, db.hitlist_dir, ext=".npz")
         save_map_field_cache(
             file_path, unique_tids, unique_counts, group_bounds, group_names,
             count_lemmas, attribute, attribute_value,
@@ -748,7 +748,7 @@ def get_metadata_value(sql_cursor, field, sentence_id, index, obj_level):
     return sql_cursor.fetchone()[0]
 
 
-def create_file_path(request, field, path, ext=".pickle"):
+def create_file_path(request, field, hitlist_dir, ext=".pickle"):
     hash = hashlib.sha1()
     hash.update(request["q"].encode("utf-8"))
     hash.update(request["method"].encode("utf-8"))
@@ -762,7 +762,7 @@ def create_file_path(request, field, path, ext=".pickle"):
     for k, v in sorted(request.metadata.items()):
         if v:
             hash.update(f"{k}={v}".encode("utf-8"))
-    return f"{path}/data/hitlists/{hash.hexdigest()}{ext}"
+    return os.path.join(hitlist_dir, f"{hash.hexdigest()}{ext}")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 import hashlib
 import os
 
+from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.reports.collocation import (
     atomic_pickle_dump,
     decode_group_collocates,
@@ -24,7 +25,7 @@ def get_collocate_distribution(request, config):
 
     # Cache the field's Counter to disk for downstream use (e.g. comparative_collocations)
     h = hashlib.sha1(f"{request.file_path}:{request.field}".encode("utf-8")).hexdigest()
-    field_file_path = os.path.join(config.db_path, "data", "hitlists", f"{h}.pickle")
+    field_file_path = os.path.join(get_hitlist_dir(os.path.join(config.db_path, "data")), f"{h}.pickle")
     atomic_pickle_dump(field_counter, field_file_path)
 
     return {"collocates": collocates[:100], "file_path": field_file_path}

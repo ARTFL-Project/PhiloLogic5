@@ -18,7 +18,7 @@ def _get_doc_year_data(db, year_field):
     Cached as .npz in the hitlists directory. First request per database
     computes from SQL and saves; subsequent requests load from disk.
     """
-    cache_path = os.path.join(db.path, "hitlists", "time_series_year_data.npz")
+    cache_path = os.path.join(db.hitlist_dir, "time_series_year_data.npz")
 
     if os.path.exists(cache_path):
         data = np.load(cache_path)

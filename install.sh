@@ -225,6 +225,11 @@ if [ ! -f /etc/philologic/philologic5.cfg ]; then
     url_root = None
     # http://localhost/philologic/ is appropriate if you don't have a DNS hostname.\n"
     echo -e "$url_root" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
+
+    hitlist_dir="# Optional: a directory for search results caches (hitlists), the only files the web app writes.
+    # Each database gets its own subdirectory, so databases can be read-only. None keeps them in each database's data/hitlists/.
+    hitlist_dir = None\n"
+    echo -e "$hitlist_dir" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 else
     echo -e "\n## WARNING ##"
     echo "/etc/philologic/philologic5.cfg already exists"
