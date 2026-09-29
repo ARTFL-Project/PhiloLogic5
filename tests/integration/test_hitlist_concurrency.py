@@ -55,11 +55,11 @@ def corpus_file(db, **metadata):
     h.update(db.path.encode("utf8"))
     for key, value in metadata.items():
         h.update(f"{key}={value}".encode("utf8"))
-    return f"{db.path}/hitlists/{h.hexdigest()}.hitlist"
+    return os.path.join(db.hitlist_dir, f"{h.hexdigest()}.hitlist")
 
 
 def hitlist_files(db):
-    return glob.glob(f"{db.path}/hitlists/*")
+    return glob.glob(os.path.join(db.hitlist_dir, "*"))
 
 
 @pytest.fixture
@@ -108,7 +108,7 @@ class TestFilesRemovedOrFailing:
 
     def test_sorted_copy_removed(self, db):
         expected = fingerprint(db.query("man", "single_term", "0", raw_results=True, sort_order=["title"]))
-        for sorted_copy in glob.glob(f"{db.path}/hitlists/*.sorted.*"):
+        for sorted_copy in glob.glob(os.path.join(db.hitlist_dir, "*.sorted.*")):
             os.remove(sorted_copy)
         assert fingerprint(db.query("man", "single_term", "0", raw_results=True, sort_order=["title"])) == expected
 
@@ -213,7 +213,7 @@ def _stress(db, seconds, kill_every=None, remove_every=None, workers=6):
     for f in hitlist_files(db):
         os.remove(f)
     ctx = multiprocessing.get_context("spawn")
-    report_dir = Path(db.path) / "hitlists"
+    report_dir = Path(db.hitlist_dir)
     reports, procs = [], []
     stop = time.time() + seconds
 

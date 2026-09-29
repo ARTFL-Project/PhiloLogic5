@@ -59,7 +59,9 @@ def get_available_gold_sets(corpus: str) -> list:
 
 def clear_hitlists(db_path: Path):
     """Clear the hitlists directory."""
-    hitlists_dir = db_path / "hitlists"
+    from philologic.runtime.hitlist_dir import get_hitlist_dir
+
+    hitlists_dir = Path(get_hitlist_dir(str(db_path)))
     if hitlists_dir.exists():
         shutil.rmtree(hitlists_dir)
         hitlists_dir.mkdir()

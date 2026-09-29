@@ -49,7 +49,9 @@ BENCHMARK_WARMUP_ROUNDS = 5
 
 def clear_hitlists(db_path):
     """Clear the hitlists directory to ensure fresh query results."""
-    hitlists_dir = Path(db_path) / "hitlists"
+    from philologic.runtime.hitlist_dir import get_hitlist_dir
+
+    hitlists_dir = Path(get_hitlist_dir(str(db_path)))
     if hitlists_dir.exists():
         shutil.rmtree(hitlists_dir)
         hitlists_dir.mkdir()
