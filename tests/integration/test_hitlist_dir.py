@@ -1,4 +1,5 @@
-"""hitlist_dir in the global config: every file cached at request time goes there, none in the databases.
+"""hitlist_dir, in the global config or a database's db.locals.py: every file cached at request time goes there,
+none in the databases.
 
 Without it, hitlists stay in each database's data/hitlists/. With it, the web app serves a read-only copy of the
 test corpus (directories that can't be written, with the corpus's files through symlinks), and every kind of request
@@ -73,13 +74,39 @@ def test_missing_global_config(monkeypatch, tmp_path):
         _configured_root.cache_clear()
 
 
+@pytest.mark.parametrize("global_setting", [None, "global"])
+@pytest.mark.parametrize("database_setting", [None, "absent", "own"])
+def test_database_setting_first(global_config, tmp_path, global_setting, database_setting):
+    """The hitlist_dir in a database's db.locals.py comes first; None there, or none (older databases), defers to
+    the global config's. Read from db.locals.py, or given as a loaded db.locals (as DB does)."""
+    from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
+
+    global_config(f'hitlist_dir = "{tmp_path}/global"\n' if global_setting else "")
+    data = tmp_path / "dbs" / "mydb" / "data"
+    data.mkdir(parents=True)
+    lines = {None: "hitlist_dir = None\n", "absent": "", "own": f'hitlist_dir = "{tmp_path}/own"\n'}
+    (data / "db.locals.py").write_text(f"metadata_fields = []\n{lines[database_setting]}", encoding="utf8")
+    if database_setting == "own":
+        expected = tmp_path / "own" / "mydb"
+    elif global_setting:
+        expected = tmp_path / "global" / "mydb"
+    else:
+        expected = data / "hitlists"
+    db_locals = Config(str(data / "db.locals.py"), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
+    assert get_hitlist_dir(str(data) + "/") == get_hitlist_dir(str(data), db_locals) == str(expected)
+    assert sorted(p.name for p in tmp_path.iterdir() if p.name in ("own", "global")) == (
+        [expected.parent.name] if expected.parent.name in ("own", "global") else []
+    )
+
+
 # =============================================================================
 # Only the helper names the hitlists directory
 # =============================================================================
 
 
 def hitlist_path_literals(source):
-    """Lines of the string literals (docstrings aside) with a "hitlists" path component: where paths are made."""
+    """Lines of the string literals with a "hitlists" path component: where paths are made. Docstrings aside, and
+    comments for the configuration files PhiloLogic writes (strings starting with #)."""
     tree = ast.parse(source)
     docstrings = set()
     for node in ast.walk(tree):
@@ -93,6 +120,7 @@ def hitlist_path_literals(source):
         if isinstance(node, ast.Constant)
         and isinstance(node.value, str)
         and id(node) not in docstrings
+        and not node.value.lstrip().startswith("#")
         and re.search(r"(^|/)hitlists(/|$)", node.value)
     ]
 
@@ -106,6 +134,7 @@ def test_path_literal_check_finds_them():
     ):
         assert hitlist_path_literals(made) == [1], made
     assert hitlist_path_literals('"""Clear the hitlists directory"""\nlog("the hitlists directory is full")\n') == []
+    assert hitlist_path_literals('DEFAULTS = {"comment": "# When None, in data/hitlists/."}') == []
 
 
 def test_only_the_helper_names_the_hitlists_directory():
@@ -126,13 +155,18 @@ def test_only_the_helper_names_the_hitlists_directory():
 # =============================================================================
 
 
-def read_only_copy(corpus, copy):
-    """The corpus's directory tree, with its files as symlinks to the corpus's, and directories no one can write."""
+def read_only_copy(corpus, copy, db_locals_extra=""):
+    """The corpus's directory tree, with its files as symlinks to the corpus's, and directories no one can write.
+    db_locals_extra is added to a copy of its db.locals.py."""
     for dirpath, _, filenames in os.walk(corpus):
         target = copy / os.path.relpath(dirpath, corpus)
         target.mkdir(exist_ok=True)
         for name in filenames:
             (target / name).symlink_to(os.path.join(dirpath, name))
+    if db_locals_extra:
+        db_locals = copy / "data" / "db.locals.py"
+        db_locals.unlink()
+        db_locals.write_text((corpus / "data" / "db.locals.py").read_text(encoding="utf8") + db_locals_extra, encoding="utf8")
     set_directory_modes(copy, 0o555)
 
 
@@ -171,17 +205,20 @@ def get_json(server, path, params):
 
 
 class ReadOnlyService:
-    """The web app serving a read-only copy of the corpus, with hitlist_dir set."""
+    """The web app serving a read-only copy of the corpus, with hitlist_dir set in the global config, or in the
+    copy's db.locals.py (the global config then has none)."""
 
-    def __init__(self, corpus, tmp_path):
+    def __init__(self, corpus, tmp_path, set_in):
         self.corpus = corpus
         self.tmp_path = tmp_path
         self.root = tmp_path / "dbs"
         self.cache = tmp_path / "cache" / corpus.name  # the corpus's hitlist directory
+        setting = f'hitlist_dir = "{self.cache.parent}"\n'
+        self.db_locals_extra = setting if set_in == "db.locals.py" else ""
         self.config = tmp_path / "philologic5.cfg"
         self.config.write_text(
             f'database_root = "{self.root}/"\nurl_root = "http://localhost/philologic5/"\n'
-            f'hitlist_dir = "{self.cache.parent}"\n',
+            + (setting if set_in == "global config" else ""),
             encoding="utf8",
         )
         self.server = None
@@ -190,7 +227,7 @@ class ReadOnlyService:
         from tests.integration.test_web_concurrency import Server  # not at the top: needs gunicorn
 
         self.root.mkdir()
-        read_only_copy(self.corpus, self.root / self.corpus.name)
+        read_only_copy(self.corpus, self.root / self.corpus.name, self.db_locals_extra)
         self.before = tree_state(self.root), tree_state(self.corpus)
         self.server = Server(self.root, self.corpus.name, self.tmp_path)
 
@@ -206,9 +243,9 @@ class ReadOnlyService:
         assert tree_state(self.corpus) == self.before[1], "the corpus changed"
 
 
-@pytest.fixture
-def served_read_only(eltec_db_path, tmp_path, monkeypatch):
-    service = ReadOnlyService(Path(eltec_db_path).parent, tmp_path)
+@pytest.fixture(params=["global config", "db.locals.py"])
+def served_read_only(request, eltec_db_path, tmp_path, monkeypatch):
+    service = ReadOnlyService(Path(eltec_db_path).parent, tmp_path, request.param)
     monkeypatch.setenv("PHILOLOGIC_CONFIG", str(service.config))  # the server's global config
     try:
         service.start()
@@ -225,6 +262,8 @@ def test_everything_cached_in_hitlist_dir(served_read_only):
     server, cache, corpus = served_read_only.server, served_read_only.cache, served_read_only.corpus
     q = {"q": "love", "method": "proxy", "method_arg": "", "results_per_page": "25"}
 
+    status, web_config = fetch(server, "scripts/get_web_config.py", {})
+    assert status == 200 and str(cache.parent) not in web_config.decode("utf8")  # not shown to the web
     everything = get_json(server, "reports/bibliography.py", {"results_per_page": "25"})
     author = re.findall(r"\w+", everything["results"][0]["metadata_fields"]["author"])[0]
     in_author = {"author": author}
