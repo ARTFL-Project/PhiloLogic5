@@ -1,11 +1,11 @@
 """hitlist_dir, in the global config or a database's db.locals.py: every file cached at request time goes there,
 none in the databases.
 
-Without it, hitlists stay in each database's data/hitlists/. With it, the web app serves a read-only copy of the
-test corpus (directories that can't be written, with the corpus's files through symlinks), and every kind of request
-that caches something must still succeed, with its cache files in hitlist_dir/<database>/. Neither the copy nor the
-corpus may change: that also shows that no temporary file (claims, sorts in progress) was written in the database.
-Run as root, which can write read-only directories, only that comparison shows writes.
+The web app serves a read-only copy of the test corpus (directories that can't be written, with the corpus's files
+through symlinks), and every kind of request that caches something must still succeed, with its cache files in
+hitlist_dir/<database>/. Neither the copy nor the corpus may change: that also shows that no temporary file (claims,
+sorts in progress) was written in the database. Run as root, which can write read-only directories, only that
+comparison shows writes.
 """
 
 import ast
@@ -19,7 +19,8 @@ from urllib.parse import urlencode
 
 import pytest
 
-from philologic.runtime.hitlist_dir import _configured_root, default_hitlist_dir, get_hitlist_dir
+from philologic.runtime import hitlist_dir as resolver
+from philologic.runtime.hitlist_dir import get_hitlist_dir, global_hitlist_root
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 HELPER = REPO_ROOT / "python" / "philologic" / "runtime" / "hitlist_dir.py"
@@ -27,16 +28,17 @@ HELPER = REPO_ROOT / "python" / "philologic" / "runtime" / "hitlist_dir.py"
 
 @pytest.fixture
 def global_config(tmp_path, monkeypatch):
-    """Make a global config with the given extra lines the one read."""
+    """Make a global config with the given extra lines the one read, with tmp_path/default as the default root."""
+    monkeypatch.setattr(resolver, "DEFAULT_ROOT", str(tmp_path / "default"))
 
     def write(extra):
         path = tmp_path / "philologic5.cfg"
         path.write_text(f'database_root = "{tmp_path}/"\nurl_root = "http://localhost/"\n{extra}', encoding="utf8")
         monkeypatch.setenv("PHILOLOGIC_CONFIG", str(path))
-        _configured_root.cache_clear()
+        global_hitlist_root.cache_clear()
 
     yield write
-    _configured_root.cache_clear()
+    global_hitlist_root.cache_clear()
 
 
 # =============================================================================
@@ -44,18 +46,20 @@ def global_config(tmp_path, monkeypatch):
 # =============================================================================
 
 
-@pytest.mark.parametrize("extra", ["", "hitlist_dir = None\n"], ids=["absent", "None"])
-def test_default_is_the_databases_own(global_config, tmp_path, extra):
-    """Configs without hitlist_dir (as all older ones) keep hitlists in data/hitlists/, without creating anything."""
-    global_config(extra)
-    data = tmp_path / "mydb" / "data"
-    assert get_hitlist_dir(str(data) + "/") == os.path.join(str(data) + "/", "hitlists") == default_hitlist_dir(str(data) + "/")
-    assert get_hitlist_dir(str(data)) == str(data / "hitlists")
-    assert not (tmp_path / "mydb").exists()
+@pytest.mark.parametrize("extra", ["", "hitlist_dir = None\n", None], ids=["absent", "None", "no global config"])
+def test_default_root(global_config, tmp_path, monkeypatch, extra):
+    """Without a hitlist_dir, as in older global configs, hitlists go in DEFAULT_ROOT/<database>/."""
+    global_config(extra or "")
+    if extra is None:
+        monkeypatch.setenv("PHILOLOGIC_CONFIG", str(tmp_path / "none.cfg"))
+    data = tmp_path / "dbs" / "mydb" / "data"
+    assert get_hitlist_dir(str(data) + "/") == str(tmp_path / "default" / "mydb")
+    assert (tmp_path / "default" / "mydb").is_dir()
+    assert not (tmp_path / "dbs").exists()  # nothing in the database
 
 
 def test_configured_dir_per_database(global_config, tmp_path):
-    """With hitlist_dir, each database has its own directory in it, named after the database, created when needed."""
+    """Each database has its own directory in hitlist_dir, named after the database, created when needed."""
     global_config(f'hitlist_dir = "{tmp_path}/cache/"\n')
     assert get_hitlist_dir(f"{tmp_path}/dbs/first/data/") == str(tmp_path / "cache" / "first")
     assert get_hitlist_dir(f"{tmp_path}/dbs/first/data") == str(tmp_path / "cache" / "first")
@@ -65,13 +69,10 @@ def test_configured_dir_per_database(global_config, tmp_path):
     assert not (tmp_path / "dbs").exists()
 
 
-def test_missing_global_config(monkeypatch, tmp_path):
-    monkeypatch.setenv("PHILOLOGIC_CONFIG", str(tmp_path / "none.cfg"))
-    _configured_root.cache_clear()
-    try:
-        assert get_hitlist_dir("/somewhere/mydb/data/") == "/somewhere/mydb/data/hitlists"
-    finally:
-        _configured_root.cache_clear()
+def test_not_created_on_request(global_config, tmp_path):
+    global_config(f'hitlist_dir = "{tmp_path}/cache/"\n')
+    assert get_hitlist_dir(f"{tmp_path}/dbs/mydb/data/", create=False) == str(tmp_path / "cache" / "mydb")
+    assert not (tmp_path / "cache").exists()
 
 
 @pytest.mark.parametrize("global_setting", [None, "global"])
@@ -86,17 +87,16 @@ def test_database_setting_first(global_config, tmp_path, global_setting, databas
     data.mkdir(parents=True)
     lines = {None: "hitlist_dir = None\n", "absent": "", "own": f'hitlist_dir = "{tmp_path}/own"\n'}
     (data / "db.locals.py").write_text(f"metadata_fields = []\n{lines[database_setting]}", encoding="utf8")
-    if database_setting == "own":
-        expected = tmp_path / "own" / "mydb"
-    elif global_setting:
-        expected = tmp_path / "global" / "mydb"
-    else:
-        expected = data / "hitlists"
+    root = "own" if database_setting == "own" else "global" if global_setting else "default"
     db_locals = Config(str(data / "db.locals.py"), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
-    assert get_hitlist_dir(str(data) + "/") == get_hitlist_dir(str(data), db_locals) == str(expected)
-    assert sorted(p.name for p in tmp_path.iterdir() if p.name in ("own", "global")) == (
-        [expected.parent.name] if expected.parent.name in ("own", "global") else []
-    )
+    assert get_hitlist_dir(str(data) + "/") == get_hitlist_dir(str(data), db_locals) == str(tmp_path / root / "mydb")
+    assert [p.name for p in tmp_path.iterdir() if p.name in ("own", "global", "default")] == [root]
+
+
+@pytest.mark.integration
+def test_loader_makes_no_hitlist_dir(eltec_db_path):
+    """Databases have no hitlist directory of their own anymore."""
+    assert not (Path(eltec_db_path) / "hitlists").exists()
 
 
 # =============================================================================
@@ -206,19 +206,19 @@ def get_json(server, path, params):
 
 class ReadOnlyService:
     """The web app serving a read-only copy of the corpus, with hitlist_dir set in the global config, or in the
-    copy's db.locals.py (the global config then has none)."""
+    copy's db.locals.py (the global config's must then stay unused)."""
 
     def __init__(self, corpus, tmp_path, set_in):
         self.corpus = corpus
         self.tmp_path = tmp_path
         self.root = tmp_path / "dbs"
         self.cache = tmp_path / "cache" / corpus.name  # the corpus's hitlist directory
-        setting = f'hitlist_dir = "{self.cache.parent}"\n'
-        self.db_locals_extra = setting if set_in == "db.locals.py" else ""
+        self.unused = tmp_path / "unused"
+        self.db_locals_extra = f'hitlist_dir = "{self.cache.parent}"\n' if set_in == "db.locals.py" else ""
         self.config = tmp_path / "philologic5.cfg"
         self.config.write_text(
             f'database_root = "{self.root}/"\nurl_root = "http://localhost/philologic5/"\n'
-            + (setting if set_in == "global config" else ""),
+            f'hitlist_dir = "{self.unused if self.db_locals_extra else self.cache.parent}"\n',
             encoding="utf8",
         )
         self.server = None
@@ -241,6 +241,7 @@ class ReadOnlyService:
         self.stop()
         assert tree_state(self.root) == self.before[0], "the database directory the web app served changed"
         assert tree_state(self.corpus) == self.before[1], "the corpus changed"
+        assert not self.unused.exists(), "the global hitlist_dir was used, not the database's own"
 
 
 @pytest.fixture(params=["global config", "db.locals.py"])
@@ -254,7 +255,7 @@ def served_read_only(request, eltec_db_path, tmp_path, monkeypatch):
         service.stop()
         if service.root.exists():
             set_directory_modes(service.root, 0o755)
-        _configured_root.cache_clear()  # in case anything here read the global config set above
+        global_hitlist_root.cache_clear()  # in case anything here read the global config set above
 
 
 @pytest.mark.integration

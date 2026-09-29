@@ -171,7 +171,7 @@ DB_LOCALS_DEFAULTS = {
     },
     "hitlist_dir": {
         "value": None,
-        "comment": "# A directory for this database's search results caches (hitlists), which go in a subdirectory named after the database.\n# When None, the hitlist_dir of the global config (philologic5.cfg) is used if set, else this database's data/hitlists/.",
+        "comment": "# A directory for this database's search results caches (hitlists), which go in a subdirectory named after the database.\n# When None, the hitlist_dir of the global config (philologic5.cfg) is used.",
     },
 }
 DB_LOCALS_HEADER = """

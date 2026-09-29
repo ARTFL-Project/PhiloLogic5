@@ -40,6 +40,7 @@ tests/
 │   ├── test_query_methods.py
 │   ├── test_metadata_filtering.py
 │   ├── test_hitlist_concurrency.py  # Shared hitlists: concurrency, dying producers, cleanup
+│   ├── test_hitlist_dir.py          # Where hitlists go (hitlist_dir), with read-only databases
 │   └── test_web_concurrency.py      # The web app (Gunicorn) under concurrent requests and dying workers
 ├── regression/              # Regression tests
 │   └── test_gold_sets.py
@@ -105,6 +106,9 @@ The cache is automatically invalidated when:
 - Source XML files change
 - Parser.py or Loader.py change
 - Load config files change
+
+Their hitlists go in a temporary directory of the test session's own (its `hitlist_dir`), never in the web
+app's.
 
 ### Manual Cache Management
 
