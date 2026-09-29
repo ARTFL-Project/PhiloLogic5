@@ -135,16 +135,18 @@ def migrate_collocation(db_path):
     words_dir = os.path.join(data_path, "words_and_philo_ids")
     colloc_dir = os.path.join(data_path, "collocations")
 
-    # Clear all cached hitlists (stale formats, old search results)
-    hitlists_dir = os.path.join(data_path, "hitlists")
-    if os.path.isdir(hitlists_dir):
-        removed = 0
-        for entry in os.scandir(hitlists_dir):
-            if entry.is_file():
-                os.remove(entry.path)
-                removed += 1
-        if removed:
-            print(f"  Cleared {removed} files from hitlists/")
+    # Clear all cached hitlists (stale formats, old search results): the database's, and any from before hitlist_dir
+    from philologic.runtime.hitlist_dir import get_hitlist_dir
+
+    for hitlists_dir in (get_hitlist_dir(data_path, create=False), os.path.join(data_path, "hitlists")):
+        if os.path.isdir(hitlists_dir):
+            removed = 0
+            for entry in os.scandir(hitlists_dir):
+                if entry.is_file():
+                    os.remove(entry.path)
+                    removed += 1
+            if removed:
+                print(f"  Cleared {removed} files from {hitlists_dir}")
 
     if not os.path.isdir(words_dir):
         print("  Skipping collocation migration (no words_and_philo_ids/)")

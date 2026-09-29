@@ -226,14 +226,25 @@ if [ ! -f /etc/philologic/philologic5.cfg ]; then
     # http://localhost/philologic/ is appropriate if you don't have a DNS hostname.\n"
     echo -e "$url_root" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 
-    hitlist_dir="# Optional: a directory for search results caches (hitlists), the only files the web app writes.
-    # Each database gets its own subdirectory, so databases can be read-only. None keeps them in each database's data/hitlists/.
-    hitlist_dir = None\n"
+    hitlist_dir="# The directory for search results caches (hitlists), the only files the web app writes, so databases can be read-only.
+    # Each database gets a subdirectory there, created when first needed. install.sh creates it for the web server's user.
+    hitlist_dir = \"$(/var/lib/philologic5/philologic_env/bin/python3 -c "from philologic.runtime.hitlist_dir import DEFAULT_ROOT; print(DEFAULT_ROOT)")/\"\n"
     echo -e "$hitlist_dir" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 else
     echo -e "\n## WARNING ##"
     echo "/etc/philologic/philologic5.cfg already exists"
     echo "Please delete and rerun the install script to avoid incompatibilities\n"
+fi
+
+# The directory for search results caches (hitlists), where the web server's user writes
+HITLIST_DIR=$(/var/lib/philologic5/philologic_env/bin/python3 -c "from philologic.runtime.hitlist_dir import global_hitlist_root; print(global_hitlist_root())")
+if [ ! -d "$HITLIST_DIR" ]; then
+    sudo mkdir -p "$HITLIST_DIR"
+    sudo chown "$WEB_USER:$WEB_GROUP" "$HITLIST_DIR"
+    echo "Created $HITLIST_DIR for search results caches"
+elif ! sudo -u "$WEB_USER" test -w "$HITLIST_DIR"; then
+    echo -e "\n## WARNING ##"
+    echo "$WEB_USER can't write to $HITLIST_DIR (hitlist_dir): searches will fail until it can"
 fi
 
 # Fix Numba cache ownership — the build steps above may have created subdirectories

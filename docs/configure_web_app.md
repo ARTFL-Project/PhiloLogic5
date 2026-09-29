@@ -24,8 +24,7 @@ database/
 │   ├── frequencies/        # Word frequency data
 │   ├── words.lmdb          # Word index (LMDB)
 │   ├── toms.db             # Metadata (SQLite)
-│   ├── TEXT/               # Source XML files
-│   └── hitlists/           # Cached query results
+│   └── TEXT/               # Source XML files
 ├── custom_functions/       # User-defined Python functions
 └── favicon.ico
 ```

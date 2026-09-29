@@ -1,8 +1,10 @@
 """Pytest configuration and shared fixtures for PhiloLogic5 tests."""
 
 import json
+import os
 import shutil
 import sys
+import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
@@ -14,6 +16,17 @@ REPO_ROOT = Path(__file__).parent.parent
 TESTS_ROOT = Path(__file__).parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 sys.path.insert(0, str(REPO_ROOT))
+
+# The global config, with a hitlist_dir of the session's own: tests never write in the web app's. Set before anything
+# reads the global config; the web servers some tests start inherit it.
+_GLOBAL_CONFIG = Path(os.environ.get("PHILOLOGIC_CONFIG", "/etc/philologic/philologic5.cfg"))
+SESSION_DIR = Path(tempfile.mkdtemp(prefix="philologic_tests_"))
+(SESSION_DIR / "philologic5.cfg").write_text(
+    (_GLOBAL_CONFIG.read_text(encoding="utf8") if _GLOBAL_CONFIG.is_file() else "")
+    + f'\nhitlist_dir = "{SESSION_DIR / "hitlists"}"\n',
+    encoding="utf8",
+)
+os.environ["PHILOLOGIC_CONFIG"] = str(SESSION_DIR / "philologic5.cfg")
 
 from tests.fixtures.corpus_manager import CorpusManager
 from tests.fixtures.corpus_configs import SHAKESPEARE, ELTEC
@@ -38,6 +51,10 @@ def pytest_addoption(parser):
         default=False,
         help="Check for performance regressions against baseline",
     )
+
+
+def pytest_unconfigure(config):
+    shutil.rmtree(SESSION_DIR, ignore_errors=True)
 
 
 def pytest_configure(config):
