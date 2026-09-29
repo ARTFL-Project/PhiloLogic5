@@ -42,7 +42,7 @@ class DB:
         self.width = width
         self.locals = Config(dbpath + "/db.locals.py", DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
         self.cached = cached
-        self.dbh = sqlite3.connect(self.path + "/toms.db", self.width)
+        self.dbh = sqlite3.connect(self.path + "/toms.db")
         self.dbh.text_factory = str
         self.dbh.row_factory = sqlite3.Row
         self._row_cache = {}
