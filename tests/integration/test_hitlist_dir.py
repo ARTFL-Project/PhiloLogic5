@@ -309,15 +309,17 @@ def test_everything_cached_in_hitlist_dir(served_read_only):
              {"primary_file_path": whole, "other_file_path": distribution, "whole_corpus": "false"})
     get_json(server, "scripts/get_similar_collocate_distributions.py", {"primary_file_path": whole, "file_path": by_author})
     get_json(server, "scripts/collocation_time_series.py", {"file_path": by_year, "year_interval": "10", "period_number": "0"})
+    get_json(server, "scripts/get_usage_patterns.py", colloc)
 
     for file_path in (whole, by_author, by_year, distribution):
         assert os.path.dirname(file_path) == str(cache)
     assert sorted(os.listdir(cache.parent)) == [corpus.name]
     cached = os.listdir(cache)
     for kind in (".hitlist", ".hitlist.done", ".hitlist.terms", ".sorted.title", ".kwic.sorted", ".pickle",
-                 ".npz", ".approximate_terms"):
+                 ".npz", ".approximate_terms", ".pattern.npz"):
         assert any(name.endswith(kind) for name in cached), f"no {kind} file in {cache}"
     assert "time_series_year_data.npz" in cached
+    assert "sentence_df_word.npy" in cached  # the collocation filter's document frequencies
     assert server.errors() == []
     served_read_only.assert_databases_unchanged()
 
