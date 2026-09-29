@@ -1795,8 +1795,11 @@ class Loader:
     def finish(self):
         """Write important runtime information to the database directory"""
         print("\n### Finishing up ###")
-        os.mkdir(self.destination + "/hitlists/")
-        os.chmod(self.destination + "/hitlists/", 0o777)
+        from philologic.runtime.hitlist_dir import default_hitlist_dir
+
+        # Always the database's own: hitlist_dir, if set in the global config, is for the web app to create
+        os.mkdir(default_hitlist_dir(self.destination))
+        os.chmod(default_hitlist_dir(self.destination), 0o777)
         os.chmod(os.path.join(self.destination, "TEXT"), 0o775)
 
         # The web app build only depends on appConfig.json (not on the database), so it runs while we finish up

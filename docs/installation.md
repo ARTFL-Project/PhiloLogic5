@@ -148,6 +148,16 @@ sudo mkdir -p /Library/WebServer/Documents/philologic  # macOS
 sudo chown -R $USER:$USER <database_root>
 ```
 
+### Search results caches
+
+The web app caches search results (hitlists) as files, and they are the only files it writes. By default they go in each database's `data/hitlists/` directory, so the web server must be able to write there. To keep them out of the databases, which can then be read-only, set `hitlist_dir` to a directory the web server can write to:
+
+```python
+hitlist_dir = "/var/cache/philologic5/hitlists/"
+```
+
+Each database's hitlists then go in a subdirectory named after the database, created when first needed. Don't point two PhiloLogic installs that could have databases with the same name at the same `hitlist_dir`. Restart the web app after changing it.
+
 ## Web Server Configuration
 
 ### Linux

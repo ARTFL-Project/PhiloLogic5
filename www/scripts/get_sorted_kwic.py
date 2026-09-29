@@ -168,7 +168,7 @@ def _get_cache_path(request, db):
     h.update(request.third_kwic_sorting_option.encode("utf-8"))
     for field, metadata in sorted(request.metadata.items(), key=lambda x: x[0]):
         h.update(f"{field}: {metadata}".encode("utf-8"))
-    return os.path.join(db.path, "hitlists", f"{h.hexdigest()}.kwic")
+    return os.path.join(db.hitlist_dir, f"{h.hexdigest()}.kwic")
 
 
 

@@ -499,9 +499,7 @@ def query(
     """Runs concordance queries"""
     sys.stdout.flush()
     if not filename:
-        hfile = str(os.getpid()) + ".hitlist"
-    dir = db.path + "/hitlists/"
-    filename = filename or (dir + hfile)
+        filename = os.path.join(db.hitlist_dir, str(os.getpid()) + ".hitlist")
     if not os.path.exists(filename):
         Path(filename).touch()
 

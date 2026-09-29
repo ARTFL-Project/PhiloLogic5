@@ -36,7 +36,7 @@ def find_similar_words(db, config, request):
     hashed_query = hashlib.sha256()
     hashed_query.update(request["q"].encode("utf8"))
     hashed_query.update(str(request.approximate_ratio).encode("utf8"))
-    approximate_filename = os.path.join(config.db_path, f"data/hitlists/{hashed_query.hexdigest()}.approximate_terms")
+    approximate_filename = os.path.join(db.hitlist_dir, f"{hashed_query.hexdigest()}.approximate_terms")
     if os.path.isfile(approximate_filename):
         with open(approximate_filename, encoding="utf8") as fh:
             approximate_terms = fh.read().strip()

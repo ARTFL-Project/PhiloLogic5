@@ -15,6 +15,7 @@ import numba
 import numpy as np
 
 from philologic.runtime.DB import DB
+from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.Query import get_word_groups, rewrite_terms_file
 from philologic.runtime.sql_validation import validate_column
@@ -644,13 +645,13 @@ def collocation_results(request, config):
         if None in all_collocates:
             del all_collocates[None]
         # Cache full Counter to disk; return only top 100 for display
-        file_path = create_file_path(request, "", config.db_path)
+        file_path = create_file_path(request, "", db.hitlist_dir)
         atomic_pickle_dump(all_collocates, file_path)
         collocation_object["collocates"] = all_collocates.most_common(100)
         collocation_object["file_path"] = file_path
     else:
         unique_tids, unique_counts, group_bounds, group_names, group_hits = result
-        file_path = create_file_path(request, map_field, config.db_path, ext=".npz")
+        file_path = create_file_path(request, map_field, db.hitlist_dir, ext=".npz")
         save_map_field_cache(
             file_path, unique_tids, unique_counts, group_bounds, group_names,
             count_lemmas, attribute, attribute_value, group_hits=group_hits,
@@ -798,7 +799,7 @@ def _load_sentence_df(db_path, count_lemmas):
 
     Reads a precomputed ``sentence_df_{word,lemma}.npy`` if present (index-time
     or a prior runtime computation), otherwise computes it once and persists it
-    to the world-writable ``hitlists/`` directory.
+    to the database's hitlist directory.
     """
     key = (db_path, bool(count_lemmas))
     cached = _SENTENCE_DF_CACHE.get(key)
@@ -820,8 +821,9 @@ def _load_sentence_df(db_path, count_lemmas):
     sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
     n_sentences = len(sent_offsets) - 1
 
+    hitlist_dir = get_hitlist_dir(db_path)
     df = None
-    for cand in (os.path.join(colloc_dir, name), os.path.join(db_path, "hitlists", name)):
+    for cand in (os.path.join(colloc_dir, name), os.path.join(hitlist_dir, name)):
         if os.path.exists(cand):
             try:
                 candidate = np.load(cand)
@@ -835,7 +837,7 @@ def _load_sentence_df(db_path, count_lemmas):
         count_ids = np.load(os.path.join(colloc_dir, ids_file), mmap_mode="r")
         df = _sentence_df_kernel(count_ids, sent_offsets, n_vocab)
         try:
-            out = os.path.join(db_path, "hitlists", name)
+            out = os.path.join(hitlist_dir, name)
             fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(out), suffix=".tmp")
             try:
                 with os.fdopen(fd, "wb") as f:
@@ -945,7 +947,7 @@ def build_filter_list(request, config, count_lemmas):
     return filter_list
 
 
-def create_file_path(request, field, path, ext=".pickle"):
+def create_file_path(request, field, hitlist_dir, ext=".pickle"):
     hash = hashlib.sha1()
     hash.update(request["q"].encode("utf-8"))
     hash.update(request["method"].encode("utf-8"))
@@ -960,7 +962,7 @@ def create_file_path(request, field, path, ext=".pickle"):
     for k, v in sorted(request.metadata.items()):
         if v:
             hash.update(f"{k}={v}".encode("utf-8"))
-    return f"{path}/data/hitlists/{hash.hexdigest()}{ext}"
+    return os.path.join(hitlist_dir, f"{hash.hexdigest()}{ext}")
 
 
 if __name__ == "__main__":

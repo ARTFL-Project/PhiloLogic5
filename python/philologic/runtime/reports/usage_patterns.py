@@ -736,10 +736,9 @@ def _build_graph(
 # edge-floor reuse them instead of rebuilding (~1.6 s on a big query). All
 # gunicorn workers share the same cache files, so cross-worker reruns also hit.
 #
-# Cache files live in the existing ``hitlists/`` directory (already mode 777
-# in every corpus install — gunicorn runs as www-data and needs to write
-# hitlists there) with a ``.pattern.npz`` suffix to keep them visually
-# distinguishable from hitlist binaries.
+# Cache files live in the database's hitlist directory (see
+# philologic.runtime.hitlist_dir), with a ``.pattern.npz`` suffix to keep them
+# visually distinguishable from hitlist binaries.
 #
 # Cache key includes everything that affects the cached arrays:
 #   - q, count_lemmas, attribute, attribute_value, metadata: feed _build_hit_bags
@@ -778,11 +777,10 @@ def _pattern_cache_key(
     return h.hexdigest()
 
 
-def _pattern_cache_path(db_path: str, key: str) -> str:
-    # Sit alongside hitlist files (already mode 777, world-writable so
-    # gunicorn-as-www-data can write to it). The .pattern.npz suffix keeps
-    # our cache files visually distinguishable from hitlist binaries.
-    return os.path.join(db_path, "hitlists", f"{key}.pattern.npz")
+def _pattern_cache_path(hitlist_dir: str, key: str) -> str:
+    # Sit alongside hitlist files. The .pattern.npz suffix keeps our cache
+    # files visually distinguishable from hitlist binaries.
+    return os.path.join(hitlist_dir, f"{key}.pattern.npz")
 
 
 def _load_intermediates(path: str) -> Optional[Dict[str, np.ndarray]]:
@@ -804,8 +802,8 @@ def _save_intermediates(path: str, **arrays: np.ndarray) -> None:
     """Atomically write intermediates to disk (write tmp + rename).
 
     Errors are swallowed: a failed cache write must not break detection.
-    The target directory (``hitlists/``) already exists with permissive
-    perms in every install, so no dir-creation logic is needed.
+    The target directory (DB.hitlist_dir) is created when first needed, so
+    no dir-creation logic is needed.
     """
     tmp_path = None
     try:
@@ -1041,7 +1039,7 @@ def detect_usage_patterns(
     cache_key = _pattern_cache_key(
         q, count_lemmas, attribute, attribute_value, metadata, stop_set,
     )
-    cache_path = _pattern_cache_path(db_path, cache_key)
+    cache_path = _pattern_cache_path(db.hitlist_dir, cache_key)
     cached = _load_intermediates(cache_path)
 
     # The cache key carries a schema tag (see _pattern_cache_key), so any hit is

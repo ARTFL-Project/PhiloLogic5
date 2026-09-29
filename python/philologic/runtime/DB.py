@@ -11,6 +11,7 @@ from functools import partial
 from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
 from philologic.runtime import HitList, MetadataQuery, Query, QuerySyntax
 from philologic.runtime.HitList import claim_hitlist
+from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.HitWrapper import HitWrapper, PageWrapper
 
 LEVEL_MAP = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6}
@@ -46,6 +47,11 @@ class DB:
         self.dbh.text_factory = str
         self.dbh.row_factory = sqlite3.Row
         self._row_cache = {}
+
+    @property
+    def hitlist_dir(self):
+        """Where this database's hitlists go (see philologic.runtime.hitlist_dir)"""
+        return get_hitlist_dir(self.path)
 
     def __getitem__(self, item):
         if self.width != 9:  # verify this isn't a page id
@@ -135,7 +141,7 @@ class DB:
         hash.update(self.path.encode("utf8"))
         hash.update(philo_type.encode("utf8"))
         all_hash = hash.hexdigest()
-        all_file = self.path + "/hitlists/" + all_hash + ".hitlist"
+        all_file = os.path.join(self.hitlist_dir, all_hash + ".hitlist")
         if philo_type == "div":
             param_dicts = [{"philo_type": ['"div1"|"div2"|"div3"']}]
         else:
@@ -205,7 +211,7 @@ class DB:
             )
         if has_metadata:
             corpus_hash = hash.hexdigest()
-            corpus_file = self.path + "/hitlists/" + corpus_hash + ".hitlist"
+            corpus_file = os.path.join(self.hitlist_dir, corpus_hash + ".hitlist")
 
             # before we query, we need to figure out what type each parameter belongs to,
             # and sort them into a list of dictionaries, one for each type.
@@ -265,7 +271,7 @@ class DB:
             hash.update(str(method_arg).encode("utf8"))
             hash.update(str(limit).encode("utf8"))
             search_hash = hash.hexdigest()
-            search_file = self.path + "/hitlists/" + search_hash + ".hitlist"
+            search_file = os.path.join(self.hitlist_dir, search_hash + ".hitlist")
             if sort_order == ["rowid"]:
                 sort_order = None
             with claim_hitlist(search_file) as lock:
