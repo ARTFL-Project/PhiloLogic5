@@ -2,7 +2,7 @@
 set -e
 
 # Python version — change here to update across all installs
-PYTHON_VERSION="3.12"
+PYTHON_VERSION="3.13"
 INSTALL_TRANSFORMERS=false
 NODE_MAJOR_VERSION="22"
 
@@ -116,7 +116,7 @@ sudo chmod 755 /var/lib/philologic5/ip_cache
 export UV_PYTHON_INSTALL_DIR=/var/lib/philologic5/python
 mkdir -p "$UV_PYTHON_INSTALL_DIR"
 
-# Download and use uv-managed Python (e.g., "3.12" will download cpython-3.12.x)
+# Download and use uv-managed Python (e.g., "3.13" will download cpython-3.13.x)
 # --managed-python forces uv to download its own Python instead of using system Python
 uv venv /var/lib/philologic5/philologic_env --python $PYTHON_VERSION --managed-python
 
