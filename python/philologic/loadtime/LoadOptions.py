@@ -264,5 +264,5 @@ class LoadConfig:
                         self.config["words_to_index"] = word_list
                     else:
                         self.config[a] = value
-                elif a == "sort_order":
+                elif a in ("sort_order", "tag_exceptions"):  # empty turns them off, rather than leaving the default
                     self.config[a] = value

@@ -465,11 +465,11 @@ class XMLParser:
                 rf"({TOKEN_REGEX})({tag_exceptions})({TOKEN_REGEX})({tag_exceptions})({TOKEN_REGEX})?", re.I | re.M
             )
             tag_token_regex = TOKEN_REGEX
-        self.tag_exceptions = compiled_tag
+        self.tag_exceptions = compiled_tag if tag_exceptions else None  # none: every match would be replaced by itself
         # With TOKEN_REGEX and tags starting with "<", matches start in the token before one of the tags: finding these
         # tags first saves trying a match everywhere (see replace_tag_exceptions)
         self.tag_exception_starts = None
-        if tag_token_regex == TOKEN_REGEX and tags_start_with_bracket:
+        if tag_token_regex == TOKEN_REGEX and tags_start_with_bracket and tag_exceptions:
             self.tag_exception_starts = re.compile(rf"(?<={TOKEN_CHAR.pattern})(?:{tag_exceptions})", re.I | re.M)
 
         if "join_hyphen_in_words" in parse_options:
@@ -606,7 +606,7 @@ class XMLParser:
             self.content = replace_tag_exceptions(
                 self.content, self.tag_exceptions, self.tag_exception_starts, lambda match: replace_tag(match.groups())
             )
-        else:
+        elif self.tag_exceptions is not None:
             self.content = self.tag_exceptions.sub(lambda match: replace_tag(match.groups()), self.content)
 
         # Add newlines to the beginning and end of all tags

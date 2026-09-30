@@ -151,3 +151,12 @@ def test_load_config_with_its_own_filters_is_copied(tmp_path, files):
 
     options = parse_options("-l", str(saved), "seconddb", files[1])
     assert [f.__name__ for f in options["load_filters"]] == [f.__name__ for f in LoadOptions()["load_filters"]]
+
+
+def test_empty_tag_exceptions_turn_them_off(tmp_path, files):
+    config = tmp_path / "load_config.py"
+    config.write_text("tag_exceptions = []\nsuppress_tags = []\npunctuation = ''\n", encoding="utf8")
+    options = parse_options("-l", str(config), "newdb", files[0])
+    assert options["tag_exceptions"] == []
+    # Other empty values still leave the default
+    assert options["punctuation"] == LoadOptions()["punctuation"]
