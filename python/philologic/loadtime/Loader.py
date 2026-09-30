@@ -633,6 +633,57 @@ def count_and_sample_lines(path, name, lz4_compressed=False):
     return count, sample
 
 
+def tei_header(file_content):
+    """The TEI header of a file, with its entities converted, or None if it has none"""
+    try:
+        start_header_index = re.search(r"<teiheader", file_content, re.I).start()
+        end_header_index = re.search(r"</teiheader", file_content, re.I).start()
+    except AttributeError:  # tag not found
+        return None
+    return convert_entities(file_content[start_header_index:end_header_index])
+
+
+def tei_header_metadata(header, doc_xpaths, metadata_sql_types, matched_xpaths=None):
+    """Document metadata found in a TEI header: each field gets the first value of the first of its xpaths which has
+    one. Raises lxml.etree.XMLSyntaxError if the header can't be parsed. When given, matched_xpaths gets the xpath
+    which found each field (for the load previews of philologic5-webui-loader)."""
+    metadata = {}
+    tree = lxml.etree.fromstring(header, lxml.etree.XMLParser(recover=True))
+    for field in doc_xpaths:
+        for given_xpath in doc_xpaths[field]:
+            xpath = given_xpath.rstrip("/")  # make sure there are no trailing slashes which make lxml die
+            try:
+                elements = tree.xpath(xpath)
+            except lxml.etree.XPathEvalError:
+                continue
+            for element in elements:
+                if element is not None:
+                    value = ""
+                    if isinstance(element, lxml.etree._Element) and element.text is not None:
+                        value = element.text.strip()
+                    elif isinstance(element, lxml.etree._ElementUnicodeResult):
+                        value = str(element).strip()
+                    if value:
+                        if field not in metadata_sql_types:
+                            metadata[field] = value
+                            if (
+                                field in ("create_date", "pub_date") and re.search(r"\d", value) is None
+                            ):  # make sure we have a number in there
+                                del metadata[field]
+                                continue
+                        elif metadata_sql_types[field] == "int":
+                            metadata[field] = extract_integer(value)
+                        elif metadata_sql_types[field] == "date":
+                            metadata[field] = extract_full_date(value)
+                        if matched_xpaths is not None:
+                            matched_xpaths[field] = given_xpath
+                        break
+            else:  # only continue looping over xpaths if no break in inner loop
+                continue
+            break
+    return metadata
+
+
 class Loader:
     """Loader class"""
 
@@ -909,7 +960,6 @@ class Loader:
             leave=False,
         ):
             data = {"filename": file.name}
-            header = ""
             with open(file.path, encoding="utf8") as text_file:
                 try:
                     file_content = "".join(text_file.readlines())
@@ -917,68 +967,33 @@ class Loader:
                     self.deleted_files.append(file.name)
                     deleted_files_error_cause.append((file.name, "invalid characters"))
                     continue
-            try:
-                start_header_index = re.search(r"<teiheader", file_content, re.I).start()
-                end_header_index = re.search(r"</teiheader", file_content, re.I).start()
-            except AttributeError:  # tag not found
+            header = tei_header(file_content)
+            if header is None:
                 if self.debug:
                     print(f"File {file.name} contains no TEI header and will be skipped.")
                 self.deleted_files.append(file.name)
                 deleted_files_error_cause.append((file.name, "no TEI header"))
                 continue
-            header = file_content[start_header_index:end_header_index]
-            header = convert_entities(header)
             if self.debug:
                 print("parsing %s header..." % file.name)
-            parser = lxml.etree.XMLParser(recover=True)
             try:
-                tree = lxml.etree.fromstring(header, parser)
-                trimmed_metadata_xpaths = []
-                for field in metadata_xpaths:
-                    for xpath in metadata_xpaths[field]:
-                        xpath = xpath.rstrip("/")  # make sure there are no trailing slashes which make lxml die
-                        try:
-                            elements = tree.xpath(xpath)
-                        except lxml.etree.XPathEvalError:
-                            continue
-                        for element in elements:
-                            if element is not None:
-                                value = ""
-                                if isinstance(element, lxml.etree._Element) and element.text is not None:
-                                    value = element.text.strip()
-                                elif isinstance(element, lxml.etree._ElementUnicodeResult):
-                                    value = str(element).strip()
-                                if value:
-                                    if field not in self.parser_config["metadata_sql_types"]:
-                                        data[field] = value
-                                        if (
-                                            field in ("create_date", "pub_date") and re.search(r"\d", value) is None
-                                        ):  # make sure we have a number in there
-                                            del data[field]
-                                            continue
-                                    elif self.parser_config["metadata_sql_types"][field] == "int":
-                                        data[field] = extract_integer(value)
-                                    elif self.parser_config["metadata_sql_types"][field] == "date":
-                                        data[field] = extract_full_date(value)
-                                    break
-                        else:  # only continue looping over xpaths if no break in inner loop
-                            continue
-                        break
-                trimmed_metadata_xpaths = [
-                    (metadata_type, xpath, field)
-                    for metadata_type in ["div", "para", "sent", "word", "page"]
-                    if metadata_type in metadata_xpaths
-                    for field in metadata_xpaths[metadata_type]
-                    for xpath in metadata_xpaths[metadata_type][field]
-                ]
-                data = self.create_year_field(data)
-                if self.debug:
-                    print(pretty_print(data))
-                data["options"] = {"metadata_xpaths": trimmed_metadata_xpaths}
-                load_metadata.append(data)
+                data.update(tei_header_metadata(header, metadata_xpaths, self.parser_config["metadata_sql_types"]))
             except lxml.etree.XMLSyntaxError:
                 self.deleted_files.append(file.name)
                 deleted_files_error_cause.append((file.name, "invalid XML"))
+                continue
+            trimmed_metadata_xpaths = [
+                (metadata_type, xpath, field)
+                for metadata_type in ["div", "para", "sent", "word", "page"]
+                if metadata_type in metadata_xpaths
+                for field in metadata_xpaths[metadata_type]
+                for xpath in metadata_xpaths[metadata_type][field]
+            ]
+            data = self.create_year_field(data)
+            if self.debug:
+                print(pretty_print(data))
+            data["options"] = {"metadata_xpaths": trimmed_metadata_xpaths}
+            load_metadata.append(data)
         print(f"{prefix}... done.", flush=True)
         if self.deleted_files:
             print("\nThe following files have been removed from the load:")
@@ -1021,7 +1036,8 @@ class Loader:
         print(f"{prefix}... done.", flush=True)
         return load_metadata
 
-    def create_year_field(self, metadata):
+    @staticmethod
+    def create_year_field(metadata):
         """Create year field from date fields in header"""
         # Matches a year with an optional single leading minus for BCE dates (ISO 8601/TEI).
         # A single hyphen before digits = negative year (e.g. "-0044" for 44 BC).
