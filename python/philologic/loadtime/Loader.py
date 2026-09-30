@@ -633,6 +633,13 @@ def count_and_sample_lines(path, name, lz4_compressed=False):
     return count, sample
 
 
+def npm_node_dir(npm):
+    """The directory of the node installed with npm (by nvm), which npm needs on the PATH: that of the file npm's link
+    leads to (nvm's bin/npm, itself a link to npm-cli.js, whose directory has no node)"""
+    target = os.readlink(npm) if os.path.islink(npm) else npm
+    return os.path.dirname(os.path.join(os.path.dirname(npm), target))
+
+
 def tei_header(file_content):
     """The TEI header of a file, with its entities converted, or None if it has none"""
     try:
@@ -1825,9 +1832,12 @@ class Loader:
         with open(os.path.join(self.web_app_dir, "appConfig.json"), "w", encoding="utf8") as app_config:
             dump({"dbUrl": ""}, app_config)
         npm = "/var/lib/philologic5/bin/npm"
+        # With the node installed next to npm, which isn't on the PATH of services, cron...
+        node_dir = npm_node_dir(npm)
         web_app_build = subprocess.Popen(
             f"cd {self.web_app_dir}; {npm} install > {self.web_app_dir}/web_app_build.log 2>&1 && {npm} run build >> {self.web_app_dir}/web_app_build.log 2>&1",
             shell=True,
+            env={**os.environ, "PATH": f"{node_dir}{os.pathsep}{os.environ.get('PATH', os.defpath)}"},
         )
 
         self.write_db_config()
