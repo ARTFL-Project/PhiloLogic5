@@ -39,6 +39,8 @@ There are three main sections:
 
 To change the behavior of the Web Application, you should edit the `web_config.cfg` file contained in the `data/` directory. Refer to the documentation contained in the file for editing options. Note that PhiloLogic uses the Python syntax in the config file.
 
+You can also edit it from a web page, with the metadata fields of the database to choose from: see [philologic5-webui-loader](webui_loader.md).
+
 ## <a name="access"></a>Access control
 
 There are two components in the built-in access control:
@@ -72,6 +74,8 @@ npm run build
 ```
 
 > **Important:** This command must be run from the database's own `app/` directory (e.g. `/path/to/your_database/app/`), not from the PhiloLogic source directory.
+
+[philologic5-webui-loader](webui_loader.md) uses the theme of the PhiloLogic source (`app/src/assets/styles/theme.module.scss`): edit that one and rerun `install.sh` for it to follow.
 
 ## <a name="aggregation"></a>Configuring the aggregation report
 The aggregation report (much like faceted browsing) sums up results from concordances by metadata fields. What it can also do is break-up results from any metadata field

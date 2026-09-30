@@ -163,6 +163,17 @@ chmod 775 /var/lib/philologic5/bin/philoload5
 sudo cp /var/lib/philologic5/bin/philoload5 /usr/local/bin/philoload5
 sudo chmod 775 /usr/local/bin/philoload5
 
+# Install philologic5-webui-loader, the web UI to load databases and edit their web configs, and build its client
+echo -e '#!/bin/bash\n/var/lib/philologic5/philologic_env/bin/python3 -P -m philologic.webui_loader "$@"' > /var/lib/philologic5/bin/philologic5-webui-loader
+chmod 775 /var/lib/philologic5/bin/philologic5-webui-loader
+sudo cp /var/lib/philologic5/bin/philologic5-webui-loader /usr/local/bin/philologic5-webui-loader
+sudo chmod 775 /usr/local/bin/philologic5-webui-loader
+echo -e "\n## BUILDING THE WEB UI LOADER ##"
+(cd webui_loader && npm install --no-audit --no-fund --silent && npm run build --silent)
+mkdir -p /var/lib/philologic5/webui_loader
+cp -R webui_loader/dist /var/lib/philologic5/webui_loader/
+rm -rf webui_loader/node_modules webui_loader/dist
+
 sudo mkdir -p /etc/philologic/
 sudo mkdir -p /var/log/philologic5/
 sudo chown "$WEB_USER:$WEB_GROUP" /var/log/philologic5/
@@ -230,6 +241,10 @@ if [ ! -f /etc/philologic/philologic5.cfg ]; then
     # Each database gets a subdirectory there, created when first needed. install.sh creates it for the web server's user.
     hitlist_dir = \"$(/var/lib/philologic5/philologic_env/bin/python3 -c "from philologic.runtime.hitlist_dir import DEFAULT_ROOT; print(DEFAULT_ROOT)")/\"\n"
     echo -e "$hitlist_dir" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
+
+    webui_loader="# philologic5-webui-loader, the web UI to load databases: False turns it off
+    webui_loader = True\n"
+    echo -e "$webui_loader" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 else
     echo -e "\n## WARNING ##"
     echo "/etc/philologic/philologic5.cfg already exists"
@@ -334,4 +349,11 @@ else
 fi
 
 echo -e "\n## INSTALLATION COMPLETE ##"
+# The web UI loader service (docs/webui_loader.md), unless webui_loader = False in the global config
+if [ -d /run/systemd/system ]; then
+    echo -e "\n## SETTING UP THE WEB UI LOADER SERVICE ##"
+    sudo "$SCRIPT_DIR/extras/webui_loader/setup_service.sh"
+fi
+
 echo "philoload5 installed to /usr/local/bin/philoload5"
+echo "philologic5-webui-loader installed to /usr/local/bin/philologic5-webui-loader (see docs/webui_loader.md)"

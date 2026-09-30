@@ -6,6 +6,7 @@ description, you can refer to [our blog](<http://artfl.blogspot.com>).
 
 -   [**Installation**](installation.md)
 -   [**Database Loading**](database_loading.md)
+-   [**Loading from a web page**](webui_loader.md) (philologic5-webui-loader)
 -   [**Configuring the Web Application**](configure_web_app.md)
 -   [**Query Syntax**](query_syntax.md)
 -   [**Text Encoding Spec**](encoding_spec.md)

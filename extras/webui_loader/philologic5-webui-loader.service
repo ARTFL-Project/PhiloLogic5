@@ -1,0 +1,27 @@
+# systemd unit of the philologic5-webui-loader service, installed by setup_service.sh (run by install.sh), which fills in
+# User and Group. The web server of the databases serves it (see apache.conf, nginx.conf). See docs/webui_loader.md.
+[Unit]
+Description=PhiloLogic5 web UI to load databases
+After=network.target
+
+[Service]
+# The account which runs the loads and owns the databases they create (with group-writable database_root, setgid)
+User=philologic
+Group=artfl
+UMask=0002
+# The home of the account must be writable (npm, which builds the web client of each database, keeps a cache there)
+Environment=NUMBA_CACHE_DIR=/var/lib/philologic5-webui-loader/numba_cache
+WorkingDirectory=/var/lib/philologic5-webui-loader
+ExecStart=/var/lib/philologic5/philologic_env/bin/python3 -P -m philologic.webui_loader serve
+Restart=on-failure
+# Loads run apart from the server: stopping or restarting it must not kill them
+KillMode=process
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

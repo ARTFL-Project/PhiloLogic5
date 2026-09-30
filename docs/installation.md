@@ -162,6 +162,8 @@ A database can also set `hitlist_dir` in its own `data/db.locals.py`, which then
 
 Scripts that run searches themselves (with `philologic.runtime.DB`) write hitlists too: run as another user than the web server's, they need a `hitlist_dir` they can write to, in a global config of their own (`PHILOLOGIC_CONFIG=/path/to/config.cfg`). The test suite uses its own. Databases loaded before hitlists moved out of them have a `data/hitlists/` directory which is no longer used and can be deleted.
 
+`install.sh` also sets up [philologic5-webui-loader](webui_loader.md), the web UI to load databases: set `webui_loader = False` in `/etc/philologic/philologic5.cfg` to turn it off.
+
 ## Web Server Configuration
 
 ### Linux

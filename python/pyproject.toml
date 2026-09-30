@@ -38,6 +38,8 @@ dependencies = [
 
 [project.optional-dependencies]
 transformers = ["spacy-transformers~=1.3.8"]
+# philologic5-webui-loader, and the web app (install.sh installs them)
+web = ["gunicorn>=26.1,<27", "falcon>=4.3,<5"]
 test = [
     "pytest>=7.0",
     "pytest-timeout>=2.0",
@@ -51,4 +53,6 @@ packages = [
     "philologic.utils",
     "philologic.runtime.reports",
     "philologic.loadtime",
+    "philologic.webui_loader",
+    "philologic.webui_loader.server",
 ]

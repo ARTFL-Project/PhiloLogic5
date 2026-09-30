@@ -1,0 +1,155 @@
+// The look of the PhiloLogic web app: Bootstrap, then the theme of the app (app/src/assets/styles/theme.module.scss,
+// the one install.sh installs), as the app itself does, so that a change of the theme applies here too. Then what is
+// the loader's own, in the colors of the theme.
+@use "bootstrap/scss/bootstrap";
+@use "../../app/src/assets/styles/theme.module.scss" as theme;
+
+body,
+.btn,
+select,
+input,
+.card {
+    font-size: 14px;
+}
+
+// What Bootstrap colors with its primary color (blue), in the colors of the theme
+.nav-pills .nav-link.active {
+    background-color: theme.$button-color !important;
+    color: #fff !important;
+}
+.nav-pills .nav-link:not(.active),
+.nav-tabs .nav-link:not(.active) {
+    color: theme.$link-color !important;
+}
+.progress-bar {
+    background-color: theme.$button-color !important;
+}
+.spinner-border,
+.spinner-grow {
+    color: theme.$button-color;
+}
+.list-group-item.active {
+    background-color: theme.$button-color !important;
+    border-color: theme.$button-color !important;
+}
+
+// All fields, not only those the theme styles (type="text")
+.form-control:focus,
+.form-select:focus {
+    border-color: theme.$button-color !important;
+    box-shadow: 0 0 0 0.25rem rgba(theme.$button-color, 0.25) !important;
+}
+
+// The theme styles the radio buttons of the app: checkboxes and switches keep the look of Bootstrap's here, in the
+// colors of the theme
+.form-check-input,
+.form-check-input:focus:not(:checked) {
+    background-color: #fff !important;
+    border-color: rgba(0, 0, 0, 0.25) !important;
+}
+.form-check-input[type="checkbox"] {
+    background-image: none !important;
+}
+.form-check-input[type="checkbox"]:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e") !important;
+}
+.form-check-input[type="radio"]:not(:checked) {
+    background-image: none !important;
+}
+.form-check-input[type="radio"]:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='2' fill='%23fff'/%3e%3c/svg%3e") !important;
+}
+.form-switch .form-check-input,
+.form-switch .form-check-input:focus:not(:checked) {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='rgba%280, 0, 0, 0.25%29'/%3e%3c/svg%3e") !important;
+}
+.form-switch .form-check-input:checked {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
+}
+.form-check-input:checked {
+    background-color: theme.$button-color !important;
+    border-color: theme.$button-color !important;
+}
+
+// Links which are buttons keep the colors of their buttons
+a.btn-secondary,
+a.btn-secondary:hover {
+    color: #fff !important;
+}
+
+.narrow {
+    max-width: 38rem;
+}
+.medium {
+    max-width: 60rem;
+}
+.mono,
+textarea.mono {
+    font-family: SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 0.85rem;
+}
+.log {
+    max-height: 32rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-size: 0.8rem;
+    background: #1e1e1e;
+    color: #e6e6e6;
+}
+.changed .option-label {
+    font-weight: 600;
+}
+.changed .option-label::after {
+    content: " •";
+    color: theme.$button-color;
+}
+.file-list {
+    max-height: 22rem;
+    overflow: auto;
+}
+.file-list .list-group-item {
+    padding: 0.3rem 0.75rem;
+}
+.stage-done {
+    color: var(--bs-success);
+}
+.stage-running {
+    color: theme.$button-color;
+}
+.stage-failed,
+.stage-cancelled {
+    color: var(--bs-danger);
+}
+.stage-pending {
+    color: var(--bs-secondary);
+}
+.header-text {
+    max-height: 20rem;
+    overflow: auto;
+    font-size: 0.75rem;
+}
+.token {
+    display: inline-block;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.25rem;
+    padding: 0 0.25rem;
+    margin: 0.1rem;
+    font-size: 0.85rem;
+}
+.token.punct {
+    color: var(--bs-secondary);
+    border-style: dashed;
+}
+.sticky-actions {
+    position: sticky;
+    bottom: 0;
+    background: var(--bs-body-bg);
+    border-top: 1px solid var(--bs-border-color);
+    padding: 0.75rem 0;
+    z-index: 10;
+}
+.qr {
+    width: 12rem;
+    height: 12rem;
+}
