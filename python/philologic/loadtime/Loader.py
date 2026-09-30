@@ -81,6 +81,25 @@ NAVIGABLE_OBJECTS = ("doc", "div1", "div2", "div3", "para")
 
 ASCII_CONVERSION = True
 
+# Options of one run of philoload5 rather than of the database: they come from the command line (or the global config)
+# only, and are left out of the copy of the load config saved in the database, so that the copy can load it again
+RUN_OPTIONS = (
+    "dbname",
+    "files",
+    "file_list",
+    "bibliography",
+    "cores",
+    "debug",
+    "force_delete",
+    "load_config",
+    "web_config",
+    "database_root",
+    "url_root",
+    "destination",
+    "db_destination",
+    "data_destination",
+)
+
 PARSER_OPTIONS = [
     "parser_factory",
     "doc_xpaths",
@@ -722,15 +741,8 @@ class Loader:
         os.mkdir(self.textdir)
 
         load_config_path = os.path.join(loader_options["data_destination"], "load_config.py")
-        # Loading these from a load_config would crash the parser for a number of reasons...
-        values_to_ignore = [
-            "load_filters",
-            "post_filters",
-            "parser_factory",
-            "data_destination",
-            "db_destination",
-            "dbname",
-        ]
+        # Loading these from a load_config would crash the parser for a number of reasons, and run options aren't read
+        values_to_ignore = ["load_filters", "post_filters", "parser_factory", *RUN_OPTIONS]
         if loader_options["load_config"]:
             shutil.copy(loader_options["load_config"], load_config_path)
             config_obj = load_module("external_load_config", loader_options["load_config"])
@@ -746,11 +758,7 @@ class Loader:
                     file=load_config_copy,
                 )
                 for option, option_value in loader_options.items():
-                    if (
-                        option not in already_configured_values
-                        and option not in values_to_ignore
-                        and option != "web_config"
-                    ):
+                    if option not in already_configured_values and option not in values_to_ignore:
                         print(
                             "%s = %s\n" % (option, repr(option_value)),
                             file=load_config_copy,
@@ -771,7 +779,7 @@ class Loader:
                     file=load_config_copy,
                 )
                 for option, option_value in loader_options.items():
-                    if option not in values_to_ignore and option != "web_config":
+                    if option not in values_to_ignore:
                         print(
                             "%s = %s\n" % (option, repr(option_value)),
                             file=load_config_copy,

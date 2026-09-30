@@ -114,7 +114,7 @@ class LoadOptions:
             type=str,
             dest="header",
             help="define header type (tei or dc) of files to parse",
-            default="tei",
+            default=None,  # tei, unless the load config says otherwise
         )
         parser.add_argument(
             "-l",
@@ -131,7 +131,7 @@ class LoadOptions:
             dest="file_type",
             choices=["xml", "plain_text"],
             help="Define file type for parsing: xml or plain_text",
-            default="xml",
+            default=None,  # xml, unless the load config says otherwise
         )
         parser.add_argument(
             "-w",
@@ -165,7 +165,6 @@ class LoadOptions:
         self.values["force_delete"] = args.force_delete
         self.values["cores"] = args.cores
         self.values["debug"] = args.debug
-        self.values["header"] = args.header
         self.values["db_destination"] = os.path.join(self.database_root, self.dbname)
         self.values["data_destination"] = os.path.join(self.db_destination, "data")
         if args.web_config is not None:
@@ -175,21 +174,33 @@ class LoadOptions:
             preconfigured_filters = False
             load_config = LoadConfig()
             load_config.parse(args.load_config)
+            ignored_options = []
             for config_key, config_value in load_config.config.items():
+                if config_key in Loader.RUN_OPTIONS:  # such as the files of a load saved in a database's load_config.py
+                    ignored_options.append(config_key)
+                    continue
                 self.values[config_key] = config_value
                 if config_key == "load_filters":
                     preconfigured_filters = True  # This means we override all other filter configurations
+            # Copied into the database, which can then be loaded again with it, whether it sets its own filters or not
+            self.values["load_config"] = os.path.abspath(args.load_config)
             if not preconfigured_filters:
                 self.values["load_filters"] = LoadFilters.update_navigable_objects(
                     self.values["load_filters"], self.values["navigable_objects"]
                 )
-                self.values["load_config"] = os.path.abspath(args.load_config)
                 if self.values["spacy_model"]:
                     self.values["load_filters"].insert(-3, LoadFilters.spacy_tagger)
                 if self.values["suppress_word_attributes"]:
                     self.values["load_filters"].insert(-3, LoadFilters.suppress_word_attributes)
-        self.values["file_type"] = args.file_type
-        if args.file_type == "plain_text":
+            if ignored_options:
+                ignored = ", ".join(ignored_options)
+                print(f"Ignoring load config options which only come from the command line: {ignored}", file=sys.stderr)
+        # These can also be set by the load config, but the command line wins
+        if args.header is not None:
+            self.values["header"] = args.header
+        if args.file_type is not None:
+            self.values["file_type"] = args.file_type
+        if self.values["file_type"] == "plain_text":
             self.values["parser_factory"] = PlainTextParser.PlainTextParser
 
         # Validate that files were provided
