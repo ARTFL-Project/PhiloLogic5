@@ -12,6 +12,8 @@ PhiloLogic supports the following text files formats
 - TEI-XML: see [here](#configuring-the-xml-parser) for configuring XML parser
 - Plain text files (available with PhiloLogic 4.7.3 and up): see [here](#plain-text-parser) for using the plain text parser.
 
+To load databases from a web page instead, with previews of the load and its options explained, see [philologic5-webui-loader](webui_loader.md).
+
 ### Executing the load command
 
 In order for PhiloLogic to index your files, you need to execute the `philoload5` command. The basic command is run as so:
@@ -29,15 +31,13 @@ The `philoload5` command requires the following required arguments::
 
 `-h`, `--help` show this help message and exit
 
-`-a WEB_APP_DIR`, `--app_dir=WEB_APP_DIR` Define custom location for the web app directory
-
 `-b BIBLIOGRAPHY`, `--bibliography=BIBLIOGRAPHY` Defines a file containing the document-level bibliography of the texts. One of the fields needs to be the filename
 
 `-c CORES`, `--cores=CORES` define the number of cores used for parsing
 
 `-d`, `--debug` add debugging at parse time
 
-`-f`, `--force_delete` overwrite database without confirmation
+`-D`, `--force_delete` overwrite database without confirmation
 
 `-F`, `--file-list` Defines whether the file argument is a file containing fullpaths to the files to load
 
@@ -46,6 +46,8 @@ The `philoload5` command requires the following required arguments::
 `-l LOAD_CONFIG`, `--load_config=LOAD_CONFIG` load external config for specialized load
 
 `-t FILE_TYPE`, `--file-type=FILE_TYPE` Define file type for parsing: plain_text or xml
+
+`-w WEB_CONFIG`, `--use-webconfig=WEB_CONFIG` use a predefined web_config.cfg file for the database
 
 So our command for loading texts could be::
 
@@ -62,13 +64,6 @@ default_object_level = 'doc'
 # Define navigable objects
 navigable_objects = ('doc', 'div1', 'div2', 'div3', 'para')
 
-## Define text objects to generate plain text files for various machine learning tasks
-## For instance, this could be ['doc', 'div1']
-plain_text_obj = []
-
-## Define whether to store all words with their philo IDs. Useful for data-mining tasks
-## where keeping the index information (and byte offset) is important.
-store_words_and_ids = False
 ```
 
 `default_object_level` defines the type of object returned for the purpose of most navigation reports--for most database, this will be "doc", but you might want to use "div1" for dictionary or encyclopedia databases.
@@ -77,9 +72,6 @@ store_words_and_ids = False
 
 `filters` and `post_filters` are lists of loader functions--their behavior and design will be documented separately, but they are basically lists of modular loader functions to be executed in order, and so shouldn't be modified carelessly.
 
-`plain_text_obj` is a very useful option that generates a flat text file representations of all objects of a given type, like "doc" or "div1", usually for data mining with Mallet or some other tool.
-
-`store_words_and_ids` defines whether you want the parser to save a representation of the text containing the individual index ID for each word in all texts indexed in the DB. This can be useful for data-mining task that need to know about word positioning such as sequence alignment.
 
 
 ### Plain text Parser
@@ -262,7 +254,7 @@ break_sent_in_line_group = False
 # ------------------ Skip in word tags -------------------------------
 # Tags normally break words.  There may be exceptions.  To run the
 # exception, turn on the exception and list them as patterns.
-# Tags will not be indexed and will not break words. An empty list turns of the feature
+# Tags will not be indexed and will not break words. An empty list turns off the feature
 tag_exceptions = [
     r"<hi[^>]*>",
     r"<emph[^>]*>",
@@ -280,38 +272,13 @@ tag_exceptions = [
     r"</sup>",
 ]
 
-# ------------- UTF8 Strings to consider as word breakers -----------
-# In SGML, these are ents.  But in Unicode, these are characters
-# like any others.  Consult the table at:
-# www.utf8-chartable.de/unicode-utf8-table.pl?start=8016&utf8=dec&htmlent=1
-# to see about others. An empty list disables the feature.
-# Note that these strings must be marked as binary as they are UTF8 strings
-unicode_word_breakers = [
-    b"\xe2\x80\x93",  # U+2013 &ndash; EN DASH
-    b"\xe2\x80\x94",  # U+2014 &mdash; EM DASH
-    b"\xc2\xab",  # &laquo;
-    b"\xc2\xbb",  # &raquo;
-    b"\xef\xbc\x89",  # fullwidth right parenthesis
-    b"\xef\xbc\x88",  # fullwidth left parenthesis
-    b"\xe2\x80\x90",  # U+2010 hyphen for greek stuff
-    b"\xce\x87",  # U+00B7 ano teleia
-    b"\xe2\x80\xa0",  # U+2020 dagger
-    b"\xe2\x80\x98",  # U+2018 &lsquo; LEFT SINGLE QUOTATION
-    b"\xe2\x80\x99",  # U+2019 &rsquo; RIGHT SINGLE QUOTATION
-    b"\xe2\x80\x9c",  # U+201C &ldquo; LEFT DOUBLE QUOTATION
-    b"\xe2\x80\x9d",  # U+201D &rdquo; RIGHT DOUBLE QUOTATION
-    b"\xe2\x80\xb9",  # U+2039 &lsaquo; SINGLE LEFT-POINTING ANGLE QUOTATION
-    b"\xe2\x80\xba",  # U+203A &rsaquo; SINGLE RIGHT-POINTING ANGLE QUOTATION
-    b"\xe2\x80\xa6",  # U+2026 &hellip; HORIZONTAL ELLIPSIS
-]
-
 # Define a list of word attributes to ingore at parse time. These will not be stored.
 # This should be a list of attribute names, such as ["type", "id"]
 suppress_word_attributes = []
 
 #  ----------------- Set Long Word Limit  -------------------
 #  Words greater than 235 characters (bytes) cause an indexing
-#  error.  This sets a limit.  Words are then truncated to fit.
+#  error.  This sets a limit.  Longer words are left out of the index.
 long_word_limit = 200
 
 # ------------------ Hyphenated Word Joiner ----------------------------
@@ -340,12 +307,6 @@ sentence_breakers = []
 # Define which punctuation should be flagged as such. This should NOT include
 # any punctuation which mark sentence breaks. Use regex to match characters.
 punctuation = ""
-
-# Define a language for the POS tagger. For language available, see Spacy documentation.
-# You will need to install the relevant language and use the proper language code in the value
-# below. If empty string, no tagger is run.
-# Note that the tagger has an non-trival impact on parse time.
-pos_tagger = ""
 
 # Defines whether words should be stored in lowercase form in the index.
 lowercase_index = True
@@ -383,6 +344,16 @@ The remaining options are self-explanatory given the comments...
 So to use a load config file as an argument, you would run the following:
 
 `philoload5 -l load_config.py db_name path_to_files`
+
+In a load config, an empty value (`""`, `[]`, `{}`, `None`) leaves the option's default, except for `tag_exceptions` and `sort_order`, where an empty list turns the feature off.
+
+### Loading a database again
+
+Every database keeps a copy of the load config it was loaded with in `data/load_config.py`, completed with the values of all the other options. To load a database again with the same options, possibly with other files, pass this copy with `-l`:
+
+`philoload5 -l /var/www/html/philologic5/my_database/data/load_config.py my_new_database path_to_files`
+
+What to load and how to run the load are only taken from the command line: the files, `-b`, `-c`, `-D`, `-d` and `-F`, as well as the database location of the global config. A load config can set the header type (`header`) and the file type (`file_type`), but `-H` and `-t` override it.
 
 
 

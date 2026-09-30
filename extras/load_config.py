@@ -179,7 +179,7 @@ break_sent_in_line_group = False
 # ------------------ Skip in word tags -------------------------------
 # Tags normally break words.  There may be exceptions.  To run the
 # exception, turn on the exception and list them as patterns.
-# Tags will not be indexed and will not break words. An empty list turns of the feature
+# Tags will not be indexed and will not break words. An empty list turns off the feature
 tag_exceptions = [
     r"<hi[^>]*>",
     r"<emph[^>]*>",
@@ -203,7 +203,7 @@ suppress_word_attributes = []
 
 #  ----------------- Set Long Word Limit  -------------------
 #  Words greater than 235 characters (bytes) cause an indexing
-#  error.  This sets a limit.  Words are then truncated to fit.
+#  error.  This sets a limit.  Longer words are left out of the index.
 long_word_limit = 200
 
 # ------------------ Hyphenated Word Joiner ----------------------------
@@ -228,12 +228,6 @@ flatten_ligatures = True
 # Define a list of strings which mark the end of a sentence.
 # Note that this list will be added to the current one which is [".", "?", "!"]
 sentence_breakers = []
-
-# Define a language for the POS tagger. For language available, see Spacy documentation.
-# You will need to install the relevant language and use the proper language code in the value
-# below. If empty string, no tagger is run.
-# Note that the tagger has an non-trival impact on parse time.
-pos_tagger = ""
 
 # Defines whether words should be stored in lowercase form in the index.
 lowercase_index = True
