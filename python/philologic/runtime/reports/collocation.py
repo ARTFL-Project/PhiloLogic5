@@ -18,7 +18,8 @@ from philologic.runtime.DB import DB
 from philologic.runtime.exceptions import BadRequest, NotFound
 from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.MetadataQuery import bulk_load_metadata
-from philologic.runtime.Query import get_word_groups, rewrite_terms_file
+from philologic.runtime.Query import get_word_groups, rewrite_terms_file, split_terms
+from philologic.runtime.QuerySyntax import group_terms, parse_query
 from philologic.runtime.sql_validation import validate_request_column
 
 # Per-worker cache of corpus-wide sentence document-frequency arrays.
@@ -82,6 +83,16 @@ def _nb_searchsorted(sent_keys, hit_keys, n_sents):
     return result, match
 
 
+@numba.njit(cache=True)
+def _nb_span_distance(pos, q_pos, q_end):
+    """Distance in words from position pos to the span of a hit's query words, q_pos to q_end (0 within it)."""
+    if pos < q_pos:
+        return np.int32(q_pos) - np.int32(pos)
+    if pos > q_end:
+        return np.int32(pos) - np.int32(q_end)
+    return np.int32(0)
+
+
 @numba.njit(parallel=True, cache=True)
 def _nb_fused_count(sent_indices, hit_q_pos, sent_offsets, token_ids, is_filtered, vocab_size):
     """Fused gather + filter + count in a single parallel pass (no intermediate arrays)."""
@@ -104,8 +115,9 @@ def _nb_fused_count(sent_indices, hit_q_pos, sent_offsets, token_ids, is_filtere
 
 
 @numba.njit(parallel=True, cache=True)
-def _nb_fused_count_distance(sent_indices, hit_q_pos, sent_offsets, token_ids, is_filtered, vocab_size, max_dist):
-    """Fused count with distance constraint."""
+def _nb_fused_count_distance(sent_indices, hit_q_pos, hit_q_end, sent_offsets, token_ids, is_filtered, vocab_size,
+                             max_dist):
+    """Fused count with distance constraint (from the span of the hit's query words, hit_q_pos to hit_q_end)."""
     n = len(sent_indices)
     nt = numba.config.NUMBA_NUM_THREADS
     local_counts = np.zeros((nt, vocab_size), dtype=np.int64)
@@ -114,13 +126,11 @@ def _nb_fused_count_distance(sent_indices, hit_q_pos, sent_offsets, token_ids, i
         start = sent_offsets[sent_indices[i]]
         end = sent_offsets[sent_indices[i] + 1]
         q_pos = hit_q_pos[i]
+        q_end = hit_q_end[i]
         pos = np.uint32(1)
         for j in range(start, end):
             if pos != q_pos:
-                diff = np.int32(pos) - np.int32(q_pos)
-                if diff < 0:
-                    diff = -diff
-                if diff <= max_dist:
+                if _nb_span_distance(pos, q_pos, q_end) <= max_dist:
                     token = token_ids[j]
                     if not is_filtered[token]:
                         local_counts[tid, token] += 1
@@ -150,7 +160,7 @@ def _nb_fused_count_attr(sent_indices, hit_q_pos, sent_offsets, count_ids, is_fi
 
 
 @numba.njit(parallel=True, cache=True)
-def _nb_fused_count_attr_distance(sent_indices, hit_q_pos, sent_offsets, count_ids, is_filtered, attr_ids, target_attr_id, vocab_size, max_dist):
+def _nb_fused_count_attr_distance(sent_indices, hit_q_pos, hit_q_end, sent_offsets, count_ids, is_filtered, attr_ids, target_attr_id, vocab_size, max_dist):
     """Fused count with attribute inclusion filter, identity exclusion, and distance constraint."""
     n = len(sent_indices)
     nt = numba.config.NUMBA_NUM_THREADS
@@ -160,13 +170,11 @@ def _nb_fused_count_attr_distance(sent_indices, hit_q_pos, sent_offsets, count_i
         start = sent_offsets[sent_indices[i]]
         end = sent_offsets[sent_indices[i] + 1]
         q_pos = hit_q_pos[i]
+        q_end = hit_q_end[i]
         pos = np.uint32(1)
         for j in range(start, end):
             if pos != q_pos:
-                diff = np.int32(pos) - np.int32(q_pos)
-                if diff < 0:
-                    diff = -diff
-                if diff <= max_dist and attr_ids[j] == target_attr_id:
+                if _nb_span_distance(pos, q_pos, q_end) <= max_dist and attr_ids[j] == target_attr_id:
                     token = count_ids[j]
                     if not is_filtered[token]:
                         local_counts[tid, token] += 1
@@ -175,7 +183,7 @@ def _nb_fused_count_attr_distance(sent_indices, hit_q_pos, sent_offsets, count_i
 
 @numba.njit(parallel=True, cache=True)
 def _nb_gather_grouped(
-    sent_indices, hit_q_pos, hit_gids, sent_offsets,
+    sent_indices, hit_q_pos, hit_q_end, hit_gids, sent_offsets,
     count_ids, is_filtered, attr_ids, target_attr_id,
     use_attr, max_dist, hit_word_offsets,
     out_tokens, out_gids, out_valid,
@@ -192,6 +200,7 @@ def _nb_gather_grouped(
         e = numba.int64(sent_offsets[si + 1])
         base = hit_word_offsets[i]
         qp = hit_q_pos[i]
+        qe = hit_q_end[i]
         gid = hit_gids[i]
         pos = np.uint32(1)
         for j in range(s, e):
@@ -205,10 +214,7 @@ def _nb_gather_grouped(
             if ok:
                 ok = not is_filtered[t]
             if ok and max_dist >= np.int32(0):
-                diff = np.int32(pos) - np.int32(qp)
-                if diff < 0:
-                    diff = -diff
-                ok = diff <= max_dist
+                ok = _nb_span_distance(pos, qp, qe) <= max_dist
             out_valid[w] = ok
             pos += 1
 
@@ -372,11 +378,13 @@ def _vectorized_collocation(
     attribute_value,
     collocate_distance,
     map_field_info=None,
+    per_sentence=False,
 ):
     """Fully vectorized collocation counting using columnar numpy arrays.
 
     Returns either a Counter (when map_field_info is None) or
     a dict {metadata_value: Counter} (when map_field_info is set).
+    With per_sentence, as for co-occurrence searches, each sentence of the hits counts once.
     """
     colloc_dir = os.path.join(db_path, "collocations")
 
@@ -393,6 +401,20 @@ def _vectorized_collocation(
         raw = f.read()
 
     all_hits = np.frombuffer(raw, dtype=np.uint32).reshape(-1, hits.length)
+
+    # The span of each hit's query words in its sentence (a hit has the position of each in columns 7, 9...):
+    # collocate_distance is counted from it, so for a phrase, on either side of it
+    positions = all_hits[:, 7::2]
+    span_start = positions.min(axis=1) if len(all_hits) else np.empty(0, dtype=np.uint32)
+    span_end = positions.max(axis=1) if len(all_hits) else np.empty(0, dtype=np.uint32)
+    if per_sentence and len(all_hits):
+        # A co-occurrence search has a hit for every combination of the query words' occurrences in a sentence,
+        # one after the other: keep one per sentence, spanning them all
+        sent_ids = all_hits[:, :6]
+        firsts = np.flatnonzero(np.concatenate(([True], np.any(sent_ids[1:] != sent_ids[:-1], axis=1))))
+        span_start = np.minimum.reduceat(span_start, firsts)
+        span_end = np.maximum.reduceat(span_end, firsts)
+        all_hits = all_hits[firsts]
 
     #  Load counting vocab: lemma IDs or token IDs
     if count_lemmas:
@@ -429,14 +451,15 @@ def _vectorized_collocation(
     hit_keys = np.ascontiguousarray(all_hits[:, :6])
     si, match = _nb_searchsorted(sent_keys_native, hit_keys, len(sent_keys_native))
     sent_indices = si[match]
-    hit_q_pos = all_hits[match, 7]
+    hit_q_pos = np.ascontiguousarray(span_start[match])
+    hit_q_end = np.ascontiguousarray(span_end[match])
 
     #  Helpers: fused count + decode (shared by all modes)
-    def _fused_count(group_si, group_qp):
+    def _fused_count(group_si, group_qp, group_qe):
         if attribute is not None:
             if collocate_distance is not None:
                 return _nb_fused_count_attr_distance(
-                    group_si, group_qp, sent_offsets_arr,
+                    group_si, group_qp, group_qe, sent_offsets_arr,
                     count_ids, is_filtered, attr_ids_mmap, target_attr_id,
                     count_vocab_size, collocate_distance,
                 )
@@ -447,7 +470,7 @@ def _vectorized_collocation(
             )
         if collocate_distance is not None:
             return _nb_fused_count_distance(
-                group_si, group_qp, sent_offsets_arr,
+                group_si, group_qp, group_qe, sent_offsets_arr,
                 count_ids, is_filtered, count_vocab_size, collocate_distance,
             )
         return _nb_fused_count(
@@ -472,7 +495,7 @@ def _vectorized_collocation(
 
     #  Simple mode: one fused count over all hits
     if map_field_info is None:
-        return _decode_counts(_fused_count(sent_indices, hit_q_pos))
+        return _decode_counts(_fused_count(sent_indices, hit_q_pos, hit_q_end))
 
     #  map_field mode: single gather pass + per-group bincount
     metadata_cache, field_obj_index = map_field_info
@@ -497,6 +520,7 @@ def _vectorized_collocation(
     valid_mask = hit_gids >= 0
     v_si = np.ascontiguousarray(sent_indices[valid_mask])
     v_qp = np.ascontiguousarray(hit_q_pos[valid_mask])
+    v_qe = np.ascontiguousarray(hit_q_end[valid_mask])
     v_gids = np.ascontiguousarray(hit_gids[valid_mask])
 
     # Pre-compute per-hit word ranges
@@ -515,14 +539,14 @@ def _vectorized_collocation(
     _max_dist = np.int32(collocate_distance) if collocate_distance is not None else np.int32(-1)
     if attribute is not None:
         _nb_gather_grouped(
-            v_si, v_qp, v_gids, sent_offsets_arr,
+            v_si, v_qp, v_qe, v_gids, sent_offsets_arr,
             count_ids, is_filtered, attr_ids_mmap, target_attr_id,
             np.bool_(True), _max_dist, hit_word_offsets,
             out_tokens, out_gids, out_valid,
         )
     else:
         _nb_gather_grouped(
-            v_si, v_qp, v_gids, sent_offsets_arr,
+            v_si, v_qp, v_qe, v_gids, sent_offsets_arr,
             count_ids, is_filtered, np.empty(1, dtype=np.uint32), np.uint32(0),
             np.bool_(False), _max_dist, hit_word_offsets,
             out_tokens, out_gids, out_valid,
@@ -551,6 +575,17 @@ def _vectorized_collocation(
     group_names = [str(n) for n in group_names]
     return unique_tids, unique_counts, group_bounds, group_names, group_hits
 
+def collocation_search_method(q, query_patterns=None):
+    """The search for the hits collocates are counted around: each occurrence of the query's one term (which may be
+    "a | b"), each occurrence of a quoted phrase, or else each sentence where all the query terms are."""
+    grouped = group_terms(parse_query(q, query_patterns=query_patterns))
+    if len(split_terms(grouped)) <= 1:
+        return "single_term"
+    if len(grouped) == 1:  # one term, split: a quoted phrase
+        return "phrase_ordered"
+    return "sentence_unordered"
+
+
 def collocation_results(request, config):
     """Fetch collocation results"""
     collocation_object: dict[str, Any] = {"query": dict([i for i in request])}
@@ -566,10 +601,11 @@ def collocation_results(request, config):
             collocation_object["collocates"] = []
         return collocation_object
 
+    method = collocation_search_method(request.q, db.locals.query_patterns)
     hits = db.query(
         request.q,
-        "single_term",
-        request.arg,
+        method,
+        "0",
         raw_results=True,
         raw_bytes=True,
         **request.metadata,
@@ -649,6 +685,7 @@ def collocation_results(request, config):
             attribute_value,
             collocate_distance,
             map_field_info=map_field_info,
+            per_sentence=method == "sentence_unordered",
         )
 
     collocation_object["results_length"] = total_hits

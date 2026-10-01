@@ -46,7 +46,7 @@ from scipy.sparse import csr_matrix
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.Query import rewrite_terms_file
-from philologic.runtime.reports.collocation import get_word_groups
+from philologic.runtime.reports.collocation import collocation_search_method, get_word_groups
 from philologic.runtime.reports.time_series import _get_doc_year_data
 
 # A timeline bin is only plotted as a usage rate if its smoothing window rests
@@ -114,7 +114,9 @@ def _build_hit_bags(
     filter (year == -1 for unmatched). Identity-filtered words and, if an
     attribute filter is set, off-attribute tokens are excluded.
     """
-    hits = db.query(q, "single_term", "", raw_results=True, raw_bytes=True, **metadata)
+    # The hits collocation counts around: occurrences of the term or the phrase, or sentences with all the terms
+    method = collocation_search_method(q, db.locals.query_patterns)
+    hits = db.query(q, method, "0", raw_results=True, raw_bytes=True, **metadata)
     hits.finish()
     if len(hits) == 0:  # also when the metadata matched nothing: no search ran, so there is no .terms
         return (
@@ -141,6 +143,12 @@ def _build_hit_bags(
     with hits.open_raw() as f:
         raw = f.read()
     all_hits = np.frombuffer(raw, dtype=np.uint32).reshape(-1, hits.length)
+    if method == "sentence_unordered":
+        # A co-occurrence search has a hit for every combination of the query words' occurrences in a sentence,
+        # one after the other: keep one per sentence, as collocation does
+        sent_ids = all_hits[:, :6]
+        firsts = np.flatnonzero(np.concatenate(([True], np.any(sent_ids[1:] != sent_ids[:-1], axis=1))))
+        all_hits = all_hits[firsts]
 
     colloc_dir = os.path.join(db_path, "collocations")
     sent_keys_s24 = np.load(os.path.join(colloc_dir, "sent_keys_s24.npy"), mmap_mode="r")
