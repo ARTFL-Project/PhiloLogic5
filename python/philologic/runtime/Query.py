@@ -383,19 +383,24 @@ def get_word_array(txn, word, overflow_words, db_path):
 
 
 def get_word_groups(terms_file):
-    word_groups = []
+    """The words each group of the query expanded to, from its .terms file: one per line, with a blank line between
+    groups. A group that matches no word is kept, empty: a search that did without it would write hits of fewer words
+    than readers take them to have (see words_per_hit), and they would be the hits of another query."""
+    word_groups = [[]]
     with open(terms_file, "r", encoding="utf8") as terms_file:
-        word_group = []
         for line in terms_file:
             word = line.strip()
             if word:
-                word_group.append(word)
-            elif word_group:
-                word_groups.append(word_group)
-                word_group = []
-        if word_group:
-            word_groups.append(word_group)
+                word_groups[-1].append(word)
+            else:
+                word_groups.append([])
     return word_groups
+
+
+def words_per_hit(method, split):
+    """The number of words in each hit of a search for the query groups split: single_term searches merge the words
+    of every group into hits of one word."""
+    return 1 if method == "single_term" else len(split)
 
 
 def write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index):
@@ -478,7 +483,7 @@ def start_search(db, terms, filename, lock=None, corpus=None, method=None, metho
     thread.start()
     if lock is not None:
         lock.hand_over()  # the thread finishes the hitlist whatever happens, so errors here must not undo the claim
-    return len(split)
+    return words_per_hit(method, split)
 
 
 def query(
@@ -561,19 +566,21 @@ def query_parse(query_terms, config):
     return query_terms
 
 
-def resolve_method(q, method, method_arg, cooc_order):
+def resolve_method(q, method, method_arg, cooc_order, query_patterns=None):
     """Resolve user-facing search parameters into internal method name and arg.
 
     Takes the raw query string, method name, method_arg, and cooc_order from
     the request and returns the (method, arg) pair used by the search engine.
+    query_patterns are the database's, if it has its own (see parse_query).
     """
-    words = [w for w in q.split() if w]
+    # Query groups, as the search sees them: '"républicain""vertu"' has two, 'a | b' one
+    groups = split_terms(group_terms(parse_query(q, query_patterns=query_patterns)))
     method = method or "proxy"
     try:
         arg = int(method_arg)
     except (ValueError, TypeError):
         arg = 0
-    if len(words) == 1:
+    if len(groups) == 1:
         method = "single_term"
     elif arg == 0 and method in ("proxy", "exact_cooc"):
         if cooc_order == "yes":
