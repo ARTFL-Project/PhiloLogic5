@@ -25,7 +25,8 @@ class FragmentParser:
             if no_ns_k != k:
                 del attrib[k]
                 attrib[no_ns_k] = v
-        new_el = etree.SubElement(self.current_el, tag, attrib)
+        # Without its namespace prefix, as attribute names: lxml takes no "jx:cl" for a tag name
+        new_el = etree.SubElement(self.current_el, re.sub(r"^.*?:", "", tag), attrib)
         new_el.text = ""
         new_el.tail = ""
         self.current_el = new_el
