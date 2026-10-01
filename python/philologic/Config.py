@@ -421,28 +421,6 @@ WEB_CONFIG_DEFAULTS = {
             ]
         ),
     },
-    "dictionary_selection": {
-        "value": False,
-        "comment": "\n".join(
-            [
-                "# If set to True, this option creates a dropdown menu to select searching within only a single volume or title.",
-                "# This replaces the title field in the search form.",
-                "# You need to configure the dictionary_selection_options variable below to define your options.",
-            ]
-        ),
-    },
-    "dictionary_selection_options": {
-        "value": [],
-        "comment": "\n".join(
-            [
-                "# If dictionary_selection is set to True, you need to populate this variable as in the following:",
-                """# [{"label": "DAF 1932", "title": "Dictionnaire de l'Académie Française 1932"}]""",
-                "# Each volume is represented as an object containing the label which is displayed in the search form",
-                "# and a title value which should either be the exact string stored in the SQL table, or a ripgrep expression",
-                '# such as "Dictionnaire de Littre.*" if you wish to match more than one title.',
-            ]
-        ),
-    },
     "landing_page_browsing": {
         "value": "default",
         "comment": "\n".join(
@@ -479,16 +457,6 @@ WEB_CONFIG_DEFAULTS = {
                 '# and define two different types of queries to group your data: ranges and exact matches, i.e. "A-D" or "Comedy".',
                 "# You can define styling with a dictionary of valid CSS property/value such as those in the default values.",
                 "# begin and end keywords define what precedes and follows each field. You can use HTML for these strings.",
-            ]
-        ),
-    },
-    "default_landing_page_display": {
-        "value": {},
-        "comment": "\n".join(
-            [
-                "# The default landing page display variable allows you to load content by default. It is configured",
-                "# in the same way as default_landing_page_display objects except that you need to define just one",
-                "# range (the one you wish to display) as a string, such as 'A-D'. An empty dict will disable the feature.",
             ]
         ),
     },
@@ -812,12 +780,11 @@ WEB_CONFIG_DEFAULTS = {
         "comment": "# The link should start with http:// or https://. This will display an error report link in the header and in document navigation",
     },
     "academic_citation": {
-        "value": {"collection": "", "citation": [], "custom_url": ""},
+        "value": {"collection": "", "citation": []},
         "comment": "\n".join(
             [
                 "# The academic citation use to cite this database. The citation is build with the citation defined (from metadata values) + the collection (which can be HTML)",
                 """# e.g.: {"collection": 'ARTFL-FRANTEXT, University of Chicago', "citation": [citations["author"], citations["title"], citations["year"]]}""",
-                "# You can define a custom URL (not the URL of the database itself).",
             ]
         ),
     },

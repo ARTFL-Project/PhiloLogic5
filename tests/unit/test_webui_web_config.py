@@ -191,7 +191,7 @@ def test_restricted_users(db_path):
     for changes, message in (
         ({"citations": citations}, "HTML"),
         ({"link_to_home_page": "javascript:alert(1)"}, "http"),
-        ({"academic_citation": {"collection": "", "citation": [], "custom_url": " JavaScript:x"}}, "http"),
+        ({"dictionary_lookup": {"url_root": " JavaScript:x", "keywords": False}}, "http"),
         ({"landing_page_browsing": "templates/landing.html"}, "templates"),
     ):
         with pytest.raises(WebConfigError, match=message):
@@ -260,3 +260,14 @@ def test_edited_named_citation_still_referred_to_by_name(db_path):
     assert 'citations["author"]' in statement and '"suffix": ", "' not in statement
     assert runtime_config(db_path)["concordance_citation"][0]["suffix"] == ", "
 
+
+def test_removed_options_of_older_web_configs(db_path):
+    """Options nothing uses any more, which older web configs still set: not shown, and kept as they are on save"""
+    path = Path(db_path) / "data" / "web_config.cfg"
+    old = "dictionary_selection = False\ndictionary_selection_options = []\ndefault_landing_page_display = {}\n"
+    path.write_text(path.read_text(encoding="utf8") + old, encoding="utf8")
+    config = web_config_io.read(db_path)
+    assert config["other"] == {} and config["error"] is None
+    web_config_io.save(db_path, {"dbname": "Renamed"}, config["hash"])
+    assert path.read_text(encoding="utf8").endswith(old)
+    assert runtime_config(db_path)["dbname"] == "Renamed"

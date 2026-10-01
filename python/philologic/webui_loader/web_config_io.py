@@ -24,6 +24,9 @@ REPORTS = ("concordance", "kwic", "aggregation", "collocation", "time_series")
 INPUT_STYLES = ("text", "dropdown", "checkbox", "int", "date")
 LANDING_PAGES = ("default", "dictionary", "simple", "toc")
 
+# Options which nothing uses any more: older web configs still set them, which the web config page doesn't show
+REMOVED_OPTIONS = ("default_landing_page_display", "dictionary_selection", "dictionary_selection_options")
+
 # Never changed by the web config page
 READ_ONLY = ("access_control", "access_file")
 
@@ -90,7 +93,6 @@ KINDS = {
     "simple_landing_citation": ("citations", "citation_list", ()),
     "landing_page_browsing": ("landing_page", "choice", LANDING_PAGES),
     "default_landing_page_browsing": ("landing_page", "records", ()),
-    "default_landing_page_display": ("landing_page", "json", ()),
     "dico_letter_range": ("landing_page", "string_list", ()),
     "skip_table_of_contents": ("navigation", "bool", ()),
     "respect_text_line_breaks": ("navigation", "bool", ()),
@@ -104,8 +106,6 @@ KINDS = {
     "aggregation_config": ("aggregation", "records", ()),
     "dictionary": ("dictionary", "bool", ()),
     "dictionary_bibliography": ("dictionary", "bool", ()),
-    "dictionary_selection": ("dictionary", "bool", ()),
-    "dictionary_selection_options": ("dictionary", "json", ()),
     "dictionary_lookup": ("dictionary", "record", ()),
     "dictionary_lookup_keywords": ("dictionary", "record", ()),
     "concordance_formatting_regex": ("formatting", "replacements", ()),
@@ -137,7 +137,6 @@ URL_OPTIONS = (
     "logo",
     "page_images_url_root",
     "dictionary_lookup",
-    "academic_citation",
 )
 URL_SCHEME = re.compile(r"^\s*([a-zA-Z][a-zA-Z0-9+.-]*):")
 
@@ -279,7 +278,7 @@ def read(db_path, service=False):
                 elif name in values:
                     values[name] = entry.value
                     result["in_file"].append(name)
-                else:
+                elif name not in REMOVED_OPTIONS:
                     result["other"][name] = json_value(entry.value)
     writable, reason = write_permission(db_path) if text is not None else (False, "the database has no web_config.cfg")
     if result["error"]:

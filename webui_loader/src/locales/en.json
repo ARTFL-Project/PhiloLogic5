@@ -381,7 +381,6 @@
     "form": {
         "collection": "Collection (HTML allowed)",
         "citation": "Citation",
-        "custom_url": "Custom URL",
         "start_date": "Start",
         "end_date": "End",
         "url_root": "URL of the dictionary",

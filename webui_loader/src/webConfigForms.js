@@ -14,7 +14,6 @@ export const FORMS = {
     academic_citation: [
         { key: "collection", type: "text" },
         { key: "citation", type: "citations" },
-        { key: "custom_url", type: "text" },
     ],
     time_series_start_end_date: [
         { key: "start_date", type: "year" },
