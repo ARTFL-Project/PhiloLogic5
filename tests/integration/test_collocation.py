@@ -1,7 +1,9 @@
-"""Integration tests for collocation counting around hits of more than one word: phrases and co-occurrences."""
+"""Integration tests for collocation counting: around hits of one word, of co-occurrences, and of phrases."""
 
 import io
+import os
 import sys
+import urllib.parse
 from collections import Counter
 from pathlib import Path
 
@@ -12,9 +14,8 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
-from philologic.runtime.reports.collocation import _vectorized_collocation
-
-QUERY_WORDS = {"my", "My", "MY", "lord", "Lord", "LORD"}
+from philologic.runtime import WebConfig, WSGIHandler
+from philologic.runtime.reports.collocation import _vectorized_collocation, collocation_results
 
 
 class Rows:
@@ -31,42 +32,55 @@ class Rows:
         return io.BytesIO(self.rows.tobytes())
 
 
-def collocates(db, rows, distance=None, per_sentence=False):
-    return _vectorized_collocation(
-        db.path, Rows(rows), QUERY_WORDS, False, None, None, distance, per_sentence=per_sentence
-    )
+def collocation(db, q, distance=""):
+    """The top collocates of q, as the collocation report counts them, within distance words or in the sentence."""
+    root = os.path.dirname(os.path.normpath(db.path))
+    config = WebConfig(root)
+    query_string = urllib.parse.urlencode({"q": q, "colloc_filter_choice": "nofilter", "method_arg": distance})
+    request = WSGIHandler({"QUERY_STRING": query_string, "PHILOLOGIC_DBPATH": root}, config)
+    return collocation_results(request, config)["collocates"]
 
 
-def hit_rows(db, q, method):
-    hits = db.query(q, method, "0", raw_results=True)
+def total_hits(db, q, method, method_arg="0"):
+    hits = db.query(q, method, method_arg)
     hits.finish()
-    return hits.read_array()
+    return len(hits)
 
 
 @pytest.mark.integration
-class TestCooccurrence:
-    def test_each_sentence_counts_once(self, shakespeare_db):
-        """A sentence with several combinations of the query words' occurrences counts once."""
-        rows = hit_rows(shakespeare_db, "my lord", "sentence_unordered")
-        sentence_ids = rows[:, :6]
-        firsts = np.flatnonzero(np.concatenate(([True], np.any(sentence_ids[1:] != sentence_ids[:-1], axis=1))))
-        assert len(firsts) < len(rows), "the corpus should have sentences with several combinations"
-        per_sentence = collocates(shakespeare_db, rows, per_sentence=True)
-        assert per_sentence == collocates(shakespeare_db, rows[firsts])
-        assert sum(per_sentence.values()) < sum(collocates(shakespeare_db, rows).values())
+class TestCountsMatchConcordances:
+    """The count of a collocate is the number of hits of the concordance it links to: the query and the collocate in
+    the same sentence, or within n words of each other."""
+
+    @pytest.mark.parametrize("q", ["lord", "my lord"])
+    def test_in_sentence(self, shakespeare_db, q):
+        for word, count in collocation(shakespeare_db, q)[:5]:
+            assert count == total_hits(shakespeare_db, f'{q} "{word}"', "sentence_unordered"), word
+
+    @pytest.mark.parametrize("q", ["lord", "my lord"])
+    def test_within_n_words(self, shakespeare_db, q):
+        collocates = collocation(shakespeare_db, q, distance="3")[:5]
+        assert collocates
+        for word, count in collocates:
+            assert count == total_hits(shakespeare_db, f'{q} "{word}"', "proxy_unordered", "3"), word
 
 
 @pytest.mark.integration
 class TestPhrase:
-    def test_distance_from_both_ends(self, shakespeare_db):
-        """Collocates within n words of a phrase are on either side of it, not only around its first word."""
-        rows = hit_rows(shakespeare_db, '"my lord"', "phrase_ordered")
+    def test_within_n_words(self, shakespeare_db):
+        """Within n words of a phrase: the phrase and the collocate within n words."""
+        hits = shakespeare_db.query('"my lord"', "phrase_ordered", "0", raw_results=True)
+        hits.finish()
+        rows = hits.read_array()
         assert len(rows) > 0 and rows.shape[1] == 11
-        first_word = rows[:, :9]
-        second_word = np.hstack([rows[:, :7], rows[:, 9:11]])
-        # Within 1 word of the phrase: left of "my", right of "lord" (the words in between are the query's)
-        around_phrase = collocates(shakespeare_db, rows, distance=1)
-        expected = Counter(collocates(shakespeare_db, first_word, distance=1))
-        expected.update(collocates(shakespeare_db, second_word, distance=1))
-        assert around_phrase == expected
-        assert around_phrase != collocates(shakespeare_db, first_word, distance=1)
+        words = {"my", "My", "MY", "lord", "Lord", "LORD"}
+
+        def count(rows, distance):
+            return _vectorized_collocation(shakespeare_db.path, Rows(rows), words, False, None, None, distance)
+
+        # The two words already span 1: no collocate is within 1 word of both
+        assert count(rows, 1) == Counter()
+        # Within 2: the word before "my" and the word after "lord"
+        expected = Counter(count(rows[:, :9], 1))
+        expected.update(count(np.hstack([rows[:, :7], rows[:, 9:11]]), 1))
+        assert count(rows, 2) == expected

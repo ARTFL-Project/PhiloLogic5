@@ -114,7 +114,8 @@ def _build_hit_bags(
     filter (year == -1 for unmatched). Identity-filtered words and, if an
     attribute filter is set, off-attribute tokens are excluded.
     """
-    # The hits collocation counts around: occurrences of the term or the phrase, or sentences with all the terms
+    # The hits collocation counts around: occurrences of the term or the phrase, or co-occurrences of the terms in a
+    # sentence
     method = collocation_search_method(q, db.locals.query_patterns)
     hits = db.query(q, method, "0", raw_results=True, raw_bytes=True, **metadata)
     hits.finish()
@@ -143,12 +144,6 @@ def _build_hit_bags(
     with hits.open_raw() as f:
         raw = f.read()
     all_hits = np.frombuffer(raw, dtype=np.uint32).reshape(-1, hits.length)
-    if method == "sentence_unordered":
-        # A co-occurrence search has a hit for every combination of the query words' occurrences in a sentence,
-        # one after the other: keep one per sentence, as collocation does
-        sent_ids = all_hits[:, :6]
-        firsts = np.flatnonzero(np.concatenate(([True], np.any(sent_ids[1:] != sent_ids[:-1], axis=1))))
-        all_hits = all_hits[firsts]
 
     colloc_dir = os.path.join(db_path, "collocations")
     sent_keys_s24 = np.load(os.path.join(colloc_dir, "sent_keys_s24.npy"), mmap_mode="r")

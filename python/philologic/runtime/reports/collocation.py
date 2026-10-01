@@ -84,13 +84,12 @@ def _nb_searchsorted(sent_keys, hit_keys, n_sents):
 
 
 @numba.njit(cache=True)
-def _nb_span_distance(pos, q_pos, q_end):
-    """Distance in words from position pos to the span of a hit's query words, q_pos to q_end (0 within it)."""
-    if pos < q_pos:
-        return np.int32(q_pos) - np.int32(pos)
-    if pos > q_end:
-        return np.int32(pos) - np.int32(q_end)
-    return np.int32(0)
+def _nb_span_with(pos, q_pos, q_end):
+    """The distance from the first to the last of a hit's query words (at q_pos to q_end) and the word at pos. That word
+    is within n words of the hit when it is at most n, as the words found by a search within n words are."""
+    first = q_pos if q_pos < pos else pos
+    last = q_end if q_end > pos else pos
+    return np.int32(last) - np.int32(first)
 
 
 @numba.njit(parallel=True, cache=True)
@@ -117,7 +116,7 @@ def _nb_fused_count(sent_indices, hit_q_pos, sent_offsets, token_ids, is_filtere
 @numba.njit(parallel=True, cache=True)
 def _nb_fused_count_distance(sent_indices, hit_q_pos, hit_q_end, sent_offsets, token_ids, is_filtered, vocab_size,
                              max_dist):
-    """Fused count with distance constraint (from the span of the hit's query words, hit_q_pos to hit_q_end)."""
+    """Fused count with distance constraint (see _nb_span_with: the hit's query words are at hit_q_pos to hit_q_end)."""
     n = len(sent_indices)
     nt = numba.config.NUMBA_NUM_THREADS
     local_counts = np.zeros((nt, vocab_size), dtype=np.int64)
@@ -130,7 +129,7 @@ def _nb_fused_count_distance(sent_indices, hit_q_pos, hit_q_end, sent_offsets, t
         pos = np.uint32(1)
         for j in range(start, end):
             if pos != q_pos:
-                if _nb_span_distance(pos, q_pos, q_end) <= max_dist:
+                if _nb_span_with(pos, q_pos, q_end) <= max_dist:
                     token = token_ids[j]
                     if not is_filtered[token]:
                         local_counts[tid, token] += 1
@@ -174,7 +173,7 @@ def _nb_fused_count_attr_distance(sent_indices, hit_q_pos, hit_q_end, sent_offse
         pos = np.uint32(1)
         for j in range(start, end):
             if pos != q_pos:
-                if _nb_span_distance(pos, q_pos, q_end) <= max_dist and attr_ids[j] == target_attr_id:
+                if _nb_span_with(pos, q_pos, q_end) <= max_dist and attr_ids[j] == target_attr_id:
                     token = count_ids[j]
                     if not is_filtered[token]:
                         local_counts[tid, token] += 1
@@ -214,7 +213,7 @@ def _nb_gather_grouped(
             if ok:
                 ok = not is_filtered[t]
             if ok and max_dist >= np.int32(0):
-                ok = _nb_span_distance(pos, qp, qe) <= max_dist
+                ok = _nb_span_with(pos, qp, qe) <= max_dist
             out_valid[w] = ok
             pos += 1
 
@@ -378,13 +377,13 @@ def _vectorized_collocation(
     attribute_value,
     collocate_distance,
     map_field_info=None,
-    per_sentence=False,
 ):
     """Fully vectorized collocation counting using columnar numpy arrays.
 
     Returns either a Counter (when map_field_info is None) or
     a dict {metadata_value: Counter} (when map_field_info is set).
-    With per_sentence, as for co-occurrence searches, each sentence of the hits counts once.
+    Collocates are counted around each hit, so that each count is the number of hits a search for the query and the
+    collocate finds (in the sentence or within collocate_distance words).
     """
     colloc_dir = os.path.join(db_path, "collocations")
 
@@ -402,19 +401,11 @@ def _vectorized_collocation(
 
     all_hits = np.frombuffer(raw, dtype=np.uint32).reshape(-1, hits.length)
 
-    # The span of each hit's query words in its sentence (a hit has the position of each in columns 7, 9...):
-    # collocate_distance is counted from it, so for a phrase, on either side of it
+    # Where the first and last of each hit's query words are in its sentence (a hit has the position of each in
+    # columns 7, 9...), for collocate_distance
     positions = all_hits[:, 7::2]
     span_start = positions.min(axis=1) if len(all_hits) else np.empty(0, dtype=np.uint32)
     span_end = positions.max(axis=1) if len(all_hits) else np.empty(0, dtype=np.uint32)
-    if per_sentence and len(all_hits):
-        # A co-occurrence search has a hit for every combination of the query words' occurrences in a sentence,
-        # one after the other: keep one per sentence, spanning them all
-        sent_ids = all_hits[:, :6]
-        firsts = np.flatnonzero(np.concatenate(([True], np.any(sent_ids[1:] != sent_ids[:-1], axis=1))))
-        span_start = np.minimum.reduceat(span_start, firsts)
-        span_end = np.maximum.reduceat(span_end, firsts)
-        all_hits = all_hits[firsts]
 
     #  Load counting vocab: lemma IDs or token IDs
     if count_lemmas:
@@ -577,7 +568,7 @@ def _vectorized_collocation(
 
 def collocation_search_method(q, query_patterns=None):
     """The search for the hits collocates are counted around: each occurrence of the query's one term (which may be
-    "a | b"), each occurrence of a quoted phrase, or else each sentence where all the query terms are."""
+    "a | b"), each occurrence of a quoted phrase, or else each co-occurrence of the query terms in a sentence."""
     grouped = group_terms(parse_query(q, query_patterns=query_patterns))
     if len(split_terms(grouped)) <= 1:
         return "single_term"
@@ -685,7 +676,6 @@ def collocation_results(request, config):
             attribute_value,
             collocate_distance,
             map_field_info=map_field_info,
-            per_sentence=method == "sentence_unordered",
         )
 
     collocation_object["results_length"] = total_hits
