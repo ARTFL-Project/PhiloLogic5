@@ -3,6 +3,7 @@
 Provides:
 - resolve(): per-database override resolution (custom_functions)
 - BadRequest: exception for 400 responses
+- NotFound: exception for 404 responses
 """
 
 import importlib.util
@@ -53,4 +54,4 @@ def resolve(db_path, name, default):
 
 
 # Re-export from philologic package so www/ code keeps using the same import path
-from philologic.runtime.exceptions import BadRequest  # noqa: F401
+from philologic.runtime.exceptions import BadRequest, NotFound  # noqa: F401

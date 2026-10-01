@@ -10,6 +10,7 @@ from functools import partial
 
 from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
 from philologic.runtime import HitList, MetadataQuery, Query, QuerySyntax
+from philologic.runtime.exceptions import BadRequest, NotFound
 from philologic.runtime.HitList import claim_hitlist
 from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.HitWrapper import HitWrapper, PageWrapper
@@ -54,11 +55,19 @@ class DB:
         return get_hitlist_dir(self.path, self.locals)
 
     def __getitem__(self, item):
+        """The text object (or page, if width is 9) whose philo_id is item, a string, list or int. Raises BadRequest
+        if item is no philo_id, NotFound if there is no such object."""
+        try:
+            hit_s = hit_to_string(item, self.width)
+        except ValueError:
+            raise BadRequest(f"Invalid philo_id: {item!r}") from None
         if self.width != 9:  # verify this isn't a page id
-            hit = self.get_id_lowlevel(item)
-            hit = [int(x) for x in hit["philo_id"].split(" ")]
+            row = self.get_id_lowlevel(hit_s)
+            if row is None:
+                raise NotFound(f"No text object {hit_s}")
+            hit = [int(x) for x in row["philo_id"].split(" ")]
             return HitWrapper(hit, self)
-        hit = [int(x) for x in hit_to_string(item, 9).split(" ")]
+        hit = [int(x) for x in hit_s.split(" ")]
         return PageWrapper(hit, self)
 
     def get_id_lowlevel(self, item):

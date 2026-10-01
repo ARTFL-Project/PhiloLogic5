@@ -11,7 +11,7 @@ import falcon
 import orjson
 
 import scripts
-from wsgi_helpers import BadRequest, resolve
+from wsgi_helpers import BadRequest, NotFound, resolve
 
 # Scripts that return JSON
 JSON_SCRIPTS = {
@@ -65,6 +65,8 @@ class ScriptResource:
             result = fn(request, config)
         except BadRequest as e:
             raise falcon.HTTPBadRequest(description=str(e))
+        except NotFound as e:
+            raise falcon.HTTPNotFound(description=str(e))
 
         if script_name in HTML_SCRIPTS:
             resp.text = result

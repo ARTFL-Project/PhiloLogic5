@@ -5,7 +5,7 @@ import regex as re
 
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
-from philologic.runtime.exceptions import BadRequest
+from philologic.runtime.exceptions import BadRequest, NotFound
 from philologic.runtime.get_text import get_text_obj
 
 
@@ -28,13 +28,13 @@ def generate_text_object(request, config, note=False):
         doc_id = request.philo_id.split()[0] + " %"
         cursor = db.dbh.cursor()
         cursor.execute("select philo_id from toms where id=? and philo_id like ? limit 1", (target, doc_id))
-        philo_id = cursor.fetchone()["philo_id"].split()[:7]
+        row = cursor.fetchone()
+        if row is None:
+            raise NotFound(f"No note {target} in {request.philo_id}")
+        philo_id = row["philo_id"].split()[:7]
         obj = db[philo_id]
     else:
-        try:
-            obj = db[request.philo_id]
-        except ValueError:
-            obj = db[" ".join(request.path_components)]
+        obj = db[request.philo_id]
         philo_id = obj.philo_id
     if width != 9:
         while obj["philo_name"] == "__philo_virtual" and obj["philo_type"] != "div1":
