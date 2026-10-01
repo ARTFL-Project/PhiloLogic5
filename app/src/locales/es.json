@@ -372,7 +372,7 @@
         "wordSearches": "Búsquedas de Palabra",
         "wordSearchDescription": "La búsqueda de palabra funciona con las siguientes convenciones:",
         "plainTerms": "los términos sencillos se interpretan como muestras",
-        "quotedTerms": "Las citas se interpreta como frase",
+        "quotedTerms": "Las citas se interpretan como frases. En las búsquedas a n palabras o en la misma oración, las palabras de una frase quedan juntas y en orden, y la frase cuenta como una sola palabra para la distancia",
         "rangeNote": "Los rangos de búsqueda funcionan con la primera letra de cada palabra",
         "orDescription": "las búsquedas emplean un operador secuencial para combinar alternativas",
         "notDescription": "las búsquedas trabajan excluyendo términos. Importante: no puede aparecer NOT como primer elemento.",

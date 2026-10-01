@@ -9,6 +9,7 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
+from philologic.runtime.Query import phrase_lengths, split_terms
 from philologic.runtime.QuerySyntax import parse_query, group_terms, parse_date_query
 
 
@@ -229,3 +230,22 @@ class TestCustomQueryPatterns:
         assert ("WILDCARD", "*") in result
         assert ("TERM", "test") in result
         assert ("TERM", "word") in result
+
+
+@pytest.mark.unit
+class TestPhraseLengths:
+    """The number of groups each term of a query is split into: more than one for a quoted phrase."""
+
+    @pytest.mark.parametrize("q, lengths", [
+        ("hamlet", [1]),
+        ("to be", [1, 1]),
+        ('"to be"', [2]),
+        ('"to be or not" question', [4, 1]),
+        ('"to be" | "not"', [1]),
+        ('"to"', [1]),
+        ("lemma:be \"or not\"", [1, 2]),
+    ])
+    def test_phrase_lengths(self, q, lengths):
+        grouped = group_terms(parse_query(q))
+        assert phrase_lengths(grouped) == lengths
+        assert sum(lengths) == len(split_terms(grouped))

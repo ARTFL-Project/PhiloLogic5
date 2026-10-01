@@ -170,8 +170,24 @@ def _find_common_sentences(hits_list, cooc_slice=6):
 
 
 @numba.jit(nopython=True, cache=True, nogil=True)
+def _phrases_together(all_hits, sent_starts, indices, positions, phrase_next, n_groups):
+    """Whether the words of each phrase of a combination of hits are next to each other, in order, in the same
+    sentence (see _process_n_groups_numba)."""
+    for g in range(n_groups - 1):
+        if phrase_next[g]:
+            if positions[g + 1] != positions[g] + 1:
+                return False
+            hit_a = sent_starts[g] + indices[g]
+            hit_b = sent_starts[g + 1] + indices[g + 1]
+            for c in range(6):
+                if all_hits[hit_a, c] != all_hits[hit_b, c]:
+                    return False
+    return True
+
+
+@numba.jit(nopython=True, cache=True, nogil=True)
 def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sentences,
-                            cooc_order, mapping_order, max_distance, exact_distance):
+                            cooc_order, mapping_order, max_distance, exact_distance, phrase_next, phrase_words):
     """Process N word groups using Numba with odometer-style iteration.
 
     Args:
@@ -184,6 +200,8 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
         mapping_order: Mapping from frequency order to query order
         max_distance: Maximum word distance (0 = no limit)
         exact_distance: If True, distance must equal max_distance
+        phrase_next: For each group, whether the next one is the next word of the same phrase (n_groups,), or None
+        phrase_words: The number of words of the phrases after their first: a phrase is one word for the distance
 
     Returns:
         Output array of valid hits
@@ -264,6 +282,10 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
                     if not valid:
                         break
 
+            # (None without phrases: numba then compiles this kernel without this check, which slows it down)
+            if valid and phrase_next is not None:
+                valid = _phrases_together(all_hits, sent_starts, indices, positions, phrase_next, n_groups)
+
             if valid and max_distance > 0:
                 # Find min and max position
                 min_pos = positions[0]
@@ -274,7 +296,7 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
                     if positions[g] > max_pos:
                         max_pos = positions[g]
 
-                span = max_pos - min_pos
+                span = max_pos - min_pos - phrase_words
                 if exact_distance:
                     if span != max_distance:
                         valid = False
@@ -342,7 +364,7 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
 
 
 def _process_n_groups(hits_list, sizes_list, cooc_order, mapping_order,
-                       max_distance, exact_distance, n_groups):
+                       max_distance, exact_distance, n_groups, phrase_next, phrase_words):
     """Process N word groups (general case) - prepares data for Numba kernel."""
     n_sentences = len(sizes_list[0])
 
@@ -367,7 +389,7 @@ def _process_n_groups(hits_list, sizes_list, cooc_order, mapping_order,
     # Call Numba function - returns numpy array directly
     return _process_n_groups_numba(
         all_hits, all_sizes, group_offsets, n_groups, n_sentences,
-        cooc_order, mapping_order_arr, max_distance, exact_distance
+        cooc_order, mapping_order_arr, max_distance, exact_distance, phrase_next, phrase_words
     )
 
 
@@ -900,31 +922,36 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus=None):
                             flushed = True
 
 
-def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus=None):
-    """Search for co-occurrences of multiple words within n words of each other in the database."""
+def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus=None,
+                            phrases=None):
+    """Search for co-occurrences of multiple words within n words of each other in the database. phrases are the
+    number of word groups of each term of the query (see Query.phrase_lengths): a phrase is one term."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
+    n_terms = len(phrases) if phrases is not None else len(word_groups)
 
-    if len(word_groups) > 1 and n == 1:
-        n = len(word_groups) - 1
+    if n_terms > 1 and n == 1:
+        n = n_terms - 1
 
     # Use document-level approach for all cases
     _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
                                cooc_order=cooc_order, corpus=corpus,
-                               max_distance=n, exact_distance=exact_distance)
+                               max_distance=n, exact_distance=exact_distance, phrases=phrases)
 
 
-def search_within_text_object(db_path, hitlist_filename, overflow_words, level, cooc_order, corpus=None):
-    """Search for co-occurrences of multiple words in the same sentence in the database."""
+def search_within_text_object(db_path, hitlist_filename, overflow_words, level, cooc_order, corpus=None,
+                              phrases=None):
+    """Search for co-occurrences of multiple words in the same sentence in the database. phrases are the number of
+    word groups of each term of the query (see Query.phrase_lengths): a phrase is one term."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
 
     # Use document-level approach for all cases
     _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
-                               cooc_order=cooc_order, corpus=corpus, level=level)
+                               cooc_order=cooc_order, corpus=corpus, level=level, phrases=phrases)
 
 
 def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
                                 cooc_order, corpus, level=None, distance_check=None,
-                                max_distance=0, exact_distance=False):
+                                max_distance=0, exact_distance=False, phrases=None):
     """Document-level co-occurrence search using numpy optimization.
 
     Processes documents one at a time for streaming results while using numpy
@@ -944,15 +971,25 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
         distance_check: Deprecated, use max_distance/exact_distance instead
         max_distance: Maximum word distance (0 = no limit, 1 = consecutive, n = within n words)
         exact_distance: If True, distance must equal max_distance; if False, distance <= max_distance
+        phrases: The number of word groups of each term of the query (see Query.phrase_lengths), if any is a phrase
     """
     cooc_slice = 6 if level in (None, "sent") else 5
     n_groups = len(word_groups)
     mapping_order = list(range(n_groups))
+    # For each group, whether the next one is the next word of the same phrase: only the N-group path checks it
+    phrase_next = np.zeros(n_groups, dtype=np.bool_)
+    first = 0
+    for length in phrases or []:
+        phrase_next[first:first + length - 1] = True
+        first += length
+    phrase_words = int(phrase_next.sum())
+    if not phrase_words:
+        phrase_next = None
 
     # Keep transaction open for the entire processing to use zero-copy views
     with lmdb_env(f"{db_path}/words.lmdb") as env, env.begin(buffers=True) as txn:
         # For 2-group case: use merge-free early flush then full merge
-        if n_groups == 2 and corpus is None:
+        if n_groups == 2 and corpus is None and not phrase_words:
             # Load per-form arrays without merging (instant, zero-copy)
             group_arrays = [_load_word_arrays(db_path, txn, g, overflow_words) for g in word_groups]
             group_counts = [sum(len(a) for a in arrays) for arrays in group_arrays]
@@ -1115,7 +1152,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                 group_fr.append(fr)
 
             with open(hitlist_filename, "wb") as output_file:
-                if n_groups == 2:
+                if n_groups == 2 and not phrase_words:
                     # 2-group corpus-filtered: per-doc processing
                     common_idx = 1 - rare_idx
                     common_arrays = group_arrays[common_idx]
@@ -1192,7 +1229,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
 
                         result = _process_n_groups(
                             hits_list, sizes_list, cooc_order, mapping_order,
-                            max_distance, exact_distance, n_groups
+                            max_distance, exact_distance, n_groups, phrase_next, phrase_words
                         )
 
                         if len(result) > 0:

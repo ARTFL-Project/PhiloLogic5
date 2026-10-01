@@ -50,16 +50,17 @@ def total_hits(db, q, method, method_arg="0"):
 @pytest.mark.integration
 class TestCountsMatchConcordances:
     """The hits of the report, and the count of each collocate, are those of the concordances they link to: the
-    query (and the collocate) in the same sentence, or within n words of each other, unordered."""
+    query (and the collocate) in the same sentence, or within n words of each other, unordered. A phrase is one word:
+    within n words of its first or last word."""
 
-    @pytest.mark.parametrize("q", ["lord", "my lord"])
+    @pytest.mark.parametrize("q", ["lord", "my lord", '"my lord"', '"my lord" king'])
     def test_in_sentence(self, shakespeare_db, q):
         report = collocation(shakespeare_db, q)
         assert report["results_length"] == total_hits(shakespeare_db, q, "sentence_unordered")
         for word, count in report["collocates"][:5]:
             assert count == total_hits(shakespeare_db, f'{q} "{word}"', "sentence_unordered"), word
 
-    @pytest.mark.parametrize("q", ["lord", "my lord"])
+    @pytest.mark.parametrize("q", ["lord", "my lord", '"my lord"', '"my lord" king'])
     def test_within_n_words(self, shakespeare_db, q):
         report = collocation(shakespeare_db, q, distance="3")
         assert report["results_length"] == total_hits(shakespeare_db, q, "proxy_unordered", "3")
@@ -71,7 +72,8 @@ class TestCountsMatchConcordances:
 @pytest.mark.integration
 class TestPhrase:
     def test_within_n_words(self, shakespeare_db):
-        """Within n words of a phrase: the phrase and the collocate within n words."""
+        """_vectorized_collocation counts collocates within n words of all the query words, of a phrase too
+        (collocation_results passes it n plus the words of the phrase after its first, for within n words of it)."""
         hits = shakespeare_db.query('"my lord"', "phrase_ordered", "0", raw_results=True)
         hits.finish()
         rows = hits.read_array()

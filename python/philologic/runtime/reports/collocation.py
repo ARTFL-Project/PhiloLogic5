@@ -18,7 +18,7 @@ from philologic.runtime.DB import DB
 from philologic.runtime.exceptions import BadRequest, NotFound
 from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.MetadataQuery import bulk_load_metadata
-from philologic.runtime.Query import get_word_groups, rewrite_terms_file, split_terms
+from philologic.runtime.Query import get_word_groups, phrase_lengths, rewrite_terms_file, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 from philologic.runtime.sql_validation import validate_request_column
 
@@ -574,6 +574,12 @@ def collocate_distance(request):
         return None
 
 
+def phrase_words(q, query_patterns=None):
+    """The number of words of the query's phrases after their first: for the distance, a phrase is one word (see
+    Query.phrase_lengths)."""
+    return sum(length - 1 for length in phrase_lengths(group_terms(parse_query(q, query_patterns=query_patterns))))
+
+
 def collocation_search_method(q, query_patterns=None, distance=None):
     """The search (method, method_arg) for the hits collocates are counted around, within distance words or in the
     sentence: each occurrence of the query's one term (which may be "a | b"), each occurrence of a quoted phrase, or
@@ -681,7 +687,8 @@ def collocation_results(request, config):
             count_lemmas,
             attribute,
             attribute_value,
-            distance,
+            # Within distance words of a phrase is of its first or last word, as for the search
+            distance + phrase_words(request.q, db.locals.query_patterns) if distance is not None else None,
             map_field_info=map_field_info,
         )
 

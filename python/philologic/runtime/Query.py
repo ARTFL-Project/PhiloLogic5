@@ -428,8 +428,9 @@ def rewrite_terms_file(db, qs, filename):
 
 
 def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowercase_index,
-                method, method_arg, overflow_words, object_level, corpus, lock):
-    """Run search in a background thread. Always finishes the hitlist: as failed if the search raises."""
+                method, method_arg, overflow_words, object_level, corpus, lock, phrases=None):
+    """Run search in a background thread. Always finishes the hitlist: as failed if the search raises. phrases are
+    the number of groups of split each term of the query is (see phrase_lengths)."""
     # Lazy imports to avoid circular dependency with multi_word_search
     from philologic.runtime.multi_word_search import (
         search_phrase, search_within_word_span, search_within_text_object,
@@ -439,24 +440,41 @@ def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowe
         write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index)
 
         method_arg = int(method_arg) if method_arg else 0
+        if phrases is not None and len(phrases) == 1 and method not in ("single_term", "phrase_ordered"):
+            # The query is one phrase, a unit for the other searches: whatever they ask of it, it is the phrase
+            method = "phrase_ordered"
         if method == "single_term":
             search_word(db_path, filename, overflow_words, corpus=corpus)
         elif method == "phrase_ordered":
             search_phrase(db_path, filename, overflow_words, corpus=corpus)
         elif method == "phrase_unordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, False, corpus=corpus)
+            search_within_word_span(
+                db_path, filename, overflow_words, method_arg or 1, False, False, corpus=corpus, phrases=phrases
+            )
         elif method == "proxy_ordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, True, False, corpus=corpus)
+            search_within_word_span(
+                db_path, filename, overflow_words, method_arg or 1, True, False, corpus=corpus, phrases=phrases
+            )
         elif method == "proxy_unordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, False, corpus=corpus)
+            search_within_word_span(
+                db_path, filename, overflow_words, method_arg or 1, False, False, corpus=corpus, phrases=phrases
+            )
         elif method == "exact_cooc_ordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, True, True, corpus=corpus)
+            search_within_word_span(
+                db_path, filename, overflow_words, method_arg or 1, True, True, corpus=corpus, phrases=phrases
+            )
         elif method == "exact_cooc_unordered":
-            search_within_word_span(db_path, filename, overflow_words, method_arg or 1, False, True, corpus=corpus)
+            search_within_word_span(
+                db_path, filename, overflow_words, method_arg or 1, False, True, corpus=corpus, phrases=phrases
+            )
         elif method == "sentence_ordered":
-            search_within_text_object(db_path, filename, overflow_words, object_level, True, corpus=corpus)
+            search_within_text_object(
+                db_path, filename, overflow_words, object_level, True, corpus=corpus, phrases=phrases
+            )
         elif method == "sentence_unordered":
-            search_within_text_object(db_path, filename, overflow_words, object_level, False, corpus=corpus)
+            search_within_text_object(
+                db_path, filename, overflow_words, object_level, False, corpus=corpus, phrases=phrases
+            )
     except BaseException:
         # What it holds is not the result: don't let it pass for one, and have the next request search again
         HitList.fail_hitlist(filename, lock)
@@ -476,7 +494,7 @@ def start_search(db, terms, filename, lock=None, corpus=None, method=None, metho
         args=(
             db.path, filename, split, frequency_file,
             db.locals.ascii_conversion, db.locals["lowercase_index"],
-            method, method_arg, db.locals.overflow_words, object_level, corpus, lock,
+            method, method_arg, db.locals.overflow_words, object_level, corpus, lock, phrase_lengths(grouped),
         ),
         daemon=True,
     )
@@ -557,6 +575,20 @@ def split_terms(grouped):
         else:
             split.append(group)
     return split
+
+
+def phrase_lengths(grouped):
+    """The number of groups each term of grouped is split into by split_terms, in order: more than one for a quoted
+    phrase, whose words searches of terms in a sentence or within n words keep together, in order, as one term. Within
+    n words of a phrase is within n words of its first or last word."""
+    lengths = []
+    for group in grouped:
+        kind, token = group[0]
+        if len(group) == 1 and kind == "QUOTE" and token.find(" ") > 1:  # as split_terms splits it
+            lengths.append(len(token[1:-1].split(" ")))
+        else:
+            lengths.append(1)
+    return lengths
 
 
 def query_parse(query_terms, config):

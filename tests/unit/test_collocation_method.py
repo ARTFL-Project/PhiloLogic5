@@ -9,7 +9,7 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
-from philologic.runtime.reports.collocation import collocation_search_method
+from philologic.runtime.reports.collocation import collocation_search_method, phrase_words
 
 
 @pytest.mark.unit
@@ -44,3 +44,10 @@ def test_collocation_search_method(q, method):
 def test_collocation_search_method_within_n_words(q, method):
     """Within n words: several terms co-occur within n words, unordered."""
     assert collocation_search_method(q, distance=5) == method
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("q, words", [("liberté", 0), ("peuple souverain", 0), ('"assemblée nationale" peuple', 1)])
+def test_phrase_words(q, words):
+    """For the distance, a phrase is one word: its words after the first are left out of it."""
+    assert phrase_words(q) == words

@@ -16,9 +16,13 @@ When specifying a query, one can select a query method to constrain the relation
 
 1. plain terms are evaluated without regard to accent or to case. Regexes are permitted.
 2. quoted terms are case and accent sensitive. Regexes are permitted.
-3. the range is not operational. In the future, stub this out to make hyphenated search terms less of a pain to escape.
-4. `OR` can conjoin plain and quoted tokens, and precedes evaluation of phrase distance.
-5. `NOT` is a filter on a preceding term, but cannot stand alone: `a.* NOT abalone` is legal, `NOT a.*` is illegal
+3. a quoted term with spaces is a phrase: its words are found next to each other, in order. With a query method such as
+   `within k words` or `in the same sentence`, the phrase is one term: its words stay together, and the phrase counts as
+   one word for the distance, so `"peuple français" souverain` within 3 words finds `souverain` up to 3 words before
+   `peuple` or after `français`.
+4. the range is not operational. In the future, stub this out to make hyphenated search terms less of a pain to escape.
+5. `OR` can conjoin plain and quoted tokens, and precedes evaluation of phrase distance.
+6. `NOT` is a filter on a preceding term, but cannot stand alone: `a.* NOT abalone` is legal, `NOT a.*` is illegal
 
 #### Lemma and word attribute Searches
 If you text collection contains lemma and/or word attribute information (usually in <w> tags), then PhiloLogic allows you to query words based on lemma and/or word attribute value

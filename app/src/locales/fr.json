@@ -372,7 +372,7 @@
         "wordSearches": "Recherches de mots",
         "wordSearchDescription": "Les recherches de mots fonctionnent avec les conventions suivantes :",
         "plainTerms": "Les termes simples sont interprétés comme des tokens",
-        "quotedTerms": "Les termes entre guillemets sont interprétés comme des phrases",
+        "quotedTerms": "Les termes entre guillemets sont interprétés comme des expressions. Dans les recherches à n mots près ou dans la même phrase, les mots d'une expression restent ensemble, dans l'ordre, et l'expression compte pour un seul mot dans la distance",
         "rangeNote": "Les recherches de plage fonctionnent avec la première lettre de chaque mot",
         "orDescription": "les recherches utilisent l'opérateur pipe pour combiner des alternatives",
         "notDescription": "les recherches fonctionnent en excluant les termes. Important : NON ne peut pas être le premier terme.",

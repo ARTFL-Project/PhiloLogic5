@@ -372,7 +372,7 @@
         "wordSearches": "Word Searches",
         "wordSearchDescription": "Word searches work with the following conventions:",
         "plainTerms": "Plain terms are interpreted as tokens",
-        "quotedTerms": "Quoted terms are interpreted as phrases",
+        "quotedTerms": "Quoted terms are interpreted as phrases. In searches within n words or in the same sentence, the words of a phrase stay together, in order, and the phrase counts as one word for the distance",
         "rangeNote": "Range searches work with the first letter of each word",
         "orDescription": "searches use the pipe operator to combine alternatives",
         "notDescription": "searches work by excluding terms. Important: NOT cannot be the first term.",
