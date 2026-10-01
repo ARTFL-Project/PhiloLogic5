@@ -212,19 +212,16 @@
     "facets": {
         "browseByFacet": "Examinar por aspecto",
         "frequencyBy": "Frecuencia por",
-        "collocates": "Colocación de el/los término(s) de búsqueda",
         "showOptions": "Mostrar opciones",
         "frequencyByLabel": "Frecuencia por {label}",
         "top100Results": "Primeros 100 resultados para {label}",
         "relativeFrequencyDescription": "{total} ocurrencia(s) actuales en {wordCount} palabras",
         "wordProperty": "Propiedad de la palabra",
-        "collocate": "Colocación",
         "closeFacets": "Cerrar panel de aspectos",
         "hideFacetResults": "Ocultar resultados por aspecto",
         "selectFacetType": "Seleccionar tipo de aspecto",
         "selectFacet": "Seleccionar aspecto por",
         "selectWordProperty": "Seleccionar propiedad de palabra por",
-        "selectCollocation": "Seleccionar colocación por",
         "showFacetOptions": "Mostrar opciones de selección de aspecto",
         "facetResultsRegion": "Resultado del análisis por aspecto",
         "frequencyTypeToggle": "Conmutar entre tipos de frecuencia",
@@ -235,7 +232,6 @@
         "facetResultsList": "Listado con resultados de aspecto",
         "filterBy": "Filtrar resultados por",
         "searchFor": "Buscar por",
-        "searchCollocation": "Buscar por colocación",
         "occurrences": "occurrences"
     },
     "exportResults": {

@@ -212,19 +212,16 @@
     "facets": {
         "browseByFacet": "Browse by facet",
         "frequencyBy": "Frequency by",
-        "collocates": "Collocate of query term(s)",
         "showOptions": "Show options",
         "frequencyByLabel": "Frequency by {label}",
         "top100Results": "Top 100 results for {label}",
         "relativeFrequencyDescription": "{total} actual occurrence(s) in {wordCount} words",
         "wordProperty": "Word property",
-        "collocate": "Collocate",
         "closeFacets": "Close facets panel",
         "hideFacetResults": "Hide facet results",
         "selectFacetType": "Select facet type",
         "selectFacet": "Select facet for",
         "selectWordProperty": "Select word property for",
-        "selectCollocation": "Select collocation for",
         "showFacetOptions": "Show facet selection options",
         "facetResultsRegion": "Facet analysis results",
         "frequencyTypeToggle": "Toggle between frequency types",
@@ -235,7 +232,6 @@
         "facetResultsList": "List of facet results",
         "filterBy": "Filter results by",
         "searchFor": "Search for",
-        "searchCollocation": "Search for collocation",
         "occurrences": "occurrences"
     },
     "exportResults": {

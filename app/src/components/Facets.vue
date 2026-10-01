@@ -40,22 +40,6 @@
                 </div>
             </transition>
 
-            <transition name="slide-fade">
-                <div class="list-group mt-3" style="border-top: 0"
-                    v-if="showFacetSelection && formData.report != 'bibliography'" role="group"
-                    :aria-label="$t('facets.selectCollocation')">
-                    <span class="dropdown-header text-center">{{ $t("facets.collocates") }}</span>
-                    <button type="button" class="list-group-item list-group-item-action facet-selection"
-                        @click="facetSearch(collocationFacet)" v-if="formData.report !== 'bibliography'"
-                        :aria-describedby="'collocation-desc'">
-                        {{ $t("common.sameSentence") }}
-                        <span id="collocation-desc" class="visually-hidden">
-                            {{ $t('facets.selectCollocation') }} {{ $t('common.sameSentence') }}
-                        </span>
-                    </button>
-                </div>
-            </transition>
-
             <transition name="options-slide">
                 <button type="button" class="btn btn-link m-2 text-center"
                     style="width: 100%; font-size: 90%; opacity: 0.8" v-if="!showFacetSelection"
@@ -189,27 +173,6 @@
                     </div>
                 </li>
 
-                <!-- Collocation link -->
-                <li v-if="selectedFacet.type == 'collocationFacet'" v-for="result in facetResults"
-                    :key="`colloc-${result.label}`">
-                    <button type="button" class="list-group-item list-group-item-action facet-result-item"
-                        @click="collocationToConcordance(result.collocate)"
-                        :aria-describedby="`colloc-result-desc-${result.collocate.replace(/[^a-zA-Z0-9]/g, '-')}`">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <span class="sidebar-text text-content-area">
-                                {{ result.collocate }}
-                            </span>
-                            <span class="badge bg-secondary rounded-pill" aria-hidden="true">
-                                {{ result.count }}
-                            </span>
-                        </div>
-                        <span :id="`colloc-result-desc-${result.collocate.replace(/[^a-zA-Z0-9]/g, '-')}`"
-                            class="visually-hidden">
-                            {{ $t('facets.searchCollocation') }} {{ result.collocate }}, {{ result.count }} {{
-                                $t('facets.occurrences') }}
-                        </span>
-                    </button>
-                </li>
             </ul>
         </div>
     </div>
@@ -219,12 +182,10 @@
 import { inject, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
-import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import {
     copyObject,
     debug,
-    extractSurfaceFromCollocate,
     isOnlyFacetChange,
     paramsFilter,
     paramsToRoute,
@@ -238,17 +199,11 @@ const $dbUrl = inject("$dbUrl");
 const philoConfig = inject("$philoConfig");
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
 const store = useMainStore();
 const { formData } = storeToRefs(store);
 
 const showFacetSelection = ref(true);
 const showFacetResults = ref(false);
-const collocationFacet = {
-    facet: "collocation",
-    alias: t("facets.collocate"),
-    type: "collocationFacet",
-};
 const loading = ref(false);
 const selectedFacet = ref({});
 const showingRelativeFrequencies = ref(false);
@@ -306,29 +261,6 @@ function fetchFrequencyFacet(queryParams) {
     });
 }
 
-function fetchCollocationFacet(queryParams) {
-    $http.get(`${$dbUrl}/reports/collocation.py`, {
-        params: paramsFilter(queryParams),
-    }).then((response) => {
-        if (response.data.results_length) {
-            facetResults.value = extractSurfaceFromCollocate(
-                response.data.collocates.slice(0, 100)
-            );
-            fullResults.value = response.data.collocates;
-            showFacetResults.value = true;
-        }
-        loading.value = false;
-        const urlString = paramsToUrlString({
-            ...queryParams,
-            report: "collocation",
-        });
-        saveToLocalStorage(urlString, fullResults.value);
-    }).catch((error) => {
-        loading.value = false;
-        debug({ $options: { name: "facets-report" } }, error);
-    });
-}
-
 function fetchPropertyFacet(facet, queryParams) {
     $http.get(`${$dbUrl}/scripts/get_word_property_count.py`, {
         params: paramsFilter(queryParams),
@@ -359,8 +291,6 @@ function getFacet(facetObj, updateUrl = true) {
     let urlString;
     if (facetObj.type === "facet") {
         urlString = paramsToUrlString({ ...formData.value, frequency_field: facetObj.alias });
-    } else if (facetObj.type === "collocationFacet") {
-        urlString = paramsToUrlString({ ...formData.value, report: "collocation" });
     } else if (facetObj.type === "property") {
         urlString = paramsToUrlString({ ...formData.value, word_property: facetObj.facet });
     }
@@ -371,8 +301,6 @@ function getFacet(facetObj, updateUrl = true) {
             facetResults.value = (shouldShowRelativeFrequency.value && fullResults.value.relative)
                 ? fullResults.value.relative
                 : fullResults.value.absolute;
-        } else if (facetObj.type === "collocationFacet") {
-            facetResults.value = extractSurfaceFromCollocate(fullResults.value.slice(0, 100));
         } else {
             facetResults.value = fullResults.value.slice(0, 100);
         }
@@ -386,9 +314,6 @@ function getFacet(facetObj, updateUrl = true) {
     if (facetObj.type === "facet") {
         queryParams.frequency_field = facetObj.facet;
         fetchFrequencyFacet(queryParams);
-    } else if (facetObj.type === "collocationFacet") {
-        queryParams.report = "collocation";
-        fetchCollocationFacet(queryParams);
     } else if (facetObj.type === "property") {
         queryParams.word_property = facetObj.facet;
         fetchPropertyFacet(facetObj, queryParams);
@@ -403,9 +328,6 @@ function facetSearch(facetObj) {
                 facet: facetObj.facet,
                 relative_frequency: false,
             }));
-            break;
-        case "collocationFacet":
-            router.push(paramsToRoute({ ...formData.value, facet: "collocation" }));
             break;
         case "property":
             router.push(paramsToRoute({
@@ -460,38 +382,17 @@ function checkFacetStateFromUrl() {
     shouldShowRelativeFrequency.value = route.query.relative_frequency === "true";
 
     // Clean up irrelevant facet params from store
-    if (facet === "collocation") {
-        store.updateFormDataField({ key: "word_property", value: "" });
-        store.updateFormDataField({ key: "relative_frequency", value: "" });
-    } else if (facet === "property") {
+    if (facet === "property") {
         store.updateFormDataField({ key: "relative_frequency", value: "" });
     }
 
     let facetObj;
     if (facet === "property") {
         facetObj = { type: "property", facet: route.query.word_property };
-    } else if (facet === "collocation") {
-        facetObj = { type: "collocationFacet", alias: t("facets.collocate"), facet: "collocation" };
     } else {
         facetObj = facets.value.find((f) => f.facet === facet);
     }
     if (facetObj) getFacet(facetObj, false);
-}
-
-function collocationToConcordance(word) {
-    const routeParams = paramsToRoute({
-        ...formData.value,
-        q: `${formData.value.q} "${word}"`,
-        method: "sentence",
-        cooc_order: "no",
-        start: "",
-        end: "",
-        report: "concordance",
-    });
-    delete routeParams.query.facet;
-    delete routeParams.query.relative_frequency;
-    delete routeParams.query.word_property;
-    router.push(routeParams);
 }
 
 function propertyToConcordance(query) {
@@ -571,7 +472,6 @@ watch(
         // relative_frequency only affects regular metadata facets
         if (
             newQuery.relative_frequency !== oldQuery.relative_frequency &&
-            newQuery.facet !== "collocation" &&
             newQuery.facet !== "property"
         ) {
             if (newQuery.relative_frequency === "false") {

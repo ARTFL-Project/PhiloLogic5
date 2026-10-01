@@ -43,7 +43,7 @@ describe("Facets", () => {
     it("renders facet selection buttons for each metadata facet", () => {
         const wrapper = mountFacets();
         const facetButtons = wrapper.findAll(".facet-selection");
-        // author, title, year + collocation = at least 4
+        // author, title, year
         expect(facetButtons.length).toBeGreaterThanOrEqual(3);
     });
 
@@ -97,16 +97,11 @@ describe("Facets", () => {
         }
     });
 
-    // --- Collocation facet ---
-    it("renders collocation facet option", () => {
+    // --- No collocation facet: collocation counts co-occurrences in the sentence or within n words, unordered,
+    // not with the other search methods a concordance can have
+    it("has no collocation facet", () => {
         const wrapper = mountFacets();
-        expect(wrapper.text()).toContain("same sentence");
-    });
-
-    it("has collocation facet search capability", () => {
-        const wrapper = mountFacets();
-        // Collocation facet option exists in the template
-        const collocBtn = wrapper.findAll(".facet-selection").find(b => b.text().includes("same sentence"));
-        expect(collocBtn).toBeTruthy();
+        expect(wrapper.text()).not.toContain("same sentence");
+        expect(wrapper.text()).not.toContain("Collocate");
     });
 });
