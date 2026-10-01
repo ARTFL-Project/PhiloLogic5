@@ -152,9 +152,12 @@ def generate_time_series(request, config):
 
         if total_hits > 0:
             hit_length = hits.length
-            mm = np.memmap(hits.filename, dtype="u4", mode="r").reshape(-1, hit_length)
-            doc_ids = np.ascontiguousarray(mm[:, 0])
-            del mm  # release mmap immediately
+            # From the file hits has open, by chunks: by name, the hitlist cleanup could remove it in between
+            chunks = []
+            with hits.open_raw() as f:
+                while chunk := f.read(hit_length * 4 * 1_000_000):
+                    chunks.append(np.frombuffer(chunk, dtype="u4").reshape(-1, hit_length)[:, 0].copy())
+            doc_ids = np.concatenate(chunks)
 
             bin_counts, total_hits = _bucket_hits_by_year(
                 doc_ids, year_array, start_date, interval, n_ranges
