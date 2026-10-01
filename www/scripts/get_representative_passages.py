@@ -73,7 +73,7 @@ def get_representative_passages(request, config):
     raw_arg = request.method_arg if raw_method == "proxy" else ""
     # resolve_method handles method normalization (e.g. "sentence" -> "sentence_unordered")
     # the way WSGIHandler does it for web requests.
-    method, method_arg = resolve_method(cooc_q, raw_method, raw_arg, "no")
+    method, method_arg = resolve_method(cooc_q, raw_method, raw_arg, "no", db.locals.query_patterns)
 
     # Merge restrict_to_* into the metadata filters for this query.
     metadata = dict(request.metadata or {})

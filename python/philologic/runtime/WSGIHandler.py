@@ -101,7 +101,9 @@ class WSGIHandler(object):
         else:
             self.no_q = True
 
-        method, self.arg = resolve_method(self.q, self["method"], self["method_arg"], self.cooc_order)
+        method, self.arg = resolve_method(
+            self.q, self["method"], self["method_arg"], self.cooc_order, config.db_locals["query_patterns"]
+        )
         self.cgi["arg"] = [self.arg]
         self.cgi["method"] = [method]
 

@@ -292,10 +292,9 @@ class DB:
             parsed = QuerySyntax.parse_query(qs, query_patterns=self.locals.query_patterns)
             grouped = QuerySyntax.group_terms(parsed)
             split = Query.split_terms(grouped)
-            words_per_hit = len(split)
             return HitList.HitList(
                 search_file,
-                words_per_hit,
+                Query.words_per_hit(method, split),
                 self,
                 sort_order=sort_order,
                 raw=raw_results,
