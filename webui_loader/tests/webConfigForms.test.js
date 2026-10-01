@@ -6,7 +6,7 @@ import RecordEditor from "../src/components/RecordEditor.vue";
 import ReplacementsEditor from "../src/components/ReplacementsEditor.vue";
 import en from "../src/locales/en.json";
 import { highlightJson, lineDiff } from "../src/utils";
-import { FORMS, citationName, followCitations, visibleCharacters } from "../src/webConfigForms";
+import { FORMS, characterNote, citationName, followCitations } from "../src/webConfigForms";
 
 const i18n = createI18n({ legacy: false, locale: "en", messages: { en } });
 const options = { global: { plugins: [i18n] } };
@@ -61,10 +61,17 @@ describe("citations", () => {
 });
 
 describe("replacements", () => {
-    it("show their spaces and invisible characters", () => {
-        expect(visibleCharacters(" OR ")).toBe("\u2423OR\u2423");
-        expect(visibleCharacters("\u3000")).toBe("[U+3000]");
-        expect(visibleCharacters("-")).toBe(null);
+    it("say in words what can't be seen in them", () => {
+        const i18n = createI18n({ legacy: false, locale: "en", messages: { en } });
+        const t = i18n.global.t;
+        const ideographicSpace = String.fromCodePoint(0x3000);
+        expect(characterNote(" ", {}, t)).toBe("a space");
+        expect(characterNote("  ", {}, t)).toBe("2 spaces");
+        expect(characterNote(" OR ", {}, t)).toBe("a space before and after");
+        expect(characterNote("and ", {}, t)).toBe("a space after");
+        expect(characterNote(ideographicSpace, { [ideographicSpace]: "ideographic space" }, t)).toBe("ideographic space");
+        expect(characterNote(String.fromCodePoint(0xff5c), {}, t)).toBe("U+FF5C");
+        expect(characterNote("-", {}, t)).toBe("");
     });
 
     it("are edited as rows, in order", async () => {

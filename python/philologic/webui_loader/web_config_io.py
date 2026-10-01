@@ -13,6 +13,7 @@ import re
 import shutil
 import stat
 import tempfile
+import unicodedata
 
 import regex
 
@@ -291,6 +292,7 @@ def read(db_path, service=False):
             "writable": writable,
             "reason": reason,
             "metadata_fields": metadata_fields(db_path),
+            "character_names": character_names(values),
             "hash": hashlib.sha256(text.encode("utf8")).hexdigest() if text is not None else None,
         }
     )
@@ -370,6 +372,23 @@ def validate(key, value):
     if isinstance(default, dict) and not isinstance(value, dict):
         return "must be an object"
     return None
+
+
+def character_names(values):
+    """The names of the characters of the replacements (of these values and of the defaults) which can't be told
+    apart on the page: those other than ASCII (such as a fullwidth |), and the spaces other than " " (such as an
+    ideographic space)"""
+    names = {}
+    for key, (group, kind, choices) in KINDS.items():
+        if kind != "replacements":
+            continue
+        for value in (values.get(key), WEB_CONFIG_DEFAULTS[key]["value"]):
+            for string in strings(value):
+                for character in string:
+                    if (ord(character) > 127 or (character.isspace() and character != " ")) and character not in names:
+                        name = unicodedata.name(character, None)
+                        names[character] = name.lower() if name else f"U+{ord(character):04X}"
+    return names
 
 
 def is_citation(value):

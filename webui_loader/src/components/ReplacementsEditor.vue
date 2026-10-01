@@ -15,13 +15,17 @@
                 <tr v-for="(row, index) in rows" :key="index">
                     <td class="number small text-body-secondary">{{ index + 1 }}</td>
                     <td>
-                        <input class="form-control form-control-sm mono" :value="row[0]" :readonly="readonly" :aria-label="`${$t('replacements.find')} ${index + 1}`" @change="set(index, 0, $event.target.value)" />
-                        <div v-if="visibleCharacters(row[0])" class="visible small mono text-body-secondary">{{ visibleCharacters(row[0]) }}</div>
+                        <div class="position-relative">
+                            <input class="form-control form-control-sm mono" :style="noteRoom(row[0])" :title="note(row[0])" :value="row[0]" :readonly="readonly" :aria-label="`${$t('replacements.find')} ${index + 1}`" @change="set(index, 0, $event.target.value)" />
+                            <span v-if="note(row[0])" class="note fst-italic text-body-secondary">{{ note(row[0]) }}</span>
+                        </div>
                     </td>
                     <td class="arrow text-body-secondary"><i class="bi bi-arrow-right"></i></td>
                     <td>
-                        <input class="form-control form-control-sm mono" :value="row[1]" :readonly="readonly" :placeholder="$t('replacements.nothing')" :aria-label="`${$t('replacements.replace')} ${index + 1}`" @change="set(index, 1, $event.target.value)" />
-                        <div v-if="visibleCharacters(row[1])" class="visible small mono text-body-secondary">{{ visibleCharacters(row[1]) }}</div>
+                        <div class="position-relative">
+                            <input class="form-control form-control-sm mono" :style="noteRoom(row[1])" :title="note(row[1])" :value="row[1]" :readonly="readonly" :placeholder="$t('replacements.nothing')" :aria-label="`${$t('replacements.replace')} ${index + 1}`" @change="set(index, 1, $event.target.value)" />
+                            <span v-if="note(row[1])" class="note fst-italic text-body-secondary">{{ note(row[1]) }}</span>
+                        </div>
                     </td>
                     <td v-if="!readonly" class="text-end text-nowrap">
                         <button class="btn btn-sm btn-link p-0 me-2" type="button" :disabled="index === 0" @click="move(index, -1)" :aria-label="$t('editors.up')"><i class="bi bi-arrow-up"></i></button>
@@ -57,9 +61,10 @@
 
 <script setup>
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { api } from "../api";
 import { deepEqual } from "../utils";
-import { visibleCharacters } from "../webConfigForms";
+import { characterNote } from "../webConfigForms";
 
 // A list of (pattern, replacement) which the runtime applies in order: to queries (query_parser_regex), or to the HTML
 // of results (the formatting regexes). The tester applies them on the server, as the runtime does.
@@ -67,8 +72,14 @@ const props = defineProps({
     modelValue: { type: Array, default: () => [] },
     query: Boolean,
     readonly: Boolean,
+    // The names of the characters of the replacements which can't be told apart (from the server)
+    characterNames: { type: Object, default: () => ({}) },
 });
 const emit = defineEmits(["update:modelValue"]);
+const { t } = useI18n();
+const note = (text) => characterNote(text, props.characterNames, t);
+// The note of a field is shown at its end, inside it: room for it, so that the text doesn't run under it
+const noteRoom = (text) => (note(text) ? { paddingRight: `${Math.min(note(text).length, 40) * 0.86 + 1.5}ch` } : {});
 const id = `replacements-${Math.random().toString(36).slice(2)}`;
 const rows = computed(() => (props.modelValue || []).map((row) => [row[0] ?? "", row[1] ?? ""]));
 const sample = ref("");
@@ -143,9 +154,17 @@ watch(rows, (newRows) => {
     width: 1.5rem;
     text-align: center;
 }
-.visible {
-    white-space: pre;
-    overflow-x: auto;
+.note {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    max-width: 60%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.75rem;
+    pointer-events: none;
 }
 .steps {
     padding-left: 1.5rem;

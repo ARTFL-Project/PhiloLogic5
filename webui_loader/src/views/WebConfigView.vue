@@ -43,6 +43,7 @@
                 :metadata-fields="metadataFields"
                 :citations="values.citations || {}"
                 :word-attributes="wordAttributes"
+                :character-names="config.character_names || {}"
                 :as-json="!!asJson[option.key]"
             />
         </div>

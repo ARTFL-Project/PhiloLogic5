@@ -18,7 +18,7 @@
         <DictEditor v-else-if="option.kind === 'string_map'" :model-value="modelValue" :key-suggestions="wordAttributes" :key-label="$t('webConfig.wordAttribute')" :value-label="$t('webConfig.shownAs')" :readonly="readonly" @update:model-value="update" />
         <DictListEditor v-else-if="option.kind === 'string_lists'" :model-value="modelValue || {}" :readonly="readonly" @update:model-value="update" />
         <ListEditor v-else-if="option.kind === 'string_list'" :model-value="modelValue" :readonly="readonly" @update:model-value="update" />
-        <ReplacementsEditor v-else-if="option.kind === 'replacements'" :model-value="modelValue" :query="option.key === 'query_parser_regex'" :readonly="readonly" @update:model-value="update" />
+        <ReplacementsEditor v-else-if="option.kind === 'replacements'" :model-value="modelValue" :query="option.key === 'query_parser_regex'" :character-names="characterNames" :readonly="readonly" @update:model-value="update" />
         <CitationsEditor v-else-if="option.kind === 'citations'" :model-value="modelValue" :metadata-fields="metadataFields" :readonly="readonly" @update:model-value="update" />
         <CitationListEditor v-else-if="option.kind === 'citation_list'" :model-value="modelValue" :citations="citations" :metadata-fields="metadataFields" :readonly="readonly" @update:model-value="update" />
         <SortOrdersEditor v-else-if="option.kind === 'sort_orders'" :model-value="modelValue" :metadata-fields="metadataFields" :readonly="readonly" @update:model-value="update" />
@@ -65,6 +65,8 @@ const props = defineProps({
     citations: { type: Object, default: () => ({}) },
     // The word attributes of the database, and lemma
     wordAttributes: { type: Array, default: () => [] },
+    // The names of the characters of the replacements which can't be told apart
+    characterNames: { type: Object, default: () => ({}) },
     // Options with a form of their own (STRUCTURED) can also be edited as JSON, for what the form can't show
     asJson: Boolean,
 });

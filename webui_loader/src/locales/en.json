@@ -364,7 +364,11 @@
         "try": "Try",
         "failed": "fails: {error}. The pages of the database would fail too.",
         "noMatch": "No pattern matches: the text stays as it is.",
-        "result": "Result:"
+        "result": "Result:",
+        "spaces": "a space | {count} spaces",
+        "spacesAround": "a space before and after | {count} spaces before and after",
+        "spacesBefore": "a space before | {count} spaces before",
+        "spacesAfter": "a space after | {count} spaces after"
     },
     "sortOrders": {
         "then": "then",

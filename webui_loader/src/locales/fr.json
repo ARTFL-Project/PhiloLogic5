@@ -364,7 +364,11 @@
         "try": "Essayer",
         "failed": "échoue : {error}. Les pages de la base échoueraient aussi.",
         "noMatch": "Aucun motif ne correspond : le texte reste tel quel.",
-        "result": "Résultat :"
+        "result": "Résultat :",
+        "spaces": "une espace | {count} espaces",
+        "spacesAround": "une espace avant et après | {count} espaces avant et après",
+        "spacesBefore": "une espace avant | {count} espaces avant",
+        "spacesAfter": "une espace après | {count} espaces après"
     },
     "sortOrders": {
         "then": "puis",

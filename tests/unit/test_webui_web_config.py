@@ -271,3 +271,11 @@ def test_removed_options_of_older_web_configs(db_path):
     web_config_io.save(db_path, {"dbname": "Renamed"}, config["hash"])
     assert path.read_text(encoding="utf8").endswith(old)
     assert runtime_config(db_path)["dbname"] == "Renamed"
+
+
+def test_names_of_the_characters_of_replacements(db_path):
+    """The characters of the replacements which can't be told apart on the page (the defaults of query_parser_regex
+    have an ideographic space, and a fullwidth vertical line which replaces |)"""
+    names = web_config_io.read(db_path)["character_names"]
+    assert names[chr(0x3000)] == "ideographic space" and names[chr(0xFF5C)] == "fullwidth vertical line"
+    assert all(ord(character) > 127 or character.isspace() for character in names)

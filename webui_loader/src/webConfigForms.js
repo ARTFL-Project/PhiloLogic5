@@ -97,23 +97,28 @@ export function followCitations(values, before, after, editable) {
     }
 }
 
-// A string with its spaces and invisible characters shown, or null if it has none
-export function visibleCharacters(text) {
-    if (!/[\s\u200b-\u200f\u2028-\u202f\u2060\ufeff]/.test(text || "")) {
-        return null;
+// What can't be seen in a string, or looks like something else, in words: its spaces, if they are all it has or at its
+// ends, and the names of its other characters which aren't ASCII, or spaces other than " " (names gives them, else
+// their code point). Empty if there is nothing to tell. t: the translation function.
+export function characterNote(text, names, t) {
+    if (!text) {
+        return "";
     }
-    return Array.from(text)
-        .map((character) => {
-            if (character === " ") {
-                return "\u2423"; // open box
-            }
-            if (character === "\t") {
-                return "\u21e5"; // rightwards arrow to bar
-            }
-            if (/[\s\u200b-\u200f\u2028-\u202f\u2060\ufeff]/.test(character)) {
-                return `[U+${character.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}]`;
-            }
-            return character;
-        })
-        .join("");
+    const parts = [];
+    const before = text.match(/^ */)[0].length;
+    const after = text.match(/ *$/)[0].length;
+    if (/^ +$/.test(text)) {
+        parts.push(t("replacements.spaces", { count: text.length }, text.length));
+    } else if (/^ /.test(text) && / $/.test(text)) {
+        parts.push(t("replacements.spacesAround", { count: Math.max(before, after) }, Math.max(before, after)));
+    } else if (/^ /.test(text)) {
+        parts.push(t("replacements.spacesBefore", { count: before }, before));
+    } else if (/ $/.test(text)) {
+        parts.push(t("replacements.spacesAfter", { count: after }, after));
+    }
+    const others = [...new Set(Array.from(text).filter((character) => character.codePointAt(0) > 127 || (character !== " " && /\s/.test(character))))];
+    for (const character of others) {
+        parts.push((names || {})[character] || `U+${character.codePointAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
+    }
+    return parts.join(", ");
 }
