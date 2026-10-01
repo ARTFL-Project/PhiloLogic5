@@ -129,15 +129,15 @@ def exact_word_pattern_search(term, path, field, label, ascii_conversion):
 
 def highlighter(words, token, ascii_conversion):
     """Highlight autocomplete"""
+    token = token.strip()
     new_list = []
     for word in words:
-        if ascii_conversion is True:
-            flattened_token = unidecode(token)
-            flattened_suggestion = unidecode(word)
-
-        search_chunk = re.search(token, word, re.IGNORECASE)
-        if not search_chunk:
-            search_chunk = re.search(flattened_token, flattened_suggestion, re.IGNORECASE)
+        search_chunk = re.search(re.escape(token), word, re.IGNORECASE)
+        if not search_chunk and ascii_conversion is True:
+            search_chunk = re.search(re.escape(unidecode(token)), unidecode(word), re.IGNORECASE)
+        if not search_chunk:  # matched on the words of token, not on token as it is ("Johann" in "Johann, ...")
+            new_list.append(word)
+            continue
 
         word_chunk = word[search_chunk.start() : search_chunk.end()]
         highlighted_chunk = '<span class="highlight">' + word_chunk + "</span>"
