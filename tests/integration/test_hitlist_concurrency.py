@@ -146,7 +146,8 @@ class TestFilesRemovedOrFailing:
             raise RuntimeError("metadata query crashed")
 
         monkeypatch.setattr(MetadataQuery, "query_recursive", failing_query_recursive)
-        db.query("man", "single_term", "0", raw_results=True, year=ALL_YEARS)
+        with pytest.raises(RuntimeError):  # the request fails, rather than search an empty corpus
+            db.query("man", "single_term", "0", raw_results=True, year=ALL_YEARS)
         monkeypatch.undo()
         assert fingerprint(db.query("man", "single_term", "0", raw_results=True, year=ALL_YEARS)) == expected
 
