@@ -550,7 +550,7 @@ def collocation_results(request, config):
     else:
         filter_list = set(build_filter_list(request, config, count_lemmas))
         filter_list = filter_list.union(set(query_words))
-    collocation_object["filter_list"] = sorted(filter_list, key=str.lower)
+    collocation_object["filter_list"] = sorted(filter_list, key=lambda w: (w.lower(), w))
 
     hits.finish()
     total_hits = len(hits)
