@@ -208,8 +208,6 @@
         "selectDateType": "Select date type for",
         "compareBy": "Compare by",
         "selectField": "Select a field",
-        "invalidQuery": "Invalid query for collocations",
-        "invalidQueryExplanation": "Collocations require a single word query. Use OR or NOT for multiple terms (e.g., volonté OR désir, volonté NOT volontés)",
         "distinctiveByField": "Distinctive {field}",
         "distinctiveCollocates": "Distinctive collocates",
         "score": "Score",

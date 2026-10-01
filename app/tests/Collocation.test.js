@@ -70,21 +70,21 @@ describe("Collocation", () => {
         expect(wrapper.text()).toContain("27029");
     });
 
-    // --- Invalid query warning ---
-    it("shows invalid query warning for multi-word queries", async () => {
+    // --- Multi-word queries: phrases and co-occurrences, which the server counts collocates of ---
+    it("shows no warning for multi-word queries", async () => {
         const wrapper = mountCollocation();
         const store = useMainStore();
         store.formData.q = "two words";
         await nextTick();
-        expect(wrapper.find(".alert-warning").exists()).toBe(true);
+        expect(wrapper.find(".alert-warning").exists()).toBe(false);
     });
 
-    it("disables tabs when query is invalid", async () => {
+    it("keeps tabs enabled for multi-word queries", async () => {
         const wrapper = mountCollocation();
         const store = useMainStore();
         store.formData.q = "two words";
         await nextTick();
-        expect(wrapper.find("#frequency-tab").attributes("disabled")).toBeDefined();
+        expect(wrapper.find("#frequency-tab").attributes("disabled")).toBeUndefined();
     });
 
     // --- Tab switching: @click on tab buttons ---
