@@ -7,7 +7,7 @@ import io
 import numpy as np
 
 from philologic.runtime.DB import DB
-from philologic.runtime.sql_validation import validate_column, validate_object_level
+from philologic.runtime.sql_validation import validate_column, validate_object_level, validate_request_column
 
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 OBJ_ZEROS = {"doc": 6, "div1": 5, "div2": 4, "div3": 3, "para": 2, "sent": 1, "word": 0}
@@ -34,7 +34,7 @@ def aggregation_by_field(request, config):
             **request.metadata,
         )
 
-    group_by = validate_column(request.group_by, db)
+    group_by = validate_request_column(request.group_by, db)
     field_obj = __get_field_config(group_by, config)
     metadata_type = validate_object_level(field_obj["object_level"])
 
