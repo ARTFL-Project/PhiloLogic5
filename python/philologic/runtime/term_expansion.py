@@ -19,10 +19,14 @@ from philologic.runtime.lmdb_env import lmdb_env
 _FORMS_FLAT_FILES = ("lemmas", "word_attributes", "lemma_word_attributes")
 
 
-def _norm_key(token: str, lowercase: bool = True) -> bytes:
+def _norm(token: str, lowercase: bool = True) -> str:
     if lowercase:
         token = token.lower()
-    return "".join(unidecode(token)).encode("utf-8")
+    return "".join(unidecode(token))
+
+
+def _norm_key(token: str, lowercase: bool = True) -> bytes:
+    return _norm(token, lowercase).encode("utf-8")
 
 
 def _lmdb_lookup(txn, key: bytes) -> list[str]:
@@ -36,6 +40,8 @@ def _lmdb_lookup(txn, key: bytes) -> list[str]:
 # ── Regex-pattern detection and LMDB cursor expansion ─────────────────────────
 
 _REGEX_METACHARS = frozenset(".*+?[{(\\")
+_QUANTIFIERS = frozenset("*+?{")
+_OPTIONAL_QUANTIFIERS = frozenset("*?{")  # those that can match zero of what they apply to
 
 
 def _is_regex_pattern(token: str) -> bool:
@@ -59,37 +65,58 @@ def _is_regex_pattern(token: str) -> bool:
 
 
 def _split_literal_prefix(token: str) -> tuple[str, str]:
-    """Split token into (literal_prefix, meta_suffix) at the first unescaped metachar."""
-    i = 0
-    while i < len(token):
-        if token[i] == "\\" and i + 1 < len(token):
-            i += 2
-            continue
-        if token[i] in _REGEX_METACHARS:
+    """Split a regex token into (literal_prefix, meta_suffix) at its first metachar or backslash."""
+    for i, char in enumerate(token):
+        if char in _REGEX_METACHARS:
             return token[:i], token[i:]
-        i += 1
     return token, ""
 
 
-def _normalize_pattern(token: str, lowercase: bool = True) -> tuple[bytes, str]:
+def _regex_scan_args(token: str, normalize) -> tuple[bytes, str]:
     """Normalize a regex token for LMDB cursor scan + compiled-regex filter.
 
     Returns (cursor_prefix_bytes, full_pattern_str) where:
-    - cursor_prefix_bytes: normalized literal prefix (for set_range + startswith)
-    - full_pattern_str: complete regex pattern (normalized literal + raw meta suffix)
+    - cursor_prefix_bytes: what every match starts with (for set_range + startswith)
+    - full_pattern_str: complete regex pattern (normalized, escaped literal + raw meta suffix)
+    normalize turns the token's literal characters into those of the keys scanned.
     """
     literal, meta = _split_literal_prefix(token)
-    if lowercase:
-        literal = literal.lower()
-    norm_literal = "".join(unidecode(literal))
-    return norm_literal.encode("utf-8"), norm_literal + meta
+    if literal and meta[:1] in _QUANTIFIERS:
+        # The quantifier applies to the literal's last character, which may normalize to several
+        head, last = normalize(literal[:-1]), normalize(literal[-1])
+        pattern = re.escape(head) + "(?:" + re.escape(last) + ")" + meta
+        if meta[0] in _OPTIONAL_QUANTIFIERS:  # matches need not have that character: "couleu?r" matches "couler"
+            return head.encode("utf-8"), pattern
+        return (head + last).encode("utf-8"), pattern
+    norm_literal = normalize(literal)
+    return norm_literal.encode("utf-8"), re.escape(norm_literal) + meta
+
+
+def _normalize_pattern(token: str, lowercase: bool = True) -> tuple[bytes, str]:
+    """_regex_scan_args for norm_word.lmdb, whose keys are normalized words."""
+    return _regex_scan_args(token, lambda s: _norm(s, lowercase))
+
+
+def _forms_pattern(token: str) -> tuple[bytes, str]:
+    """_regex_scan_args for word_forms.lmdb or words.lmdb, whose keys are lemma and attribute strings as they are."""
+    return _regex_scan_args(token, lambda s: s)
+
+
+def _matcher(pattern_str: str | None, prefix_match: bool):
+    """The function telling the keys pattern_str matches (None for all keys): those it matches whole, as egrep did
+    on the word list, or with prefix_match those it matches the start of."""
+    if not pattern_str:
+        return None
+    compiled = re.compile(pattern_str)
+    return compiled.match if prefix_match else compiled.fullmatch
 
 
 def _lmdb_expand_term(txn, norm_prefix: bytes, pattern_str: str | None = None,
-                      max_results: int = 0) -> list[str]:
+                      max_results: int = 0, prefix_match: bool = False) -> list[str]:
     """Cursor-scan norm_word.lmdb from norm_prefix, return original word forms.
 
-    If pattern_str is given, applies re.match filter on normalized keys.
+    If pattern_str is given, keeps the normalized keys it matches: whole, or with prefix_match (for autocomplete),
+    at their start.
     When norm_prefix is empty, scans the whole DB filtered by pattern_str;
     max_results defaults to 10000 in that case to cap unbounded full-DB scans.
     max_results: stop after collecting that many forms (0 = unlimited).
@@ -98,7 +125,7 @@ def _lmdb_expand_term(txn, norm_prefix: bytes, pattern_str: str | None = None,
         return []
     if not norm_prefix and max_results == 0:
         max_results = 10000
-    compiled = re.compile(pattern_str) if pattern_str else None
+    match = _matcher(pattern_str, prefix_match)
     results: list[str] = []
     cursor = txn.cursor()
     try:
@@ -112,7 +139,7 @@ def _lmdb_expand_term(txn, norm_prefix: bytes, pattern_str: str | None = None,
             k = bytes(cursor.key())
             if norm_prefix and not k.startswith(norm_prefix):
                 break
-            if compiled is None or compiled.match(k.decode("utf-8", errors="replace")):
+            if match is None or match(k.decode("utf-8", errors="replace")):
                 for form in bytes(cursor.value()).decode("utf-8").split("\x00"):
                     results.append(form)
                     if max_results and len(results) >= max_results:
@@ -125,18 +152,18 @@ def _lmdb_expand_term(txn, norm_prefix: bytes, pattern_str: str | None = None,
 
 
 def _lmdb_scan_keys(txn, prefix: bytes, pattern_str: str | None = None,
-                    max_results: int = 0) -> list[str]:
+                    max_results: int = 0, prefix_match: bool = False) -> list[str]:
     """Cursor-scan LMDB from prefix, return matching key strings.
 
     Used for LEMMA/ATTR/LEMMA_ATTR expansion against words.lmdb.
     Values (binary hit data) are ignored; only key strings are returned.
-    If pattern_str is given, applies re.match filter on key strings.
+    If pattern_str is given, keeps the keys it matches: whole, or with prefix_match (for autocomplete), at their start.
     When prefix is empty, scans whole DB bounded by max_results.
     max_results: stop after collecting that many keys (0 = unlimited).
     """
     if not prefix and not pattern_str:
         return []
-    compiled = re.compile(pattern_str) if pattern_str else None
+    match = _matcher(pattern_str, prefix_match)
     results: list[str] = []
     cursor = txn.cursor()
     try:
@@ -150,7 +177,7 @@ def _lmdb_scan_keys(txn, prefix: bytes, pattern_str: str | None = None,
             if prefix and not k.startswith(prefix):
                 break
             key_str = k.decode("utf-8", errors="replace")
-            if compiled is None or compiled.match(key_str):
+            if match is None or match(key_str):
                 results.append(key_str)
                 if max_results and len(results) >= max_results:
                     break
@@ -198,10 +225,9 @@ def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowerca
         return [inner]
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
-            literal, meta = _split_literal_prefix(token)
-            prefix_bytes = literal.encode("utf-8")
+            prefix_bytes, pattern_str = _forms_pattern(token)
             with forms_env.begin(buffers=True) as f_txn:
-                keys = _lmdb_scan_keys(f_txn, prefix_bytes, literal + meta)
+                keys = _lmdb_scan_keys(f_txn, prefix_bytes, pattern_str)
             return _lemma_boundary_filter(kind, keys)
         return [token]
     return []
@@ -229,10 +255,9 @@ def _expand_exclude(kind: str, token: str, txn, ascii_conversion: bool, lowercas
         return {inner}
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
-            literal, meta = _split_literal_prefix(token)
-            prefix_bytes = literal.encode("utf-8")
+            prefix_bytes, pattern_str = _forms_pattern(token)
             with forms_env.begin(buffers=True) as f_txn:
-                keys = _lmdb_scan_keys(f_txn, prefix_bytes, literal + meta)
+                keys = _lmdb_scan_keys(f_txn, prefix_bytes, pattern_str)
             return set(_lemma_boundary_filter(kind, keys))
         return {token}
     return set()
@@ -456,7 +481,7 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
             with env.begin(buffers=True) as txn:
                 if _is_regex_pattern(raw_token):
                     norm_prefix, pattern_str = _normalize_pattern(raw_token, lowercase and ascii_conversion)
-                    return _lmdb_expand_term(txn, norm_prefix, pattern_str, max_results)
+                    return _lmdb_expand_term(txn, norm_prefix, pattern_str, max_results, prefix_match=True)
                 elif ascii_conversion:
                     norm_prefix = _norm_key(raw_token, lowercase)
                     return _lmdb_expand_term(txn, norm_prefix, None, max_results)
@@ -473,9 +498,8 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
         with lmdb_env(scan_path) as scan_env:
             with scan_env.begin(buffers=True) as txn:
                 if _is_regex_pattern(token):
-                    literal, meta = _split_literal_prefix(token)
-                    prefix_bytes = literal.encode("utf-8")
-                    keys = _lmdb_scan_keys(txn, prefix_bytes, literal + meta, max_results)
+                    prefix_bytes, pattern_str = _forms_pattern(token)
+                    keys = _lmdb_scan_keys(txn, prefix_bytes, pattern_str, max_results, prefix_match=True)
                     return _lemma_boundary_filter(kind, keys)
                 else:
                     return _lmdb_scan_keys(txn, token.encode("utf-8"), None, max_results)
