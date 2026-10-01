@@ -192,12 +192,15 @@ def adjust_bytes(bytes, padding):
 def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
     """Formatting concordances"""
     removed_from_start = 0
+    # The partial tag and word the text may start with are cut, but never past the first hit: a ">" before it is
+    # text (OCR has them), not the end of a tag
+    first_hit = min(byte_offsets) if byte_offsets else len(text_in_utf8)
     begin = BEGIN_MATCH.search(text_in_utf8)
-    if begin:
+    if begin and begin.end(0) <= first_hit:
         removed_from_start = len(begin.group(0))
         text_in_utf8 = text_in_utf8[begin.end(0) :]
     start_cutoff = START_CUTOFF_MATCH.search(text_in_utf8)
-    if start_cutoff:
+    if start_cutoff and removed_from_start + start_cutoff.end(0) <= first_hit:
         removed_from_start += len(start_cutoff.group(0))
         text_in_utf8 = text_in_utf8[start_cutoff.end(0) :]
     end = END_MATCH.search(text_in_utf8)
@@ -262,12 +265,15 @@ def format_strip(text, word_regex, byte_offsets=None):
     """Remove formatting for HTML rendering
     Called from KWIC only"""
     removed_from_start = 0
+    # The partial tag and word the text may start with are cut, but never past the first hit: a ">" before it is
+    # text (OCR has them), not the end of a tag
+    first_hit = min(byte_offsets) if byte_offsets else len(text)
     begin = BEGIN_MATCH.search(text)
-    if begin:
+    if begin and begin.end(0) <= first_hit:
         removed_from_start = len(begin.group(0))
         text = text[begin.end(0) :]
     start_cutoff = START_CUTOFF_MATCH.search(text)
-    if start_cutoff:
+    if start_cutoff and removed_from_start + start_cutoff.end(0) <= first_hit:
         removed_from_start += len(start_cutoff.group(0))
         text = text[start_cutoff.end(0) :]
     end = END_MATCH.search(text)

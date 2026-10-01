@@ -58,6 +58,7 @@ def kwic_hit_object(hit, config, db):
     conc_text = conc_text.replace("\n", " ")
     conc_text = conc_text.replace("\r", "")
     conc_text = conc_text.replace("\t", " ")
+    highlighted_text = ""
     try:
         start_hit = conc_text.index('<span class="highlight">')
         start_output = (
