@@ -5,6 +5,8 @@ This module provides centralized validation for column names, table names,
 and other SQL identifiers that cannot be parameterized in SQLite.
 """
 
+from philologic.runtime.exceptions import BadRequest
+
 # Core system columns that are always valid in SQL queries
 SYSTEM_COLUMNS = frozenset({
     # Core identification columns
@@ -64,6 +66,14 @@ def validate_column(column, db):
     if hasattr(db, 'locals') and column in db.locals.word_attributes:
         return column
     raise ValueError(f"Invalid column name: {column}")
+
+
+def validate_request_column(column, db):
+    """validate_column for a column the request names: one that is not valid makes it a bad request (400)."""
+    try:
+        return validate_column(column, db)
+    except ValueError as error:
+        raise BadRequest(str(error)) from None
 
 
 def validate_columns(columns, db):

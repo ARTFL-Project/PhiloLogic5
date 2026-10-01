@@ -7,7 +7,7 @@ from urllib.parse import quote_plus
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.link import make_absolute_query_link
-from philologic.runtime.sql_validation import validate_column
+from philologic.runtime.sql_validation import validate_request_column
 
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
 
@@ -16,7 +16,7 @@ def frequency_results(request, config):
     """reads through a hitlist. looks up request.frequency_field in each hit, and builds up a list of
     unique values and their frequencies."""
     db = DB(config.db_path + "/data/")
-    frequency_field = validate_column(request.frequency_field, db)
+    frequency_field = validate_request_column(request.frequency_field, db)
     biblio_search = False
     if request.q == "" and request.no_q:
         biblio_search = True

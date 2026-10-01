@@ -17,7 +17,7 @@ import numpy as np
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.Query import get_word_groups, rewrite_terms_file
-from philologic.runtime.sql_validation import validate_column
+from philologic.runtime.sql_validation import validate_request_column
 
 
 @numba.njit(cache=True)
@@ -485,7 +485,7 @@ def collocation_results(request, config):
 
     map_field = request.map_field or None
     if map_field is not None:
-        map_field = validate_column(map_field, db)
+        map_field = validate_request_column(map_field, db)
 
     if not request.q:  # collocates are counted around search hits: without a query there are none
         collocation_object.update({"filter_list": [], "results_length": 0, "distance": None})

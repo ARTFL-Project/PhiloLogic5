@@ -7,7 +7,7 @@ import sys
 from unidecode import unidecode
 
 from philologic.runtime.DB import DB
-from philologic.runtime.sql_validation import validate_column
+from philologic.runtime.sql_validation import validate_column, validate_request_column
 
 
 def landing_page_bibliography(request, config):
@@ -79,7 +79,7 @@ def landing_page_bibliography(request, config):
 def group_by_range(request_range, request, config):
     """Group metadata by range"""
     db = DB(config.db_path + "/data/")
-    metadata_queried = validate_column(request.group_by_field, db)
+    metadata_queried = validate_request_column(request.group_by_field, db)
     is_date = False
     try:
         int(request_range[0])
@@ -157,7 +157,7 @@ def group_by_range(request_range, request, config):
 def group_by_metadata(request, config):
     """Count result by metadata field"""
     db = DB(config.db_path + "/data/")
-    group_by_field = validate_column(request.group_by_field, db)
+    group_by_field = validate_request_column(request.group_by_field, db)
     metadata_fields_needed, citations = get_fields_and_citations(request, config, db)
     cursor = db.dbh.cursor()
     query = f"""select * from toms where philo_type="doc" and {group_by_field}=?"""
@@ -185,7 +185,7 @@ def group_by_metadata(request, config):
 
 def get_fields_and_citations(request, config, db):
     """Get fields and citations"""
-    group_by_field = validate_column(request.group_by_field, db)
+    group_by_field = validate_request_column(request.group_by_field, db)
     metadata_fields_needed = [group_by_field, "philo_id"]
     citations = []
     for conf in config.default_landing_page_browsing:
