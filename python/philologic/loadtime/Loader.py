@@ -1415,7 +1415,7 @@ class Loader:
                 command = f"{sort_command}{command_list} > {output_file}"
             run_shell(command, description=f"{file_type} sorting")
             return
-        with tqdm(total=total_files, leave=False) as pbar:
+        with tqdm(total=total_files, leave=False, desc=f"Merging {file_type}") as pbar:
 
             def run_batch(pos, object_list):
                 command_list = " ".join([i[0] for i in object_list])
@@ -1484,7 +1484,7 @@ class Loader:
             )
             return len(object_list)
 
-        with tqdm(total=sum(len(files) for files in lists_of_files), leave=False) as pbar:
+        with tqdm(total=sum(len(files) for files in lists_of_files), leave=False, desc=f"Merging {file_type}") as pbar:
             # Merges of sorted files each take a core and little memory; the lemma files are sorted, with more memory
             with thread_pool(4 if file_type == "lemmas" else max(4, self.cores // 2)) as executor:
                 batches = [executor.submit(merge_batch, pos, files) for pos, files in enumerate(lists_of_files)]

@@ -88,3 +88,20 @@ def test_a_running_progress_bar_rewrites_its_line(jobs):
     shown, offset = page_log(jobs, shown, offset)
     assert shown == f"Copying files... done.\nParsing files:  64%|{FULL * 6}    | 64/100 [00:01<00:02, 42.0it/s]"
 
+
+@pytest.mark.parametrize(
+    "tail, description",
+    [
+        (bar(42), "Parsing files"),
+        # The time the loader starts some of its lines with is left out
+        (
+            f"\rWed Sep 30 16:17:11 2026: Parsing document level metadata:  98%|{FULL * 9}{THREE_QUARTERS}| 98/100 [00:01<00:00]",
+            "Parsing document level metadata",
+        ),
+        (f"\rThu Oct  1 09:05:02 2026: Merging toms:  50%|{FULL * 5}     | 6/12 [00:03<00:03]", "Merging toms"),
+        # A bar without a description
+        (f"\r 25%|{FULL * 2}{HALF}       | 3/12 [00:01<00:03,  2.0it/s]", ""),
+    ],
+)
+def test_progress_description(tail, description):
+    assert Jobs.progress("Some line\n" + tail)["description"] == description

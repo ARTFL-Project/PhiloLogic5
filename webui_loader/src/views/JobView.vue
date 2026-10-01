@@ -15,7 +15,7 @@
                     <div class="card-body">
                         <StageStepper :stages="job.stages" :now="now" />
                         <div v-if="job.progress" class="mt-3">
-                            <div class="small mb-1">{{ job.progress.description }}: {{ job.progress.done }} / {{ job.progress.total }}</div>
+                            <div class="small mb-1"><template v-if="job.progress.description">{{ job.progress.description }}: </template>{{ job.progress.done }} / {{ job.progress.total }}</div>
                             <div class="progress" role="progressbar" :aria-valuenow="job.progress.percent" aria-valuemin="0" aria-valuemax="100">
                                 <div class="progress-bar progress-bar-striped progress-bar-animated" :style="{ width: `${job.progress.percent}%` }"></div>
                             </div>

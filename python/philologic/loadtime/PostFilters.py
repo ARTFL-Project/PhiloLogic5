@@ -97,7 +97,7 @@ def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, ver
                 cursor.executemany(insert, batch)
                 batch.clear()
 
-        with tqdm(total=line_count, leave=False) as pbar:
+        with tqdm(total=line_count, leave=False, desc=f"Loading the {table} table") as pbar:
             with open(file_in, encoding="utf8") as input_file:
                 for sequence, line in enumerate(input_file):
                     philo_type, philo_name, philo_id, attrib = line.split("\t", 3)

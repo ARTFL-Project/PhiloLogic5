@@ -20,6 +20,8 @@ import time
 
 STAGES = ("copy_files", "metadata", "parse", "merge", "count_words", "index", "sql", "post_filters", "finish")
 MAX_LOG_CHUNK = 256 * 1024
+# The time the loader starts some of its lines with (time.ctime())
+TIMESTAMP = re.compile(r"^\w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4}: ")
 TQDM = re.compile(r"(?P<desc>[^\r\n|]*?):?\s*(?P<percent>\d+)%\|[^|\r\n]*\|\s*(?P<done>\d+)/(?P<total>\d+)")
 REMOVED_FILES = re.compile(r"^File (?P<name>.+?): (?P<cause>invalid characters|no TEI header|invalid XML)$", re.M)
 APPLICATION_URL = re.compile(r"^Application viewable at (?P<url>\S+)", re.M)
@@ -370,7 +372,7 @@ class Jobs:
         if match is None:
             return None
         return {
-            "description": match.group("desc").strip(),
+            "description": TIMESTAMP.sub("", match.group("desc").strip()),
             "percent": int(match.group("percent")),
             "done": int(match.group("done")),
             "total": int(match.group("total")),
