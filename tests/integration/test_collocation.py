@@ -33,12 +33,12 @@ class Rows:
 
 
 def collocation(db, q, distance=""):
-    """The top collocates of q, as the collocation report counts them, within distance words or in the sentence."""
+    """The collocation report for q, counting collocates within distance words or in the sentence."""
     root = os.path.dirname(os.path.normpath(db.path))
     config = WebConfig(root)
     query_string = urllib.parse.urlencode({"q": q, "colloc_filter_choice": "nofilter", "method_arg": distance})
     request = WSGIHandler({"QUERY_STRING": query_string, "PHILOLOGIC_DBPATH": root}, config)
-    return collocation_results(request, config)["collocates"]
+    return collocation_results(request, config)
 
 
 def total_hits(db, q, method, method_arg="0"):
@@ -49,19 +49,22 @@ def total_hits(db, q, method, method_arg="0"):
 
 @pytest.mark.integration
 class TestCountsMatchConcordances:
-    """The count of a collocate is the number of hits of the concordance it links to: the query and the collocate in
-    the same sentence, or within n words of each other."""
+    """The hits of the report, and the count of each collocate, are those of the concordances they link to: the
+    query (and the collocate) in the same sentence, or within n words of each other, unordered."""
 
     @pytest.mark.parametrize("q", ["lord", "my lord"])
     def test_in_sentence(self, shakespeare_db, q):
-        for word, count in collocation(shakespeare_db, q)[:5]:
+        report = collocation(shakespeare_db, q)
+        assert report["results_length"] == total_hits(shakespeare_db, q, "sentence_unordered")
+        for word, count in report["collocates"][:5]:
             assert count == total_hits(shakespeare_db, f'{q} "{word}"', "sentence_unordered"), word
 
     @pytest.mark.parametrize("q", ["lord", "my lord"])
     def test_within_n_words(self, shakespeare_db, q):
-        collocates = collocation(shakespeare_db, q, distance="3")[:5]
-        assert collocates
-        for word, count in collocates:
+        report = collocation(shakespeare_db, q, distance="3")
+        assert report["results_length"] == total_hits(shakespeare_db, q, "proxy_unordered", "3")
+        assert report["collocates"]
+        for word, count in report["collocates"][:5]:
             assert count == total_hits(shakespeare_db, f'{q} "{word}"', "proxy_unordered", "3"), word
 
 

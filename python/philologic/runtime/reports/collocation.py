@@ -508,15 +508,26 @@ def _vectorized_collocation(
     group_names = [str(n) for n in group_names]
     return unique_tids, unique_counts, group_bounds, group_names
 
-def collocation_search_method(q, query_patterns=None):
-    """The search for the hits collocates are counted around: each occurrence of the query's one term (which may be
-    "a | b"), each occurrence of a quoted phrase, or else each co-occurrence of the query terms in a sentence."""
+def collocate_distance(request):
+    """The number of words collocates are counted within, or None for the whole sentence."""
+    try:
+        return int(request.method_arg)
+    except ValueError:
+        return None
+
+
+def collocation_search_method(q, query_patterns=None, distance=None):
+    """The search (method, method_arg) for the hits collocates are counted around, within distance words or in the
+    sentence: each occurrence of the query's one term (which may be "a | b"), each occurrence of a quoted phrase, or
+    else each co-occurrence of the query terms, unordered, within distance words or in a sentence."""
     grouped = group_terms(parse_query(q, query_patterns=query_patterns))
     if len(split_terms(grouped)) <= 1:
-        return "single_term"
+        return "single_term", "0"
     if len(grouped) == 1:  # one term, split: a quoted phrase
-        return "phrase_ordered"
-    return "sentence_unordered"
+        return "phrase_ordered", "0"
+    if distance is not None:
+        return "proxy_unordered", str(distance)
+    return "sentence_unordered", "0"
 
 
 def collocation_results(request, config):
@@ -534,20 +545,16 @@ def collocation_results(request, config):
             collocation_object["collocates"] = []
         return collocation_object
 
-    method = collocation_search_method(request.q, db.locals.query_patterns)
+    distance = collocate_distance(request)
+    method, method_arg = collocation_search_method(request.q, db.locals.query_patterns, distance)
     hits = db.query(
         request.q,
         method,
-        "0",
+        method_arg,
         raw_results=True,
         raw_bytes=True,
         **request.metadata,
     )
-
-    try:
-        collocate_distance = int(request.method_arg)
-    except ValueError:
-        collocate_distance = None
 
     count_lemmas = "lemma:" in request.q
 
@@ -617,12 +624,12 @@ def collocation_results(request, config):
             count_lemmas,
             attribute,
             attribute_value,
-            collocate_distance,
+            distance,
             map_field_info=map_field_info,
         )
 
     collocation_object["results_length"] = total_hits
-    collocation_object["distance"] = collocate_distance
+    collocation_object["distance"] = distance
 
     if map_field is None:
         all_collocates = result
