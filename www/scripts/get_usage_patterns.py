@@ -82,5 +82,5 @@ def get_usage_patterns(request, config):
     # the frequency view (the streamgraph/word-map don't run the frequency
     # fetch that normally populates it).
     if isinstance(result, dict):
-        result["filter_list"] = sorted(filter_words, key=str.lower)
+        result["filter_list"] = sorted(filter_words, key=lambda w: (w.lower(), w))
     return result

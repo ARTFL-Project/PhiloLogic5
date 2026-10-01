@@ -602,7 +602,7 @@ def collocation_results(request, config):
         filter_list.add(f"{request.q}:{attribute}:{attribute_value}")
     elif request.colloc_filter_choice != "nofilter":
         filter_list.update(build_filter_list(request, config, count_lemmas))
-    collocation_object["filter_list"] = sorted(filter_list, key=str.lower)
+    collocation_object["filter_list"] = sorted(filter_list, key=lambda w: (w.lower(), w))
 
     hits.finish()
     total_hits = len(hits)

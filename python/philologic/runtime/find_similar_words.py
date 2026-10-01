@@ -55,7 +55,7 @@ def find_similar_words(db, config, request):
                             new_query_groups[pos].add(f'"{regular_word}"')
             except ValueError:
                 pass
-    new_query_groups = " ".join([" | ".join(group) for group in new_query_groups])
+    new_query_groups = " ".join([" | ".join(sorted(group)) for group in new_query_groups])
     with open(approximate_filename, "w", encoding="utf8") as cached_file:
         cached_file.write(new_query_groups)
     return new_query_groups
