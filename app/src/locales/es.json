@@ -200,9 +200,7 @@
         "filterBy": "Filtrar por",
         "selectDateType": "Seleccionar tipo de dato por",
         "compareBy": "Comparar con",
-        "selectField": "Seleccionar un campo",
-        "invalidQuery": "Consulta no válida para colocaciones",
-        "invalidQueryExplanation": "Las colocaciones requieren un vocablo de consulta. Use OR or NOT para múltiples vocablos (ej., voluntad OR deseo, voluntad NOT voluntades)"
+        "selectField": "Seleccionar un campo"
     },
     "concordance": {
         "more": "Más",

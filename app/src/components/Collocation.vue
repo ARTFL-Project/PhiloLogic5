@@ -1,16 +1,12 @@
 <template>
     <div id="collocation-container" class="container-fluid mt-4">
-        <div v-if="isInvalidCollocationQuery" class="alert alert-warning mx-2 mt-2" role="alert">
-            <strong>{{ $t('collocation.invalidQuery') }}</strong>
-            <p class="mb-0">{{ $t('collocation.invalidQueryExplanation') }}</p>
-        </div>
         <!-- Mobile: Dropdown selector for collocation methods -->
         <div class="d-block d-sm-none mt-3 mx-2">
             <label for="colloc-method-mobile-select" class="form-label fw-bold">
                 {{ $t('collocation.methodSelectionTabs') }}
             </label>
             <select class="form-select" id="colloc-method-mobile-select" v-model="mode"
-                @change="handleMobileMethodChange" :disabled="isInvalidCollocationQuery"
+                @change="handleMobileMethodChange"
                 :aria-label="$t('collocation.methodSelectionTabs')">
                 <option value="frequency">{{ $t("collocation.collocation") }}</option>
                 <option value="compare">{{ $t("collocation.compareTo") }}</option>
@@ -26,32 +22,32 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="frequency-tab" data-bs-toggle="tab"
                         :class="{ active: mode === 'frequency' }" data-bs-target="#frequency-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'frequency'" :disabled="isInvalidCollocationQuery"
-                        @click="!isInvalidCollocationQuery && setMode('frequency')">
+                        role="tab" :aria-selected="mode === 'frequency'"
+                        @click="setMode('frequency')">
                         {{ $t("collocation.collocation") }}
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="compare-tab" data-bs-toggle="tab"
                         :class="{ active: mode === 'compare' }" data-bs-target="#compare-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'compare'" :disabled="isInvalidCollocationQuery"
-                        @click="!isInvalidCollocationQuery && setMode('compare')">
+                        role="tab" :aria-selected="mode === 'compare'"
+                        @click="setMode('compare')">
                         {{ $t("collocation.compareTo") }}
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="similar-tab" data-bs-toggle="tab"
                         :class="{ active: mode === 'similar' }" data-bs-target="#similar-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'similar'" :disabled="isInvalidCollocationQuery"
-                        @click="!isInvalidCollocationQuery && setMode('similar')">
+                        role="tab" :aria-selected="mode === 'similar'"
+                        @click="setMode('similar')">
                         {{ $t("collocation.similarUsage") }}
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="time-series-tab" data-bs-toggle="tab"
                         :class="{ active: mode === 'timeSeries' }" data-bs-target="#time-series-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'timeSeries'" :disabled="isInvalidCollocationQuery"
-                        @click="!isInvalidCollocationQuery && setMode('timeSeries')">
+                        role="tab" :aria-selected="mode === 'timeSeries'"
+                        @click="setMode('timeSeries')">
                         {{ $t("collocation.timeSeries") }}
                     </button>
                 </li>
@@ -449,19 +445,6 @@ const fieldsToCompare = computed(() => {
     }));
 });
 
-const isInvalidCollocationQuery = computed(() => {
-    if (!formData.value.q) return false;
-    let query = formData.value.q.trim();
-    // Remove quoted tokens, lemma/attribute queries
-    query = query.replace(/"[^"]*"/g, "").replace(/\S+:\S+/g, "");
-    // Split by OR operators and filter them out
-    let parts = query.split(/\s*(\||OR)\s*/i).filter(p => p.trim() && !p.match(/^\|$|^OR$/i));
-    // Remove NOT patterns
-    parts = parts.map(p => p.replace(/\s+NOT\s+\S+/gi, ""));
-    // Check for multiple consecutive words
-    return parts.some(p => p.trim().split(/\s+/).filter(w => w.length > 0).length > 1);
-});
-
 //  Shared collocate handlers
 function collocateCleanup(collocate) {
     if (collocate.surfaceForm.startsWith("lemma:") || collocate.surfaceForm.search(/\w+:.*/) !== -1) {
@@ -557,10 +540,6 @@ function handleMobileMethodChange() {
 
 //  Primary fetch (shared by frequency / compare / similar entry paths)
 function updateCollocation() {
-    if (isInvalidCollocationQuery.value) {
-        searching.value = false;
-        return;
-    }
     $http.get(`${$dbUrl}/reports/collocation.py`, { params: paramsFilter(formData.value) })
         .then((response) => {
             resultsLength.value = response.data.results_length;
@@ -590,10 +569,6 @@ function runPostFetchModeAction() {
 }
 
 function fetchResults() {
-    if (isInvalidCollocationQuery.value) {
-        searching.value = false;
-        return;
-    }
     relativeFrequencies.value = {};
     searching.value = true;
     overRepresented.value = [];
