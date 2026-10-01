@@ -159,19 +159,20 @@ textarea.mono {
     height: 12rem;
 }
 
-// JSON, highlighted (utils.highlightJson)
-.json-key {
+// JSON, highlighted: the classes of classHighlighter (@lezer/highlight), in the JSON editor and the JSON shown
+.tok-propertyName {
     color: #8b1e3f;
 }
-.json-string {
+.tok-string {
     color: #1a7f37;
 }
-.json-number {
+.tok-number {
     color: #0550ae;
 }
-.json-literal {
+.tok-bool,
+.tok-keyword {
     color: #8250df;
 }
-.json-punctuation {
+.tok-punctuation {
     color: #6e7781;
 }

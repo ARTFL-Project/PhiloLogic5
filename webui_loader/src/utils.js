@@ -45,38 +45,14 @@ export function deepEqual(a, b) {
 }
 
 const HTML_ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
-const escapeHtml = (text) => text.replace(/[&<>"]/g, (character) => HTML_ESCAPES[character]);
-const JSON_TOKEN = /("(?:\\.|[^"\\\n])*")(\s*:)?|\b(true|false|null)\b|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],])/g;
-
-// JSON text as HTML with its keys, strings, numbers, literals and punctuation in spans (classes json-*), all of it
-// escaped. Text which isn't valid JSON (being typed) is highlighted as far as it goes.
-export function highlightJson(text) {
-    let html = "";
-    let last = 0;
-    for (const match of (text || "").matchAll(JSON_TOKEN)) {
-        html += escapeHtml(text.slice(last, match.index));
-        const [token, string, colon, literal, number, punctuation] = match;
-        if (string !== undefined) {
-            html += `<span class="${colon ? "json-key" : "json-string"}">${escapeHtml(string)}</span>${colon ? `<span class="json-punctuation">${escapeHtml(colon)}</span>` : ""}`;
-        } else if (literal !== undefined) {
-            html += `<span class="json-literal">${literal}</span>`;
-        } else if (number !== undefined) {
-            html += `<span class="json-number">${number}</span>`;
-        } else if (punctuation !== undefined) {
-            html += `<span class="json-punctuation">${escapeHtml(punctuation)}</span>`;
-        } else {
-            html += escapeHtml(token);
-        }
-        last = match.index + token.length;
-    }
-    return html + escapeHtml((text || "").slice(last));
-}
+export const escapeHtml = (text) => text.replace(/[&<>"]/g, (character) => HTML_ESCAPES[character]);
 
 const MAX_DIFF_CELLS = 1000000;
 
 // The lines of two texts which differ, with context lines around them: rows of {type: same, removed, added or gap,
-// text}. Lines are matched by their longest common subsequence, except in long texts, where the lines between the
-// first and the last difference are all shown as changed.
+// text, line: its index in the first text, or in the second for added lines}. Lines are matched by their longest
+// common subsequence, except in long texts, where the lines between the first and the last difference are all shown
+// as changed.
 export function lineDiff(before, after, context = 2) {
     const a = before.split("\n");
     const b = after.split("\n");
@@ -94,7 +70,10 @@ export function lineDiff(before, after, context = 2) {
     const middleB = b.slice(start, endB);
     let middle;
     if (middleA.length * middleB.length > MAX_DIFF_CELLS) {
-        middle = [...middleA.map((text) => ({ type: "removed", text })), ...middleB.map((text) => ({ type: "added", text }))];
+        middle = [
+            ...middleA.map((text, index) => ({ type: "removed", text, line: start + index })),
+            ...middleB.map((text, index) => ({ type: "added", text, line: start + index })),
+        ];
     } else {
         // lengths[i][j]: the longest common subsequence of middleA[i:] and middleB[j:]
         const lengths = Array.from({ length: middleA.length + 1 }, () => new Uint32Array(middleB.length + 1));
@@ -108,19 +87,23 @@ export function lineDiff(before, after, context = 2) {
         let j = 0;
         while (i < middleA.length || j < middleB.length) {
             if (i < middleA.length && j < middleB.length && middleA[i] === middleB[j]) {
-                middle.push({ type: "same", text: middleA[i] });
+                middle.push({ type: "same", text: middleA[i], line: start + i });
                 i += 1;
                 j += 1;
             } else if (i < middleA.length && (j === middleB.length || lengths[i + 1][j] >= lengths[i][j + 1])) {
-                middle.push({ type: "removed", text: middleA[i] });
+                middle.push({ type: "removed", text: middleA[i], line: start + i });
                 i += 1;
             } else {
-                middle.push({ type: "added", text: middleB[j] });
+                middle.push({ type: "added", text: middleB[j], line: start + j });
                 j += 1;
             }
         }
     }
-    const rows = [...a.slice(0, start).map((text) => ({ type: "same", text })), ...middle, ...a.slice(endA).map((text) => ({ type: "same", text }))];
+    const rows = [
+        ...a.slice(0, start).map((text, index) => ({ type: "same", text, line: index })),
+        ...middle,
+        ...a.slice(endA).map((text, index) => ({ type: "same", text, line: endA + index })),
+    ];
     // Only the context of the changes, the rest as gaps
     const near = rows.map(() => false);
     rows.forEach((row, index) => {

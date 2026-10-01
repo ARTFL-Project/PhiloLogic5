@@ -1,11 +1,14 @@
-import { mount } from "@vue/test-utils";
+import { EditorView } from "@codemirror/view";
+import { flushPromises, mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import { createI18n } from "vue-i18n";
 import CitationListEditor from "../src/components/CitationListEditor.vue";
 import RecordEditor from "../src/components/RecordEditor.vue";
 import ReplacementsEditor from "../src/components/ReplacementsEditor.vue";
 import en from "../src/locales/en.json";
-import { highlightJson, lineDiff } from "../src/utils";
+import JsonEditor from "../src/components/JsonEditor.vue";
+import { highlightJsonLines } from "../src/jsonHighlight";
+import { lineDiff } from "../src/utils";
 import { FORMS, characterNote, citationName, followCitations } from "../src/webConfigForms";
 
 const i18n = createI18n({ legacy: false, locale: "en", messages: { en } });
@@ -14,17 +17,41 @@ const options = { global: { plugins: [i18n] } };
 const author = { field: "author", object_level: "doc", prefix: "", suffix: "", link: true, style: { "font-variant": "small-caps" } };
 const title = { field: "title", object_level: "doc", prefix: "", suffix: "", link: true, style: {} };
 
-describe("highlightJson", () => {
-    it("highlights keys, strings, numbers and literals, escaping everything", () => {
-        const html = highlightJson('{"a": "<b>", "n": -1.5, "ok": true}');
-        expect(html).toContain('<span class="json-key">&quot;a&quot;</span>');
-        expect(html).toContain('<span class="json-string">&quot;&lt;b&gt;&quot;</span>');
-        expect(html).toContain('<span class="json-number">-1.5</span>');
-        expect(html).toContain('<span class="json-literal">true</span>');
-        expect(html).not.toContain("<b>");
+describe("highlightJsonLines", () => {
+    it("highlights keys, strings, numbers and literals, line by line, escaping everything", () => {
+        const lines = highlightJsonLines('{\n  "a": "<b>",\n  "n": -1.5,\n  "ok": true,\n  "no": null\n}');
+        expect(lines).toHaveLength(6);
+        expect(lines[1]).toContain('<span class="tok-propertyName">&quot;a&quot;</span>');
+        expect(lines[1]).toContain('<span class="tok-string">&quot;&lt;b&gt;&quot;</span>');
+        expect(lines[2]).toContain('<span class="tok-number">-1.5</span>');
+        expect(lines[3]).toContain('<span class="tok-bool">true</span>');
+        expect(lines[4]).toContain('<span class="tok-keyword">null</span>');
+        expect(lines.join("\n")).not.toContain("<b>");
     });
     it("copes with text being typed", () => {
-        expect(highlightJson('{"a": "unfinished')).toContain("unfinished");
+        expect(highlightJsonLines('{"a": "unfinished').join("")).toContain("unfinished");
+    });
+});
+
+describe("JsonEditor", () => {
+    it("passes on valid JSON, and reports invalid JSON", async () => {
+        const wrapper = mount(JsonEditor, { ...options, props: { modelValue: { a: 1 } }, attachTo: document.body });
+        for (let attempt = 0; attempt < 50 && !wrapper.find(".cm-editor").exists(); attempt += 1) {
+            await flushPromises();
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        const view = EditorView.findFromDOM(wrapper.find(".cm-editor").element);
+        expect(view.state.doc.toString()).toBe('{\n  "a": 1\n}');
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '{"a": 2}' } });
+        expect(wrapper.emitted("update:modelValue").at(-1)).toEqual([{ a: 2 }]);
+        view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: '{"a": ' } });
+        await wrapper.vm.$nextTick();
+        expect(wrapper.find(".invalid-feedback").exists()).toBe(true);
+        expect(wrapper.emitted("update:modelValue")).toHaveLength(1);
+        // A value set from outside replaces the text
+        await wrapper.setProps({ modelValue: { b: true } });
+        expect(view.state.doc.toString()).toBe('{\n  "b": true\n}');
+        wrapper.unmount();
     });
 });
 
@@ -99,7 +126,7 @@ describe("lineDiff", () => {
     it("shows the changed lines with their context", () => {
         const before = ["a", "b", "c", "d", "e", "f", "g", "h"].join("\n");
         const after = ["a", "b", "c", "d", "E", "f", "g", "h"].join("\n");
-        expect(lineDiff(before, after, 1)).toEqual([
+        expect(lineDiff(before, after, 1).map(({ type, text }) => ({ type, text }))).toEqual([
             { type: "gap", text: "\u22ef" },
             { type: "same", text: "d" },
             { type: "removed", text: "e" },
@@ -112,5 +139,11 @@ describe("lineDiff", () => {
         const rows = lineDiff("x\nkeep\ny", "X\nkeep\nY", 0).filter((row) => row.type !== "gap");
         expect(rows.map((row) => `${row.type} ${row.text}`)).toEqual(["removed x", "added X", "removed y", "added Y"]);
         expect(lineDiff("1\n2\n3", "1\n2\n3", 1)).toEqual([{ type: "gap", text: "\u22ef" }]);
+        // The index of each line in its text, for its highlighting
+        expect(lineDiff("a\nb", "a\nB", 1).filter((row) => row.type !== "gap")).toEqual([
+            { type: "same", text: "a", line: 0 },
+            { type: "removed", text: "b", line: 1 },
+            { type: "added", text: "B", line: 1 },
+        ]);
     });
 });
