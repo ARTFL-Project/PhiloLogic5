@@ -15,6 +15,8 @@ import numba
 import numpy as np
 
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest, NotFound
+from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.Query import get_word_groups, rewrite_terms_file
 from philologic.runtime.sql_validation import validate_request_column
@@ -269,6 +271,19 @@ class RestrictedUnpickler(pickle.Unpickler):
         if (module, name) in self.ALLOWED_CLASSES:
             return super().find_class(module, name)
         raise pickle.UnpicklingError(f"Forbidden class: {module}.{name}")
+
+
+def cache_file_path(db_path, file_path, ext):
+    """The path of the collocation cache (a .pickle or .npz file, as ext) a client names by file_path, the path it
+    was sent for it. Only the file name is taken from the client, to look for in the database's hitlist_dir, where
+    collocation caches are. Raises NotFound if it is not there: the hitlist cleanup removes caches after a while."""
+    name = os.path.basename(file_path or "")
+    if not name.endswith(ext):
+        raise BadRequest(f"Not a collocation cache: {name}")
+    path = os.path.join(get_hitlist_dir(os.path.join(db_path, "data")), name)
+    if not os.path.isfile(path):
+        raise NotFound("These collocation results have expired: run the collocation again.")
+    return path
 
 
 def safe_pickle_load(file_path):

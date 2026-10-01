@@ -7,6 +7,7 @@ import numba
 import numpy as np
 
 from philologic.runtime.reports.collocation import (
+    cache_file_path,
     load_map_field_cache,
     safe_pickle_load,
 )
@@ -47,13 +48,13 @@ def get_similar_collocate_distributions(request, config):
     """Get similar collocate distributions"""
     # Load the map_field numpy cache (all groups)
     tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(
-        request.file_path
+        cache_file_path(config.db_path, request.file_path, ".npz")
     )
 
     # Load reference collocates (Counter from a previous collocation query)
     if not request.primary_file_path:
         return {"similar": []}
-    reference_collocates = safe_pickle_load(request.primary_file_path)
+    reference_collocates = safe_pickle_load(cache_file_path(config.db_path, request.primary_file_path, ".pickle"))
 
     # Build name<->tid lookups (use lemma vocab when counting lemmas)
     colloc_dir = os.path.join(config.db_path, "data", "collocations")

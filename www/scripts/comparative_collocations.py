@@ -1,12 +1,12 @@
 """Compare collocations between two corpora."""
 
 import numpy as np
-from philologic.runtime.reports.collocation import fightin_words_zscores, safe_pickle_load
+from philologic.runtime.reports.collocation import cache_file_path, fightin_words_zscores, safe_pickle_load
 
 def comparative_collocations(request, config):
     """Calculate relative proportion of each collocate."""
-    all_collocates = safe_pickle_load(request.primary_file_path)
-    other_collocates = safe_pickle_load(request.other_file_path)
+    all_collocates = safe_pickle_load(cache_file_path(config.db_path, request.primary_file_path, ".pickle"))
+    other_collocates = safe_pickle_load(cache_file_path(config.db_path, request.other_file_path, ".pickle"))
     whole_corpus = request.whole_corpus.lower() == "true" if request.whole_corpus else False
 
     top_relative_proportions, low_relative_proportions = get_relative_proportions(
