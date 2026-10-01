@@ -6,9 +6,9 @@ import string
 import sys
 
 import regex as re
+
 from philologic.loadtime.OHCOVector import CompoundStack
-from philologic.utils import (convert_entities, extract_full_date,
-                              extract_integer)
+from philologic.utils import convert_entities, extract_full_date, extract_integer
 
 DEFAULT_TAG_TO_OBJ_MAP = {
     "div": "div",
@@ -544,7 +544,6 @@ class XMLParser:
 
         # Split content into a list on newlines.
         self.content = self.content.split("\n")
-        # self.content = DocumentContent(self.content)
         self.closed_suppressed_tags = self.find_closed_suppressed_tags()
 
         self.bytes_read_in = 0
