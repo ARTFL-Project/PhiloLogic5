@@ -108,9 +108,12 @@ def complete_utf8(data):
     return len(data)
 
 
-def compact_log(text):
-    """Log text with the progress bars which overwrite each other (carriage returns) reduced to their last state"""
-    return "\n".join(line.rsplit("\r", 1)[-1] for line in text.split("\n"))
+def compact_log(text, rewrites=False):
+    """Log text with the progress bars which overwrite each other (carriage returns) reduced to their last state. With
+    rewrites, that state keeps its carriage return: a part of the log can start in a line which the page already shows
+    (a progress bar), which it must then rewrite rather than add to."""
+    marker = "\r" if rewrites else ""
+    return "\n".join(marker + line.rsplit("\r", 1)[1] if "\r" in line else line for line in text.split("\n"))
 
 
 def load_arguments(dbname, config_path, files_path, cores, header, file_type, bibliography, overwrite):
@@ -384,7 +387,8 @@ class Jobs:
             data = b""
         more = len(data) == MAX_LOG_CHUNK
         data = data[: complete_utf8(data)]
-        return {"text": compact_log(data.decode("utf8", errors="replace")), "offset": offset + len(data), "more": more}
+        text = compact_log(data.decode("utf8", errors="replace"), rewrites=True)
+        return {"text": text, "offset": offset + len(data), "more": more}
 
     def list(self, user=None):
         """The loads, most recent first (those of one user if given)"""
