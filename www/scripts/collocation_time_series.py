@@ -6,12 +6,12 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
-from philologic.runtime.reports.collocation import fightin_words_zscores, load_map_field_cache
+from philologic.runtime.reports.collocation import cache_file_path, fightin_words_zscores, load_map_field_cache
 
 def collocation_time_series(request, config):
     """Reads a numpy cache containing collocations for each year."""
     cache_tids, cache_counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(
-        request.file_path
+        cache_file_path(config.db_path, request.file_path, ".npz")
     )
 
     # Decode vocab strings for column names

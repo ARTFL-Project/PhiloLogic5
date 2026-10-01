@@ -10,6 +10,7 @@ import os
 import numpy as np
 
 from philologic.runtime.reports.collocation import (
+    cache_file_path,
     fightin_words_zscores_vs_rest,
     load_group_hits,
     load_map_field_cache,
@@ -19,10 +20,11 @@ from philologic.runtime.reports.collocation import (
 
 def get_outlier_groups(request, config):
     """Score each group's collocate distribution against the rest of the corpus."""
+    file_path = cache_file_path(config.db_path, request.file_path, ".npz")
     tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = (
-        load_map_field_cache(request.file_path)
+        load_map_field_cache(file_path)
     )
-    group_hits = load_group_hits(request.file_path)  # None for legacy caches
+    group_hits = load_group_hits(file_path)  # None for legacy caches
 
     min_hits = int(request.min_hits or 10)
     top_n = int(request.top_n or 50)
