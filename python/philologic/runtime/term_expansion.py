@@ -39,16 +39,23 @@ _REGEX_METACHARS = frozenset(".*+?[{(\\")
 
 
 def _is_regex_pattern(token: str) -> bool:
-    """Return True if token contains unescaped regex metacharacters."""
+    """Return True if token contains unescaped regex metacharacters and compiles as a regex. A token that does not
+    compile, such as "(Art" or "*nvit*", is looked up as a word (which, with its punctuation, it is seldom)."""
     i = 0
     while i < len(token):
         if token[i] == "\\" and i + 1 < len(token):
             i += 2  # skip escaped char
             continue
         if token[i] in _REGEX_METACHARS:
-            return True
+            break
         i += 1
-    return False
+    else:
+        return False
+    try:
+        re.compile(token)
+    except re.error:
+        return False
+    return True
 
 
 def _split_literal_prefix(token: str) -> tuple[str, str]:
