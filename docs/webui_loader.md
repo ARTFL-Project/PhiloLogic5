@@ -61,7 +61,7 @@ On a server shared by several users, the token is what keeps others from using y
 3.  *Previews*, on a sample of the files, with the options as they are: the document metadata the `doc_xpaths` find in the TEI headers (hover a value to see which XPath found it) and the order of the documents; the tags of the texts, how many, with which attributes, and how the load treats them (the object type they map to, not indexed, not breaking words); the words and sentences the parser finds in a file.
 4.  *Review and launch*: the checks of the load (errors prevent launching it, warnings don't), the `philoload5` command it runs and the load config it writes, which only sets the options which differ from their default.
 
-The load then has its page: its stages, the progress of the current one, its log, the files left out (no TEI header, invalid XML...) and, once done, the address of the database. **Loads** lists them all.
+The load then has its page: its stages, the progress of the current one, its log (shown on request, and at once if the load failed), the files left out (no TEI header, invalid XML...) and, once done, the address of the database. **Loads** lists them all.
 
 **Web config** edits `data/web_config.cfg`, grouped as in the file, with the metadata fields of the database to choose from. Only the options you change are rewritten: the comments and the rest of the file stay as they are, and the previous version is kept as `web_config.cfg.<date>.bak`. Changes apply at once: reload the pages of the database to see them. `access_control` and `access_file` can't be changed from the UI.
 

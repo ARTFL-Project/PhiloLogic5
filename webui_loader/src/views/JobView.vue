@@ -39,14 +39,14 @@
                 </div>
             </div>
             <div class="col-lg-8">
-                <div class="d-flex align-items-center mb-1">
-                    <h2 class="h6 mb-0">{{ $t("job.log") }}</h2>
-                    <div class="form-check form-switch ms-auto small">
+                <details :open="showLog" @toggle="toggleLog($event.target.open)">
+                    <summary class="small">{{ $t("job.log") }}</summary>
+                    <div class="form-check form-switch small d-flex justify-content-end gap-2 my-1">
                         <input class="form-check-input" type="checkbox" id="follow" v-model="follow" />
                         <label class="form-check-label" for="follow">{{ $t("job.follow") }}</label>
                     </div>
-                </div>
-                <pre ref="logElement" class="log p-2 rounded mono">{{ log }}</pre>
+                    <pre ref="logElement" class="log p-2 rounded mono">{{ log }}</pre>
+                </details>
                 <details class="mt-3">
                     <summary class="small">{{ $t("job.command") }}</summary>
                     <pre class="bg-light p-2 rounded mono mt-2">{{ job.command }}</pre>
@@ -67,6 +67,11 @@ import JobState from "../components/JobState.vue";
 import StageStepper from "../components/StageStepper.vue";
 import { formatDate, formatDuration } from "../utils";
 
+// A running load is refreshed every half second while its page is seen (each refresh costs the server well under a
+// millisecond), less often in a hidden tab
+const POLL = 500;
+const HIDDEN_POLL = 5000;
+
 const props = defineProps({ id: { type: String, required: true } });
 const { locale, t } = useI18n();
 const job = ref(null);
@@ -74,6 +79,10 @@ const log = ref("");
 const config = ref(null);
 const error = ref(null);
 const follow = ref(true);
+// The log is only read when shown: by the user, or when the load failed
+const showLog = ref(false);
+let logShownForFailure = false;
+let reading = null;
 const cancelling = ref(false);
 const logElement = ref(null);
 const now = ref(Date.now() / 1000);
@@ -87,7 +96,13 @@ function appendLog(text) {
     log.value = lines.map((line) => line.slice(line.lastIndexOf("\r") + 1)).join("\n");
 }
 
-async function readLog() {
+// One read at a time, or parts would be added twice
+function readLog() {
+    reading = reading || readParts().finally(() => (reading = null));
+    return reading;
+}
+
+async function readParts() {
     let more = true;
     while (more) {
         const part = await api.get(`jobs/${props.id}/log`, { offset });
@@ -103,10 +118,31 @@ async function readLog() {
     }
 }
 
+function toggleLog(open) {
+    showLog.value = open;
+    if (open) {
+        readLog().catch((requestError) => (error.value = requestError.message));
+    }
+}
+
+// At most one refresh waits: cancelling also refreshes
+function schedule(delay) {
+    clearTimeout(timer);
+    timer = stopped ? null : setTimeout(refresh, delay);
+}
+
 async function refresh() {
+    clearTimeout(timer);
+    timer = null;
     try {
         job.value = await api.get(`jobs/${props.id}`);
-        await readLog();
+        if (!logShownForFailure && ["failed", "interrupted"].includes(job.value.state)) {
+            logShownForFailure = true;
+            showLog.value = true;
+        }
+        if (showLog.value) {
+            await readLog();
+        }
         if (!config.value) {
             config.value = (await api.get(`jobs/${props.id}/load_config`)).config;
         }
@@ -115,8 +151,15 @@ async function refresh() {
         error.value = requestError.message;
     }
     now.value = Date.now() / 1000;
-    if (!stopped && (!job.value || job.value.state === "running")) {
-        timer = setTimeout(refresh, 2000);
+    if (!job.value || job.value.state === "running") {
+        schedule(document.hidden ? HIDDEN_POLL : POLL);
+    }
+}
+
+// Back to the page: refresh at once
+function onVisibilityChange() {
+    if (!document.hidden && timer !== null) {
+        refresh();
     }
 }
 
@@ -135,9 +178,13 @@ async function cancel() {
     }
 }
 
-onMounted(refresh);
+onMounted(() => {
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    refresh();
+});
 onUnmounted(() => {
     stopped = true;
     clearTimeout(timer);
+    document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 </script>
