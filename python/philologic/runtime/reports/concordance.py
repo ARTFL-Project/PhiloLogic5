@@ -7,6 +7,7 @@ import io
 import regex as re
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.get_text import get_concordance_text
 from philologic.runtime.HitList import CombinedHitlist
 from philologic.runtime.pages import page_interval
@@ -14,6 +15,8 @@ from philologic.runtime.pages import page_interval
 
 def concordance_results(request, config):
     """Fetch concordances results."""
+    if request.no_q:  # without one, the hits are text objects, with no words to show in context
+        raise BadRequest("A search term is required.")
     db = DB(config.db_path + "/data/")
 
     hits = db.query(

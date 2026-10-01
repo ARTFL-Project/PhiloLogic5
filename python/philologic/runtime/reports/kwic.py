@@ -7,6 +7,7 @@ import io
 import regex as re
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.get_text import get_text
 from philologic.runtime.ObjectFormatter import adjust_bytes, format_strip
 from philologic.runtime.pages import page_interval
@@ -14,6 +15,8 @@ from philologic.runtime.pages import page_interval
 
 def kwic_results(request, config):
     """Fetch KWIC results"""
+    if request.no_q:  # without one, the hits are text objects, with no words to show in context
+        raise BadRequest("A search term is required.")
     db = DB(config.db_path + "/data/")
     hits = db.query(request["q"], request["method"], request["arg"], **request.metadata)
     start, end, n = page_interval(request.results_per_page, hits, request.start, request.end)
