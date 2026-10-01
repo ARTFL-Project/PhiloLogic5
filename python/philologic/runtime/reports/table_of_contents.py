@@ -12,11 +12,7 @@ def generate_toc_object(request, config):
     db = DB(config.db_path + "/data/")
     conn = db.dbh
     cursor = conn.cursor()
-    try:
-        obj = db[request.philo_id]
-    except ValueError:
-        philo_id = " ".join(request.path_components[:-1])
-        obj = db[philo_id]
+    obj = db[request.philo_id]
     doc_id = int(obj.philo_id[0])
     next_doc_id = doc_id + 1
     # find the starting rowid for this doc

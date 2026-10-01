@@ -18,7 +18,7 @@ from philologic.runtime import (
     generate_toc_object,
     kwic_results,
 )
-from wsgi_helpers import BadRequest, resolve
+from wsgi_helpers import BadRequest, NotFound, resolve
 
 # Maps report URL name -> (resolve name, default function)
 REPORT_HANDLERS = {
@@ -49,6 +49,8 @@ class ReportResource:
             result = handler(request, config)
         except BadRequest as e:
             raise falcon.HTTPBadRequest(description=str(e))
+        except NotFound as e:
+            raise falcon.HTTPNotFound(description=str(e))
 
         # bibliography_results returns (result_dict, hits) — use first element
         if report_name == "bibliography" and isinstance(result, tuple):
