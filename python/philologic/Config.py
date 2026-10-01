@@ -832,6 +832,100 @@ WEB_CONFIG_HEADER = """
 """
 
 
+# The options which cite metadata fields, as new web configs get them: the loader leaves out the fields a database
+# doesn't have (Loader.write_web_config). They differ from the defaults, used for the options a web config lacks.
+NEW_WEB_CONFIG_CITATIONS = {
+    "aggregation_config": [
+        {
+            "field": "author",
+            "object_level": "doc",
+            "field_citation": [CITATIONS["author"]],
+            "break_up_field": "title",
+            "break_up_field_citation": [
+                CITATIONS["title"],
+                CITATIONS["pub_place"],
+                CITATIONS["publisher"],
+                CITATIONS["collection"],
+                CITATIONS["year"],
+            ],
+        },
+        {
+            "field": "title",
+            "object_level": "doc",
+            "field_citation": [
+                CITATIONS["title"],
+                CITATIONS["pub_place"],
+                CITATIONS["publisher"],
+                CITATIONS["collection"],
+                CITATIONS["year"],
+            ],
+            "break_up_field": None,
+            "break_up_field_citation": None,
+        },
+    ],
+    "default_landing_page_browsing": [
+        {
+            "label": "Author",
+            "group_by_field": "author",
+            "display_count": True,
+            "queries": ["A-D", "E-I", "J-M", "N-R", "S-Z"],
+            "is_range": True,
+            "citation": [CITATIONS["author"]],
+        },
+        {
+            "label": "Title",
+            "group_by_field": "title",
+            "display_count": False,
+            "queries": ["A-D", "E-I", "J-M", "N-R", "S-Z"],
+            "is_range": True,
+            "citation": [CITATIONS["author"], CITATIONS["title"], CITATIONS["year"]],
+        },
+    ],
+    "simple_landing_citation": [
+        CITATIONS[name] for name in ("author", "title", "year", "pub_place", "publisher", "collection")
+    ],
+    "concordance_citation": [
+        CITATIONS[name]
+        for name in (
+            "author",
+            "title",
+            "year",
+            "div1_head",
+            "div1_date",
+            "div2_head",
+            "div2_date",
+            "div3_head",
+            "div3_date",
+            "speaker",
+            "resp",
+            "page",
+        )
+    ],
+    "bibliography_citation": [
+        CITATIONS[name]
+        for name in ("author", "title", "year", "div1_head", "div2_head", "div3_head", "speaker", "resp", "page")
+    ],
+    "table_of_contents_citation": [
+        CITATIONS[name] for name in ("author", "title", "year", "pub_place", "publisher", "collection")
+    ],
+    "navigation_citation": [
+        CITATIONS[name] for name in ("author", "title", "year", "pub_place", "publisher", "collection")
+    ],
+}
+
+
+def cited_source(value, citations):
+    """Python source of value, with the entries of citations it contains written as citations["name"]"""
+    if isinstance(value, dict):
+        for name, citation in citations.items():
+            if value == citation:
+                return f'citations["{name}"]'
+        return "{" + ", ".join(f"{key!r}: {cited_source(item, citations)}" for key, item in value.items()) + "}"
+    if isinstance(value, list):
+        return "[" + ", ".join(cited_source(item, citations) for item in value) + "]"
+    return repr(value)
+
+
 class Config:
     """Main Config class to build out web_config and db.locals"""
 
@@ -865,43 +959,8 @@ class Config:
         for key, value in self.defaults.items():
             if value["comment"]:
                 string += "\n" + "\n".join(line.strip() for line in value["comment"].splitlines() if line.strip())
-            if key == "default_landing_page_browsing":
-                string += """\ndefault_landing_page_browsing = [{"label": "Author", "group_by_field": "author",
-                "display_count": True, "queries": ["A-D", "E-I", "J-M", "N-R", "S-Z"], "is_range": True,
-                "citation": [citations["author"]],}, {"label": "Title", "group_by_field": "title",
-                "display_count": False, "queries": ["A-D", "E-I", "J-M", "N-R", "S-Z"], "is_range": True,
-                "citation": [citations["author"], citations["title"], citations["year"]]}]"""
-            elif key == "concordance_citation":
-                string += f"""\n{key} = [
-                    citations["author"], citations["title"], citations["year"], citations["div1_head"],
-                    citations["div1_date"], citations["div2_head"], citations["div2_date"], citations["div3_head"],
-                    citations["div3_date"], citations["speaker"], citations["resp"], citations["page"],
-                ]"""
-            elif key == "bibliography_citation":
-                string += f"""\n{key} = [
-                    citations["author"], citations["title"], citations["year"],
-                    citations["div1_head"], citations["div2_head"], citations["div3_head"],
-                    citations["speaker"], citations["resp"], citations["page"],
-                ]"""
-            elif key in ("table_of_contents_citation", "navigation_citation", "simple_landing_citation"):
-                string += f"""\n{key} = [
-                    citations["author"], citations["title"], citations["year"],
-                    citations["pub_place"], citations["publisher"], citations["collection"],
-                ]"""
-            elif key == "aggregation_config":
-                string += (
-                    f"\n{key} = "
-                    + "[{"
-                    + """"field": "author", "object_level": "doc",  "field_citation": [citations["author"]],
-                       "break_up_field": "title", "break_up_field_citation": [
-                        citations["title"], citations["pub_place"], citations["publisher"], citations["collection"],citations["year"]
-                        ],"""
-                    + "}, {"
-                    + """"field": "title", "object_level": "doc", "field_citation": [citations["title"],
-                        citations["pub_place"], citations["publisher"], citations["collection"], citations["year"]],"break_up_field": None,
-                        "break_up_field_citation": None, """
-                    + "}]"
-                )
+            if key in NEW_WEB_CONFIG_CITATIONS:
+                string += f"\n{key} = {cited_source(self.data[key], self.data['citations'])}"
             else:
                 string += f"\n{key} = {pretty_print(self.data[key])}\n"
             written_keys.append(key)

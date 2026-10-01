@@ -34,7 +34,7 @@ from black import FileMode, format_str
 from orjson import loads
 from tqdm import tqdm
 
-from philologic.Config import MakeDBConfig, MakeWebConfig
+from philologic.Config import NEW_WEB_CONFIG_CITATIONS, WEB_CONFIG_DEFAULTS, MakeDBConfig, MakeWebConfig
 from philologic.loadtime.PostFilters import (
     count_lemma_runs,
     frequency_file_key,
@@ -1891,13 +1891,95 @@ class Loader:
                 raise
         print("wrote database info to %s." % (filename))
 
+    @classmethod
+    def cited_fields(cls, cursor):
+        """The web config options which cite metadata fields, with only those the database has (cursor: of toms.db)"""
+        fields = set(cls.metadata_fields) - set(cls.metadata_fields_not_found)
+
+        def has_values(table, field):
+            try:
+                cursor.execute(f"select 1 from {table} where {field} is not null and {field} != '' limit 1")
+            except sqlite3.OperationalError:  # no such table (no pages...) or field
+                return False
+            return cursor.fetchone() is not None
+
+        def cited(citation):
+            if citation["object_level"] in ("page", "line"):
+                return has_values(f'{citation["object_level"]}s', citation["field"])
+            # Without a head, div1s are cited by their type and n, or as sections
+            return citation["field"] in fields or citation["object_level"] == "div1" and citation["field"] == "head"
+
+        def kept(citations):
+            return [citation for citation in citations if cited(citation)]
+
+        values = {
+            "citations": {
+                name: citation
+                for name, citation in WEB_CONFIG_DEFAULTS["citations"]["value"].items()
+                if cited(citation)
+            }
+        }
+        for key in (
+            "simple_landing_citation",
+            "concordance_citation",
+            "bibliography_citation",
+            "table_of_contents_citation",
+            "navigation_citation",
+        ):
+            values[key] = kept(NEW_WEB_CONFIG_CITATIONS[key])
+        values["aggregation_config"] = []
+        for aggregation in NEW_WEB_CONFIG_CITATIONS["aggregation_config"]:
+            if aggregation["field"] in fields:
+                aggregation = {**aggregation, "field_citation": kept(aggregation["field_citation"])}
+                if aggregation["break_up_field"] in fields:
+                    aggregation["break_up_field_citation"] = kept(aggregation["break_up_field_citation"])
+                else:
+                    aggregation.update(break_up_field=None, break_up_field_citation=None)
+                values["aggregation_config"].append(aggregation)
+        if not values["aggregation_config"]:  # the web app needs one
+            citation = {
+                "field": "filename",
+                "object_level": "doc",
+                "prefix": "",
+                "suffix": "",
+                "link": True,
+                "style": {},
+            }
+            values["aggregation_config"] = [
+                {
+                    "field": "filename",
+                    "object_level": "doc",
+                    "field_citation": [citation],
+                    "break_up_field": None,
+                    "break_up_field_citation": None,
+                }
+            ]
+        values["default_landing_page_browsing"] = [
+            {**browsing, "citation": kept(browsing["citation"])}
+            for browsing in NEW_WEB_CONFIG_CITATIONS["default_landing_page_browsing"]
+            if browsing["group_by_field"] in fields
+        ]
+        values["results_summary"] = [
+            summary for summary in WEB_CONFIG_DEFAULTS["results_summary"]["value"] if summary["field"] in fields
+        ]
+        values["collocation_fields_to_compare"] = [
+            field for field in WEB_CONFIG_DEFAULTS["collocation_fields_to_compare"]["value"] if field in fields
+        ]
+        if WEB_CONFIG_DEFAULTS["time_series_year_field"]["value"] not in fields:  # no time series without years
+            values["search_reports"] = [
+                report for report in WEB_CONFIG_DEFAULTS["search_reports"]["value"] if report != "time_series"
+            ]
+            values["time_series_year_field"] = ""
+        return values
+
     def write_web_config(self):
         """Write configuration variables for the Web application"""
         dbname = os.path.basename(os.path.dirname(self.destination.rstrip("/")))
+        # Set by post_processing on the class: self.metadata_fields_not_found is the empty list of __init__
         metadata = [
             i
             for i in Loader.metadata_fields
-            if i not in self.metadata_fields_not_found and not i.startswith("philo_") and i != "filename"
+            if i not in Loader.metadata_fields_not_found and not i.startswith("philo_") and i != "filename"
         ]
         config_values = {
             "dbname": dbname,
@@ -2003,6 +2085,7 @@ class Loader:
             words_facets.extend((word_attributes.keys()))
             config_values["words_facets"] = words_facets
         config_values["ascii_conversion"] = Loader.ascii_conversion
+        config_values.update(self.cited_fields(cursor))
 
         filename = self.destination + "/web_config.cfg"
         web_config = MakeWebConfig(filename, **config_values)

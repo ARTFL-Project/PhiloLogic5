@@ -41,6 +41,8 @@ To change the behavior of the Web Application, you should edit the `web_config.c
 
 You can also edit it from a web page, with the metadata fields of the database to choose from: see [philologic5-webui-loader](webui_loader.md).
 
+The web config of a new database only names the metadata fields it has: citations of the fields it lacks (such as `pub_place`) are left out, and so is the time series report if it has no `year`.
+
 ## <a name="access"></a>Access control
 
 There are two components in the built-in access control:
