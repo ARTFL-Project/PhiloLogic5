@@ -28,5 +28,19 @@ from philologic.runtime.reports.collocation import collocation_search_method
     ],
 )
 def test_collocation_search_method(q, method):
-    """One term: its occurrences; a quoted phrase: its occurrences; several terms: the sentences with all of them."""
-    assert collocation_search_method(q) == method
+    """One term: its occurrences; a quoted phrase: its occurrences; several terms: their co-occurrences in a sentence."""
+    assert collocation_search_method(q) == (method, "0")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "q, method",
+    [
+        ("liberté", ("single_term", "0")),
+        ('"assemblée nationale"', ("phrase_ordered", "0")),
+        ("peuple souverain", ("proxy_unordered", "5")),
+    ],
+)
+def test_collocation_search_method_within_n_words(q, method):
+    """Within n words: several terms co-occur within n words, unordered."""
+    assert collocation_search_method(q, distance=5) == method

@@ -104,6 +104,7 @@ def _build_hit_bags(
     attribute: Optional[str],
     attribute_value: Optional[str],
     metadata: Dict[str, str],
+    distance: Optional[int] = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, bytes, np.ndarray]:
     """Run the query, return (flat_ids, indptr, years, vocab_blob, vocab_offsets).
 
@@ -115,9 +116,9 @@ def _build_hit_bags(
     attribute filter is set, off-attribute tokens are excluded.
     """
     # The hits collocation counts around: occurrences of the term or the phrase, or co-occurrences of the terms in a
-    # sentence
-    method = collocation_search_method(q, db.locals.query_patterns)
-    hits = db.query(q, method, "0", raw_results=True, raw_bytes=True, **metadata)
+    # sentence or within distance words
+    method, method_arg = collocation_search_method(q, db.locals.query_patterns, distance)
+    hits = db.query(q, method, method_arg, raw_results=True, raw_bytes=True, **metadata)
     hits.finish()
     if len(hits) == 0:  # also when the metadata matched nothing: no search ran, so there is no .terms
         return (
@@ -754,7 +755,7 @@ def _build_graph(
 def _pattern_cache_key(
     q: str, count_lemmas: bool, attribute: Optional[str],
     attribute_value: Optional[str], metadata: Dict[str, str],
-    stopwords: Optional[set],
+    stopwords: Optional[set], distance: Optional[int] = None,
 ) -> str:
     h = hashlib.sha1()
     h.update(b"hlex2\0")  # schema tag: bump when the cached array set changes
@@ -777,6 +778,8 @@ def _pattern_cache_key(
         for w in sorted(stopwords):
             h.update(w.encode("utf-8"))
             h.update(b"\0")
+    if distance is not None:
+        h.update(f"\0d{distance}".encode("utf-8"))
     return h.hexdigest()
 
 
@@ -1032,6 +1035,9 @@ def detect_usage_patterns(
     hub_min_neighbors: int = 4,
     max_senses: int = 12,
     include_graph: bool = False,
+    # Collocation's "within n words": for a query of several terms, the hits are their co-occurrences within that
+    # many words rather than in a sentence. The bags are whole sentences either way.
+    distance: Optional[int] = None,
 ) -> Dict:
     """End-to-end global-first pattern detection (HyperLex)."""
     stop_set = stopwords or set()
@@ -1040,7 +1046,7 @@ def detect_usage_patterns(
     # pattern-count / edge-floor knobs (all a rerun varies). Cache hit skips
     # ~1.3 s of work on a big query like `woman`.
     cache_key = _pattern_cache_key(
-        q, count_lemmas, attribute, attribute_value, metadata, stop_set,
+        q, count_lemmas, attribute, attribute_value, metadata, stop_set, distance,
     )
     cache_path = _pattern_cache_path(db.hitlist_dir, cache_key)
     cached = _load_intermediates(cache_path)
@@ -1058,7 +1064,7 @@ def detect_usage_patterns(
         v_blob, v_offsets = _load_vocab(db_path, count_lemmas)
     else:
         flat_ids, indptr, years, v_blob, v_offsets = _build_hit_bags(
-            db, db_path, q, count_lemmas, attribute, attribute_value, metadata
+            db, db_path, q, count_lemmas, attribute, attribute_value, metadata, distance
         )
         if len(indptr) <= 1:
             return {"n_total_hits": 0, "patterns": []}

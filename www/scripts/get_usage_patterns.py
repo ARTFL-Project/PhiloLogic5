@@ -7,7 +7,7 @@ collocate vocabulary, projected to time bins.
 
 from philologic.runtime.DB import DB
 from philologic.runtime.reports.usage_patterns import detect_usage_patterns
-from philologic.runtime.reports.collocation import build_filter_list
+from philologic.runtime.reports.collocation import build_filter_list, collocate_distance
 
 
 def _load_stopwords(request, config, count_lemmas):
@@ -77,6 +77,7 @@ def get_usage_patterns(request, config):
         # the same clustering, so it ships in the same response (cheap: the
         # distance matrix and communities are already computed).
         include_graph=True,
+        distance=collocate_distance(request),
     )
     # Surface the filtered words so the results summary's filter list matches
     # the frequency view (the streamgraph/word-map don't run the frequency
