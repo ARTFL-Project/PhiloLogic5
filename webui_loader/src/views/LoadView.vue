@@ -114,7 +114,7 @@
                         <label class="form-label" for="dbname">{{ $t("fields.dbname") }}</label>
                         <input id="dbname" class="form-control mono" :class="{ 'is-invalid': state.dbname && !validName }" v-model.trim="state.dbname" />
                         <div class="invalid-feedback">{{ $t("load.nameHelp") }}</div>
-                        <div class="form-text" v-if="system">{{ $t("load.urlWillBe", { url: `${system.url_root.replace(/\/$/, "")}/${state.dbname || "…"}` }) }}</div>
+                        <div class="form-text" v-if="system">{{ $t("load.urlWillBe", { url: `${system.url_root.replace(/\/$/, "")}/${state.dbname || "\u2026"}` }) }}</div>
                     </div>
                     <div class="col-sm-3">
                         <label class="form-label" for="cores">{{ $t("fields.cores") }}</label>
@@ -140,7 +140,7 @@
                 <ul class="nav nav-tabs flex-grow-1">
                     <li class="nav-item" v-for="group in optionGroups" :key="group">
                         <button class="nav-link" :class="{ active: optionGroup === group }" type="button" @click="optionGroup = group">
-                            {{ $t(`load.groups.${group}`) }}<span v-if="groupChanged(group)" class="text-primary"> •</span><span v-if="groupErrors(group)" class="text-danger"> !</span>
+                            {{ $t(`load.groups.${group}`) }}<span v-if="groupChanged(group)" class="text-primary"> &bull;</span><span v-if="groupErrors(group)" class="text-danger"> !</span>
                         </button>
                     </li>
                 </ul>

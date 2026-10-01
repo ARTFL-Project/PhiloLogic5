@@ -16,7 +16,7 @@
                 </ul>
                 <span class="navbar-text me-3 small">
                     <i class="bi bi-hdd-network me-1"></i>{{ session.server.hostname }}
-                    <span v-if="session.user"> · <i class="bi bi-person me-1"></i>{{ session.user }}</span>
+                    <span v-if="session.user"> &middot; <i class="bi bi-person me-1"></i>{{ session.user }}</span>
                 </span>
                 <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-outline-light" @click="switchLanguage">{{ otherLanguage.toUpperCase() }}</button>

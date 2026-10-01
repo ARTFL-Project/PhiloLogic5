@@ -101,7 +101,7 @@ textarea.mono {
     font-weight: 600;
 }
 .changed .option-label::after {
-    content: " •";
+    content: " \2022"; // bullet
     color: theme.$button-color;
 }
 .file-list {

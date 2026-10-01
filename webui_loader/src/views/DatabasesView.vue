@@ -6,7 +6,7 @@
             <router-link class="btn btn-secondary ms-auto" to="/load"><i class="bi bi-plus-lg me-1"></i>{{ $t("nav.newLoad") }}</router-link>
         </div>
         <p v-if="system" class="small text-body-secondary">
-            {{ $t("databases.root", { root: system.database_root }) }} · {{ $t("databases.free", { size: formatSize(system.disk_free) }) }} · {{ $t("databases.cores", { count: system.cpu_count }) }}
+            {{ $t("databases.root", { root: system.database_root }) }} &middot; {{ $t("databases.free", { size: formatSize(system.disk_free) }) }} &middot; {{ $t("databases.cores", { count: system.cpu_count }) }}
         </p>
         <div v-if="error" class="alert alert-danger">{{ error }}</div>
         <div v-if="loading" class="text-center my-5"><span class="spinner-border"></span></div>

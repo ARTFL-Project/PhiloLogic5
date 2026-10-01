@@ -18,7 +18,7 @@
         <div v-if="error" class="alert alert-danger py-2">{{ error }}</div>
 
         <template v-if="kind === 'header' && results.header">
-            <p class="small">{{ $t("previews.sortedAs") }} <span class="mono">{{ results.header.sorted.join(" → ") }}</span></p>
+            <p class="small">{{ $t("previews.sortedAs") }} <span class="mono">{{ results.header.sorted.join(" \u2192 ") }}</span></p>
             <p class="small text-body-secondary" v-if="notFound.length">{{ $t("previews.notFound", { fields: notFound.join(", ") }) }}</p>
             <div class="table-responsive">
                 <table class="table table-sm table-bordered small align-top">
@@ -114,7 +114,7 @@ const headerFields = computed(() => {
     return ["year", ...results.header.fields.filter((field) => field !== "year" && results.header.found[field])];
 });
 const notFound = computed(() => (results.header ? results.header.fields.filter((field) => !results.header.found[field]) : []));
-const shorten = (value) => (value && value.length > 120 ? `${value.slice(0, 120)}…` : value);
+const shorten = (value) => (value && value.length > 120 ? `${value.slice(0, 120)}\u2026` : value);
 const shownHeaderText = computed(() => {
     const row = results.header && results.header.rows.find((item) => item.file === shownHeader.value);
     return row ? row.header : null;

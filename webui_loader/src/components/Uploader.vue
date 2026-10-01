@@ -13,7 +13,7 @@
             <span class="small ms-auto align-self-center" v-if="usage">{{ usage.quota ? $t("uploads.usage", { used: formatSize(usage.size), quota: formatSize(usage.quota) }) : $t("uploads.used", { used: formatSize(usage.size) }) }}</span>
         </div>
         <div v-if="current" class="mb-2">
-            <div class="small mb-1">{{ current.name }} — {{ formatSize(sent) }} / {{ formatSize(current.size) }} <span v-if="current.resumed" class="badge text-bg-info">{{ $t("uploads.resumed") }}</span></div>
+            <div class="small mb-1">{{ current.name }} &mdash; {{ formatSize(sent) }} / {{ formatSize(current.size) }} <span v-if="current.resumed" class="badge text-bg-info">{{ $t("uploads.resumed") }}</span></div>
             <div class="progress" role="progressbar" :aria-valuenow="percent" aria-valuemin="0" aria-valuemax="100">
                 <div class="progress-bar" :style="{ width: `${percent}%` }">{{ percent }}%</div>
             </div>

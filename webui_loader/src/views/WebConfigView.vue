@@ -14,7 +14,7 @@
         <ul class="nav nav-tabs mb-3">
             <li class="nav-item" v-for="group in schema.groups" :key="group">
                 <button class="nav-link" :class="{ active: group === current }" type="button" @click="current = group">
-                    {{ $t(`webConfig.groups.${group}`) }}<span v-if="groupChanged(group)" class="text-primary"> •</span>
+                    {{ $t(`webConfig.groups.${group}`) }}<span v-if="groupChanged(group)" class="text-primary"> &bull;</span>
                 </button>
             </li>
         </ul>

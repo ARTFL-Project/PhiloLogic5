@@ -403,7 +403,7 @@ class FilesResource:
 def audit_changes(changes, limit=20000):
     """The changes of a web config for the audit log (their JSON, shortened if long)"""
     text = json.dumps(changes, ensure_ascii=False)
-    return text if len(text) <= limit else text[:limit] + "…"
+    return text if len(text) <= limit else text[:limit] + "\u2026"
 
 
 def load_request(data):

@@ -56,7 +56,7 @@ def test_save_changes_only_the_edited_assignments(db_path):
         "dbname": "Renamed",
         "facets": ["author", "year"],
         "concordance_citation": concordance_citation,
-        "query_parser_regex": config["values"]["query_parser_regex"] + [["«", '"']],
+        "query_parser_regex": config["values"]["query_parser_regex"] + [["\u00ab", '"']],
         "metadata_input_style": {"year": "int"},
     }
     backup = web_config_io.save(db_path, changes, config["hash"])
@@ -68,7 +68,7 @@ def test_save_changes_only_the_edited_assignments(db_path):
     assert runtime["dbname"] == "Renamed"
     assert runtime["facets"] == ["author", "year"]
     assert runtime["concordance_citation"] == concordance_citation
-    assert runtime["query_parser_regex"][-1] == ("«", '"')  # tuples, as the runtime expects
+    assert runtime["query_parser_regex"][-1] == ("\u00ab", '"')  # tuples, as the runtime expects
     assert runtime["metadata_input_style"] == {"year": "int"}
     # Other lines are left as they were
     changed_lines = set(after.splitlines()) - set(before)
