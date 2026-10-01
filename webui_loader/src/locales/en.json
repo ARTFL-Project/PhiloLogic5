@@ -260,7 +260,11 @@
         "undoAll": "Undo all",
         "save": "Save",
         "leave": "Leave without saving your changes?",
-        "field": "Field"
+        "field": "Field",
+        "asJson": "Edit as JSON",
+        "asForm": "Back to the form",
+        "wordAttribute": "Word attribute",
+        "shownAs": "Shown as"
     },
     "login": {
         "title": "Log in",
@@ -329,5 +333,75 @@
         "action": "Action",
         "detail": "Detail",
         "trustedBrowsers": "{count} trusted browsers"
+    },
+    "citations": {
+        "field": "Field",
+        "level": "Object level",
+        "prefix": "Before",
+        "suffix": "After",
+        "link": "Link",
+        "style": "CSS style",
+        "property": "Property",
+        "affixHelp": "Before and after: what surrounds the value (HTML allowed). Link: to the table of contents for title and filename, to a search for the other fields.",
+        "custom": "its own",
+        "edit": "Edit",
+        "done": "Close",
+        "add": "Add a named citation…",
+        "addCustom": "A citation of its own",
+        "listHelp": "In this order. The named citations (author, title…) are edited in the citations option of the Citations tab: changing one there changes it here too.",
+        "name": "Name",
+        "new": "New citation",
+        "namedHelp": "The lists of citations use these by name: change one here and it changes in all of them."
+    },
+    "replacements": {
+        "queryHelp": "Applied to each query, in order from the top: each pattern (a regular expression) is replaced, everywhere, by its replacement, in what the previous ones left. In a replacement, \\1 is what the first group of the pattern matched.",
+        "htmlHelp": "Applied to the HTML of each result, in order from the top: each pattern (a regular expression) is replaced, everywhere, by its replacement, in what the previous ones left. In a replacement, \\1 is what the first group of the pattern matched.",
+        "find": "Find (regular expression)",
+        "replace": "Replace with",
+        "nothing": "nothing (removes it)",
+        "tryQuery": "Try them on a query",
+        "tryHtml": "Try them on some HTML",
+        "try": "Try",
+        "failed": "fails: {error}. The pages of the database would fail too.",
+        "noMatch": "No pattern matches: the text stays as it is.",
+        "result": "Result:"
+    },
+    "sortOrders": {
+        "then": "then",
+        "field": "Field",
+        "addField": "field",
+        "add": "Add a sort order"
+    },
+    "choiceValues": {
+        "label": "Label shown",
+        "value": "Value searched",
+        "addChoice": "Add a choice",
+        "addField": "Add a field"
+    },
+    "form": {
+        "collection": "Collection (HTML allowed)",
+        "citation": "Citation",
+        "custom_url": "Custom URL",
+        "start_date": "Start",
+        "end_date": "End",
+        "url_root": "URL of the dictionary",
+        "keywords": "Build the URL with the keys below",
+        "selected_keyword": "URL key of the selected word",
+        "immutable_key_values": "Fixed URL keys and values",
+        "variable_key_values": "URL keys, with the metadata field which gives their value",
+        "field": "Field",
+        "object_level": "Object level",
+        "field_citation": "Its citation",
+        "break_up_field": "Broken down by",
+        "break_up_field_citation": "Citation of the breakdown",
+        "label": "Label",
+        "group_by_field": "Field",
+        "is_range": "Queries are ranges of first letters",
+        "display_count": "Show counts",
+        "queries": "Queries",
+        "none": "none"
+    },
+    "formHelp": {
+        "queries": "Ranges such as A-D, or values such as Comedy."
     }
 }

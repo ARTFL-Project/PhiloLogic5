@@ -260,7 +260,11 @@
         "undoAll": "Tout annuler",
         "save": "Enregistrer",
         "leave": "Quitter sans enregistrer vos modifications ?",
-        "field": "Champ"
+        "field": "Champ",
+        "asJson": "Modifier en JSON",
+        "asForm": "Revenir au formulaire",
+        "wordAttribute": "Attribut des mots",
+        "shownAs": "Affiché comme"
     },
     "login": {
         "title": "Connexion",
@@ -329,5 +333,75 @@
         "action": "Action",
         "detail": "Détail",
         "trustedBrowsers": "{count} navigateurs de confiance"
+    },
+    "citations": {
+        "field": "Champ",
+        "level": "Niveau d'objet",
+        "prefix": "Avant",
+        "suffix": "Après",
+        "link": "Lien",
+        "style": "Style CSS",
+        "property": "Propriété",
+        "affixHelp": "Avant et après : ce qui entoure la valeur (HTML possible). Lien : vers la table des matières pour title et filename, vers une recherche pour les autres champs.",
+        "custom": "propre",
+        "edit": "Modifier",
+        "done": "Fermer",
+        "add": "Ajouter une citation nommée…",
+        "addCustom": "Une citation propre",
+        "listHelp": "Dans cet ordre. Les citations nommées (author, title…) se modifient dans l'option citations de l'onglet Citations : les y changer les change ici aussi.",
+        "name": "Nom",
+        "new": "Nouvelle citation",
+        "namedHelp": "Les listes de citations les utilisent par leur nom : en changer une ici la change dans toutes."
+    },
+    "replacements": {
+        "queryHelp": "Appliqués à chaque requête, dans l'ordre à partir du haut : chaque motif (une expression régulière) est remplacé, partout, par son remplacement, dans ce qu'ont laissé les précédents. Dans un remplacement, \\1 est ce qu'a trouvé le premier groupe du motif.",
+        "htmlHelp": "Appliqués au HTML de chaque résultat, dans l'ordre à partir du haut : chaque motif (une expression régulière) est remplacé, partout, par son remplacement, dans ce qu'ont laissé les précédents. Dans un remplacement, \\1 est ce qu'a trouvé le premier groupe du motif.",
+        "find": "Rechercher (expression régulière)",
+        "replace": "Remplacer par",
+        "nothing": "rien (le supprime)",
+        "tryQuery": "Les essayer sur une requête",
+        "tryHtml": "Les essayer sur du HTML",
+        "try": "Essayer",
+        "failed": "échoue : {error}. Les pages de la base échoueraient aussi.",
+        "noMatch": "Aucun motif ne correspond : le texte reste tel quel.",
+        "result": "Résultat :"
+    },
+    "sortOrders": {
+        "then": "puis",
+        "field": "Champ",
+        "addField": "champ",
+        "add": "Ajouter un tri"
+    },
+    "choiceValues": {
+        "label": "Libellé affiché",
+        "value": "Valeur recherchée",
+        "addChoice": "Ajouter un choix",
+        "addField": "Ajouter un champ"
+    },
+    "form": {
+        "collection": "Collection (HTML possible)",
+        "citation": "Citation",
+        "custom_url": "URL propre",
+        "start_date": "Début",
+        "end_date": "Fin",
+        "url_root": "URL du dictionnaire",
+        "keywords": "Construire l'URL avec les clés ci-dessous",
+        "selected_keyword": "Clé d'URL du mot sélectionné",
+        "immutable_key_values": "Clés d'URL et valeurs fixes",
+        "variable_key_values": "Clés d'URL, avec le champ de métadonnées qui donne leur valeur",
+        "field": "Champ",
+        "object_level": "Niveau d'objet",
+        "field_citation": "Sa citation",
+        "break_up_field": "Détaillé par",
+        "break_up_field_citation": "Citation du détail",
+        "label": "Libellé",
+        "group_by_field": "Champ",
+        "is_range": "Les requêtes sont des intervalles de premières lettres",
+        "display_count": "Afficher les nombres",
+        "queries": "Requêtes",
+        "none": "aucun"
+    },
+    "formHelp": {
+        "queries": "Des intervalles comme A-D, ou des valeurs comme Comedy."
     }
 }

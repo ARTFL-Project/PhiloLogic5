@@ -141,6 +141,11 @@ textarea.mono {
     color: var(--bs-secondary);
     border-style: dashed;
 }
+// The review of changes, in the actions at the bottom of the page
+.sticky-actions .review {
+    max-height: 50vh;
+    overflow-y: auto;
+}
 .sticky-actions {
     position: sticky;
     bottom: 0;
@@ -152,4 +157,21 @@ textarea.mono {
 .qr {
     width: 12rem;
     height: 12rem;
+}
+
+// JSON, highlighted (utils.highlightJson)
+.json-key {
+    color: #8b1e3f;
+}
+.json-string {
+    color: #1a7f37;
+}
+.json-number {
+    color: #0550ae;
+}
+.json-literal {
+    color: #8250df;
+}
+.json-punctuation {
+    color: #6e7781;
 }

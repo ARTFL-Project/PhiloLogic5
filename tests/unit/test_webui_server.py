@@ -387,6 +387,7 @@ PROTECTED = [
     "/api/jobs/mydb-20260101-000000-abcdef/cancel",
     "/api/jobs/mydb-20260101-000000-abcdef/load_config",
     "/api/previews/header",
+    "/api/replacements",
     "/api/uploads",
     "/api/uploads/20260101-000000-abcdef12",
     "/api/uploads/20260101-000000-abcdef12/content",
@@ -587,3 +588,15 @@ def test_personal_uploads(personal):
     status = client.simulate_post(f"/api/uploads/{upload_id}/complete", headers=headers).json
     assert status["state"] == "ready"
     assert client.simulate_get("/api/uploads", headers=local_headers()).json["usage"]["quota"] is None
+
+
+def test_replacements_tried_as_the_runtime_applies_them(personal):
+    client, settings = personal
+    csrf = client.simulate_get("/api/session", headers=local_headers()).json["csrf"]
+    headers = local_headers(Origin=f"http://{LOCAL}", **{"X-CSRF-Token": csrf})
+    request = {"replacements": [["-", " "], [" OR ", " | "]], "text": "a-b OR c", "query": True}
+    result = client.simulate_post("/api/replacements", json=request, headers=headers)
+    assert result.status_code == 200, result.text
+    assert result.json == {"steps": [{"text": "a b OR c"}, {"text": "a b | c"}], "result": "a b | c"}
+    request["replacements"] = [["(unclosed", ""]]
+    assert client.simulate_post("/api/replacements", json=request, headers=headers).status_code == 400

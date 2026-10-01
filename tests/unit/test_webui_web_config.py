@@ -207,3 +207,56 @@ def test_restricted_users(db_path):
     web_config_io.save(
         db_path, {"dbname": "<i>Admin's</i>", "logo": "logo.png"}, config["hash"], service=True, restricted=True
     )
+
+
+def test_structured_values_validated(db_path):
+    config = web_config_io.read(db_path)
+    for key, value, message in [
+        ("query_parser_regex", [["(unclosed", " "]], "valid regular expression"),
+        ("kwic_formatting_regex", [["<b>"]], "pattern, replacement"),
+        ("concordance_biblio_sorting", [[]], "lists of fields"),
+        ("concordance_citation", [{"prefix": "by "}], "citations"),
+        ("citations", {"author": "author"}, "citations"),
+        ("aggregation_config", ["author"], "objects"),
+        ("metadata_choice_values", {"title": [{"label": "x"}]}, "label, value"),
+        ("word_property_aliases", {"pos": 1}, "strings to strings"),
+    ]:
+        with pytest.raises(WebConfigError, match=key):
+            web_config_io.save(db_path, {key: value}, config["hash"])
+        assert web_config_io.validate(key, value) and message in web_config_io.validate(key, value)
+
+
+def test_replacements_tried_as_the_runtime_applies_them():
+    from types import SimpleNamespace
+
+    from philologic.runtime.Query import query_parse
+
+    rules = [("-", " "), (" OR ", " | "), ("(\\w+)'(\\w+)", "\\2 \\1")]
+    for text in ("rousseau-emile OR contrat", "l'esprit", "-" * 40):
+        tried = web_config_io.apply_replacements(rules, text, query=True)
+        assert tried["result"] == query_parse(text, SimpleNamespace(query_parser_regex=rules))
+    # Every match is replaced (query_parse once gave re.U as the count: at most 32 replacements)
+    assert web_config_io.apply_replacements([("-", " ")], "-" * 40, query=True)["result"] == " " * 40
+    html = web_config_io.apply_replacements([("<note>", "<span>"), ("</note>", "</span>")], "a <note>b</note>")
+    assert html == {"steps": [{"text": "a <span>b</note>"}, {"text": "a <span>b</span>"}], "result": "a <span>b</span>"}
+    assert "error" in web_config_io.apply_replacements([("(a)", "\\2")], "abc")["steps"][0]
+
+
+def test_edited_named_citation_still_referred_to_by_name(db_path):
+    """As the page saves an edit of a named citation: with the lists which use it changed the same way"""
+    config = web_config_io.read(db_path)
+    values = config["values"]
+    author = values["citations"]["author"]
+    edited = {**author, "suffix": ", "}
+    changes = {
+        "citations": {**values["citations"], "author": edited},
+        "concordance_citation": [
+            edited if citation == author else citation for citation in values["concordance_citation"]
+        ],
+    }
+    web_config_io.save(db_path, changes, config["hash"])
+    text = (Path(db_path) / "data" / "web_config.cfg").read_text(encoding="utf8")
+    statement = text[text.index("concordance_citation = ") :].split("\n]", 1)[0]
+    assert 'citations["author"]' in statement and '"suffix": ", "' not in statement
+    assert runtime_config(db_path)["concordance_citation"][0]["suffix"] == ", "
+

@@ -50,6 +50,7 @@ def create_app(settings, accounts=None):
         "/api/jobs/{job_id}/cancel": resources.JobCancelResource(api),
         "/api/jobs/{job_id}/load_config": resources.JobConfigResource(api),
         "/api/previews/{kind}": resources.PreviewResource(api),
+        "/api/replacements": resources.ReplacementsResource(api),
         "/api/uploads": resources.UploadsResource(api),
         "/api/uploads/{upload_id}": resources.UploadResource(api),
         "/api/uploads/{upload_id}/content": resources.UploadContentResource(api),

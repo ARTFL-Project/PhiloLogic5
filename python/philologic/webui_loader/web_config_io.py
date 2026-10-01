@@ -14,6 +14,8 @@ import shutil
 import stat
 import tempfile
 
+import regex
+
 from philologic.Config import WEB_CONFIG_DEFAULTS
 from philologic.webui_loader.load_schema import json_value
 from philologic.webui_loader.pyconfig import Code, ConfigFile, assignment_source
@@ -49,42 +51,45 @@ GROUPS = (
 )
 
 # key: (group, kind, choices). Kinds: bool, int, string, choice, reports (a selection of REPORTS), fields (metadata
-# fields), field (one metadata field), field_map (metadata field -> string, value_choices if given), string_list, json
-# (any other structure, edited as JSON).
+# fields), field (one metadata field), field_map (metadata field -> string, value_choices if given), string_list,
+# string_map (string -> string), string_lists (string -> list of strings), replacements (a list of (pattern,
+# replacement)), citations (name -> citation), citation_list (a list of citations), sort_orders (a list of tuples of
+# fields), choice_values (field -> list of {label, value}), record (an object, edited with a form of the page) and
+# records (a list of them), json (any other structure, edited as JSON).
 KINDS = {
     "dbname": ("general", "string", ()),
     "link_to_home_page": ("general", "string", ()),
     "logo": ("general", "string", ()),
     "report_error_link": ("general", "string", ()),
-    "academic_citation": ("general", "json", ()),
+    "academic_citation": ("general", "record", ()),
     "search_reports": ("search", "reports", REPORTS),
     "metadata": ("search", "fields", ()),
     "metadata_aliases": ("search", "field_map", ()),
     "metadata_input_style": ("search", "field_map", INPUT_STYLES),
-    "metadata_choice_values": ("search", "json", ()),
-    "word_property_aliases": ("search", "json", ()),
+    "metadata_choice_values": ("search", "choice_values", ()),
+    "word_property_aliases": ("search", "string_map", ()),
     "autocomplete": ("search", "fields", ()),
     "search_examples": ("search", "field_map", ()),
-    "word_attributes": ("search", "json", ()),
-    "query_parser_regex": ("search", "json", ()),
+    "word_attributes": ("search", "string_lists", ()),
+    "query_parser_regex": ("search", "replacements", ()),
     "search_syntax_template": ("search", "string", ()),
-    "results_summary": ("results", "json", ()),
+    "results_summary": ("results", "records", ()),
     "concordance_length": ("results", "int", ()),
     "facets": ("results", "fields", ()),
     "words_facets": ("results", "string_list", ()),
     "kwic_bibliography_fields": ("results", "fields", ()),
-    "concordance_biblio_sorting": ("results", "json", ()),
+    "concordance_biblio_sorting": ("results", "sort_orders", ()),
     "kwic_metadata_sorting_fields": ("results", "fields", ()),
     "collocation_fields_to_compare": ("results", "fields", ()),
     "stopwords": ("results", "string", ()),
-    "citations": ("citations", "json", ()),
-    "concordance_citation": ("citations", "json", ()),
-    "bibliography_citation": ("citations", "json", ()),
-    "table_of_contents_citation": ("citations", "json", ()),
-    "navigation_citation": ("citations", "json", ()),
-    "simple_landing_citation": ("citations", "json", ()),
+    "citations": ("citations", "citations", ()),
+    "concordance_citation": ("citations", "citation_list", ()),
+    "bibliography_citation": ("citations", "citation_list", ()),
+    "table_of_contents_citation": ("citations", "citation_list", ()),
+    "navigation_citation": ("citations", "citation_list", ()),
+    "simple_landing_citation": ("citations", "citation_list", ()),
     "landing_page_browsing": ("landing_page", "choice", LANDING_PAGES),
-    "default_landing_page_browsing": ("landing_page", "json", ()),
+    "default_landing_page_browsing": ("landing_page", "records", ()),
     "default_landing_page_display": ("landing_page", "json", ()),
     "dico_letter_range": ("landing_page", "string_list", ()),
     "skip_table_of_contents": ("navigation", "bool", ()),
@@ -95,17 +100,17 @@ KINDS = {
     "page_image_extension": ("navigation", "string", ()),
     "time_series_year_field": ("time_series", "field", ()),
     "time_series_interval": ("time_series", "int", ()),
-    "time_series_start_end_date": ("time_series", "json", ()),
-    "aggregation_config": ("aggregation", "json", ()),
+    "time_series_start_end_date": ("time_series", "record", ()),
+    "aggregation_config": ("aggregation", "records", ()),
     "dictionary": ("dictionary", "bool", ()),
     "dictionary_bibliography": ("dictionary", "bool", ()),
     "dictionary_selection": ("dictionary", "bool", ()),
     "dictionary_selection_options": ("dictionary", "json", ()),
-    "dictionary_lookup": ("dictionary", "json", ()),
-    "dictionary_lookup_keywords": ("dictionary", "json", ()),
-    "concordance_formatting_regex": ("formatting", "json", ()),
-    "kwic_formatting_regex": ("formatting", "json", ()),
-    "navigation_formatting_regex": ("formatting", "json", ()),
+    "dictionary_lookup": ("dictionary", "record", ()),
+    "dictionary_lookup_keywords": ("dictionary", "record", ()),
+    "concordance_formatting_regex": ("formatting", "replacements", ()),
+    "kwic_formatting_regex": ("formatting", "replacements", ()),
+    "navigation_formatting_regex": ("formatting", "replacements", ()),
     "access_control": ("access", "bool", ()),
     "access_file": ("access", "string", ()),
 }
@@ -329,12 +334,86 @@ def validate(key, value):
         if choices and any(v not in choices for v in value.values()):
             return f"values must be one of {', '.join(choices)}"
         return None
-    # json: same type as the default at the top level
+    if kind == "replacements":
+        return replacements_problem(value)
+    if kind == "string_map":
+        ok = isinstance(value, dict) and all(isinstance(item, str) for item in value.values())
+        return None if ok else "must map strings to strings"
+    if kind == "string_lists":
+        ok = isinstance(value, dict) and all(
+            isinstance(items, list) and all(isinstance(item, str) for item in items) for items in value.values()
+        )
+        return None if ok else "must map strings to lists of strings"
+    if kind == "citations":
+        ok = isinstance(value, dict) and all(is_citation(citation) for citation in value.values())
+        return None if ok else "must map names to citations (with a field and an object_level)"
+    if kind == "citation_list":
+        ok = isinstance(value, list) and all(is_citation(citation) for citation in value)
+        return None if ok else "must be a list of citations (with a field and an object_level)"
+    if kind == "sort_orders":
+        ok = isinstance(value, list) and all(
+            isinstance(fields, (list, tuple)) and fields and all(isinstance(field, str) for field in fields)
+            for fields in value
+        )
+        return None if ok else "must be a list of lists of fields"
+    if kind == "choice_values":
+        ok = isinstance(value, dict) and all(
+            isinstance(choices, list)
+            and all(isinstance(choice, dict) and isinstance(choice.get("value"), str) for choice in choices)
+            for choices in value.values()
+        )
+        return None if ok else "must map fields to lists of {label, value}"
+    if kind == "records" and not (isinstance(value, list) and all(isinstance(item, dict) for item in value)):
+        return "must be a list of objects"
+    # record, json: same type as the default at the top level
     if isinstance(default, (list, tuple)) and not isinstance(value, list):
         return "must be a list"
     if isinstance(default, dict) and not isinstance(value, dict):
         return "must be an object"
     return None
+
+
+def is_citation(value):
+    return (
+        isinstance(value, dict) and isinstance(value.get("field"), str) and isinstance(value.get("object_level"), str)
+    )
+
+
+def replacements_problem(value):
+    """Error message if a value isn't a list of (pattern, replacement) whose patterns are valid regular expressions (an
+    invalid one would make every search or page of the database fail)"""
+    if not isinstance(value, list) or not all(
+        isinstance(pair, (list, tuple)) and len(pair) == 2 and all(isinstance(part, str) for part in pair)
+        for pair in value
+    ):
+        return "must be a list of (pattern, replacement)"
+    for number, (pattern, _) in enumerate(value, 1):
+        try:
+            regex.compile(pattern)
+        except regex.error as error:
+            return f"pattern {number} ({pattern}) isn't a valid regular expression: {error}"
+    return None
+
+
+MAX_TEST_TEXT = 10000
+
+
+def apply_replacements(replacements, text, query=False):
+    """Apply replacements to a text as the runtime does, to the query (query_parser_regex, see Query.query_parse) or
+    to the HTML of results (the formatting regexes, see the concordance, kwic and navigation reports): the text after
+    each step, or the error of the step which failed (the runtime would fail there)"""
+    steps = []
+    for pattern, replacement in replacements:
+        try:
+            if query:
+                text = regex.sub(rf"{pattern}", rf"{replacement}", text, flags=regex.U)
+            else:
+                text = regex.sub(rf"{pattern}", replacement, text)
+        except (regex.error, IndexError, ValueError) as error:
+            steps.append({"error": str(error)})
+            break
+        steps.append({"text": text})
+    return {"steps": steps, "result": text}
 
 
 def citation_references(config, key, citations):

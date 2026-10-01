@@ -553,6 +553,30 @@ class PreviewResource:
             raise falcon.HTTPBadRequest(description=str(error)) from error
 
 
+class ReplacementsResource:
+    """Try replacements (query_parser_regex, the formatting regexes) on a text, as the runtime applies them"""
+
+    def __init__(self, api):
+        self.api = api
+
+    def on_post(self, req, resp):
+        data = body(req)
+        replacements, text = data.get("replacements"), data.get("text")
+        problem = web_config_io.replacements_problem(replacements)
+        if problem:
+            raise falcon.HTTPBadRequest(description=problem)
+        if not isinstance(text, str) or len(text) > web_config_io.MAX_TEST_TEXT:
+            raise falcon.HTTPBadRequest(
+                description=f"text must be a string of at most {web_config_io.MAX_TEST_TEXT} characters"
+            )
+        try:
+            resp.media = previews.run_isolated(
+                web_config_io.apply_replacements, replacements, text, bool(data.get("query")), timeout=5
+            )
+        except previews.PreviewTimeout as error:
+            raise falcon.HTTPServiceUnavailable(description=str(error)) from error
+
+
 class UploadsResource:
     """Uploads of the files of loads, in the service"""
 

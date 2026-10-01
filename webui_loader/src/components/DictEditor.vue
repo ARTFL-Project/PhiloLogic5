@@ -1,6 +1,6 @@
 <template>
     <div>
-        <table class="table table-sm align-middle mb-1">
+        <table v-if="rows.length" class="table table-sm align-middle mb-1">
             <thead>
                 <tr>
                     <th>{{ keyLabel || $t("editors.key") }}</th>
