@@ -557,7 +557,7 @@ def split_terms(grouped):
 def query_parse(query_terms, config):
     """Parse query function."""
     for pattern, replacement in config.query_parser_regex:
-        query_terms = re.sub(rf"{pattern}", rf"{replacement}", query_terms, re.U)
+        query_terms = re.sub(rf"{pattern}", rf"{replacement}", query_terms, flags=re.U)
     return query_terms
 
 
