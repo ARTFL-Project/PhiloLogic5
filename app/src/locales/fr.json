@@ -283,19 +283,16 @@
     "facets": {
         "browseByFacet": "Naviguer par facettes",
         "frequencyBy": "Fréquence par",
-        "collocates": "Collocation des termes de recherche",
         "showOptions": "Montrer les options",
         "frequencyByLabel": "Fréquence par {label}",
         "top100Results": "Top 100 résultats par {label}",
         "relativeFrequencyDescription": "{total} occurrence(s) pour {wordCount} mots",
         "wordProperty": "Propriété du mot",
-        "collocate": "Collocation",
         "closeFacets": "Fermer le panneau des facettes",
         "hideFacetResults": "Masquer les résultats des facettes",
         "selectFacetType": "Sélectionner le type de facette",
         "selectFacet": "Sélectionner la facette pour",
         "selectWordProperty": "Sélectionner la propriété de mot pour",
-        "selectCollocation": "Sélectionner la collocation pour",
         "showFacetOptions": "Afficher les options de sélection des facettes",
         "facetResultsRegion": "Résultats d'analyse des facettes",
         "frequencyTypeToggle": "Basculer entre les types de fréquence",
@@ -306,7 +303,6 @@
         "facetResultsList": "Liste des résultats des facettes",
         "filterBy": "Filtrer les résultats par",
         "searchFor": "Rechercher",
-        "searchCollocation": "Rechercher la collocation",
         "occurrences": "occurrences"
     },
     "exportResults": {
