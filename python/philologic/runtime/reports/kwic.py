@@ -30,6 +30,8 @@ def kwic_results(request, config):
         kwic_result = kwic_hit_object(hit, config, db)
         kwic_object["results"].append(kwic_result)
 
+    # page_interval can't clamp end to the hits there are until the search is done
+    kwic_object["description"]["end"] = start + len(kwic_object["results"]) - 1
     kwic_object["results_length"] = len(hits)
     kwic_object["query_done"] = hits.done
 

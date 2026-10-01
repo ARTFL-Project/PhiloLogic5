@@ -60,6 +60,8 @@ def concordance_results(request, config):
         results.append(result_obj)
 
     concordance_object["results"] = results
+    # page_interval can't clamp end to the hits there are until the search is done
+    concordance_object["description"]["end"] = start + len(results) - 1
     concordance_object["results_length"] = len(hits)
     concordance_object["query_done"] = hits.done
     return concordance_object
