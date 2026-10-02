@@ -1,5 +1,12 @@
 import { useMainStore } from "./stores/main";
 
+export function dbUrlOnThisHost(dbUrl, location = window.location) {
+    // The database's URL on the host this page came from, rather than the one it was built for (dbUrl, of
+    // appConfig.json): behind a proxy such as EZproxy, which rewrites host names in pages but not in this code,
+    // requests must go through the proxy too, as it is what access control lets in, and it holds the cookies.
+    return location.origin + new URL(dbUrl, location.href).pathname;
+}
+
 export function paramsFilter(formValues) {
     let localFormData = {};
     let validFields = [];

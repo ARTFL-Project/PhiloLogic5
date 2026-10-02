@@ -9,19 +9,22 @@ import router from "./router";
 
 import appConfig from "../appConfig.json";
 import i18n from "./i18n";
+import { dbUrlOnThisHost } from "./utils";
+
+const dbUrl = dbUrlOnThisHost(appConfig.dbUrl);
 
 axios
-    .get(`${appConfig.dbUrl}/scripts/get_web_config.py`, {})
+    .get(`${dbUrl}/scripts/get_web_config.py`, {})
     .then((response) => {
         const app = createApp(App).use(i18n);
         const pinia = createPinia();
 
         app.config.globalProperties.$philoConfig = response.data;
         app.config.globalProperties.$scrollTo = vueScrollTo.scrollTo;
-        app.config.globalProperties.$dbUrl = appConfig.dbUrl;
+        app.config.globalProperties.$dbUrl = dbUrl;
         app.config.unwrapInjectedRef = true;
         app.provide("$http", axios);
-        app.provide("$dbUrl", appConfig.dbUrl);
+        app.provide("$dbUrl", dbUrl);
         app.provide("$philoConfig", response.data);
         app.use(router);
         app.use(pinia);

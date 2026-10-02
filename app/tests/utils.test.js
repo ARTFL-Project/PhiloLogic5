@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
     copyObject,
     dateRangeHandler,
+    dbUrlOnThisHost,
     deepEqual,
     extractSurfaceFromCollocate,
     sortResults,
@@ -267,5 +268,33 @@ describe("buildTocTree", () => {
 
     it("handles empty input", () => {
         expect(buildTocTree([])).toEqual([]);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// dbUrlOnThisHost
+// ---------------------------------------------------------------------------
+describe("dbUrlOnThisHost", () => {
+    const built = "https://artflsrv04.uchicago.edu/frantext0822/";
+    const at = (href) => new URL(href);
+
+    it("is the built URL on the host it was built for", () => {
+        expect(dbUrlOnThisHost(built, at("https://artflsrv04.uchicago.edu/frantext0822/concordance?q=a"))).toBe(built);
+    });
+
+    it("goes through a proxy that serves the page under its own host name", () => {
+        const page = at("https://artflsrv04-uchicago-edu.ezproxy.princeton.edu/frantext0822/navigate/1/2");
+        expect(dbUrlOnThisHost(built, page)).toBe("https://artflsrv04-uchicago-edu.ezproxy.princeton.edu/frantext0822/");
+    });
+
+    it("keeps the port of a proxy by port", () => {
+        const page = at("https://ezproxy.example.edu:2048/frantext0822/");
+        expect(dbUrlOnThisHost(built, page)).toBe("https://ezproxy.example.edu:2048/frantext0822/");
+    });
+
+    it("takes the page's scheme and host for a relative URL", () => {
+        expect(dbUrlOnThisHost("/philologic5/db/", at("http://localhost:8000/philologic5/db/kwic"))).toBe(
+            "http://localhost:8000/philologic5/db/"
+        );
     });
 });
