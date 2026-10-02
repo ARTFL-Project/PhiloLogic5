@@ -5,7 +5,25 @@
 import urllib.parse
 
 from philologic.runtime.access_control import is_authenticated
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.Query import query_parse, resolve_method
+
+# Larger integers are no position or count here, and don't fit the 64 bits of the JSON encoder
+MAX_INTEGER = 2**63 - 1
+
+
+def whole_number(name, value, default):
+    """The integer a query parameter gives, or its default if it is empty. BadRequest if it gives none: int() raised
+    a ValueError while the middleware built the request, so every report gave a 500."""
+    if value in (None, ""):
+        return default
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise BadRequest(f"{name} must be a whole number, not {value!r}") from None
+    if abs(number) > MAX_INTEGER:
+        raise BadRequest(f"{name} is too large: {value}")
+    return number
 
 
 def expand_approximate_query(request, config):
@@ -70,8 +88,12 @@ class WSGIHandler(object):
             self.byte = self.cgi["byte"]
 
         if "approximate" in self.cgi:
-            if "approximate_ratio" in self.cgi:
-                self.approximate_ratio = float(self.cgi["approximate_ratio"][0]) / 100
+            ratio = self.cgi.get("approximate_ratio", [""])[0]
+            if ratio != "":
+                try:
+                    self.approximate_ratio = float(ratio) / 100
+                except ValueError:
+                    raise BadRequest(f"approximate_ratio must be a number, not {ratio!r}") from None
             else:
                 self.approximate_ratio = 1
 
@@ -95,9 +117,12 @@ class WSGIHandler(object):
 
         self.metadata_fields = config.db_locals["metadata_fields"]
 
-        self.start = int(self["start"] or 0)
-        self.end = int(self["end"] or 0)
-        self.results_per_page = int(self["results_per_page"])
+        self.start = whole_number("start", self["start"], 0)
+        self.end = whole_number("end", self["end"], 0)
+        self.results_per_page = whole_number("results_per_page", self["results_per_page"], 25)
+        for key in ("start", "end", "results_per_page"):  # for reports reading request[key] too: "" was a 500
+            if key in self.cgi:
+                self.cgi[key][0] = str(getattr(self, key))
         if self.start_date:
             try:
                 self.start_date = int(self["start_date"])
@@ -128,6 +153,9 @@ class WSGIHandler(object):
                 sort_order = [field for value in self.cgi[key] for field in value.split(",") if field]
                 break
         sort_order = [field for field in sort_order if field != "rowid"]
+        for field in sort_order:  # sorts look fields up by object type: others gave KeyErrors (500)
+            if field not in config.db_locals["metadata_types"]:
+                raise BadRequest(f"Results can't be sorted by {field!r}: it is no metadata field of this database")
         self.cgi["sort_order"] = [sort_order or ["rowid"]]
 
         if "start_byte" in self.cgi:
@@ -173,7 +201,7 @@ class WSGIHandler(object):
         if name in self.cgi:
             del self.cgi[name]
         elif name in self.defaults:
-            self.defaults[key] = ""
+            self.defaults[name] = ""
         else:
             pass
 

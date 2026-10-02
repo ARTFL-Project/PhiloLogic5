@@ -8,6 +8,7 @@ from collections import OrderedDict
 import regex as re
 from lxml import etree
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.HitWrapper import ObjectWrapper
 
 from .ObjectFormatter import adjust_bytes, format_concordance, format_text_object
@@ -104,6 +105,9 @@ def get_tei_header(request, config):
     """Returns the TEI header of a text as a string."""
     path = config.db_path
     db = DB(path + "/data")
+    if not request["philo_id"]:
+        raise BadRequest("A philo_id is required")
+    db[request["philo_id"]]  # BadRequest for no philo_id, NotFound for no such object: they gave a 500
     obj = ObjectWrapper(request["philo_id"].split(), db)
     filename = path + "/data/TEXT/" + obj.filename
     parser = etree.XMLParser(remove_blank_text=True, recover=True)

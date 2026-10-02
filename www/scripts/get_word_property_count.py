@@ -4,6 +4,7 @@ import os
 import sys
 
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.lmdb_env import lmdb_env
 from philologic.runtime.Query import filter_philo_ids, get_word_array, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
@@ -127,6 +128,8 @@ def get_word_property_count(request, config):
     word_property_count = []
     if request.word_property != "lemma":
         # Get all word properties from config
+        if request.word_property not in config.word_attributes:
+            raise BadRequest(f"{request.word_property!r} is no word property of this database")
         possible_word_properties = config.word_attributes[request.word_property]
         groups = {value: with_property(split[0], request.word_property, value) for value in possible_word_properties}
 
@@ -148,6 +151,8 @@ def get_word_property_count(request, config):
                         word_property_count.append({"label": value, "count": count, "q": query})
     else:
         # Get all lemmas
+        if not os.path.exists(f"{config.db_path}/data/lemmas.lmdb"):
+            raise BadRequest("This database has no lemmas")
         hits = db.query(
             request.q,
             request["method"],

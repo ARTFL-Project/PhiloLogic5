@@ -25,6 +25,8 @@ def format_query(q, db, config):
     for g in all_groups:
         for inner_g in g:
             word_groups.append(inner_g)
+    if not word_groups:  # an empty or blank term: nothing to complete
+        return []
     last_group = word_groups.pop()  # we take the last tuple for autocomplete
     token = last_group[1]
     kind = last_group[0]

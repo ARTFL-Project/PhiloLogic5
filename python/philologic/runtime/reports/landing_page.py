@@ -7,6 +7,7 @@ import sys
 from unidecode import unidecode
 
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.HitList import sort_key
 from philologic.runtime.sql_validation import validate_column, validate_request_column
 
@@ -114,6 +115,8 @@ def group_by_range(request_range, request, config):
             "citations": citations,
         }
     content_type = metadata_queried
+    if any(len(letter) != 1 for letter in request_range):
+        raise BadRequest(f"{request.query!r} is no range of initials (A-D) or years")
     query_range = set(range(ord(request_range[0]), ord(request_range[1]) + 1))  # Ordinal avoids unicode issues...
     # One entry for documents that show alike: grouped by title alone, the "Oeuvres poétiques" of 5 authors showed one
     group_fields = ", ".join(dict.fromkeys(field for field in metadata_fields_needed if field != "philo_id"))
