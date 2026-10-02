@@ -10,7 +10,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime.exceptions import BadRequest
-from philologic.runtime.Query import check_phrases
+from philologic.runtime.Query import check_phrases, query_parse
 from philologic.runtime.QuerySyntax import parse_query, group_terms, parse_date_query
 
 
@@ -251,3 +251,36 @@ class TestPhrasesAlone:
     )
     def test_allowed(self, query):
         check_phrases(group_terms(parse_query(query)))
+
+
+@pytest.mark.unit
+class TestQueryParserRules:
+    """The database's query_parser_regex rules (frantext's, in part) rewrite queries, but not regex bracket expressions,
+    nor quoted metadata values."""
+
+    config = type("Config", (), {"query_parser_regex": [(" OR ", " | "), ("'", " "), (",", ""), ("-", " ")]})()
+
+    @pytest.mark.parametrize(
+        "query, rewritten",
+        [
+            ("peut-être", "peut être"),
+            ("aujourd'hui OR demain", "aujourd hui | demain"),
+            ('"peut-être"', '"peut être"'),  # quoted words of a search are split as the index splits them
+            ("[a-z]tat", "[a-z]tat"),
+            ("[a-z]tat-ci", "[a-z]tat ci"),
+            ("-".join(["x"] * 41), " ".join(["x"] * 41)),  # every hyphen: re.U was passed as re.sub's count (32)
+        ],
+    )
+    def test_search_terms(self, query, rewritten):
+        assert query_parse(query, self.config) == rewritten
+
+    @pytest.mark.parametrize(
+        "value, rewritten",
+        [
+            ('zola | "Hugo, Victor, 1802-1885."', 'zola | "Hugo, Victor, 1802-1885."'),
+            ('NOT "Hugo, Victor, 1802-1885."', 'NOT "Hugo, Victor, 1802-1885."'),
+            ("rousseau, jean-jacques", "rousseau jean jacques"),
+        ],
+    )
+    def test_metadata_values(self, value, rewritten):
+        assert query_parse(value, self.config, keep_quoted=True) == rewritten
