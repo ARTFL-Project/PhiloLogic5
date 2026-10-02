@@ -33,11 +33,11 @@ To use this feature, you need to specify the location of the file in `web_config
 This file should contain 3 Python variables: `domain_list`, `allowed_ips`,
 `blocked_ips`. Each variable should be a list containing the salient info.
 
-The `domain_list` variable should be a list of domains allowed to access you database. A client is in a domain if the host
-name of its address is that domain or ends with it: `uchicago.edu` lets in `cs.uchicago.edu`, not `notuchicago.edu`. The host
-name comes from a reverse DNS lookup of the address, and counts only if the forward lookup of the name gives the address back
-(anyone controlling an address's reverse DNS could otherwise name it in your domain). Clients whose DNS isn't set up that way
-need to be allowed by IP.
+The `domain_list` variable should be a list of domains allowed to access you database. They are matched against the host name
+of the client's address, from a reverse DNS lookup: an entry lets in the names that contain it, so `uchicago.edu` lets in
+`cs.uchicago.edu` (and `sc.edu` lets in `usc.edu`). The name isn't checked against the forward DNS, as many institutions'
+proxies and VPNs have names that aren't: but whoever controls the reverse DNS of an address can give it a name in an allowed
+domain, so the IP list is the stronger check.
 
 ```Python
 domain_list = [
