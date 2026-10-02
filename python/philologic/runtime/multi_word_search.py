@@ -162,20 +162,24 @@ def _find_common_sentences(hits_list, cooc_slice=6):
     return result
 
 
+@numba.jit(nopython=True, cache=True, nogil=True)
+def _is_in_text_order(hits):
+    """Whether each hit follows the previous one, by the bytes of its words (numba: called once a document)."""
+    for i in range(1, hits.shape[0]):
+        for c in range(8, hits.shape[1], 2):
+            if hits[i, c] > hits[i - 1, c]:
+                break
+            if hits[i, c] < hits[i - 1, c]:
+                return False
+    return True
+
+
 def _in_text_order(hits):
     """A document's hits in the order of the text: by the byte offset of their first word, then of the next ones. The
     kernels make them sentence by sentence, in the order they go through the combinations of each sentence's hits."""
-    if len(hits) < 2:
+    if len(hits) < 2 or _is_in_text_order(hits):
         return hits
-    byte_columns = [hits[:, c] for c in range(8, hits.shape[1], 2)]
-    ahead = np.zeros(len(hits) - 1, dtype=bool)  # whether each hit is after the previous one...
-    tied = np.ones(len(hits) - 1, dtype=bool)  # ...or at the same bytes so far
-    for column in byte_columns:
-        ahead |= tied & (column[1:] > column[:-1])
-        tied &= column[1:] == column[:-1]
-    if (ahead | tied).all():
-        return hits
-    return hits[np.lexsort(byte_columns[::-1])]  # lexsort's main key is its last
+    return hits[np.lexsort([hits[:, c] for c in range(hits.shape[1] - 1, 7, -2)])]  # lexsort's main key is its last
 
 
 def _groups_overlap(word_groups):

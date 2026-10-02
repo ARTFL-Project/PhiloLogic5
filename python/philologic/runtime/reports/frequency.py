@@ -41,18 +41,16 @@ def _filtered_word_counts(db, filters, field_cache, prefix_len):
         for philo_id, word_count in cursor.fetchall():
             obj = tuple(int(x) for x in philo_id.split())
             if prefix_len == 4:  # div fields: the finest division with a value, as hits are counted
-                prefixes = [obj[:level] + (0,) * (4 - level) for level in (4, 3, 2)]
-            else:
-                prefixes = [obj[:prefix_len]]
-            for prefix in prefixes:
-                if prefix in field_cache and field_cache[prefix][0]:
-                    value = f"{field_cache[prefix][0]}"
-                    counts[value] = counts.get(value, 0) + int(word_count or 0)
-                    break
+                prefixes = [p for p in (obj[:level] + (0,) * (4 - level) for level in (4, 3, 2)) if field_cache.get(p, ("",))[0]]
+            else:  # with no value too, counted as "" (the NULL bucket's words)
+                prefixes = [obj[:prefix_len]] if obj[:prefix_len] in field_cache else []
+            if prefixes:
+                value = f"{field_cache[prefixes[0]][0]}"
+                counts[value] = counts.get(value, 0) + int(word_count or 0)
         cursor.execute("DELETE FROM _facet_objects")
     if coarser:
         for prefix, (value, word_count) in field_cache.items():
-            if value and any(prefix[:depth] in objects for depth, objects in coarser.items()):
+            if any(prefix[:depth] in objects for depth, objects in coarser.items()):
                 counts[f"{value}"] = counts.get(f"{value}", 0) + int(word_count or 0)
     return counts
 
@@ -92,10 +90,9 @@ def frequency_results(request, config):
     word_counts_by_field_name = {}
     prefix_len, cache = bulk_load_metadata(db, [frequency_field], extra_columns=["word_count"])[frequency_field]
     for prefix, (field_name, word_count) in cache.items():
-        if not field_name:
-            continue
-        metadata_dict[prefix] = field_name
-        if not biblio_search and not has_metadata_filter:
+        if field_name:
+            metadata_dict[prefix] = field_name
+        if not biblio_search and not has_metadata_filter:  # with no value too, under "": the NULL bucket's words
             wc = int(word_count) if word_count else 0
             word_counts_by_field_name[f"{field_name}"] = word_counts_by_field_name.get(f"{field_name}", 0) + wc
     if not biblio_search and has_metadata_filter:  # of the objects the filters select, not of all
@@ -134,11 +131,17 @@ def frequency_results(request, config):
                     break
             if not key:
                 continue
+        elif philo_id in metadata_dict:
+            key = metadata_dict[philo_id]
+        elif philo_id in cache:  # an object with no value of the field: the NULL bucket
+            if "NULL" not in counts:
+                counts["NULL"] = {"count": 0, "metadata": {frequency_field: "NULL"}, "url": f"{base_url}&{frequency_field}=NULL"}
+                if not biblio_search:
+                    counts["NULL"]["total_word_count"] = word_counts_by_field_name.get("", 0)
+            counts["NULL"]["count"] += hit_count
+            continue
         else:
-            try:
-                key = metadata_dict[philo_id]
-            except KeyError:
-                continue
+            continue
         key = f"{key}"  # convert potential integers to strings
         if key not in counts:
             counts[key] = {"count": 0, "metadata": {frequency_field: key}}
@@ -153,40 +156,6 @@ def frequency_results(request, config):
                     local_hits = db.query(**query_metadata)
                     counts[key]["total_word_count"] = local_hits.get_total_word_count()
         counts[key]["count"] += hit_count
-
-    # Handle NULL values (NULL, not "NULL": quoted, it is the string, which nothing has). Not for div fields: every
-    # hit is in divisions with none, such as virtual ones, so their NULL would be nearly every hit.
-    if metadata_type == "div":
-        return _sorted_result(counts, hits, request, biblio_search)
-    new_metadata = {k: v for k, v in request.metadata.items() if v}
-    new_metadata[frequency_field] = "NULL"
-    if request.q == "" and request.no_q:
-        new_hits = db.query(sort_order=["rowid"], raw_results=True, **new_metadata)
-    else:
-        new_hits = db.query(
-            request["q"],
-            request["method"],
-            request["arg"],
-            raw_results=True,
-            **new_metadata,
-        )
-    new_hits.finish()
-    if len(new_hits):
-        null_url = f"{base_url}&{frequency_field}=NULL"
-        local_hits = db.query(**new_metadata, raw_results=True)
-        if not biblio_search:
-            counts["NULL"] = {
-                "count": len(new_hits),
-                "url": null_url,
-                "metadata": {frequency_field: "NULL"},
-                "total_word_count": local_hits.get_total_word_count(),
-            }
-        else:
-            counts["NULL"] = {
-                "count": len(new_hits),
-                "url": null_url,
-                "metadata": {frequency_field: "NULL"},
-            }
 
     return _sorted_result(counts, hits, request, biblio_search)
 
