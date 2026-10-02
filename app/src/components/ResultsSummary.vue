@@ -114,18 +114,21 @@
                             <span>
                                 <span>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
-                                        v-if="colloc_filter_choice === 'frequency'"
-                                        :aria-label="$t('resultsSummary.commonWords', { n: filter_frequency }) + ' ' + $t('resultsSummary.filtered')"
+                                        v-if="formData.colloc_filter_choice === 'frequency'"
+                                        :aria-label="$t('resultsSummary.commonWords', { n: formData.filter_frequency }) + ' ' + $t('resultsSummary.filtered')"
                                         :aria-expanded="showFilteredWords" aria-controls="filter-list">
-                                        {{ $t("resultsSummary.commonWords", { n: filter_frequency }) }}
+                                        {{ $t("resultsSummary.commonWords", { n: formData.filter_frequency }) }}
                                     </button>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
-                                        v-if="colloc_filter_choice === 'stopwords'"
+                                        v-if="formData.colloc_filter_choice === 'stopwords' && !stopwordsMissing"
                                         :aria-label="$t('resultsSummary.commonStopwords') + ' ' + $t('resultsSummary.filtered')"
                                         :aria-expanded="showFilteredWords" aria-controls="filter-list">
                                         {{ $t("resultsSummary.commonStopwords") }}
                                     </button>
-                                    {{ $t("resultsSummary.filtered") }}.
+                                    <span v-if="formData.colloc_filter_choice === 'stopwords' && stopwordsMissing">
+                                        {{ $t("resultsSummary.stopwordsMissing") }}
+                                    </span>
+                                    <template v-else>{{ " " + $t("resultsSummary.filtered") }}.</template>
                                 </span>
                             </span>
 
@@ -246,7 +249,7 @@ import {
     paramsToUrlString,
 } from "../utils.js";
 
-const props = defineProps(["description", "filterList", "groupLength"]);
+const props = defineProps(["description", "filterList", "groupLength", "stopwordsMissing"]);
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");

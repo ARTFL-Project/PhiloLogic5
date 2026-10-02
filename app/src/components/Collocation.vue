@@ -54,6 +54,7 @@
             </ul>
         </div>
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
+            :stopwords-missing="stopwordsMissing"
             v-if="mode === 'frequency'" style="margin-top:0 !important;"></results-summary>
         <div role="region" :aria-label="$t('collocation.collocationResults')">
             <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="mode == 'compare'" role="region"
@@ -166,7 +167,7 @@
                 <div class="col-12 col-sm-4">
                     <div class="card shadow-sm">
                         <table class="table table-borderless caption-top"
-                            aria-label="$t('collocation.collocatesTable')">
+                            :aria-label="$t('collocation.collocatesTable')">
                             <caption class="visually-hidden">
                                 {{ $t('collocation.collocatesTableCaption') }}
                             </caption>
@@ -194,6 +195,9 @@
                             label="frequency" :click-handler="collocateClick"></word-cloud>
                     </div>
                 </div>
+            </div>
+            <div class="mx-2 my-3" role="status" v-if="mode == 'frequency' && !searching && !sortedList.length">
+                {{ resultsLength ? $t("collocation.noCollocates") : $t("resultsSummary.noResults") }}
             </div>
             <div v-if="mode === 'compare'">
                 <div class="card shadow-sm mx-2 my-3 p-2" v-if="comparativeSearchStarted">
@@ -250,7 +254,7 @@
                             <div class="row gx-5">
                                 <div class="col-6" role="region" :aria-label="$t('collocation.overRepresentedResults')">
                                     <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
-                                        :click-handler="collocateClick" label="over"></word-cloud>
+                                        :click-handler="collocateClick" label="over" :scores="true"></word-cloud>
                                 </div>
                                 <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                                     :aria-label="$t('collocation.underRepresentedResults')">
@@ -259,7 +263,7 @@
                                         <progress-spinner :progress="progressPercent" :lg="true" />
                                     </div>
                                     <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
-                                        :click-handler="otherCollocateClick" label="under"></word-cloud>
+                                        :click-handler="otherCollocateClick" label="under" :scores="true"></word-cloud>
                                 </div>
                             </div>
                         </div>
@@ -335,7 +339,7 @@
                                 :aria-label="`${period.showDistinctive ? $t('collocation.overRepresentedCollocates') : $t('collocation.frequentCollocates')} ${period.periodYear}`">
                                 <word-cloud
                                     :word-weights="period.showDistinctive ? period.distinctive : period.frequent"
-                                    :label="period.periodYear"
+                                    :label="period.periodYear" :scores="period.showDistinctive"
                                     :click-handler="collocateTimeSeriesClick(period.periodYear)">
                                 </word-cloud>
                             </div>
@@ -413,6 +417,7 @@ const {
 const mode = ref("frequency");
 const results = ref({});
 const filterList = ref([]);
+const stopwordsMissing = ref(false);
 const biblio = ref({});
 const sortedList = ref([]);
 const collocatesFilePath = ref("");
@@ -535,7 +540,7 @@ function setMode(newMode, { updateUrl = true } = {}) {
 }
 
 function handleMobileMethodChange() {
-    setMode(mode.value, { updateUrl: false });
+    setMode(mode.value);
 }
 
 //  Primary fetch (shared by frequency / compare / similar entry paths)
@@ -544,6 +549,7 @@ function updateCollocation() {
         .then((response) => {
             resultsLength.value = response.data.results_length;
             filterList.value = response.data.filter_list;
+            stopwordsMissing.value = Boolean(response.data.stopwords_missing);
             collocatesFilePath.value = response.data.file_path;
             searching.value = false;
             if (resultsLength.value) {
@@ -561,8 +567,14 @@ function updateCollocation() {
 function runPostFetchModeAction() {
     mode.value = route.query.collocation_method || "frequency";
     if (mode.value === "similar") {
+        // A URL without the field to compare by (the server needs one): the first one configured
+        const similarityBy = route.query.similarity_by || fieldsToCompare.value[0]?.value;
+        if (!similarityBy) {
+            setMode("frequency", { updateUrl: false });
+            return;
+        }
         setMode("similar", { updateUrl: false });
-        similarCollocDistributions({ value: route.query.similarity_by });
+        similarCollocDistributions({ value: similarityBy });
     } else if (mode.value === "compare") {
         getOtherCollocates();
     }
@@ -590,7 +602,8 @@ const comparativeSearchStarted = ref(false);
 const wholeCorpus = ref(false);
 
 function getOtherCollocates() {
-    wholeCorpus.value = Object.keys(comparedMetadataValues).length === 0;
+    // Fields typed in, then erased, are still keys: whole corpus if none has a value
+    wholeCorpus.value = !Object.values(comparedMetadataValues).some((value) => value);
     setMode("compare");
     // dateRangeHandler mutates comparedMetadataValues in place
     dateRangeHandler(metadataInputStyle.value, dateRange, dateType, comparedMetadataValues);
@@ -698,7 +711,7 @@ function similarToComparative(field) {
         // silently scope the comparison.
         clearComparedMetadata();
         comparedMetadataValues[similarFieldSelected.value] = field;
-        mode.value = "compare";
+        setMode("compare");
         otherCollocates.value = extractSurfaceFromCollocate(response.data.collocates);
         wholeCorpus.value = false;
         comparativeCollocations(response.data.file_path);
@@ -712,7 +725,10 @@ const timeSeriesInterval = ref(10);
 const collocationTimePeriods = ref([]);
 const progressPercent = ref(0);
 
+let timeSeriesRun = 0; // the latest search of collocates over time: earlier ones, still running, stop
+
 function getCollocatesOverTime() {
+    const run = ++timeSeriesRun;
     collocationTimePeriods.value = [];
     searching.value = true;
     setMode("timeSeries");
@@ -743,15 +759,16 @@ function getCollocatesOverTime() {
 
     $http.get(`${$dbUrl}/reports/collocation.py`, { params }).then((response) => {
         searching.value = false;
-        collocationTimeSeries(response.data.file_path, 0);
+        if (run === timeSeriesRun) collocationTimeSeries(response.data.file_path, 0, run);
     }).catch((error) => {
         searching.value = false;
         debug({ $options: { name: "collocation-report" } }, error);
     });
 }
 
-function collocationTimeSeries(filePath, periodNumber) {
+function collocationTimeSeries(filePath, periodNumber, run) {
     collocationTimePeriods.value[periodNumber] = { year: periodNumber, done: false };
+    const dropPlaceholder = () => collocationTimePeriods.value.splice(periodNumber);
     $http.get(`${$dbUrl}/scripts/collocation_time_series.py`, {
         params: {
             file_path: filePath,
@@ -759,6 +776,8 @@ function collocationTimeSeries(filePath, periodNumber) {
             period_number: periodNumber,
         },
     }).then((response) => {
+        if (run !== timeSeriesRun) return;
+        if (!response.data.period) dropPlaceholder(); // no hits, or no more periods
         if (response.data.period) {
             const period = response.data.period;
             const year = period.year;
@@ -767,28 +786,30 @@ function collocationTimeSeries(filePath, periodNumber) {
                 year,
                 frequent: extractSurfaceFromCollocate(period.collocates.frequent || []),
                 distinctive: extractSurfaceFromCollocate(period.collocates.distinctive || []),
-                periodYear: `${year}-${year + interval}`,
+                periodYear: `${year}-${year + interval - 1}`,
                 showDistinctive: true,
                 done: true,
             };
         }
         if (!response.data.done) {
-            collocationTimeSeries(filePath, periodNumber + 1);
+            collocationTimeSeries(filePath, periodNumber + 1, run);
         }
     }).catch((error) => {
+        if (run === timeSeriesRun) dropPlaceholder();
         debug({ $options: { name: "collocation-report" } }, error);
     });
 }
 
 function collocateTimeSeriesClick(period) {
     return (item) => {
-        const method = formData.value.colloc_within === "n" ? "proxy_unordered" : "sentence_unordered";
+        // The method as the search form has it, which the concordance page shows (not sentence_unordered...)
         router.push(
             paramsToRoute({
                 ...formData.value,
                 report: "concordance",
                 q: collocateCleanup(item),
-                method,
+                method: concordanceMethod(),
+                cooc_order: "no",
                 year: period,
             })
         );
@@ -801,6 +822,7 @@ function collocateTimeSeriesClick(period) {
 // Changing only these (e.g. clicking a tab) must NOT trigger a re-search.
 function isViewOnlyParam(key) {
     return (
+        key === "report" || // the route says which: links may have it, the URLs pushed here don't
         key === "collocation_method" ||
         key === "similarity_by" ||
         key === "time_series_interval" ||
@@ -811,7 +833,7 @@ function isViewOnlyParam(key) {
 function shouldRefetchOnQueryChange(newQuery, oldQuery) {
     const allKeys = new Set([...Object.keys(newQuery), ...Object.keys(oldQuery)]);
     for (const key of allKeys) {
-        if (newQuery[key] === oldQuery[key]) continue;
+        if ((newQuery[key] ?? "") === (oldQuery[key] ?? "")) continue; // missing is empty (method_arg)
         if (!isViewOnlyParam(key)) return true;
     }
     return false;
