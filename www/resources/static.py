@@ -20,6 +20,8 @@ _ROUTE_MAP = {
 class StaticResource:
     """Serve static files from a database's app/dist/ directory."""
 
+    public = True  # the client's code, which shows the login screen of access-controlled databases
+
     def __init__(self, route_type):
         self.route_type = route_type
 

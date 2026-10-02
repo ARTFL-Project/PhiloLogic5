@@ -41,6 +41,8 @@ from wsgi_helpers import resolve
 class AccessRequestResource:
     """Handle authentication requests, setting cookies on success."""
 
+    public = True  # where clients of access-controlled databases log in
+
     def on_get(self, req, resp, db_name):
         config = req.context.config
         request = req.context.request

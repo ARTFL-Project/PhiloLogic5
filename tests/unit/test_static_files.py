@@ -1,8 +1,6 @@
 """Unit tests for the web app's static files (www/resources/static.py): only what a route's own directory holds is
 served, not the rest of the database directory (data/logins.txt, db.locals.py, the texts...) or anything outside it."""
 
-import importlib
-import os
 import sys
 from pathlib import Path
 
@@ -11,7 +9,9 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
-falcon_testing = pytest.importorskip("falcon.testing")
+pytest.importorskip("falcon")
+
+from tests.fixtures.web_app import web_app_client
 
 
 @pytest.fixture(scope="module")
@@ -32,23 +32,8 @@ def client(tmp_path_factory):
     (root / "mydb" / "favicon.ico").write_bytes(b"ico")
     (root / "mydb_other" / "app" / "dist" / "assets" / "other.js").write_text("other")
     (base / "outside.txt").write_text("outside")
-
-    # The web app reads its database root when first imported
-    saved_env, saved_path = os.environ.get("PHILOLOGIC_DB_ROOT"), list(sys.path)
-    os.environ["PHILOLOGIC_DB_ROOT"] = str(root)
-    sys.path.insert(0, str(REPO_ROOT / "www"))
-    try:
-        for name in ("middleware", "resources.static", "resources.spa", "app"):
-            if name in sys.modules:
-                importlib.reload(sys.modules[name])
-        app = importlib.import_module("app")
-        yield falcon_testing.TestClient(app.create_app())
-    finally:
-        sys.path[:] = saved_path
-        if saved_env is None:
-            os.environ.pop("PHILOLOGIC_DB_ROOT", None)
-        else:
-            os.environ["PHILOLOGIC_DB_ROOT"] = saved_env
+    with web_app_client(root) as client:
+        yield client
 
 
 @pytest.mark.unit

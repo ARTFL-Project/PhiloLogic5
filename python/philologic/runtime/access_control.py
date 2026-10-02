@@ -1,18 +1,27 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
+"""Access control, for databases whose web_config.cfg sets access_control.
+
+A client gets in if the database's access_file allows its IP address or domain, or if it logs in with a user and
+password of the database's data/logins.txt. Either way it gets a cookie signed with the database's key (see
+database_key), so that its next requests need no check. The web app checks every request, but those the login screen
+needs (see www/middleware.py).
+"""
 
 import hashlib
+import hmac
 import os
 import pickle
+import secrets
 import socket
 import sys
 import time
+from functools import cache
 from urllib.parse import unquote
 
 import netaddr
 import regex as re
 from netaddr import IPSet
 
-from philologic.runtime.DB import DB
 from philologic.utils import load_module
 
 # These should always be allowed for local access
@@ -21,6 +30,23 @@ ip_ranges = [re.compile(rf"^{i.split('/')[0]}.*") for i in local_networks]  # Fo
 
 # Cached IP whitelist info
 _COMPILED_IP_CACHE_DIR = "/var/lib/philologic5/ip_cache"
+
+# How long an auth cookie lets its client in
+AUTH_COOKIE_MAX_AGE = 7 * 24 * 3600
+
+# How long a worker remembers whether the access file lets an address in, to spare each request of a client without
+# a cookie (a script using the API) a reverse DNS lookup
+_ALLOWED_TTL = 600
+_allowed = {}
+
+# Signs auth cookies if the installation has no secret (see _installation_secret). It is drawn when the web app is
+# loaded, so Gunicorn's workers share it if the app is preloaded (preload_app, as in www/gunicorn.conf.py); it changes
+# when the web app restarts, which ends every login.
+_FALLBACK_SECRET = secrets.token_bytes(32)
+
+
+def _global_config_path():
+    return os.environ.get("PHILOLOGIC_CONFIG", "/etc/philologic/philologic5.cfg")
 
 
 def load_or_compile_ip_whitelist(access_file):
@@ -201,31 +227,78 @@ def expand_ip_range(ip_with_range, exact_ips_set, network_set, regex_patterns_se
                 regex_patterns_set.add(re.compile(f"^{base}.*$"))
 
 
-def check_access(environ, config):
-    """Check for access with cached IP whitelist"""
-    db = DB(config.db_path + "/data/")
-    incoming_address, match_domain = get_client_info(environ)
 
-    # Verify access file exists
-    if not config.access_file:
-        print(
-            f"UNAUTHORIZED ACCESS TO:{incoming_address} from domain {match_domain} no access file is defined",
-            file=sys.stderr,
-        )
-        return ()
 
-    # Use absolute or relative path as appropriate
-    access_file = (
-        config.access_file
-        if os.path.isabs(config.access_file)
-        else os.path.join(config.db_path, "data", config.access_file)
-    )
-    if not os.path.isfile(access_file):
-        print(
-            f"ACCESS FILE DOES NOT EXIST. UNAUTHORIZED ACCESS TO: {incoming_address} from domain {match_domain}: access file does not exist",
-            file=sys.stderr,
-        )
-        return ()
+@cache
+def trusted_proxies():
+    """The addresses of the reverse proxies whose X-Forwarded-For is to be believed: those of the global config's
+    trusted_proxies, by default loopback. A connection to a unix socket, which has no REMOTE_ADDR, is always a local
+    proxy's."""
+    path = _global_config_path()
+    proxies = getattr(load_module("philologic5", path), "trusted_proxies", None) if os.path.isfile(path) else None
+    return frozenset(proxies if proxies is not None else ("127.0.0.1", "::1"))
+
+
+def client_address(environ):
+    """The client's IP address. A reverse proxy appends the address it got the request from to X-Forwarded-For, after
+    whatever the client sent there, so behind trusted proxies it is the last address that is not one of theirs: anyone
+    can send "X-Forwarded-For: 127.0.0.1"."""
+    address = environ.get("REMOTE_ADDR", "")
+    proxies = trusted_proxies()
+    if address and address not in proxies:
+        return address
+    forwarded = [a.strip() for a in environ.get("HTTP_X_FORWARDED_FOR", "").split(",") if a.strip()]
+    while forwarded:
+        address = forwarded.pop()
+        if address not in proxies:
+            break
+    return address
+
+
+def _client_domain(incoming_address):
+    """The domain the access file's domain_list is matched against, from a reverse DNS lookup of the address."""
+    fq_domain_name = socket.getfqdn(incoming_address).split(",")[-1]
+    edit_domain = re.split(r"\.", fq_domain_name)
+    if re.match("edu", edit_domain[-1]):
+        return ".".join([edit_domain[-2], edit_domain[-1]])
+    if len(edit_domain) == 2:
+        return ".".join([edit_domain[-2], edit_domain[-1]])
+    return fq_domain_name
+
+
+def get_client_info(environ):
+    """The client's IP address and domain."""
+    incoming_address = client_address(environ)
+    return incoming_address, _client_domain(incoming_address)
+
+
+def is_allowed(environ, config):
+    """Whether the database's access file lets the client in, by its IP address or domain. Workers remember the answer
+    for each address and version of the file for _ALLOWED_TTL seconds."""
+    incoming_address = client_address(environ)
+    access_file = config.access_file
+    if access_file and not os.path.isabs(access_file):
+        access_file = os.path.join(config.db_path, "data", access_file)
+    mtime = os.path.getmtime(access_file) if access_file and os.path.isfile(access_file) else None
+    key = (access_file, mtime, incoming_address)
+    now = time.monotonic()
+    if key in _allowed and now - _allowed[key][1] < _ALLOWED_TTL:
+        return _allowed[key][0]
+    allowed = _check_address(incoming_address, access_file, mtime is not None)
+    if len(_allowed) > 10000:
+        _allowed.clear()
+    _allowed[key] = (allowed, now)
+    return allowed
+
+
+def _check_address(incoming_address, access_file, access_file_exists):
+    """Whether access_file lets incoming_address in."""
+    if not access_file:
+        print(f"UNAUTHORIZED ACCESS TO:{incoming_address}: no access file is defined", file=sys.stderr)
+        return False
+    if not access_file_exists:
+        print(f"ACCESS FILE DOES NOT EXIST. UNAUTHORIZED ACCESS TO: {incoming_address}", file=sys.stderr)
+        return False
 
     # Load access config and IP whitelist
     try:
@@ -233,31 +306,20 @@ def check_access(environ, config):
         ip_whitelist = load_or_compile_ip_whitelist(access_file)
     except Exception as e:
         print("ACCESS ERROR", repr(e), file=sys.stderr)
-        print(
-            f"UNAUTHORIZED ACCESS TO:{incoming_address} from domain {match_domain}: can't load access config",
-            file=sys.stderr,
-        )
-        return ()
+        print(f"UNAUTHORIZED ACCESS TO:{incoming_address}: can't load access config", file=sys.stderr)
+        return False
 
     # Check blocked IPs
     blocked_ips = set(getattr(access_config, "blocked_ips", []))
     if incoming_address in blocked_ips:
         print(f"BLOCKED IP ACCESS ATTEMPT: {incoming_address}", file=sys.stderr)
-        return ()
-
-    # Check domain access
-    domain_list = set(getattr(access_config, "domain_list", []))
-    if match_domain in domain_list:
-        return make_token(db)
-    for domain in domain_list:
-        if domain in match_domain:
-            return make_token(db)
+        return False
 
     # Check IP whitelist
     try:
         # 1. Check exact IPs first (fastest)
         if incoming_address in ip_whitelist["exact_ips"]:
-            return make_token(db)
+            return True
 
         # 2. Check IP networks using IPSet (much faster)
         try:
@@ -265,7 +327,7 @@ def check_access(environ, config):
 
             # This is a single O(log n) operation instead of O(n)
             if client_ip in ip_whitelist["network_set"]:
-                return make_token(db)
+                return True
 
         except (ValueError, netaddr.AddrFormatError):
             # Skip network checks if IP format is invalid
@@ -274,57 +336,44 @@ def check_access(environ, config):
         # 3. Check regex patterns (slowest)
         for pattern in ip_whitelist["regex_patterns"]:
             if pattern.search(incoming_address):
-                return make_token(db)
+                return True
     except Exception as e:
         print(f"Error checking IP whitelist: {repr(e)}", file=sys.stderr)
+
+    # Check domain access, last: it takes a reverse DNS lookup
+    match_domain = _client_domain(incoming_address)
+    domain_list = set(getattr(access_config, "domain_list", []))
+    if match_domain in domain_list:
+        return True
+    for domain in domain_list:
+        if domain in match_domain:
+            return True
 
     # If no match found, access denied
     print(
         f"UNAUTHORIZED ACCESS TO:{incoming_address} from domain {match_domain}: IP not in whitelist",
         file=sys.stderr,
     )
-    return ()
+    return False
 
 
-def get_client_info(environ):
-    forwarded_for = environ.get("HTTP_X_FORWARDED_FOR", "")
-    incoming_address = forwarded_for.split(",")[0].strip() if forwarded_for else environ["REMOTE_ADDR"]
-    fq_domain_name = socket.getfqdn(incoming_address).split(",")[-1]
-    edit_domain = re.split(r"\.", fq_domain_name)
-
-    if re.match("edu", edit_domain[-1]):
-        match_domain = ".".join([edit_domain[-2], edit_domain[-1]])
-    else:
-        if len(edit_domain) == 2:
-            match_domain = ".".join([edit_domain[-2], edit_domain[-1]])
-        else:
-            match_domain = fq_domain_name
-    return incoming_address, match_domain
+def check_access(environ, config):
+    """An auth cookie (a Set-Cookie header value) for the client, if the database's access file lets it in by its IP
+    address or domain, else ""."""
+    return auth_cookie(config) if is_allowed(environ, config) else ""
 
 
 def login_access(environ, request, config, headers):
-    db = DB(config.db_path + "/data/")
+    """Whether the client may use the database, by its cookie, the user and password it sends, or else its IP address
+    or domain; headers, with an auth cookie added to them if it gets in now."""
     if request.authenticated:
-        access = True
+        return True, headers
+    if request.username and request.password:
+        access = check_login_info(config, request)
     else:
-        if request.username and request.password:
-            access = check_login_info(config, request)
-            if access:
-                token = make_token(db)
-                if token:
-                    h, ts = token
-                    headers.append(("Set-Cookie", f"hash={h}; Path=/"))
-                    headers.append(("Set-Cookie", f"timestamp={ts}; Path=/"))
-        else:
-            # WORKAROUND because cookie not being sent on access_request.py request
-            token = check_access(environ, config)
-            if token:
-                h, ts = token
-                headers.append(("Set-Cookie", f"hash={h}; Path=/"))
-                headers.append(("Set-Cookie", f"timestamp={ts}; Path=/"))
-                access = True
-            else:
-                access = False
+        access = is_allowed(environ, config)
+    if access:
+        headers.append(("Set-Cookie", auth_cookie(config)))
     return access, headers
 
 
@@ -351,165 +400,75 @@ def check_login_info(config, request):
         return False
 
 
-def make_token(db):
-    h = hashlib.md5()
-    now = str(time.time())
-    h.update(now.encode("utf8"))
-    h.update(db.locals.secret.encode("utf8"))
-    return (h.hexdigest(), now)
+# ── Auth cookies ──────────────────────────────────────────────────────────────
 
 
-def run_tests():
-    """Run test cases to verify IP matching logic"""
-    import tempfile
-
-    # Explicitly tell Python we're using the global variables
-    global DB
-    global get_client_info
-    global ip_ranges
-    global local_networks
-
-    # Store original functions and variables
-    original_db = DB
-    original_get_client_info_func = get_client_info
-    original_ip_ranges = ip_ranges.copy()
-    original_local_networks = local_networks.copy()
-
-    # Disable local networks during testing
-    ip_ranges = []
-    local_networks = []
-
-    # Define test cases
-    test_cases = [
-        # Format: (description, ip, domain, expected_result)
-        # 1. Exact IP matching
-        ("Exact IP match", "192.168.1.1", "example.org", True),
-        ("Exact IP non-match", "192.168.1.2", "example.org", False),
-        # 2. CIDR notation
-        ("CIDR match start", "172.16.0.1", "example.org", True),
-        ("CIDR match end", "172.16.255.255", "example.org", True),
-        ("CIDR non-match", "172.17.0.1", "example.org", False),
-        # 3. Range in last octet
-        ("Last octet range match start", "192.168.2.10", "example.org", True),
-        ("Last octet range match middle", "192.168.2.15", "example.org", True),
-        ("Last octet range match end", "192.168.2.20", "example.org", True),
-        ("Last octet range non-match below", "192.168.2.9", "example.org", False),
-        ("Last octet range non-match above", "192.168.2.21", "example.org", False),
-        # 4. Range in non-last octet
-        ("Non-last octet range match start", "192.168.0.0", "example.org", True),
-        ("Non-last octet range match end", "192.170.0.0", "example.org", True),
-        ("Non-last octet range non-match", "192.171.0.0", "example.org", False),
-        # 5. Multiple ranges
-        ("Multiple ranges match", "192.168.4.15", "example.org", True),
-        ("Multiple ranges match edge", "192.168.5.20", "example.org", True),
-        ("Multiple ranges non-match", "192.168.6.15", "example.org", False),
-        # 6. Network prefix
-        ("Network prefix match", "172.18.0.1", "example.org", True),
-        ("Network prefix match edge", "172.18.255.255", "example.org", True),
-        ("Network prefix non-match", "172.19.0.1", "example.org", False),
-        # 7. Local networks (disabled during testing)
-        ("Local network 10.x.x.x", "10.1.2.3", "example.org", False),
-        ("Local network 172.16.x.x", "172.16.5.10", "example.org", True),  # Still True due to CIDR match
-        ("Local network 192.168.x.x", "192.168.0.1", "example.org", False),
-        ("Local network 127.x.x.x", "127.0.0.1", "example.org", False),
-        # 8. Domain matching
-        ("Domain exact match", "203.0.113.1", "example.com", True),
-        ("Domain suffix match", "203.0.113.1", "university.edu", True),
-        ("Domain non-match", "203.0.113.1", "example.net", False),
-        # 9. Blocked IPs
-        ("Blocked IP", "10.0.0.99", "example.org", False),
-        ("Blocked IP overrides allowed network", "192.168.5.5", "example.org", False),
-        # 10. Additional network prefix cases
-        ("Network prefix with 2 octets", "134.226.12.34", "example.org", True),
-        ("Network prefix with 3 octets", "192.70.186.50", "example.org", True),
-        ("Network prefix with trailing dot", "140.141.10.20", "example.org", True),
-        ("Network prefix with trailing dot non-match", "140.142.10.20", "example.org", False),
-        ("Multiple adjacent octets range", "216.87.19.50", "example.org", True),
-        ("Multiple adjacent octets range", "216.87.20.50", "example.org", True),
-    ]
-
-    # Create test config with all necessary patterns
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False, encoding="utf8") as f:
-        f.write(
-            """
-# Test access config with real-world examples
-domain_list = [".edu", "example.com"]
-blocked_ips = ["10.0.0.99", "203.0.113.100", "192.168.5.5"]
-allowed_ips = [
-    # Basic patterns
-    "192.168.1.1",              # Exact IP match
-    "172.16.0.0/16",            # CIDR notation
-    "192.168.2.10-20",          # Range in last octet
-    "192.168-170.0.0",          # Range in non-last octet
-    "192.168.4-5.10-20",        # Multiple ranges
-    "172.18",                   # Network prefix
-
-    # Network prefixes and ranges
-    "134.226",                  # Network prefix with 2 octets
-    "192.70.186",               # Network prefix with 3 octets
-    "140.141.",                 # Network prefix with trailing dot
-
-    # Multiple adjacent octets range - missing from your list
-    "216.87.19-20",             # Should match 216.87.19.* and 216.87.20.*
-]
-"""
-        )
-        test_config_path = f.name
-
-    print("\n========== ACCESS CONTROL TEST CASES ==========")
-
-    # Create a single mock DB and config
-    class MockConfig:
-        def __init__(self, path):
-            self.db_path = path
-            self.access_file = test_config_path
-
-    class MockDB:
-        class Locals:
-            def __init__(self):
-                self.secret = "test-secret"
-
-        def __init__(self, path=None):
-            self.locals = MockDB.Locals()
-            self.path = path
-
-    # Make DB return our mock
-    DB = MockDB
-
-    # Set up a single temporary directory for all tests
-    with tempfile.TemporaryDirectory() as temp_dir:
-        os.makedirs(os.path.join(temp_dir, "data"), exist_ok=True)
-        mock_config = MockConfig(temp_dir)
-
-        # Pre-compile the whitelist once for all tests
-        get_client_info = lambda e: (e["REMOTE_ADDR"], "example.org")
-        _ = check_access({"REMOTE_ADDR": "127.0.0.1"}, mock_config)
-
-        # Run all tests with the same config
-        for description, ip, domain, expected in test_cases:
-            # Create mock environment
-            env = {"REMOTE_ADDR": ip}
-
-            # Update domain for this test
-            get_client_info = lambda e: (e["REMOTE_ADDR"], domain)
-
-            # Run test with the shared config
-            result = bool(check_access(env, mock_config))
-
-            # Check result
-            status = "✓ PASS" if result == expected else "✗ FAIL"
-            print(f"{status} - {description}: IP={ip}, Domain={domain}, Expected={expected}, Got={result}")
-
-    # Restore original state
-    get_client_info = original_get_client_info_func
-    DB = original_db
-    ip_ranges = original_ip_ranges
-    local_networks = original_local_networks
-
-    # Clean up
-    os.unlink(test_config_path)
-    print("========== TEST COMPLETE ==========\n")
+@cache
+def _installation_secret():
+    """The installation's secret: the content of philologic5.secret, next to the global config, which install.sh
+    creates. Without it, _FALLBACK_SECRET."""
+    path = os.path.splitext(_global_config_path())[0] + ".secret"
+    try:
+        with open(path, encoding="utf8") as secret_file:
+            secret = secret_file.read().strip()
+    except OSError:
+        secret = ""
+    if secret:
+        return secret.encode("utf8")
+    print(
+        f"No secret in {path}: auth cookies are signed with one drawn at startup, and logins end when the web app"
+        " restarts",
+        file=sys.stderr,
+    )
+    return _FALLBACK_SECRET
 
 
-if __name__ == "__main__":
-    run_tests()
+def _database_name(config):
+    return os.path.basename(os.path.normpath(config.db_path))
+
+
+def database_key(config):
+    """The key that signs the auth cookies of config's database: the secret of its db.locals.py, if it has one, else
+    a key of its own derived from the installation's secret."""
+    if config.db_locals.secret:
+        return config.db_locals.secret.encode("utf8")
+    return hmac.new(_installation_secret(), _database_name(config).encode("utf8"), hashlib.sha256).digest()
+
+
+def _cookie_name(config):
+    """Each database has its cookie: they all have Path=/, as the URL path of a database depends on the proxy."""
+    return "philologic5_" + re.sub(r"[^A-Za-z0-9_.-]", "_", _database_name(config))
+
+
+def _signature(config, timestamp):
+    message = f"{_database_name(config)}\0{timestamp}".encode("utf8")
+    return hmac.new(database_key(config), message, hashlib.sha256).hexdigest()
+
+
+def auth_cookie(config):
+    """A Set-Cookie header value letting its client into config's database for AUTH_COOKIE_MAX_AGE seconds."""
+    timestamp = int(time.time())
+    return (
+        f"{_cookie_name(config)}={timestamp}.{_signature(config, timestamp)}; Path=/; Max-Age={AUTH_COOKIE_MAX_AGE};"
+        " HttpOnly; SameSite=Lax"
+    )
+
+
+def is_authenticated(environ, config):
+    """Whether the request has an auth cookie for config's database that its key signed less than AUTH_COOKIE_MAX_AGE
+    seconds ago. Cookies are parsed by hand: http.cookies gives up on the whole header for one cookie it can't parse,
+    and other sites of the same host may set any."""
+    name = _cookie_name(config)
+    for cookie in environ.get("HTTP_COOKIE", "").split(";"):
+        key, _, value = cookie.strip().partition("=")
+        if key != name:
+            continue
+        timestamp, _, signature = value.partition(".")
+        if not (timestamp.isascii() and timestamp.isdigit()):
+            continue
+        if not -60 <= time.time() - int(timestamp) <= AUTH_COOKIE_MAX_AGE:  # a minute's leeway for clock skew
+            continue
+        expected = _signature(config, int(timestamp))
+        if hmac.compare_digest(signature.encode("utf8", "replace"), expected.encode("utf8")):
+            return True
+    return False
