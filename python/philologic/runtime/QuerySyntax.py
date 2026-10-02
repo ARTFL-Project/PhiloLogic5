@@ -13,11 +13,11 @@ patterns = [
     ("QUOTE", r'".+'),
     ("NOT", "NOT"),
     ("OR", r"\|"),
-    ("RANGE", r"[^|\s]+?\-[^|\s]+"),
+    ("RANGE", r"[^|\s\[]+?\-[^|\s]+"),  # no "[" before the dash: "17[0-4]." is a regex
     ("RANGE", r"\d+\-\Z"),
     ("RANGE", r"\-\d+\Z"),
     ("NULL", r"NULL"),
-    ("TERM", r'[^\-|\s"]+'),
+    ("TERM", r'(?:\[[^\]]*\]|[^\-|\s"])+'),  # with the hyphens of its regex bracket expressions ("[a-z]")
 ]
 
 date_patterns = [
@@ -105,8 +105,8 @@ def group_terms(parsed):
     current_clause = []
     last_term = None
     for kind, val in parsed:
-        if last_term == "RANGE":
-            # immediately detach ranges for now.
+        if last_term == "RANGE" and kind != "OR":
+            # detach ranges, unless an alternative follows ("1700-1750 | 1800-1850")
             grouped.append(current_clause)
             current_clause = []
 
@@ -117,8 +117,8 @@ def group_terms(parsed):
         elif kind == "OR":
             pass
         elif kind == "RANGE":
-            # RANGE should immediately detach a new clause and then close it.
-            if last_term != "NOT":
+            # RANGE should immediately detach a new clause and then close it, unless it is an alternative
+            if last_term not in ("NOT", "OR"):
                 grouped.append(current_clause)
                 current_clause = []
         elif kind == "NOT":
