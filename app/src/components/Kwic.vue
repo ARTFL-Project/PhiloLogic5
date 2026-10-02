@@ -283,7 +283,7 @@ function updateSortingSelection(index, selection) {
 }
 
 function sortResults() {
-    results.value.results = [];
+    // a new sort order changes the URL, and the results are fetched again; the same leaves them as they are
     router.push(paramsToRoute({ ...formData.value }));
 }
 

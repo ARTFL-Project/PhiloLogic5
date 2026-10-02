@@ -33,6 +33,14 @@ def sort_key(value, ascii_conversion):
     return (1, (unidecode(value) if ascii_conversion else value).casefold())
 
 
+def sort_ranks(values, ascii_conversion):
+    """The rank of each of the metadata values (missing ones aside) in the order sort_key sorts them: values sorting
+    alike share a rank."""
+    keys = {value: sort_key(value, ascii_conversion) for value in set(values) if value not in (None, "")}
+    key_rank = {key: rank for rank, key in enumerate(sorted(set(keys.values())))}
+    return {value: key_rank[key] for value, key in keys.items()}
+
+
 def _id_keys(ids, depth):
     """The first `depth` columns of rows of object ids, as byte strings that compare like the id tuples."""
     return np.ascontiguousarray(ids[:, :depth], dtype=">u4").view(f"S{4 * depth}").ravel()

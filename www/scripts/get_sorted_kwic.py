@@ -8,6 +8,7 @@ import orjson
 from wsgi_helpers import resolve
 from philologic.runtime import WebConfig, WSGIHandler, kwic_hit_object, page_interval
 from philologic.runtime.DB import DB
+from philologic.runtime.HitList import sort_ranks
 from philologic.runtime.MetadataQuery import bulk_load_metadata
 
 # Module-level cache for gunicorn persistent workers
@@ -296,17 +297,13 @@ def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
     n_sents = len(sent_flat)
     zzz_rank = int(len(vocab_sort_rank))
 
-    # Bulk-load metadata and build sort rank maps (same ordering as old TSV + LC_ALL=C sort)
+    # Bulk-load metadata and rank its values in the order the concordance sorts them (regardless of case, and of
+    # accents with ascii_conversion): values sorting alike share a rank, missing ones come last
     metadata_caches = bulk_load_metadata(db, metadata_fields)
     meta_rank_maps = {}
     for field in metadata_fields:
         prefix_len, cache = metadata_caches.get(field, (1, {}))
-        all_normalized = set()
-        for val in cache.values():
-            all_normalized.add(",".join(f"{val}".lower().split()))
-        sorted_vals = sorted(v for v in all_normalized if v)
-        norm_to_rank = {v: i for i, v in enumerate(sorted_vals)}
-        meta_rank_maps[field] = (prefix_len, cache, norm_to_rank)
+        meta_rank_maps[field] = (prefix_len, cache, sort_ranks(cache.values(), db.locals.ascii_conversion))
 
     n_meta = len(metadata_fields)
     record_width = 31 + n_meta
@@ -359,10 +356,8 @@ def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
         # Metadata sort ranks
         hit_tuple = tuple(hit.hit)
         for mi, field in enumerate(metadata_fields):
-            prefix_len, cache, norm_to_rank = meta_rank_maps[field]
-            val = cache.get(hit_tuple[:prefix_len], "")
-            normalized = ",".join(f"{val}".lower().split())
-            record[31 + mi] = norm_to_rank.get(normalized, zzz_rank)
+            prefix_len, cache, value_rank = meta_rank_maps[field]
+            record[31 + mi] = value_rank.get(cache.get(hit_tuple[:prefix_len]), zzz_rank)
 
         buffer.append(record.tobytes())
         if len(buffer) >= 1000:
