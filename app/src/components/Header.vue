@@ -134,7 +134,7 @@
                             <a :href="docCitation.link" :aria-label="docCitation.link">
                                 {{ docCitation.link }}.&nbsp;
                             </a>
-                            <span>Accessed on {{ date }}</span>
+                            <span>{{ $t("header.accessedOn", { date }) }}</span>
                         </div>
                     </div>
                 </div>
@@ -145,6 +145,7 @@
 
 <script setup>
 import { computed, inject, reactive, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute } from "vue-router";
 import citations from "./Citations";
 import LocaleChanger from "./LocaleChanger.vue";
@@ -164,14 +165,13 @@ const hasActionsRow = computed(() =>
     philoConfig.report_error_link.length > 0
 );
 
-const date = (() => {
-    const today = new Date();
-    const months = [
-        "January", "February", "March", "April", "May", "June",
-        "July", "August", "September", "October", "November", "December",
-    ];
-    return `${today.getDate()} ${months[today.getMonth()]}, ${today.getFullYear()}`;
-})();
+const { locale } = useI18n();
+// Today, as the language chosen writes dates: "2 October 2026", "2 octobre 2026"
+const date = computed(() =>
+    new Date().toLocaleDateString(locale.value === "en" ? "en-GB" : locale.value, {
+        day: "numeric", month: "long", year: "numeric",
+    })
+);
 
 function getDocCitation() {
     if ("pathInfo" in route.params) {

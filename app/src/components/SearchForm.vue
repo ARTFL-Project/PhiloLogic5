@@ -2,7 +2,7 @@
     <div>
         <h1 class="visually-hidden">{{ $t("searchForm.searchInterface") }}</h1>
         <div class="card shadow" style="border: transparent">
-            <form @submit.prevent @reset="onReset" @keyup.enter="onSubmit()" role="search">
+            <form @submit.prevent="onSubmit()" @reset="onReset" role="search">
                 <div id="form-body">
                     <div id="initial-form">
                         <!-- Mobile: Dropdown selector for report types -->
@@ -48,8 +48,9 @@
                                         <input type="text" class="form-control" id="query-term-input"
                                             aria-labelledby="search-terms-label" v-model="queryTermTyped"
                                             @input="onChange('q')" @keyup.down="onArrowDown('q')"
-                                            @keyup.up="onArrowUp('q')" @keyup.enter="onEnter('q')"
-                                            @keyup.escape="clearAutoCompletePopup" autocomplete="off" />
+                                            @keyup.up="onArrowUp('q')" @keydown.enter="onEnter('q', $event)"
+                                            @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
+                                            autocomplete="off" />
 
                                         <ul id="autocomplete-q" class="autocomplete-results shadow"
                                             :style="autoCompletePosition('q')" v-if="autoCompleteResults.q.length > 0"
@@ -59,7 +60,7 @@
                                                 :class="{ 'is-active': i === arrowCounters.q }" v-html="result"
                                                 role="option" :aria-selected="i === arrowCounters.q"></li>
                                         </ul>
-                                        <button class="btn btn-secondary" id="button-search" @click="onSubmit()">
+                                        <button type="submit" class="btn btn-secondary" id="button-search">
                                             {{ $t("searchForm.search") }}
                                         </button>
                                     </div>
@@ -80,8 +81,9 @@
                                     @input="onChange('head')"
                                     @keydown.down="onArrowDown(metadataDisplay[headIndex].value)"
                                     @keydown.up="onArrowUp(metadataDisplay[headIndex].value)"
-                                    @keyup.enter="onEnter(metadataDisplay[headIndex].value)"
-                                    @keyup.escape="clearAutoCompletePopup" autocomplete="off" />
+                                    @keydown.enter="onEnter(metadataDisplay[headIndex].value, $event)"
+                                    @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
+                                    autocomplete="off" />
                                 <ul :id="'autocomplete-' + metadataDisplay[headIndex].value"
                                     class="autocomplete-results shadow"
                                     :style="autoCompletePosition(metadataDisplay[headIndex].value)"
@@ -194,13 +196,13 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                 style="border-top-left-radius: 0; border-bottom-left-radius: 0"
                                                 type="button" id="attribute-selector'" data-bs-toggle="dropdown"
                                                 aria-expanded="false">
-                                                {{ collocFilteringSelected.text || collocationOptions[0].text }}
+                                                {{ $t(collocFilteringSelected.key || collocationOptions[0].key) }}
                                             </button>
                                             <ul class="dropdown-menu" aria-labelledby="attribute-selector">
                                                 <li v-for="option in collocationOptions" :key="option.value">
                                                     <a class="dropdown-item"
                                                         @click="collocFilteringSelected = option">{{
-                                                            option.text }}</a>
+                                                            $t(option.key) }}</a>
                                                 </li>
                                             </ul>
                                         </div>
@@ -240,8 +242,8 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                         </div>
                                         <div class="input-group d-inline ms-2" style="width: fit-content"
                                             v-if="collocFilteringSelected.value == 'frequency'">
-                                            <button class="btn btn-outline-secondary" style="height: fit-content"
-                                                id="filter-frequency-label">
+                                            <button type="button" class="btn btn-outline-secondary"
+                                                style="height: fit-content" id="filter-frequency-label">
                                                 {{ $t("searchForm.wordFiltering") }}
                                             </button>
                                             <input type="text" class="form-control d-inline-block" id="filter-frequency"
@@ -277,8 +279,9 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                 @input="onChange(field.value)"
                                                 @keydown.down="onArrowDown(field.value)"
                                                 @keydown.up="onArrowUp(field.value)"
-                                                @keyup.enter="onEnter(field.value)"
-                                                @keyup.escape="clearAutoCompletePopup" autocomplete="off" />
+                                                @keydown.enter="onEnter(field.value, $event)"
+                                                @keyup.escape="clearAutoCompletePopup"
+                                                @keydown.tab="clearAutoCompletePopup" autocomplete="off" />
                                             <ul :id="'autocomplete-' + field.value"
                                                 class="autocomplete-results shadow"
                                                 :style="autoCompletePosition(field.value)"
@@ -297,7 +300,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                     role="group" aria-labelledby="time-series-params-heading">
                                     <h2 id="time-series-params-heading">{{ $t("searchForm.timeSeriesParams") }}:</h2>
                                     <div class="input-group mt-1 pb-2">
-                                        <button class="btn btn-outline-secondary" tabindex="-1">{{
+                                        <button type="button" class="btn btn-outline-secondary" tabindex="-1">{{
                                             $t("searchForm.dateRange")
                                             }}</button>
                                         <label for="start_date" class="d-inline-flex align-self-center mx-2">{{
@@ -310,7 +313,7 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                             style="max-width: 65px; text-align: center" v-model="formData.end_date" />
                                     </div>
                                     <div class="input-group">
-                                        <button class="btn btn-outline-secondary" id="year-interval-label"
+                                        <button type="button" class="btn btn-outline-secondary" id="year-interval-label"
                                             tabindex="-1">
                                             {{ $t("searchForm.yearInterval") }}
                                         </button>
@@ -325,7 +328,8 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                     </div>
                                 </div>
                                 <div class="input-group mt-4" v-if="currentReport === 'aggregation'">
-                                    <button class="btn btn-outline-secondary">{{ $t("searchForm.groupResultsBy")
+                                    <button type="button" class="btn btn-outline-secondary">{{
+                                        $t("searchForm.groupResultsBy")
                                         }}</button>
                                     <select class="form-select" :aria-label="$t('searchForm.groupResultsByLabel')"
                                         style="max-width: fit-content" v-model="formData.group_by">
@@ -432,18 +436,19 @@ const dictionary = philoConfig.dictionary;
 const metadataInputStyle = philoConfig.metadata_input_style;
 const reports = philoConfig.search_reports;
 const wordAttributes = philoConfig.word_attributes;
-const approximateValues = [
+// Labels as computed, or as message keys, follow the language chosen
+const approximateValues = computed(() => [
     { text: t("searchForm.similarity", { n: 90 }), value: "90" },
     { text: t("searchForm.similarity", { n: 80 }), value: "80" },
-];
-const methodOptions = [
+]);
+const methodOptions = computed(() => [
     { text: t("searchForm.within"), value: "proxy" },
     { text: t("searchForm.withinExactly"), value: "exact_cooc" },
     { text: t("common.sameSentence"), value: "sentence" },
-];
+]);
 const collocationOptions = ref([
-    { text: t("searchForm.mostFrequentTerms"), value: "frequency" },
-    { text: t("searchForm.stopwords"), value: "stopwords" },
+    { key: "searchForm.mostFrequentTerms", value: "frequency" },
+    { key: "searchForm.stopwords", value: "stopwords" },
 ]);
 const aggregationOptions = philoConfig.aggregation_config.map((f) => ({
     text: philoConfig.metadata_aliases[f.field] || f.field.charAt(0).toUpperCase() + f.field.slice(1),
@@ -465,7 +470,7 @@ const dateType = reactive({});
 const dateRange = reactive({});
 const attributeSelected = ref("");
 const wordAttributeSelected = ref("");
-const collocFilteringSelected = ref({ text: "", value: "" });
+const collocFilteringSelected = ref({ key: "", value: "" });
 
 // Internal handle (not reactive — just a setTimeout id)
 let qTimeout = null;
@@ -475,7 +480,7 @@ let onDocumentClick = null;
 const statFieldSelected = computed(() => getLoadedStatField());  // eslint-disable-line no-unused-vars
 
 const sortValues = computed(() => {
-    const values = [{ value: "rowid", text: "select" }];
+    const values = [{ value: "rowid", text: t("searchForm.selectSort") }];
     for (const fields of philoConfig.concordance_biblio_sorting) {
         const label = fields.map((f) => philoConfig.metadata_aliases[f] || f);
         values.push({ text: label.join(", "), value: fields });
@@ -627,23 +632,27 @@ function onChange(field) {              // eslint-disable-line no-unused-vars
     if (qTimeout) clearTimeout(qTimeout);
     qTimeout = setTimeout(() => {
         const currentQueryTerm = route.query.q;
-        if (
-            queryTermTyped.value.replace('"', "").length > 1 &&
-            queryTermTyped.value !== currentQueryTerm
-        ) {
+        const term = queryTermTyped.value;
+        if (term.replace('"', "").trim().length > 1 && term !== currentQueryTerm) {
             $http
                 .get(`${$dbUrl}/scripts/autocomplete_term.py`, {
-                    params: { term: queryTermTyped.value },
+                    params: { term },
                 })
                 .then((response) => {
+                    // not once the field is left or changed: a late list would cover what is clicked next
+                    if (queryTermTyped.value !== term || document.activeElement?.id !== "query-term-input") return;
                     autoCompleteResults.q = response.data;
-                });
+                })
+                .catch(() => {});
         }
     }, 200);
 }
 
-function onEnter(field) {               // eslint-disable-line no-unused-vars
+function onEnter(field, event) {        // eslint-disable-line no-unused-vars
+    // Enter picks the highlighted suggestion; with none, it submits the form (once: the browser's implicit submission)
     const result = autoCompleteResults[field][arrowCounters[field]];
+    if (typeof result === "undefined") return;
+    event.preventDefault();
     setResult(result, field);
 }
 
@@ -770,7 +779,7 @@ for (const m in metadataInputStyle) {
 if (Object.keys(philoConfig.word_attributes).length > 0) {
     // Place word attribute option at the second position
     collocationOptions.value.splice(1, 0, {
-        text: t("searchForm.selectAttribute"),
+        key: "searchForm.selectAttribute",
         value: "attribute",
     });
 }

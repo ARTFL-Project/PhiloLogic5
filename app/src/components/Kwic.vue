@@ -14,7 +14,7 @@
                 <div class="card p-2 ml-2 shadow-sm">
                     <div class="p-2 mb-1">
                         <!-- Sorting controls -->
-                        <div class="btn-group">
+                        <div class="btn-group sorting-controls">
                             <button type="button" class="btn btn-sm btn-outline-secondary" style="border-right: solid"
                                 tabindex="-1" id="sort-group-label">
                                 {{ $t("kwic.sortResultsBy") }}
@@ -613,12 +613,25 @@ fetchResults();
 }
 
 @media (max-width: 767px) {
+    /* The context on a line of its own, under the citation: next to it, it was too narrow to show the keyword */
+    .visual-kwic {
+        flex-wrap: wrap;
+    }
+
+    .visual-kwic .kwic-context {
+        flex-basis: 100%;
+    }
+
     .visual-kwic :deep(.kwic-highlight) {
-        margin-left: 200px;
+        margin-left: 40vw;
     }
 
     .visual-kwic :deep(.kwic-before) {
-        width: 200px;
+        width: 40vw;
+    }
+
+    .sorting-controls {
+        flex-wrap: wrap;
     }
 
     .visual-kwic :deep(.kwic-line) {

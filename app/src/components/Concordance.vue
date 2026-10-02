@@ -249,7 +249,7 @@ fetchResults();
 }
 
 .cite {
-    height: 38px;
+    min-height: 38px; /* long citations wrap rather than overflow the header */
     display: inline-block;
 }
 

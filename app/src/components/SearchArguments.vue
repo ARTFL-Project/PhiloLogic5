@@ -26,7 +26,7 @@
                             <span class="icon-x"></span>
                         </button>
                     </div>
-                    {{ queryArgs.proximity }}
+                    {{ termsProximity }}
                 </span>
                 <div class="card outline-secondary shadow" id="query-terms" v-if="showQueryTerms" role="dialog"
                     aria-modal="true" :aria-labelledby="'query-terms-title'" ref="queryTermsDialog"
@@ -124,6 +124,20 @@ const triggerButtonIndex = ref(null);
 
 const wordGroups = computed(() => description.value.termGroups);
 
+// How the term groups are searched together, as the server reads the form (Query.resolve_method): no distance, or 0,
+// is a phrase. One group ("a | b", or a word with "NOT") has nothing to describe.
+const termsProximity = computed(() => {
+    if (!wordGroups.value || wordGroups.value.length < 2) return "";
+    const method = formData.value.method || "proxy";
+    const distance = parseInt(formData.value.method_arg) || 0;
+    let how;
+    if (method === "sentence") how = t("searchArgs.sameSentence");
+    else if (distance === 0) how = t("searchArgs.adjacent");
+    else if (method === "exact_cooc") how = t("searchArgs.withinExactlyProximity", { n: distance });
+    else how = t("searchArgs.withinProximity", { n: distance });
+    return formData.value.cooc_order === "yes" ? `${how}, ${t("searchArgs.inThisOrder")}` : how;
+});
+
 const collocationFilter = computed(() => {
     if (formData.value.colloc_filter_choice === "attribute") {
         return {
@@ -152,24 +166,6 @@ function fetchSearchArgs() {
     queryArgs.queryTerm = "q" in queryParams ? queryParams.q : "";
     queryArgs.biblio = buildBiblioCriteria(philoConfig, route.query, formData.value);
 
-    if ("q" in queryParams) {
-        const method = queryParams.method || "proxy";
-        if (queryParams.q.split(" ").length > 1) {
-            if (method === "proxy") {
-                queryArgs.proximity = (typeof queryParams.method_arg !== "undefined" || queryParams.method_arg)
-                    ? t("searchArgs.withinProximity", { n: queryParams.method_arg })
-                    : "";
-            } else if (method === "exac_cooc") {
-                queryArgs.proximity = (typeof queryParams.method_arg !== "undefined" || queryParams.arg_phrase)
-                    ? t("searchArgs.withinExactlyProximity", { n: queryParams.arg_phrase })
-                    : "";
-            } else if (method === "sentence") {
-                queryArgs.proximity = t("searchArgs.sameSentence");
-            }
-        } else {
-            queryArgs.proximity = "";
-        }
-    }
     queryArgs.approximate = queryParams.approximate === "yes";
 
     $http
@@ -274,6 +270,7 @@ function removeFromTermsList(word, groupIndex) {
 }
 
 function rerunQuery() {
+    showQueryTerms.value = false;
     router.push(paramsToRoute({ ...formData.value, q: formData.value.q }));
 }
 

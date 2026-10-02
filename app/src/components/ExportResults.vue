@@ -81,10 +81,12 @@
 
 <script setup>
 import { inject } from "vue";
+import { useI18n } from "vue-i18n";
 import { storeToRefs } from "pinia";
 import { useMainStore } from "../stores/main";
 import { paramsToUrlString } from "../utils.js";
 
+const { t } = useI18n();
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const store = useMainStore();
@@ -96,7 +98,9 @@ function getResults(format, filterHtml, event) {
 
     clickedButton.disabled = true;
     const originalHTML = clickedButton.innerHTML;
-    clickedButton.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>Exporting ${format.toUpperCase()}...`;
+    clickedButton.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>${t(
+        "exportResults.exporting", { format: format.toUpperCase() }
+    )}`;
 
     $http
         .get(

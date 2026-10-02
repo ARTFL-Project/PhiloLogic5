@@ -7,7 +7,7 @@
                     <button type="button" class="btn btn-outline-secondary" v-for="page in pages" :key="page.display"
                         :class="page.active" @click="goToPage(page.start, page.end)"
                         :aria-current="page.active === 'active' ? 'page' : null">
-                        <span class="page-number">{{ page.display }}</span>
+                        <span class="page-number">{{ page.label ? $t(page.label) : page.display }}</span>
                         <span class="page-range">{{ page.range }}</span>
                     </button>
                 </div>
@@ -33,6 +33,10 @@ function buildPages() {
     const start = parseInt(route.query.start);
     const resultsPerPage = parseInt(formData.value.results_per_page) || 25;
     const total = resultsLength.value;
+    if (!total) {
+        pages.value = []; // no "First 1-0" button for no results
+        return;
+    }
 
     // Current page from start offset
     const currentPage = Math.floor(start / resultsPerPage) + 1 || 1;
@@ -52,25 +56,24 @@ function buildPages() {
         if (next < totalPages) pageNumbers.push(next);
     }
     if (pageNumbers[0] !== 1) pageNumbers.unshift(1);
-    if (pageNumbers[-1] !== totalPages) pageNumbers.push(totalPages);
+    if (pageNumbers[pageNumbers.length - 1] !== totalPages) pageNumbers.push(totalPages);
     pageNumbers.sort((a, b) => a - b);
 
     // Build display objects
     const pageObjects = [];
-    let lastPageName = "";
-    for (let page of pageNumbers) {
+    for (const page of new Set(pageNumbers)) {
         const pageStart = resultsPerPage * (page - 1) + 1;
         let pageEnd = pageStart + resultsPerPage - 1;
         if (pageEnd > total) pageEnd = total;
         const active = page === currentPage ? "active" : "";
 
-        if (page === 1 && pageNumbers.length > 1) page = "First";
-        if (page === totalPages) page = "Last";
-        if (page == lastPageName) continue;
-        lastPageName = page;
+        let label = "";
+        if (page === 1 && pageNumbers.length > 1) label = "pages.first";
+        if (page === totalPages) label = "pages.last";
 
         pageObjects.push({
             display: page,
+            label,
             active,
             start: pageStart.toString(),
             end: pageEnd.toString(),
@@ -103,6 +106,12 @@ watch(urlUpdate, buildPages);
 .btn-group .btn {
     white-space: nowrap;
     min-width: auto;
+}
+
+@media (max-width: 767px) {
+    .btn-group {
+        flex-wrap: wrap; /* on phones, rather than wider than the page */
+    }
 }
 
 .page-number {

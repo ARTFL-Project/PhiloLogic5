@@ -47,7 +47,8 @@
         "closeCitationDialog": "Fermer la boîte de dialogue de citation",
         "goHome": "Page d'accueil",
         "citeUs": "Nous citer",
-        "contactUs": "Contactez nous"
+        "contactUs": "Contactez nous",
+        "accessedOn": "Consulté le {date}"
     },
     "searchForm": {
         "searchInterface": "Interface de recherche",
@@ -113,7 +114,8 @@
         "coOccurrenceMethodLabel": "Sélectionner la méthode de recherche de co-occurrence",
         "collocNWordsLabel": "Nombre de mots pour la recherche de collocation",
         "advancedSearchOptions": "Options de recherche avancée",
-        "selectDateType": "Sélectionner le type de date pour"
+        "selectDateType": "Sélectionner le type de date pour",
+        "selectSort": "choisir"
     },
     "resultsBiblio": {
         "heading": "Bibliographie des résultats sur cette page",
@@ -130,7 +132,7 @@
         "rerunQuery": "Relancer la recherche avec les termes suivants:",
         "biblioCriteria": "Critères bibliographiques",
         "occurrencesBetween": "{n} occurrences du/des terme(s) entre",
-        "collocOccurrences": "Affichage des 100 mots vides pour {n} occurrences",
+        "collocOccurrences": "Affichage des 100 premières collocations pour {n} occurrences",
         "withinProximity": "dans une fenêtre de {n} mots",
         "withinExactlyProximity": "dans une fenêtre exacte de {n} mots",
         "sameSentence": "dans la même phrase",
@@ -138,7 +140,9 @@
         "exactPhrase": "l'expression exacte",
         "expandTermGroup": "Développer le groupe de termes : {group}",
         "removeTerm": "Supprimer le terme : {term}",
-        "excludeTerm": "Exclure le terme : {term}"
+        "excludeTerm": "Exclure le terme : {term}",
+        "adjacent": "côte à côte",
+        "inThisOrder": "dans cet ordre"
     },
     "resultsSummary": {
         "heading": "Récapitulatif des résultats",
@@ -247,7 +251,8 @@
         "exportAs": "Exporter en",
         "htmlDescription": "Préserve le formatage, les liens et le style du texte",
         "plainDescription": "Texte propre sans balises HTML ni formatage",
-        "downloadNote": "Les fichiers seront téléchargés dans votre dossier de téléchargement par défaut"
+        "downloadNote": "Les fichiers seront téléchargés dans votre dossier de téléchargement par défaut",
+        "exporting": "Export {format} en cours..."
     },
     "kwic": {
         "sortResultsBy": "Trier résultats par",
@@ -376,7 +381,12 @@
         "per10000Words": "pour 10 000 mots",
         "chartAriaLabel": "Graphique de série temporelle {type} montrant {count} points de données de {range}",
         "selectionAnnouncement": "{year} sélectionné : {value} {unit}",
-        "loadingProgress": "Chargement des données de série temporelle : {current} sur {total} résultats traités"
+        "loadingProgress": "Chargement des données de série temporelle : {current} sur {total} résultats traités",
+        "frequencyTypeSelection": "Choix du type de fréquence",
+        "dataTable": "Tableau des données de la série chronologique",
+        "dataTableCaption": "Données de la série chronologique : fréquence par période",
+        "chartInstructions": "Utilisez les flèches pour passer d'une période à l'autre, Entrée ou Espace pour voir les résultats de la période choisie, Échap pour fermer l'infobulle. Un tableau complet des données se trouve plus bas pour les lecteurs d'écran.",
+        "periodRange": "{start} à {end}"
     },
     "bibliography": {
         "dictionaryResultsRegion": "Résultats de bibliographie du dictionnaire",
@@ -399,7 +409,9 @@
         "viewText": "Voir le texte {resultNumber}"
     },
     "pages": {
-        "searchResultsPages": "Pages de résultats de recherche"
+        "searchResultsPages": "Pages de résultats de recherche",
+        "first": "Première",
+        "last": "Dernière"
     },
     "toc": {
         "showHeader": "Afficher l'en-tête",

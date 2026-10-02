@@ -47,7 +47,8 @@
         "closeCitationDialog": "Close citation dialog",
         "goHome": "Go to home page",
         "citeUs": "Cite us",
-        "contactUs": "Contact Us"
+        "contactUs": "Contact Us",
+        "accessedOn": "Accessed on {date}"
     },
     "searchForm": {
         "searchInterface": "Search Interface",
@@ -113,7 +114,8 @@
         "coOccurrenceMethodLabel": "Select search co-occurrence method",
         "collocNWordsLabel": "Number of words for collocation search",
         "advancedSearchOptions": "Advanced search options",
-        "selectDateType": "Select date type for"
+        "selectDateType": "Select date type for",
+        "selectSort": "select"
     },
     "resultsBiblio": {
         "heading": "Bibliography of results on this page",
@@ -138,7 +140,9 @@
         "exactPhrase": "the exact phrase",
         "expandTermGroup": "Expand term group: {group}",
         "removeTerm": "Remove term: {term}",
-        "excludeTerm": "Exclude term: {term}"
+        "excludeTerm": "Exclude term: {term}",
+        "adjacent": "next to each other",
+        "inThisOrder": "in this order"
     },
     "resultsSummary": {
         "heading": "Results Summary",
@@ -247,7 +251,8 @@
         "exportAs": "Export as",
         "htmlDescription": "Preserves text formatting, links, and styling",
         "plainDescription": "Clean text without HTML tags or formatting",
-        "downloadNote": "Files will be downloaded to your default download folder"
+        "downloadNote": "Files will be downloaded to your default download folder",
+        "exporting": "Exporting {format}..."
     },
     "kwic": {
         "sortResultsBy": "Sort results by",
@@ -376,7 +381,12 @@
         "per10000Words": "per 10,000 words",
         "chartAriaLabel": "{type} time series chart showing {count} data points from {range}",
         "selectionAnnouncement": "Selected {year}: {value} {unit}",
-        "loadingProgress": "Loading time series data: {current} of {total} results processed"
+        "loadingProgress": "Loading time series data: {current} of {total} results processed",
+        "frequencyTypeSelection": "Frequency type selection",
+        "dataTable": "Time series data table",
+        "dataTableCaption": "Time series data showing frequency over time periods",
+        "chartInstructions": "Use arrow keys to navigate between time periods, Enter or Space to view detailed results for selected period, Escape to dismiss tooltip. A complete data table is available below for screen readers.",
+        "periodRange": "{start} to {end}"
     },
     "bibliography": {
         "dictionaryResultsRegion": "Dictionary bibliography results",
@@ -399,7 +409,9 @@
         "viewText": "View text {resultNumber}"
     },
     "pages": {
-        "searchResultsPages": "Search results pages"
+        "searchResultsPages": "Search results pages",
+        "first": "First",
+        "last": "Last"
     },
     "toc": {
         "showHeader": "Show Header",

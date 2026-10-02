@@ -246,6 +246,8 @@ export function dateRangeHandler(
             ) {
                 metadataValues[metadata] =
                     `${separator}${dateRange[metadata].end}`;
+            } else {
+                metadataValues[metadata] = ""; // both boxes emptied: no range left
             }
         }
     }

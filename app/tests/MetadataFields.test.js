@@ -109,6 +109,26 @@ describe("MetadataFields", () => {
             expect(wrapper.text()).toContain("To");
         });
 
+        it("keeps a range typed in the exact field there", async () => {
+            const modelValue = reactive({ year: "" });
+            const wrapper = mount(MetadataFields, {
+                props: {
+                    fields: [{ value: "year", label: "Year", example: "1800" }],
+                    inputStyles: { year: "int" },
+                    modelValue,
+                },
+                global: { plugins: [i18n] },
+                attachTo: document.body, // for the focus
+            });
+            const input = wrapper.find("#year-input-filter");
+            input.element.focus();
+            for (const typed of ["1750", "1750-", "1750-1800"]) await input.setValue(typed);
+            expect(wrapper.find("#year-input-filter").exists()).toBe(true);
+            expect(modelValue.year).toBe("1750-1800");
+            expect(wrapper.text()).not.toContain("From");
+            wrapper.unmount();
+        });
+
         it("uses prop dateType/dateRange when provided", () => {
             const wrapper = mountMetadataFields({
                 fields: [{ value: "year", label: "Year", example: "1800" }],
