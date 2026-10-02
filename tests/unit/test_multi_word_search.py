@@ -18,6 +18,7 @@ from philologic.runtime.multi_word_search import (
     _cooc_match_doc_two_groups,
     _find_common_sentences,
     _groups_overlap,
+    _in_text_order,
     _process_n_groups,
 )
 
@@ -51,6 +52,21 @@ def reference(sentences, groups, ordered, max_distance=0, exact=False):
                 continue
             hits.add((sent, tuple(sorted(combo))))
     return hits
+
+
+def search_rows(sentences, groups, ordered, max_distance=0, exact=False):
+    """The hits of a search, as the search writes them for one document."""
+    dedup = not ordered and _groups_overlap(groups)
+    hits = [make_hits(sentences, set(g)) for g in groups]
+    if len(groups) == 2:
+        rows = _cooc_match_doc_two_groups(hits[0], hits[1], 6, ordered, max_distance, exact, dedup)
+    else:
+        data = _find_common_sentences(hits, 6)
+        if data is None:
+            return np.empty((0, 7 + 2 * len(groups)), dtype=np.uint32)
+        rows = _process_n_groups([d[0] for d in data], [d[1] for d in data], ordered, list(range(len(groups))),
+                                 max_distance, exact, len(groups), dedup)
+    return _in_text_order(rows)
 
 
 def search(sentences, groups, ordered, max_distance=0, exact=False):
@@ -115,3 +131,34 @@ class TestCooccurrences:
         found = search([["a", "b", "c"] * 100], groups, ordered)
         assert time.time() - start < 30
         assert len(found) == len(set(found)) == expected
+
+
+
+@pytest.mark.unit
+class TestTextOrder:
+    """Hits come out in the order of the text: by the byte offset of their first word, then of the next ones."""
+
+    @staticmethod
+    def byte_keys(rows):
+        return [tuple(int(r[c]) for c in range(8, len(r), 2)) for r in rows]
+
+    @pytest.mark.parametrize("groups", GROUPS, ids=["+".join("|".join(g) for g in gs) for gs in GROUPS])
+    @pytest.mark.parametrize("ordered", [True, False], ids=["ordered", "unordered"])
+    def test_in_text_order(self, groups, ordered):
+        keys = self.byte_keys(search_rows(SENTENCES, groups, ordered))
+        assert keys == sorted(keys)
+
+    def test_sentences_past_255(self):
+        """Their ids were sorted by their bytes, little-endian: 256 (00 01 00 00) came before 255 (ff 00 00 00)."""
+        sentences = [["a", "b"]] * 300
+        hits = [make_hits(sentences, {w}) for w in "ab"]
+        common = _find_common_sentences(hits + [make_hits(sentences, {"a", "b"})], 6)
+        sentence_ids = [int(s) for s in common[0][0][:, 5]]
+        assert sentence_ids == sorted(sentence_ids) == list(range(1, 301))
+
+    def test_sorts_only_when_needed(self):
+        rows = np.array([[1, 1, 1, 1, 1, 1, 0, 2, 20, 3, 25], [1, 1, 1, 1, 1, 1, 0, 1, 10, 3, 30],
+                         [1, 1, 1, 1, 1, 2, 0, 1, 50, 2, 60], [1, 1, 1, 1, 1, 1, 0, 1, 10, 2, 20]], dtype=np.uint32)
+        assert self.byte_keys(_in_text_order(rows)) == [(10, 20), (10, 30), (20, 25), (50, 60)]
+        in_order = _in_text_order(rows)
+        assert _in_text_order(in_order) is in_order

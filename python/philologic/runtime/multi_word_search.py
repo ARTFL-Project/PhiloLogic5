@@ -133,14 +133,7 @@ def _find_common_sentences(hits_list, cooc_slice=6):
     if n_common == 0:
         return None
 
-    # Sort common sentences by void dtype order for deterministic output
-    dt = np.dtype((np.void, common_sents.dtype.itemsize * cooc_slice))
-    common_view = np.ascontiguousarray(common_sents).view(dt).ravel()
-    sort_order = np.argsort(common_view)
-
-    # Apply sort order to all group indices
-    for g in range(n_groups):
-        group_indices[g] = group_indices[g][sort_order]
+    # The common sentences are in the order of the text, as the hits they come from (a merge of sorted rows keeps it)
 
     # Collect hits for common sentences from each group
     result = []
@@ -167,6 +160,22 @@ def _find_common_sentences(hits_list, cooc_slice=6):
         result.append((gathered_hits, counts.astype(np.int32)))
 
     return result
+
+
+def _in_text_order(hits):
+    """A document's hits in the order of the text: by the byte offset of their first word, then of the next ones. The
+    kernels make them sentence by sentence, in the order they go through the combinations of each sentence's hits."""
+    if len(hits) < 2:
+        return hits
+    byte_columns = [hits[:, c] for c in range(8, hits.shape[1], 2)]
+    ahead = np.zeros(len(hits) - 1, dtype=bool)  # whether each hit is after the previous one...
+    tied = np.ones(len(hits) - 1, dtype=bool)  # ...or at the same bytes so far
+    for column in byte_columns:
+        ahead |= tied & (column[1:] > column[:-1])
+        tied &= column[1:] == column[:-1]
+    if (ahead | tied).all():
+        return hits
+    return hits[np.lexsort(byte_columns[::-1])]  # lexsort's main key is its last
 
 
 def _groups_overlap(word_groups):
@@ -1049,6 +1058,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                             result = _cooc_match_doc_two_groups(
                                 common_doc, rare_doc, cooc_slice,
                                 cooc_order, max_distance, exact_distance, dedup)
+                        result = _in_text_order(result)
                         if len(result) > 0:
                             output_file.write(result.tobytes())
                             if not flushed:
@@ -1101,6 +1111,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                             result = _cooc_match_doc_two_groups(
                                 common_doc, rare_doc, cooc_slice,
                                 cooc_order, max_distance, exact_distance, dedup)
+                        result = _in_text_order(result)
                         if len(result) > 0:
                             output_file.write(result.tobytes())
                             if not flushed:
@@ -1182,6 +1193,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                             result = _cooc_match_doc_two_groups(
                                 common_doc, rare_doc, cooc_slice,
                                 cooc_order, max_distance, exact_distance, dedup)
+                        result = _in_text_order(result)
                         if len(result) > 0:
                             output_file.write(result.tobytes())
                             if not flushed:
@@ -1224,6 +1236,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                             max_distance, exact_distance, n_groups, dedup
                         )
 
+                        result = _in_text_order(result)
                         if len(result) > 0:
                             output_file.write(result.tobytes())
                             if not flushed:
