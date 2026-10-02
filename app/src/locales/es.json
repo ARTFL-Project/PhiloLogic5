@@ -142,7 +142,9 @@
         "removeTerm": "Eliminar el término: {term}",
         "excludeTerm": "Excluir el término: {term}",
         "adjacent": "uno junto a otro",
-        "inThisOrder": "en este orden"
+        "inThisOrder": "en este orden",
+        "termCut": "{term} corresponde a más de {n} formas: solo se buscaron las {n} primeras, por lo que estos resultados están incompletos. Comience el término con algunas letras para buscar todas sus formas.",
+        "notTermCut": "{term}, después de NOT, corresponde a más de {n} formas: solo se excluyeron las {n} primeras, por lo que estos resultados pueden incluir formas que debía excluir. Comience el término con algunas letras para excluirlas todas."
     },
     "resultsSummary": {
         "heading": "Resumen de resultados",
