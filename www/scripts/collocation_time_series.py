@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.sparse import csr_matrix
 
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.reports.collocation import cache_file_path, fightin_words_zscores, load_map_field_cache
 
 def collocation_time_series(request, config):
@@ -24,6 +25,9 @@ def collocation_time_series(request, config):
         count_offsets = np.load(os.path.join(colloc_dir, "vocab_offsets.npy"), mmap_mode="r")
         with open(os.path.join(colloc_dir, "vocab_strings.bin"), "rb") as f:
             vocab_data = f.read()
+
+    if len(cache_tids) == 0:  # no hits, so no collocates in any period
+        return {"period": None, "done": True}
 
     # Build sparse matrix: rows = years, cols = token IDs
     n_groups = len(group_names)
@@ -72,18 +76,24 @@ def collocation_time_series(request, config):
     collocates_per_year_df = pd.DataFrame(dense_data, index=year_indices, columns=col_names)
 
     # Group by period ranges
-    period = int(request.year_interval)
+    try:
+        period, period_number = int(request.year_interval), int(request.period_number or 0)
+    except ValueError:
+        raise BadRequest("year_interval and period_number must be numbers")
+    if period < 1:
+        raise BadRequest(f"year_interval must be a positive number: {request.year_interval}")
     collocates_per_year_df["period_group"] = (collocates_per_year_df.index // period) * period
     collocates_per_period = collocates_per_year_df.groupby("period_group").sum()
     collocates_per_period.sort_index(inplace=True)
 
-    period_number = int(request.period_number)
+    if not 0 <= period_number < len(collocates_per_period):
+        return {"period": None, "done": True}
     current_year = int(collocates_per_period.index[period_number])
     current_period = collocates_per_period.iloc[period_number].to_numpy()
 
     # Get frequent collocates for current period (ranked by raw count)
     frequent_collocates = pd.Series(current_period, index=collocates_per_period.columns).sort_values(ascending=False)
-    frequent_collocates = [(word, int(score)) for word, score in frequent_collocates.head(100).items()]
+    frequent_collocates = [(word, int(score)) for word, score in frequent_collocates.head(100).items() if score > 0]
 
     # Get neighboring periods
     prev_period = collocates_per_period.iloc[period_number - 1].to_numpy() if period_number > 0 else None

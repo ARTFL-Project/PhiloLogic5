@@ -1,6 +1,7 @@
 import hashlib
 import os
 
+from philologic.runtime.exceptions import NotFound
 from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.reports.collocation import (
     atomic_pickle_dump,
@@ -15,6 +16,8 @@ def get_collocate_distribution(request, config):
     tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(file_path)
 
     # Find the requested group
+    if request.field not in group_names:
+        raise NotFound(f"No collocates counted for {request.field!r}")
     group_index = group_names.index(request.field)
     field_counter = decode_group_collocates(
         tids, counts, group_bounds, group_index,
