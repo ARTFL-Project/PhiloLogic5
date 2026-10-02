@@ -11,6 +11,8 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
+from philologic.runtime.exceptions import BadRequest
+
 
 def finished(hits):
     """hits, once complete, checked to hold whole hits of the width it reads them with."""
@@ -72,10 +74,15 @@ class TestRegexTokens:
     def test_wildcard(self, shakespeare_db):
         assert count(shakespeare_db, "lord.*") >= count(shakespeare_db, "lord") + count(shakespeare_db, "lords")
 
-    @pytest.mark.parametrize("q", ["(lord", "lord[", "*lord*", "lord\\", '"(my lord)"'])
+    @pytest.mark.parametrize("q", ["lord[", "*lord*", "lord\\", '"(my lord)"'])
     def test_invalid_regex(self, shakespeare_db, q):
         """Searched for as words, which they are not: no hits, rather than a failed search."""
         assert count(shakespeare_db, q, "phrase_ordered") == 0
+
+    def test_unmatched_parenthesis(self, shakespeare_db):
+        """Refused with its reason: it was searched as the word "(lord", and found nothing, silently."""
+        with pytest.raises(BadRequest, match="unmatched parenthesis"):
+            count(shakespeare_db, "(lord", "phrase_ordered")
 
     def test_invalid_regex_in_metadata(self, shakespeare_db):
         hits = shakespeare_db.query("", title=["[hamlet"])

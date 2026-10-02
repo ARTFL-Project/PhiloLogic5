@@ -50,6 +50,8 @@ class TestBadParameters:
             ),
             ("scripts/get_word_property_count.py", {**Q, "word_property": "nothing"}, 400, "no word property"),
             ("reports/navigation.py", {"philo_id": "1 2 0 0 0 0 0 0 999999"}, 404, "No page"),
+            ("reports/concordance.py", {"q": "(love|hate)"}, 400, "unmatched parenthesis"),
+            ("scripts/get_total_results.py", {"q": "(love | hate) NOT war"}, 400, "unmatched parenthesis"),
         ],
     )
     def test_refused(self, web, path, params, status, reason):

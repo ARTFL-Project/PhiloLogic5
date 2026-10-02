@@ -10,7 +10,15 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime.exceptions import BadRequest
-from philologic.runtime.Query import MAX_DISTANCE, check_method, check_phrases, query_parse, resolve_method, split_terms
+from philologic.runtime.Query import (
+    MAX_DISTANCE,
+    check_method,
+    check_parentheses,
+    check_phrases,
+    query_parse,
+    resolve_method,
+    split_terms,
+)
 from philologic.runtime.QuerySyntax import parse_query, group_terms, parse_date_query, quoted_text
 
 
@@ -251,6 +259,34 @@ class TestPhrasesAlone:
     )
     def test_allowed(self, query):
         check_phrases(group_terms(parse_query(query)))
+
+
+@pytest.mark.unit
+class TestCheckParentheses:
+    """| splits terms first, so parentheses meant to group became parts of terms that silently matched nothing: such
+    queries are refused, while a regex group within a term still searches."""
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "(amour|haine)",
+            "libert(é|e)s?",
+            "([Cc]h[Iiï]ne | Canton) NOT machine",  # a 2025 query
+            "( amour | haine )",
+            "(Judi. XVI)",  # pasted text, 2025
+            "lemma:(être|avoir)",
+            "x)y(",
+        ],
+    )
+    def test_refused(self, query):
+        with pytest.raises(BadRequest, match="unmatched parenthesis"):
+            check_parentheses(group_terms(parse_query(query)))
+
+    @pytest.mark.parametrize(
+        "query", ["(re)?faire", "amour (haine)", '"(amour"', "[(]x", r"a\(b", "lord[", "amour | haine"],
+    )
+    def test_allowed(self, query):
+        check_parentheses(group_terms(parse_query(query)))
 
 
 @pytest.mark.unit

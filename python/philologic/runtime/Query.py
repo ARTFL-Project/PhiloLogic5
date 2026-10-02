@@ -575,6 +575,42 @@ def check_phrases(grouped):
                     )
 
 
+def _parentheses_pair_up(token):
+    """Whether the parentheses of a term pair up within it, as a regex group's do: escaped ones and those of a bracket
+    expression aside."""
+    depth, in_brackets, i = 0, False, 0
+    while i < len(token):
+        char = token[i]
+        if char == "\\":
+            i += 2
+            continue
+        if in_brackets:
+            in_brackets = char != "]"
+        elif char == "[":
+            in_brackets = True
+        elif char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth < 0:
+                return False
+        i += 1
+    return depth == 0
+
+
+def check_parentheses(grouped):
+    """Raise BadRequest for a term whose parentheses don't pair up within it. | splits terms before anything else, so
+    in (amour|haine), libert(é|e)s? or (Chine | Canton) NOT machine the parentheses meant to group became part of
+    terms, which silently matched nothing. Parentheses within a term, as in (re)?faire, are a regex group."""
+    for group in grouped:
+        for kind, token in group:
+            if kind in ("TERM", "LEMMA", "ATTR", "LEMMA_ATTR") and not _parentheses_pair_up(token):
+                raise BadRequest(
+                    f"{token}: unmatched parenthesis. Remove it: parentheses can't group words or alternatives "
+                    "(write amour | haine, or libert[ée]s? for letters)"
+                )
+
+
 def split_terms(grouped):
     split = []
     for group in grouped:
