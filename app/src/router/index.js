@@ -11,6 +11,7 @@ const textNavigation = () => import("../components/TextNavigation");
 const tableOfContents = () => import("../components/TableOfContents");
 const landingPage = () => import("../components/LandingPage");
 const aggregation = () => import("../components/Aggregation");
+const notFound = () => import("../components/NotFound");
 
 const router = createRouter({
     history: createWebHistory(
@@ -76,6 +77,11 @@ const router = createRouter({
                     params: to.params,
                 };
             },
+        },
+        {
+            path: "/:pathMatch(.*)*",
+            name: "notFound",
+            component: notFound,
         },
     ],
     scrollBehavior(to, from, savedPosition) {

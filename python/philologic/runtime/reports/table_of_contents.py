@@ -36,7 +36,8 @@ def generate_toc_object(request, config):
     for row in cursor:
         philo_id = [int(n) for n in row["philo_id"].split(" ")]
         text = HitWrapper.ObjectWrapper(philo_id, db, row=row)
-        if text["philo_name"] == "__philo_virtual" and text["philo_type"] != "div1" or text["word_count"] == 0:
+        # divisions without words open an empty page (toms stores word counts as text)
+        if text["philo_name"] == "__philo_virtual" and text["philo_type"] != "div1" or text["word_count"] in (0, "0"):
             continue
         philo_id = text["philo_id"]
         philo_type = text["philo_type"]

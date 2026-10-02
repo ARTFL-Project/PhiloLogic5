@@ -7,6 +7,7 @@ import sys
 from unidecode import unidecode
 
 from philologic.runtime.DB import DB
+from philologic.runtime.HitList import sort_key
 from philologic.runtime.sql_validation import validate_column, validate_request_column
 
 
@@ -114,29 +115,29 @@ def group_by_range(request_range, request, config):
         }
     content_type = metadata_queried
     query_range = set(range(ord(request_range[0]), ord(request_range[1]) + 1))  # Ordinal avoids unicode issues...
+    # One entry for documents that show alike: grouped by title alone, the "Oeuvres poétiques" of 5 authors showed one
+    group_fields = ", ".join(dict.fromkeys(field for field in metadata_fields_needed if field != "philo_id"))
     try:
-        cursor.execute(f'select *, count(*) as count from toms where philo_type="doc" group by {metadata_queried}')
+        cursor.execute(f'select *, count(*) as count from toms where philo_type="doc" group by {group_fields}')
     except sqlite3.OperationalError:
         return {"display_count": request.display_count, "content_type": content_type, "content": []}
     for doc in cursor:
         normalized_test_value = ""
         if doc[metadata_queried] is None:
             continue
-        try:
-            initial_letter = doc[metadata_queried][0].lower()
-        except IndexError:
-            # we have an empty string
+        initial_letter = _initial(doc[metadata_queried]).lower()
+        if not initial_letter:
             continue
         try:
             test_value = ord(initial_letter)
-            normalized_test_value = ord(unidecode(initial_letter))
+            normalized_test_value = ord(unidecode(initial_letter)[:1] or initial_letter)  # Œ is OE
         except TypeError:
             continue
         initial = initial_letter.upper()
         # Are we within the range?
         if test_value in query_range or normalized_test_value in query_range:
             if normalized_test_value in query_range:
-                initial = unidecode(initial_letter).upper()
+                initial = unidecode(initial_letter)[:1].upper()
             metadata = {m: doc[m] for m in metadata_fields_needed}
             if initial not in content:
                 content[initial] = {"prefix": initial, "results": []}
@@ -146,12 +147,28 @@ def group_by_range(request_range, request, config):
                     "count": doc["count"],
                 }
             )
+    # In alphabetical order, regardless of case, accents and leading punctuation: "Élégies" with the E's
+    for group in content.values():
+        group["results"].sort(key=lambda result: _alphabetical(result["metadata"][metadata_queried]))
+    content = dict(sorted(content.items(), key=lambda item: _alphabetical(item[0])))
     return {
         "display_count": request.display_count,
         "content_type": content_type,
         "content": content,
         "citations": citations,
     }
+
+
+def _initial(value):
+    """The first letter or digit of a value: "[L']Impasse" and "“Ma vie”" are browsed under L and M."""
+    return next((char for char in str(value) if char.isalnum()), "")
+
+
+def _alphabetical(value):
+    """Sort key of a value regardless of case, accents and what precedes its first letter or digit."""
+    value = str(value)
+    initial = _initial(value)
+    return sort_key(value[value.index(initial) :] if initial else value, True)
 
 
 def group_by_metadata(request, config):

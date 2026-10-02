@@ -58,7 +58,7 @@
                                         <button type="button"
                                             :class="{ 'current-obj': element.philo_id === currentPhiloId }"
                                             class="btn btn-link toc-link"
-                                            @click="textObjectSelection(element.philo_id, elIndex, $event)"
+                                            @click="textObjectSelection(element.philo_id, $event)"
                                             :aria-current="element.philo_id === currentPhiloId ? 'page' : null">
                                             {{ element.label }}
                                         </button>
@@ -74,7 +74,7 @@
                                                 <button type="button"
                                                     :class="{ 'current-obj': child.philo_id === currentPhiloId }"
                                                     class="btn btn-link toc-link"
-                                                    @click="textObjectSelection(child.philo_id, childIndex, $event)"
+                                                    @click="textObjectSelection(child.philo_id, $event)"
                                                     :aria-current="child.philo_id === currentPhiloId ? 'page' : null">
                                                     {{ child.label }}
                                                 </button>
@@ -91,7 +91,7 @@
                                                         <button type="button"
                                                             :class="{ 'current-obj': grandchild.philo_id === currentPhiloId }"
                                                             class="btn btn-link toc-link"
-                                                            @click="textObjectSelection(grandchild.philo_id, grandchildIndex, $event)"
+                                                            @click="textObjectSelection(grandchild.philo_id, $event)"
                                                             :aria-current="grandchild.philo_id === currentPhiloId ? 'page' : null">
                                                             {{ grandchild.label }}
                                                         </button>
@@ -110,6 +110,9 @@
         <div class="text-center" style="font-size: 85%" v-if="philoConfig.dictionary_lookup.url_root != ''"
             :aria-label="$t('textNav.dictionaryLookup')">
             <p>{{ $t("textNav.dicoLookUp") }}.</p>
+        </div>
+        <div class="alert alert-warning text-center col-8 offset-2 mt-4" role="alert" v-if="loadError">
+            {{ $t(loadError) }}
         </div>
         <div role="region" class="row" id="all-content" :aria-label="$t('textNav.textContent')">
             <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text"
@@ -201,13 +204,14 @@ const navBarVisible = ref(false);
 const gallery = ref(null);
 const images = ref([]);
 const loading = ref(false);
+const loadError = ref("");  // the message key, when the text can't be shown
 const textObjectURL = ref("");
 
 //  Computed ─
 const processedTocElements = computed(() =>
     buildTocTree(tocElements.value.elements.slice(start.value, end.value))
 );
-const tocHeight = computed(() => `max-height: ${window.innerHeight - 200}`);
+const tocHeight = computed(() => `max-height: ${window.innerHeight - 200}px`);
 const whiteSpace = computed(() =>
     philoConfig.respect_text_line_breaks ? "pre" : "normal"
 );
@@ -407,6 +411,7 @@ function scrollToTarget() {
 //  Text fetch ─
 function fetchText() {
     searching.value = true;
+    loadError.value = "";
     textObjectURL.value = route.params;
     philoID.value = textObjectURL.value.pathInfo.split("/").join(" ");
 
@@ -460,6 +465,9 @@ function fetchText() {
         .catch((error) => {
             logError(error);
             loading.value = false;
+            searching.value = false;
+            textObject.value = {};
+            loadError.value = error.response?.status === 404 ? "common.textNotFound" : "common.textLoadFailed";
         });
 }
 
@@ -490,6 +498,12 @@ function fetchToC() {
             }
         }).catch(logError);
     } else {
+        // the entries around the current one, as on a first load
+        const position = tocElements.value.elements.findIndex((element) => element.philo_id === philoId);
+        if (position !== -1) {
+            tocElements.value.start = Math.max(0, position - 100);
+            tocElements.value.end = position + 100;
+        }
         start.value = tocElements.value.start;
         end.value = tocElements.value.end;
         nextTick(() => {
@@ -572,14 +586,8 @@ function goToTextObject(philoIDArg) {
     router.push({ path: `/navigate/${path}` });
 }
 
-function textObjectSelection(philoId, index, event) {
+function textObjectSelection(philoId, event) {
     event.preventDefault();
-    const newStart = Math.max(0, tocElements.value.start + index - 100);
-    tocElements.value = {
-        ...tocElements.value,
-        start: newStart,
-        end: tocElements.value.end - index + 100,
-    };
     goToTextObject(philoId);
 }
 
