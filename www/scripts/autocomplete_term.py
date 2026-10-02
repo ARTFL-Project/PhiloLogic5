@@ -1,6 +1,6 @@
 from philologic.runtime.DB import DB
 from philologic.runtime.Query import split_terms
-from philologic.runtime.QuerySyntax import group_terms, parse_query
+from philologic.runtime.QuerySyntax import group_terms, parse_query, quoted_text
 from philologic.runtime.term_expansion import expand_autocomplete
 
 
@@ -50,7 +50,7 @@ def format_query(q, db, config):
         return []
 
     # len of the typed portion (without surrounding quotes for QUOTE)
-    raw_token = token[1:-1] if kind == "QUOTE" else token
+    raw_token = quoted_text(token) if kind == "QUOTE" else token
     len_token = len(raw_token)
 
     output_string = []

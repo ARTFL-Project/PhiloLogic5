@@ -28,6 +28,14 @@ def group_tokens(group):
     return tokens
 
 
+def group_exclusion(group):
+    """A query group's NOT filter, as written (" NOT a | b"), or "": similar words are filtered as the query's are."""
+    kinds = [kind for kind, _ in group]
+    if "NOT" not in kinds:
+        return ""
+    return " " + " ".join(token for _, token in group[kinds.index("NOT"):])
+
+
 def get_all_words(db, request, query_groups):
     """The words of each query group, normalized as in the word frequencies: those it expands to, or for a group
     that expands to none, as a misspelled word does, its own tokens."""
@@ -79,7 +87,7 @@ def find_similar_words(db, config, request):
     # A group with no similar word keeps its own tokens, which find nothing: dropping it would change the query, or
     # leave none, which would be a search for everything.
     new_query = " ".join(
-        " | ".join(sorted(similar)) if similar else " | ".join(group_tokens(group))
+        (" | ".join(sorted(similar)) if similar else " | ".join(group_tokens(group))) + group_exclusion(group)
         for group, similar in zip(query_groups, new_query_groups)
     ) or request["q"]
     with open(approximate_filename, "w", encoding="utf8") as cached_file:

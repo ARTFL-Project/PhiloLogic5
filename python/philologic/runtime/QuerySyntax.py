@@ -31,6 +31,11 @@ date_patterns = [
 ]
 
 
+def quoted_text(token):
+    """The text of a QUOTE token, without its quotes: the closing one may be missing (patterns take '".+' too)."""
+    return token[1:-1] if len(token) > 1 and token.endswith('"') else token[1:]
+
+
 def parse_query(qstring, query_patterns=None):
     """Parse query"""
     if query_patterns is None:

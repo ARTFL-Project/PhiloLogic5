@@ -10,8 +10,8 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime.exceptions import BadRequest
-from philologic.runtime.Query import check_phrases, query_parse
-from philologic.runtime.QuerySyntax import parse_query, group_terms, parse_date_query
+from philologic.runtime.Query import MAX_DISTANCE, check_method, check_phrases, query_parse, resolve_method, split_terms
+from philologic.runtime.QuerySyntax import parse_query, group_terms, parse_date_query, quoted_text
 
 
 @pytest.mark.unit
@@ -284,3 +284,41 @@ class TestQueryParserRules:
     )
     def test_metadata_values(self, value, rewritten):
         assert query_parse(value, self.config, keep_quoted=True) == rewritten
+
+
+@pytest.mark.unit
+class TestQuotedTerms:
+    @pytest.mark.parametrize("token, text", [('"liberté"', "liberté"), ('"liberté', "liberté"), ('""', ""), ('"', "")])
+    def test_quoted_text(self, token, text):
+        """The closing quote may be missing: its last letter was dropped instead ("liberté searched libert)."""
+        assert quoted_text(token) == text
+
+    @pytest.mark.parametrize("query", ['"la liberté"', '"la  liberté"', '"la liberté'])
+    def test_phrase_groups(self, query):
+        assert split_terms(group_terms(parse_query(query))) == [(("QUOTE", '"la"'),), (("QUOTE", '"liberté"'),)]
+
+
+@pytest.mark.unit
+class TestSearchChecks:
+    @pytest.mark.parametrize("query", ["NOT amour", "roi NOT reine", "a.* NOT abalone"])
+    def test_not(self, query):
+        grouped = group_terms(parse_query(query))
+        if query.startswith("NOT"):
+            with pytest.raises(BadRequest, match="NOT"):
+                check_phrases(grouped)
+        else:
+            check_phrases(grouped)
+
+    def test_methods(self):
+        two_groups = split_terms(group_terms(parse_query("roi reine")))
+        one_group = split_terms(group_terms(parse_query("roi")))
+        with pytest.raises(BadRequest, match="Unknown search method"):
+            check_method(two_groups, "cooc", "")
+        with pytest.raises(BadRequest, match="negative"):
+            check_method(two_groups, "proxy_unordered", "-3")
+        check_method(one_group, "cooc", "-3")  # one group is searched by single_term whatever the method
+        check_method(two_groups, "sentence_unordered", "6")
+        check_method(two_groups, "", "")
+
+    def test_huge_distance(self):
+        assert resolve_method("roi reine", "proxy", "99999999999999999999", "no") == ("proxy_unordered", str(MAX_DISTANCE))
