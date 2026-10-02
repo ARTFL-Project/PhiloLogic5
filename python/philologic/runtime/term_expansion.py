@@ -92,9 +92,113 @@ def _regex_scan_args(token: str, normalize) -> tuple[bytes, str]:
     return norm_literal.encode("utf-8"), re.escape(norm_literal) + meta
 
 
+_REGEX_SYNTAX = frozenset(".^$*+?{}[]\\|()")
+
+
+def _literal(char: str, normalize, quantified: bool) -> str:
+    """The regex matching char once normalized: if a quantifier follows, several characters (œ: oe) as one group.
+    Only regex syntax is escaped, so that the literal start of the regex, which scans start from, stays as long."""
+    normalized = "".join("\\" + c if c in _REGEX_SYNTAX else c for c in normalize(char))
+    return f"(?:{normalized})" if quantified and len(normalize(char)) != 1 else normalized
+
+
+def _class_char(char: str) -> str:
+    return "\\" + char if char in "\\]-^[" else char
+
+
+def _normalize_class(pattern: str, start: int, normalize) -> tuple[int, str]:
+    """The character class that starts at pattern[start] ("["), normalized, and the index after it. A character that
+    normalizes to several (œ: oe) can't be in a class: it becomes an alternative to it. A class of one character once
+    normalized ([éè]: e) is that character, so that a scan can start from it."""
+    i = start + 1
+    negated = pattern.startswith("^", i)
+    i += negated
+    items, alternatives, chars = [], [], set()
+    first = True
+    while i < len(pattern) and (pattern[i] != "]" or first):
+        first = False
+        if pattern[i] == "\\" and i + 1 < len(pattern):
+            char, i = pattern[i + 1], i + 2
+            if char.isascii() and char.isalnum():  # \d, \w...
+                items.append("\\" + char)
+                chars.add(None)
+                continue
+        else:
+            char, i = pattern[i], i + 1
+        if pattern.startswith("-", i) and i + 1 < len(pattern) and pattern[i + 1] != "]":  # a range
+            end, i = pattern[i + 1], i + 2
+            low, high = normalize(char), normalize(end)
+            if len(low) == 1 and len(high) == 1:
+                items.append(_class_char(min(low, high)) + "-" + _class_char(max(low, high)))
+            else:
+                items.append(_class_char(char) + "-" + _class_char(end))
+            chars.add(None)
+            continue
+        normalized = normalize(char)
+        if len(normalized) == 1:
+            items.append(_class_char(normalized))
+            chars.add(normalized)
+        elif normalized:
+            alternatives.append(re.escape(normalized))
+    if i >= len(pattern):  # not closed: the token is no regex, and was taken for a word
+        return len(pattern), pattern[start:]
+    if not negated and not alternatives and len(chars) == 1 and None not in chars:
+        return i + 1, re.escape(chars.pop())
+    regex_class = "[" + "^" * negated + "".join(items) + "]" if items or negated else ""
+    if alternatives and not negated:
+        return i + 1, "(?:" + "|".join(([regex_class] if regex_class else []) + alternatives) + ")"
+    return i + 1, regex_class
+
+
+def _normalize_regex(pattern: str, normalize) -> str:
+    """pattern with each of its literal characters (classes' too) normalized as the keys it is matched against are:
+    "[éè]t" matches "et", "a[MN]our" "amour". Escapes (\\w, \\p{L}), quantifiers and group syntax stay as they are."""
+    out = []
+    i = 0
+    while i < len(pattern):
+        char = pattern[i]
+        if char == "\\" and i + 1 < len(pattern):
+            escaped = pattern[i + 1]
+            if escaped.isascii() and escaped.isalnum():  # \d, \w, \p{L}, \x{e9}, \1...
+                end = i + 2
+                if escaped in "pPNx" and pattern.startswith("{", end):
+                    end = pattern.find("}", end) + 1 or len(pattern)
+                out.append(pattern[i:end])
+                i = end
+            else:
+                out.append(_literal(escaped, normalize, pattern[i + 2:i + 3] in _QUANTIFIERS))
+                i += 2
+        elif char == "[":
+            i, regex_class = _normalize_class(pattern, i, normalize)
+            out.append(regex_class)
+        elif char == "(" and pattern.startswith("(?", i):  # (?:, (?=, (?<!, (?P<name>...
+            end = i + 2
+            while end < len(pattern) and pattern[end] not in ":=!)>" and not pattern[end].isspace():
+                end += 1
+            out.append(pattern[i:end + 1])
+            i = end + 1
+        elif char == "{" and (quantifier := re.match(r"\{\d*(,\d*)?\}", pattern[i:])):
+            out.append(quantifier.group())
+            i += quantifier.end()
+        elif char in _REGEX_SYNTAX:
+            out.append(char)
+            i += 1
+        else:
+            out.append(_literal(char, normalize, pattern[i + 1:i + 2] in _QUANTIFIERS))
+            i += 1
+    return "".join(out)
+
+
 def _normalize_pattern(token: str, lowercase: bool = True) -> tuple[bytes, str]:
-    """_regex_scan_args for norm_word.lmdb, whose keys are normalized words."""
-    return _regex_scan_args(token, lambda s: _norm(s, lowercase))
+    """_regex_scan_args for norm_word.lmdb, whose keys are normalized words: all the regex's literal characters are
+    normalized (not only those before its first metacharacter), so that "pr.mière" matches "premiere"."""
+    normalize = lambda s: _norm(s, lowercase)  # noqa: E731
+    normalized = _normalize_regex(token, normalize)
+    try:
+        re.compile(normalized)
+    except re.error:
+        return _regex_scan_args(token, normalize)
+    return _regex_scan_args(normalized, lambda s: s)
 
 
 def _forms_pattern(token: str) -> tuple[bytes, str]:
@@ -112,17 +216,19 @@ def _matcher(pattern_str: str | None, prefix_match: bool):
 
 
 def _lmdb_expand_term(txn, norm_prefix: bytes, pattern_str: str | None = None,
-                      max_results: int = 0, prefix_match: bool = False) -> list[str]:
+                      max_results: int = 0, prefix_match: bool = False, form_pattern: str | None = None) -> list[str]:
     """Cursor-scan norm_word.lmdb from norm_prefix, return original word forms.
 
     If pattern_str is given, keeps the normalized keys it matches: whole, or with prefix_match (for autocomplete),
-    at their start.
+    at their start. If form_pattern is given, keeps the original forms it matches whole (for quoted terms, which
+    are accent-sensitive).
     When norm_prefix is empty, scans the whole DB filtered by pattern_str;
     max_results defaults to 10000 in that case to cap unbounded full-DB scans.
     max_results: stop after collecting that many forms (0 = unlimited).
     """
-    if not norm_prefix and not pattern_str:
+    if not norm_prefix and not pattern_str and not form_pattern:
         return []
+    form_match = re.compile(form_pattern).fullmatch if form_pattern else None
     if not norm_prefix and max_results == 0:
         max_results = 10000
     match = _matcher(pattern_str, prefix_match)
@@ -141,6 +247,8 @@ def _lmdb_expand_term(txn, norm_prefix: bytes, pattern_str: str | None = None,
                 break
             if match is None or match(k.decode("utf-8", errors="replace")):
                 for form in bytes(cursor.value()).decode("utf-8").split("\x00"):
+                    if form_match is not None and not form_match(form):
+                        continue
                     results.append(form)
                     if max_results and len(results) >= max_results:
                         return results
@@ -219,9 +327,9 @@ def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowerca
             return [token]
     elif kind == "QUOTE":
         inner = token[1:-1]  # strip surrounding quotes
-        if _is_regex_pattern(inner):
-            norm_prefix, pattern_str = _normalize_pattern(inner, lowercase)
-            return _lmdb_expand_term(txn, norm_prefix, pattern_str)
+        if _is_regex_pattern(inner):  # accent-sensitive, as quoted words: matched against the forms as they are
+            norm_prefix, _ = _normalize_pattern(inner, lowercase)
+            return _lmdb_expand_term(txn, norm_prefix, form_pattern=inner)
         return [inner]
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
@@ -250,8 +358,8 @@ def _expand_exclude(kind: str, token: str, txn, ascii_conversion: bool, lowercas
     elif kind == "QUOTE":
         inner = token[1:-1]
         if _is_regex_pattern(inner):
-            norm_prefix, pattern_str = _normalize_pattern(inner, lowercase)
-            return set(_lmdb_expand_term(txn, norm_prefix, pattern_str))
+            norm_prefix, _ = _normalize_pattern(inner, lowercase)
+            return set(_lmdb_expand_term(txn, norm_prefix, form_pattern=inner))
         return {inner}
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
