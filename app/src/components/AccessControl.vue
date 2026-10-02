@@ -5,7 +5,7 @@
                 <div class="card-body">
                     <h3 class="card-title text-center">Access Restricted to ARTFL subscribing institutions</h3>
                     <h6 class="card-subtitle mb-2 text-muted text-center">Please read the following below</h6>
-                    <form @submit.prevent="submit" @reset="reset" @keyup.enter="submit" id="password-access"
+                    <form @submit.prevent="submit" @reset="reset" id="password-access"
                         class="mt-4 p-2">
                         <h5 v-if="!accessDenied" class="mt-2 mb-3">
                             If you have a username and password, please enter them here:
@@ -92,9 +92,11 @@ const incorrectLogin = ref(false);
 const accessInput = reactive({ username: "", password: "" });
 
 function submit() {
-    $http.get(
-        `${$dbUrl}/scripts/access_request.py?username=${encodeURIComponent(accessInput.username)}&password=${encodeURIComponent(accessInput.password)}`
-    ).then((response) => {
+    // In the body, not the URL, which ends up in access logs
+    $http.post(`${$dbUrl}/scripts/access_request.py`, {
+        username: accessInput.username,
+        password: accessInput.password,
+    }).then((response) => {
         if (response.data.access) {
             location.reload();
         } else {

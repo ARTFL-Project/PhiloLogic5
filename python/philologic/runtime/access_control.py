@@ -16,7 +16,6 @@ import socket
 import sys
 import time
 from functools import cache
-from urllib.parse import unquote
 
 import netaddr
 import regex as re
@@ -255,8 +254,32 @@ def client_address(environ):
     return address
 
 
+def _hostname(incoming_address):
+    """The client's host name, from a reverse DNS lookup of its address, and whether the forward lookup of the name gives
+    the address back: whoever controls an address's reverse DNS can give it any name, one of an allowed domain too.
+    (None, False) if it has no name."""
+    try:
+        name = socket.gethostbyaddr(incoming_address)[0]
+    except (OSError, UnicodeError, ValueError):
+        return None, False
+    hostname = name.lower().rstrip(".")
+    try:
+        addresses = {info[4][0].split("%")[0] for info in socket.getaddrinfo(name, None)}
+        client = netaddr.IPAddress(incoming_address)
+        return hostname, any(netaddr.IPAddress(address) == client for address in addresses)
+    except (OSError, UnicodeError, ValueError, netaddr.AddrFormatError):
+        return hostname, False
+
+
+def in_domain(hostname, domain):
+    """Whether hostname is domain or in it: "cs.uchicago.edu" is in "uchicago.edu" (or ".uchicago.edu", or ".edu"),
+    "notuchicago.edu" isn't."""
+    domain = domain.strip().lower().lstrip("*").strip(".")
+    return bool(domain) and (hostname == domain or hostname.endswith("." + domain))
+
+
 def _client_domain(incoming_address):
-    """The domain the access file's domain_list is matched against, from a reverse DNS lookup of the address."""
+    """The client's domain, as the login screen shows it, from a reverse DNS lookup of its address."""
     fq_domain_name = socket.getfqdn(incoming_address).split(",")[-1]
     edit_domain = re.split(r"\.", fq_domain_name)
     if re.match("edu", edit_domain[-1]):
@@ -340,18 +363,22 @@ def _check_address(incoming_address, access_file, access_file_exists):
     except Exception as e:
         print(f"Error checking IP whitelist: {repr(e)}", file=sys.stderr)
 
-    # Check domain access, last: it takes a reverse DNS lookup
-    match_domain = _client_domain(incoming_address)
-    domain_list = set(getattr(access_config, "domain_list", []))
-    if match_domain in domain_list:
-        return True
-    for domain in domain_list:
-        if domain in match_domain:
+    # Check domain access, last: it takes DNS lookups
+    domain_list = getattr(access_config, "domain_list", [])
+    hostname, confirmed = _hostname(incoming_address) if domain_list else (None, False)
+    if hostname and any(in_domain(hostname, domain) for domain in domain_list):
+        if confirmed:
             return True
+        print(
+            f"UNAUTHORIZED ACCESS TO:{incoming_address}: its name {hostname} is in an allowed domain, but the name"
+            " doesn't resolve back to it: allow the address, or have the name's DNS fixed",
+            file=sys.stderr,
+        )
+        return False
 
     # If no match found, access denied
     print(
-        f"UNAUTHORIZED ACCESS TO:{incoming_address} from domain {match_domain}: IP not in whitelist",
+        f"UNAUTHORIZED ACCESS TO:{incoming_address} from host {hostname or '(no confirmed name)'}: IP not in whitelist",
         file=sys.stderr,
     )
     return False
@@ -363,13 +390,16 @@ def check_access(environ, config):
     return auth_cookie(config) if is_allowed(environ, config) else ""
 
 
-def login_access(environ, request, config, headers):
-    """Whether the client may use the database, by its cookie, the user and password it sends, or else its IP address
-    or domain; headers, with an auth cookie added to them if it gets in now."""
+def login_access(environ, request, config, headers, username=None, password=None):
+    """Whether the client may use the database: by its cookie, by the username and password it sends (by default those
+    of the query string, where clients built before 5.2.6 put them), or else by its IP address or domain; and headers,
+    with an auth cookie added to them if it gets in now."""
     if request.authenticated:
         return True, headers
-    if request.username and request.password:
-        access = check_login_info(config, request)
+    if username is None:
+        username, password = request.username, request.password
+    if username and password:
+        access = check_login_info(config, username, password)
     else:
         access = is_allowed(environ, config)
     if access:
@@ -377,27 +407,20 @@ def login_access(environ, request, config, headers):
     return access, headers
 
 
-def check_login_info(config, request):
+def check_login_info(config, username, password):
+    """Whether username and password are a login of the database's data/logins.txt: one per line, tab-separated."""
     login_file_path = os.path.join(config.db_path, "data/logins.txt")
-    unquoted_password = unquote(request.password)
-    if os.path.exists(login_file_path):
-        with open(login_file_path, "rb") as password_file:
-            for line in password_file:
-                try:
-                    line = line.decode("utf8", "ignore")
-                except UnicodeDecodeError:
-                    continue
-                line = line.strip()
-                if not line:  # empty line
-                    continue
-                fields = line.split("\t")
-                user = fields[0]
-                passwd = fields[1]
-                if user == request.username and passwd == unquoted_password:
-                    return True
-            return False
-    else:
+    if not os.path.exists(login_file_path):
         return False
+    with open(login_file_path, "rb") as password_file:
+        for line in password_file:
+            fields = line.decode("utf8", "ignore").strip().split("\t")
+            if len(fields) < 2:  # empty line, or no password
+                continue
+            user, passwd = fields[0].encode("utf8"), fields[1].encode("utf8")
+            if hmac.compare_digest(user, username.encode("utf8")) & hmac.compare_digest(passwd, password.encode("utf8")):
+                return True
+    return False
 
 
 # ── Auth cookies ──────────────────────────────────────────────────────────────

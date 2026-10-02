@@ -44,13 +44,25 @@ class AccessRequestResource:
     public = True  # where clients of access-controlled databases log in
 
     def on_get(self, req, resp, db_name):
+        """Check access by cookie or address, or log in with the username and password of the query string, where
+        clients built before 5.2.6 send them."""
+        self._answer(req, resp)
+
+    def on_post(self, req, resp, db_name):
+        """Log in with the username and password of a JSON body: those of a URL end up in access logs."""
+        credentials = req.get_media(default_when_empty={})
+        if not isinstance(credentials, dict):
+            raise falcon.HTTPBadRequest(description="Expected a JSON object with a username and a password")
+        self._answer(req, resp, str(credentials.get("username") or ""), str(credentials.get("password") or ""))
+
+    def _answer(self, req, resp, username=None, password=None):
         config = req.context.config
         request = req.context.request
         headers = [
             ("Content-type", "application/json; charset=UTF-8"),
             ("Access-Control-Allow-Origin", "*"),
         ]
-        access, headers = login_access(req.env, request, config, headers)
+        access, headers = login_access(req.env, request, config, headers, username, password)
 
         for name, value in headers:
             if name == "Set-Cookie":

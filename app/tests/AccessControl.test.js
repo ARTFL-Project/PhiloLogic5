@@ -17,6 +17,7 @@ const i18n = createI18n({
 function mountAccessControl(overrides = {}) {
     const mockHttp = {
         get: vi.fn().mockResolvedValue({ data: { access: false } }),
+        post: vi.fn().mockResolvedValue({ data: { access: false } }),
         ...overrides.http,
     };
     const onLoginSuccess = overrides.onLoginSuccess || vi.fn();
@@ -55,21 +56,32 @@ describe("AccessControl", () => {
     });
 
     it("sends credentials on form submit", async () => {
-        const mockGet = vi.fn().mockResolvedValue({ data: { access: false } });
-        const wrapper = mountAccessControl({ http: { get: mockGet } });
+        const mockPost = vi.fn().mockResolvedValue({ data: { access: false } });
+        const wrapper = mountAccessControl({ http: { post: mockPost } });
 
         await wrapper.find("#username-input").setValue("user1");
         await wrapper.find("#password-input").setValue("pass1");
         await wrapper.find("form").trigger("submit");
 
-        expect(mockGet).toHaveBeenCalledWith(
-            "/testdb/scripts/access_request.py?username=user1&password=pass1"
-        );
+        expect(mockPost).toHaveBeenCalledWith("/testdb/scripts/access_request.py", {
+            username: "user1",
+            password: "pass1",
+        });
+    });
+
+    it("sends no second request on Enter: the form's submit is enough", async () => {
+        const mockPost = vi.fn().mockResolvedValue({ data: { access: false } });
+        const wrapper = mountAccessControl({ http: { post: mockPost } });
+
+        await wrapper.find("#password-input").setValue("pass1");
+        await wrapper.find("#password-input").trigger("keyup", { key: "Enter" });
+
+        expect(mockPost).not.toHaveBeenCalled();
     });
 
     it("attempts reload on successful login", async () => {
-        const mockGet = vi.fn().mockResolvedValue({ data: { access: true } });
-        const wrapper = mountAccessControl({ http: { get: mockGet } });
+        const mockPost = vi.fn().mockResolvedValue({ data: { access: true } });
+        const wrapper = mountAccessControl({ http: { post: mockPost } });
 
         await wrapper.find("#username-input").setValue("user1");
         await wrapper.find("#password-input").setValue("pass1");
@@ -78,14 +90,14 @@ describe("AccessControl", () => {
         // Verify the request was made and succeeded — location.reload()
         // can't be spied on in jsdom, but we can verify no error state was set
         await vi.waitFor(() => {
-            expect(mockGet).toHaveBeenCalled();
+            expect(mockPost).toHaveBeenCalled();
             expect(wrapper.find("#login-error").exists()).toBe(false);
         });
     });
 
     it("shows error on failed login", async () => {
-        const mockGet = vi.fn().mockResolvedValue({ data: { access: false } });
-        const wrapper = mountAccessControl({ http: { get: mockGet } });
+        const mockPost = vi.fn().mockResolvedValue({ data: { access: false } });
+        const wrapper = mountAccessControl({ http: { post: mockPost } });
 
         await wrapper.find("#username-input").setValue("bad");
         await wrapper.find("#password-input").setValue("bad");
@@ -107,17 +119,18 @@ describe("AccessControl", () => {
         expect(wrapper.find("#password-input").element.value).toBe("");
     });
 
-    it("encodes special characters in credentials", async () => {
-        const mockGet = vi.fn().mockResolvedValue({ data: { access: false } });
-        const wrapper = mountAccessControl({ http: { get: mockGet } });
+    it("sends special characters in credentials as they are", async () => {
+        const mockPost = vi.fn().mockResolvedValue({ data: { access: false } });
+        const wrapper = mountAccessControl({ http: { post: mockPost } });
 
         await wrapper.find("#username-input").setValue("user@test");
         await wrapper.find("#password-input").setValue("p&ss=word");
         await wrapper.find("form").trigger("submit");
 
-        expect(mockGet).toHaveBeenCalledWith(
-            "/testdb/scripts/access_request.py?username=user%40test&password=p%26ss%3Dword"
-        );
+        expect(mockPost).toHaveBeenCalledWith("/testdb/scripts/access_request.py", {
+            username: "user@test",
+            password: "p&ss=word",
+        });
     });
 
     it("uses span instead of button for labels (accessibility)", () => {
@@ -128,10 +141,10 @@ describe("AccessControl", () => {
     });
 
     it("does not send duplicate requests on rapid double submit", async () => {
-        const mockGet = vi.fn().mockImplementation(() => new Promise(resolve => {
+        const mockPost = vi.fn().mockImplementation(() => new Promise(resolve => {
             setTimeout(() => resolve({ data: { access: false } }), 100);
         }));
-        const wrapper = mountAccessControl({ http: { get: mockGet } });
+        const wrapper = mountAccessControl({ http: { post: mockPost } });
 
         await wrapper.find("#username-input").setValue("user1");
         await wrapper.find("#password-input").setValue("pass1");
@@ -140,15 +153,13 @@ describe("AccessControl", () => {
         await wrapper.find("form").trigger("submit");
         await wrapper.find("form").trigger("submit");
 
-        // Should only make one request (form submit + keyup.enter both fire submit)
-        // but the actual current code doesn't have double-submit prevention
-        // This test documents the current behavior
-        expect(mockGet.mock.calls.length).toBeGreaterThanOrEqual(1);
+        // Two submits are two requests: there is no double-submit prevention
+        expect(mockPost.mock.calls.length).toBeGreaterThanOrEqual(1);
     });
 
     it("clears error state on form reset", async () => {
-        const mockGet = vi.fn().mockResolvedValue({ data: { access: false } });
-        const wrapper = mountAccessControl({ http: { get: mockGet } });
+        const mockPost = vi.fn().mockResolvedValue({ data: { access: false } });
+        const wrapper = mountAccessControl({ http: { post: mockPost } });
 
         // Trigger failed login
         await wrapper.find("#username-input").setValue("bad");

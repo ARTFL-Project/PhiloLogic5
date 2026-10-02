@@ -16,15 +16,27 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime import access_control
-from philologic.runtime.access_control import auth_cookie, client_address, database_key, is_allowed, is_authenticated
+from philologic.runtime.access_control import (
+    auth_cookie,
+    check_login_info,
+    client_address,
+    database_key,
+    in_domain,
+    is_allowed,
+    is_authenticated,
+)
+
+
+HOSTNAME = access_control._hostname  # the real one, which fresh_state replaces
 
 
 @pytest.fixture(autouse=True)
 def fresh_state(monkeypatch, tmp_path):
-    """No remembered answers, compiled whitelists in the test's directory, and no reverse DNS."""
+    """No remembered answers, compiled whitelists in the test's directory, and no DNS."""
     monkeypatch.setattr(access_control, "_allowed", {})
     monkeypatch.setattr(access_control, "_COMPILED_IP_CACHE_DIR", str(tmp_path))
     monkeypatch.setattr(access_control, "_client_domain", lambda address: "unknown.example")
+    monkeypatch.setattr(access_control, "_hostname", lambda address: (None, False))
 
 
 def make_config(db_path, secret="", access_file=""):
@@ -102,7 +114,11 @@ ADDRESS_CASES = [
     ("Local network 127.x.x.x", "127.0.0.1", "example.org", False),
     ("Domain exact match", "203.0.113.1", "example.com", True),
     ("Domain suffix match", "203.0.113.1", "university.edu", True),
+    ("Subdomain match", "203.0.113.1", "www.cs.example.com", True),
     ("Domain non-match", "203.0.113.1", "example.net", False),
+    ("Domain ending like an allowed one", "203.0.113.1", "notexample.com", False),
+    ("Allowed domain inside the name", "203.0.113.1", "example.com.attacker.net", False),
+    ("No confirmed host name", "203.0.113.1", None, False),
     ("Blocked IP", "10.0.0.99", "example.org", False),
     ("Blocked IP overrides allowed network", "192.168.5.5", "example.org", False),
     ("Network prefix with 2 octets", "134.226.12.34", "example.org", True),
@@ -119,7 +135,7 @@ class TestAddressChecks:
     @pytest.mark.parametrize("description, address, domain, allowed", ADDRESS_CASES, ids=[c[0] for c in ADDRESS_CASES])
     def test_access_file(self, monkeypatch, tmp_path, description, address, domain, allowed):
         monkeypatch.setattr(access_control, "local_networks", [])
-        monkeypatch.setattr(access_control, "_client_domain", lambda _: domain)
+        monkeypatch.setattr(access_control, "_hostname", lambda _: (domain, domain is not None))
         access_file = tmp_path / "access.py"
         access_file.write_text(ACCESS_FILE)
         config = make_config(tmp_path / "db", access_file=str(access_file))
@@ -145,6 +161,115 @@ class TestAddressChecks:
         stat = access_file.stat()
         os.utime(access_file, (stat.st_atime, stat.st_mtime + 10))
         assert not is_allowed({"REMOTE_ADDR": "198.51.100.7"}, config)
+
+
+@pytest.mark.unit
+class TestDomains:
+    @pytest.mark.parametrize(
+        "hostname, domain, inside",
+        [
+            ("cs.uchicago.edu", "uchicago.edu", True),
+            ("uchicago.edu", "uchicago.edu", True),
+            ("cs.uchicago.edu", ".uchicago.edu", True),
+            ("cs.uchicago.edu", "*.uchicago.edu", True),
+            ("cs.uchicago.edu", ".edu", True),
+            ("cs.uchicago.edu", "UChicago.edu ", True),
+            ("notuchicago.edu", "uchicago.edu", False),
+            ("uchicago.edu.example.net", "uchicago.edu", False),
+            ("cs.uchicago.edu", "", False),
+        ],
+    )
+    def test_in_domain(self, hostname, domain, inside):
+        assert in_domain(hostname, domain) is inside
+
+    @pytest.fixture
+    def dns(self, monkeypatch):
+        """Reverse and forward lookups answered from the test's tables."""
+        monkeypatch.setattr(access_control, "_hostname", HOSTNAME)
+        reverse, forward = {}, {}
+
+        def gethostbyaddr(address):
+            if address not in reverse:
+                raise OSError("no PTR record")
+            return reverse[address], [], [address]
+
+        def getaddrinfo(host, port):
+            if host not in forward:
+                raise OSError("no such host")
+            return [(None, None, None, "", (address, 0)) for address in forward[host]]
+
+        monkeypatch.setattr(access_control.socket, "gethostbyaddr", gethostbyaddr)
+        monkeypatch.setattr(access_control.socket, "getaddrinfo", getaddrinfo)
+        return reverse, forward
+
+    def test_confirmed_name(self, dns):
+        reverse, forward = dns
+        reverse["198.51.100.7"] = "Host.CS.uchicago.edu."
+        forward["Host.CS.uchicago.edu."] = ["198.51.100.8", "198.51.100.7"]
+        assert access_control._hostname("198.51.100.7") == ("host.cs.uchicago.edu", True)
+
+    def test_name_that_does_not_give_the_address_back(self, dns):
+        """Anyone controlling an address's reverse DNS can name it in an allowed domain."""
+        reverse, forward = dns
+        reverse["203.0.113.7"] = "fake.uchicago.edu"
+        forward["fake.uchicago.edu"] = ["198.51.100.8"]
+        assert access_control._hostname("203.0.113.7") == ("fake.uchicago.edu", False)
+
+    def test_no_name(self, dns):
+        assert access_control._hostname("203.0.113.7") == (None, False)
+        dns[0]["203.0.113.7"] = "gone.example.com"
+        assert access_control._hostname("203.0.113.7") == ("gone.example.com", False)
+
+    def test_ipv6(self, dns):
+        reverse, forward = dns
+        reverse["2001:db8::7"] = "host.example.com"
+        forward["host.example.com"] = ["2001:db8:0:0:0:0:0:7%eth0"]
+        assert access_control._hostname("2001:db8::7") == ("host.example.com", True)
+
+    def test_unconfirmed_name_in_an_allowed_domain_is_refused_and_said(self, monkeypatch, tmp_path, capsys):
+        monkeypatch.setattr(access_control, "_hostname", lambda _: ("nat-pool-7.example.edu", False))
+        access_file = tmp_path / "access.py"
+        access_file.write_text('domain_list = ["example.edu"]\n')
+        assert not is_allowed({"REMOTE_ADDR": "203.0.113.7"}, make_config(tmp_path / "db", access_file=str(access_file)))
+        assert "nat-pool-7.example.edu is in an allowed domain, but the name doesn't resolve back" in capsys.readouterr().err
+
+    def test_no_lookup_without_domains(self, monkeypatch, tmp_path):
+        def lookup(address):
+            raise AssertionError("no domain_list, no DNS")
+
+        monkeypatch.setattr(access_control, "_hostname", lookup)
+        access_file = tmp_path / "access.py"
+        access_file.write_text('allowed_ips = ["198.51.100.0/24"]\n')
+        assert not is_allowed({"REMOTE_ADDR": "203.0.113.7"}, make_config(tmp_path / "db", access_file=str(access_file)))
+
+
+@pytest.mark.unit
+class TestLogins:
+    @pytest.fixture
+    def config(self, tmp_path):
+        (tmp_path / "db" / "data").mkdir(parents=True)
+        (tmp_path / "db" / "data" / "logins.txt").write_text(
+            "\nno-password\nuser\tpass\nother\t%41é b\n", encoding="utf8"
+        )
+        return make_config(tmp_path / "db")
+
+    @pytest.mark.parametrize(
+        "username, password, valid",
+        [
+            ("user", "pass", True),
+            ("other", "%41é b", True),  # as typed: not URL-decoded a second time
+            ("other", "Aé b", False),
+            ("user", "wrong", False),
+            ("pass", "user", False),
+            ("no-password", "", False),
+            ("nobody", "pass", False),
+        ],
+    )
+    def test_logins(self, config, username, password, valid):
+        assert check_login_info(config, username, password) is valid
+
+    def test_no_logins_file(self, tmp_path):
+        assert not check_login_info(make_config(tmp_path / "db"), "user", "pass")
 
 
 @pytest.fixture
@@ -251,6 +376,7 @@ def web_root(tmp_path_factory):
         (root / name / "data").mkdir(parents=True)
         (root / name / "data" / "db.locals.py").write_text("metadata_sql_types = {}\nmetadata_fields = []\n")
         (root / name / "data" / "web_config.cfg").write_text(web_config)
+        (root / name / "data" / "logins.txt").write_text("user\tpass\n")
         (root / name / "app" / "dist" / "assets").mkdir(parents=True)
         (root / name / "app" / "dist" / "index.html").write_text("<html>app</html>")
         (root / name / "app" / "dist" / "assets" / "index.js").write_text("app")
@@ -328,3 +454,41 @@ class TestWebApp:
 
         cookie = cookie_header(auth_cookie(WebConfig(str(web_root / "open"))))
         assert get(client, "closed/scripts/get_custom_landing_page.py", DENIED, headers={"Cookie": cookie}).status_code == 403
+
+
+    def test_login_in_the_body(self, client):
+        resp = client.simulate_post(
+            "/philologic5/closed/scripts/access_request.py",
+            json={"username": "user", "password": "pass"},
+            extras={"REMOTE_ADDR": DENIED},
+        )
+        assert resp.status_code == 200 and json.loads(resp.text)["access"] is True
+        cookie = cookie_header(resp.headers["Set-Cookie"])
+        assert get(client, "closed/scripts/get_custom_landing_page.py", DENIED, headers={"Cookie": cookie}).status_code == 200
+
+    @pytest.mark.parametrize("body", [{"username": "user", "password": "wrong"}, {"username": "user"}, {}])
+    def test_failed_login_in_the_body(self, client, body):
+        resp = client.simulate_post("/philologic5/closed/scripts/access_request.py", json=body, extras={"REMOTE_ADDR": DENIED})
+        assert resp.status_code == 200 and json.loads(resp.text)["access"] is False
+        assert "Set-Cookie" not in resp.headers
+
+    def test_login_body_not_an_object(self, client):
+        resp = client.simulate_post("/philologic5/closed/scripts/access_request.py", json=["user", "pass"],
+                                    extras={"REMOTE_ADDR": DENIED})
+        assert resp.status_code == 400
+
+    def test_login_in_the_query_string(self, client):
+        """As clients built before 5.2.6 send it."""
+        resp = get(client, "closed/scripts/access_request.py?username=user&password=pass", DENIED)
+        assert json.loads(resp.text)["access"] is True and "Set-Cookie" in resp.headers
+
+    def test_web_config_hides_the_access_file(self, client):
+        web_config = json.loads(get(client, "closed/scripts/get_web_config.py", DENIED).text)
+        assert web_config["access_control"] is True and "access_file" not in web_config
+
+    def test_no_cross_origin_reads_of_restricted_databases(self, client):
+        headers = {"Origin": "https://elsewhere.example"}
+        allowed = get(client, "closed/scripts/get_custom_landing_page.py", ALLOWED, headers=headers)
+        assert allowed.status_code == 200 and "Access-Control-Allow-Origin" not in allowed.headers
+        open_db = get(client, "open/scripts/get_custom_landing_page.py", DENIED, headers=headers)
+        assert open_db.headers["Access-Control-Allow-Origin"] == "https://elsewhere.example"

@@ -3,13 +3,15 @@ import os
 from philologic.Config import MakeDBConfig
 
 def get_web_config(request, config):
-    """Retrieve Web Config data"""
+    """Retrieve Web Config data, but for where the access file is: a server path the client has no use for"""
     if config.valid_config is False:
         return config.to_dict()
     config.time_series_status = time_series_tester(config)
     db_locals = MakeDBConfig(os.path.join(config.db_path, "data/db.locals.py"))
     config.data["available_metadata"] = db_locals.metadata_fields
-    return config.to_dict()
+    web_config = config.to_dict()
+    web_config.pop("access_file", None)
+    return web_config
 
 
 def time_series_tester(config):
