@@ -14,6 +14,7 @@ from middleware import (
     PhiloDBMiddleware,
     is_database_name,
 )
+from philologic.runtime.exceptions import BadRequest, NotFound
 from resources.reports import ReportResource
 from resources.scripts import ScriptResource
 from resources.spa import spa_handler
@@ -65,6 +66,16 @@ def create_app():
             CleanupMiddleware(),
         ]
     )
+
+    # What the runtime refuses, wherever it is raised (the streaming resources don't catch it)
+    def bad_request(req, resp, ex, params):
+        raise falcon.HTTPBadRequest(description=str(ex))
+
+    def not_found(req, resp, ex, params):
+        raise falcon.HTTPNotFound(description=str(ex))
+
+    falcon_app.add_error_handler(BadRequest, bad_request)
+    falcon_app.add_error_handler(NotFound, not_found)
 
     # Reports: /{db_name}/reports/{report_name}.py
     falcon_app.add_route("/{db_name}/reports/{report_name}.py", ReportResource())

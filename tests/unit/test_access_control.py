@@ -447,3 +447,10 @@ class TestWebApp:
         assert allowed.status_code == 200 and "Access-Control-Allow-Origin" not in allowed.headers
         open_db = get(client, "open/scripts/get_custom_landing_page.py", DENIED, headers=headers)
         assert open_db.headers["Access-Control-Allow-Origin"] == "https://elsewhere.example"
+
+    @pytest.mark.parametrize("path", ["reports/concordance.py", "scripts/get_total_results.py", "scripts/export_results.py"])
+    def test_refused_search(self, client, path):
+        """A search the runtime refuses is a 400 with its reason, from every kind of resource."""
+        resp = get(client, f"open/{path}?q=%22la+libert%C3%A9%22+%7C+roi&report=concordance", DENIED)
+        assert resp.status_code == 400
+        assert "quoted phrase" in json.loads(resp.text)["description"]

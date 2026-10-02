@@ -20,9 +20,15 @@
 
         <SearchForm v-if="accessAuthorized && !checkingAccess" />
 
+        <div class="container-fluid" v-if="searchError && accessAuthorized && !checkingAccess">
+            <div class="alert alert-warning my-3" role="alert">
+                {{ $t("common.searchRefused", { message: searchError }) }}
+            </div>
+        </div>
+
         <!-- Main content landmark -->
         <nav id="main-content" tabindex="-1">
-            <router-view v-if="accessAuthorized && !checkingAccess" />
+            <router-view v-if="accessAuthorized && !checkingAccess && !searchError" />
         </nav>
 
         <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized && !checkingAccess"
@@ -50,7 +56,7 @@ import { useI18n } from "vue-i18n";
 import Header from "./components/Header.vue";
 import ProgressSpinner from "./components/ProgressSpinner.vue";
 import { useMainStore } from "./stores/main";
-import { copyObject, debug, paramsToRoute } from "./utils.js";
+import { copyObject, debug, paramsToRoute, refusedSearchMessage } from "./utils.js";
 const SearchForm = defineAsyncComponent(() => import("./components/SearchForm.vue"));
 const AccessControl = defineAsyncComponent(() => import("./components/AccessControl.vue"));
 
@@ -60,7 +66,7 @@ const route = useRoute();
 const router = useRouter();
 const { locale: i18nLocale, t } = useI18n();
 const store = useMainStore();
-const { formData, urlUpdate, showFacets } = storeToRefs(store);
+const { formData, urlUpdate, showFacets, searchError } = storeToRefs(store);
 
 const clientIp = ref("");
 const domainName = ref("");
@@ -178,9 +184,19 @@ if (philoConfig.facets.length < 1) {
 }
 
 // ── Watchers ─────────────────────────────────────────────────────────────────
+// A search the server refuses (400) says why, under the search form, until the next one
+$http.interceptors.response.use(undefined, (error) => {
+    const message = refusedSearchMessage(error);
+    if (message) {
+        searchError.value = message;
+    }
+    return Promise.reject(error);
+});
+
 watch(
     () => route.fullPath,
     () => {
+        searchError.value = "";
         formDataUpdate();
         updateDocumentTitle(route.name);
     }

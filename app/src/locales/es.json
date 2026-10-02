@@ -13,6 +13,7 @@
         "documentTitleWithReport": "{dbname} se ejecuta en PhiloLogic - Una Plataforma de Análisis Textual - {report} Informe",
         "invalidConfigTitle": "Fichero de configuración web no válido: {path}",
         "invalidConfigMessage": "Revise errores de sintaxis en el fichero de configuración.",
+        "searchRefused": "Esta búsqueda no se puede realizar: {message}",
         "loading": "Cargando contenido, espere por favor...",
         "and": "y",
         "showFacets": "Mostrar Elementos",

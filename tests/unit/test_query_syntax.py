@@ -9,6 +9,8 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
+from philologic.runtime.exceptions import BadRequest
+from philologic.runtime.Query import check_phrases
 from philologic.runtime.QuerySyntax import parse_query, group_terms, parse_date_query
 
 
@@ -229,3 +231,23 @@ class TestCustomQueryPatterns:
         assert ("WILDCARD", "*") in result
         assert ("TERM", "test") in result
         assert ("TERM", "word") in result
+
+
+@pytest.mark.unit
+class TestPhrasesAlone:
+    """A quoted phrase is searched as the words of several groups, so it can only be a group of its own."""
+
+    @pytest.mark.parametrize(
+        "query",
+        ['"la liberté" | "le roi"', '"la liberté" | roi de', 'roi NOT "le roi"', 'chine | "Empire du milieu" | pékin',
+         '"sangue di drago" | "sangue di dragone"'],
+    )
+    def test_refused(self, query):
+        with pytest.raises(BadRequest, match="quoted phrase"):
+            check_phrases(group_terms(parse_query(query)))
+
+    @pytest.mark.parametrize(
+        "query", ['"la liberté"', '"la liberté" roi', "roi | reine", '"roi" | "reine"', 'roi NOT "rois"', '"la liberté', "roi"],
+    )
+    def test_allowed(self, query):
+        check_phrases(group_terms(parse_query(query)))

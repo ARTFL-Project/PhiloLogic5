@@ -3,6 +3,7 @@ import {
     copyObject,
     dateRangeHandler,
     dbUrlOnThisHost,
+    refusedSearchMessage,
     deepEqual,
     extractSurfaceFromCollocate,
     sortResults,
@@ -296,5 +297,29 @@ describe("dbUrlOnThisHost", () => {
         expect(dbUrlOnThisHost("/philologic5/db/", at("http://localhost:8000/philologic5/db/kwic"))).toBe(
             "http://localhost:8000/philologic5/db/"
         );
+    });
+});
+
+// ---------------------------------------------------------------------------
+// refusedSearchMessage
+// ---------------------------------------------------------------------------
+describe("refusedSearchMessage", () => {
+    const refused = (url, status = 400, description = "why") => ({
+        config: { url },
+        response: { status, data: { title: `${status}`, description } },
+    });
+
+    it("is the server's reason for refusing a report or the total of results", () => {
+        expect(refusedSearchMessage(refused("http://h/db//reports/concordance.py"))).toBe("why");
+        expect(refusedSearchMessage(refused("http://h/db/reports/time_series.py"))).toBe("why");
+        expect(refusedSearchMessage(refused("http://h/db//scripts/get_total_results.py"))).toBe("why");
+    });
+
+    it("is empty for other errors", () => {
+        expect(refusedSearchMessage(refused("http://h/db/reports/concordance.py", 500))).toBe("");
+        expect(refusedSearchMessage(refused("http://h/db/reports/concordance.py", 403))).toBe("");
+        expect(refusedSearchMessage(refused("http://h/db/scripts/get_similar_collocate_distributions.py"))).toBe("");
+        expect(refusedSearchMessage(new Error("Network Error"))).toBe("");
+        expect(refusedSearchMessage(refused("http://h/db/reports/kwic.py", 400, null))).toBe("");
     });
 });

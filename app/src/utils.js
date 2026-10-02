@@ -7,6 +7,15 @@ export function dbUrlOnThisHost(dbUrl, location = window.location) {
     return location.origin + new URL(dbUrl, location.href).pathname;
 }
 
+export function refusedSearchMessage(error) {
+    // Why the server refused a search (a 400 for a report or the total of results), or "" for any other error
+    const url = error?.config?.url || "";
+    if (error?.response?.status !== 400 || !/\/(reports\/\w+|scripts\/get_total_results)\.py/.test(url)) {
+        return "";
+    }
+    return error.response.data?.description || "";
+}
+
 export function paramsFilter(formValues) {
     let localFormData = {};
     let validFields = [];

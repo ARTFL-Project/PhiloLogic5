@@ -23,6 +23,7 @@ import regex as re
 numba.config.CACHE_DIR = _cache_dir
 
 from philologic.runtime import HitList
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.lmdb_env import lmdb_env
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 
@@ -540,6 +541,20 @@ def get_expanded_query(hitlist):
     if term:
         query.append(term)
     return query
+
+
+def check_phrases(grouped):
+    """Raise BadRequest for a quoted phrase in a group of several terms ("a b" | c, or c NOT "a b"): a phrase is
+    searched as the words of several groups, one each, so it can only be a group of its own. Searched as one word of
+    its group, it silently matched nothing, or each of its words."""
+    for group in grouped:
+        if len(group) > 1:
+            for kind, token in group:
+                if kind == "QUOTE" and " " in token.strip('"').strip():
+                    raise BadRequest(
+                        f"{token}: a quoted phrase (or a word this database splits, as at an apostrophe or a hyphen) "
+                        "can't be combined with | or NOT, only searched for on its own"
+                    )
 
 
 def split_terms(grouped):
