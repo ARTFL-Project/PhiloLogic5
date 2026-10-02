@@ -9,7 +9,7 @@ import os
 import falcon
 
 from philologic.runtime import WebConfig, WSGIHandler, access_control
-from middleware import PHILOLOGIC_DB_ROOT
+from middleware import PHILOLOGIC_DB_ROOT, is_database_name
 
 
 def _build_misconfig_page(traceback, config_file):
@@ -29,11 +29,9 @@ def spa_handler(req, resp):
     # Extract db_path from URL
     db_path = None
     for part in req.path.split("/"):
-        if part:
-            candidate = os.path.join(PHILOLOGIC_DB_ROOT, part)
-            if os.path.isdir(candidate):
-                db_path = candidate
-                break
+        if is_database_name(part):
+            db_path = os.path.join(PHILOLOGIC_DB_ROOT, part)
+            break
 
     if db_path is None:
         resp.status = "404 Not Found"

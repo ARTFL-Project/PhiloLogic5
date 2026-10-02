@@ -6,15 +6,13 @@ Usage:
     gunicorn --config gunicorn.conf.py app:application
 """
 
-import os
-
 import falcon
 
 from middleware import (
-    PHILOLOGIC_DB_ROOT,
     CORSMiddleware,
     CleanupMiddleware,
     PhiloDBMiddleware,
+    is_database_name,
 )
 from resources.reports import ReportResource
 from resources.scripts import ScriptResource
@@ -51,7 +49,7 @@ class StripURLPrefix:
         environ["PATH_INFO"] = path
         parts = path.split("/")
         for i, part in enumerate(parts):
-            if part and os.path.isdir(os.path.join(PHILOLOGIC_DB_ROOT, part)):
+            if is_database_name(part):
                 prefix = "/".join(parts[:i])
                 environ["SCRIPT_NAME"] = environ.get("SCRIPT_NAME", "") + prefix
                 environ["PATH_INFO"] = "/" + "/".join(parts[i:])

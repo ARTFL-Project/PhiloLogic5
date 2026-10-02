@@ -9,7 +9,7 @@ import os
 
 import falcon
 
-from middleware import PHILOLOGIC_DB_ROOT
+from middleware import PHILOLOGIC_DB_ROOT, is_database_name
 
 _ROUTE_MAP = {
     "assets": "app/dist/assets/",
@@ -24,20 +24,19 @@ class StaticResource:
         self.route_type = route_type
 
     def on_get(self, req, resp, db_name, filepath=None):
-        db_path = os.path.join(PHILOLOGIC_DB_ROOT, db_name)
-        if not os.path.isdir(db_path):
+        if not is_database_name(db_name):
             raise falcon.HTTPNotFound()
+        db_path = os.path.join(PHILOLOGIC_DB_ROOT, db_name)
 
         if self.route_type == "favicon":
             file_path = os.path.join(db_path, "favicon.ico")
         else:
-            fs_prefix = _ROUTE_MAP.get(self.route_type, "")
-            file_path = os.path.join(db_path, fs_prefix, filepath)
-
-        # Path traversal protection
-        file_path = os.path.realpath(file_path)
-        if not file_path.startswith(os.path.realpath(db_path)):
-            raise falcon.HTTPForbidden()
+            # Path traversal protection: filepath may hold "..", as is or %-encoded, and the file must stay in the
+            # route's own directory (being in the database's isn't enough: data/ holds logins.txt, the texts...)
+            base = os.path.realpath(os.path.join(db_path, _ROUTE_MAP[self.route_type]))
+            file_path = os.path.realpath(os.path.join(base, filepath))
+            if os.path.commonpath([base, file_path]) != base:
+                raise falcon.HTTPForbidden()
 
         if not os.path.isfile(file_path):
             raise falcon.HTTPNotFound()
