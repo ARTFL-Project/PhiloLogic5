@@ -368,7 +368,7 @@
         "chartTitle": "Gráfico de Series Temporales",
         "year": "Año",
         "occurrences": "ocurrencias",
-        "per1000Words": "por cada 1000 palabras",
+        "per10000Words": "por cada 10 000 palabras",
         "chartAriaLabel": "Gráfico de series temporales {type}  muestra {count} de datos para  {range}",
         "selectionAnnouncement": "{year} seleccionado: {value} {unit}",
         "loadingProgress": "Cargando datos de la serie temporal: {current} de {total} resultados procesados"

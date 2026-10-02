@@ -185,9 +185,14 @@ const chartOptions = computed(() => ({
     },
 }));
 
+function rangeEnd(start) {
+    // The last range stops at the end date
+    return Math.min(parseInt(start) + parseInt(formData.value.year_interval) - 1, endDate.value);
+}
+
 function formatDateRange(label) {
-    if (formData.value.year_interval == 1) return label;
-    return `${label}-${parseInt(label) + parseInt(formData.value.year_interval) - 1}`;
+    const end = rangeEnd(label);
+    return end === parseInt(label) ? `${label}` : `${label}-${end}`;
 }
 
 function getCurrentData(index) {
@@ -199,7 +204,7 @@ function getCurrentData(index) {
 function getCurrentUnit() {
     return frequencyType.value === "absolute_time"
         ? t("timeSeries.occurrences")
-        : t("timeSeries.per1000Words");
+        : t("timeSeries.per10000Words");
 }
 
 function dismissTooltip() {
@@ -324,7 +329,7 @@ function handleChartKeydown(event) {
 
 function navigateToYear(index) {
     const start = parseInt(dateLabels.value[index]);
-    const end = start + parseInt(formData.value.year_interval) - 1;
+    const end = rangeEnd(start);
     const year = start === end ? start.toString() : `${start}-${end}`;
 
     store.updateFormDataField({ key: "year", value: year });
@@ -340,14 +345,16 @@ function navigateToYear(index) {
 }
 
 function fetchResults() {
-    if (formData.value.year_interval === "") {
-        formData.value.year_interval = philoConfig.time_series.interval;
-    }
-    formData.value.year_interval = parseInt(formData.value.year_interval);
+    // An interval below 1 made the loop below endless, freezing the page: as one that isn't a number, the default
+    const interval = parseInt(formData.value.year_interval);
+    formData.value.year_interval = interval >= 1 ? interval : parseInt(philoConfig.time_series_interval) || 1;
     frequencyType.value = "absolute_time";
     searching.value = true;
-    startDate.value = parseInt(formData.value.start_date || philoConfig.time_series_start_end_date.start_date);
-    endDate.value = parseInt(formData.value.end_date || philoConfig.time_series_start_end_date.end_date);
+    const defaults = philoConfig.time_series_start_end_date;
+    const start = parseInt(formData.value.start_date);
+    const end = parseInt(formData.value.end_date);
+    startDate.value = isNaN(start) ? parseInt(defaults.start_date) : start;
+    endDate.value = isNaN(end) ? parseInt(defaults.end_date) : end;
     store.updateStartEndDate({ startDate: startDate.value, endDate: endDate.value });
 
     const dateList = [];
@@ -367,6 +374,7 @@ function fetchResults() {
             params: {
                 ...paramsFilter({ ...formData.value }),
                 start_date: startDate.value,
+                end_date: endDate.value,
                 year_interval: formData.value.year_interval,
             },
         })

@@ -280,9 +280,6 @@ export function buildBiblioCriteria(philoConfig, query, formData) {
     }
     for (let k in queryArgs) {
         if (config.available_metadata.indexOf(k) >= 0) {
-            if (formData.report == "time_series" && k == "year") {
-                continue;
-            }
             let v = queryArgs[k];
             let alias = k;
             if (v) {
