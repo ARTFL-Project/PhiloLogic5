@@ -111,7 +111,7 @@
                     <div class="row gx-5">
                         <div class="col-6" role="region" :aria-label="$t('collocation.overRepresentedResults')">
                             <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
-                                :click-handler="onCollocateClick" label="over"></word-cloud>
+                                :click-handler="onCollocateClick" label="over" :scores="true"></word-cloud>
                         </div>
                         <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                             :aria-label="$t('collocation.underRepresentedResults')">
@@ -119,7 +119,7 @@
                                 <progress-spinner :lg="true" />
                             </div>
                             <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
-                                :click-handler="onOtherCollocateClick" label="under"></word-cloud>
+                                :click-handler="onOtherCollocateClick" label="under" :scores="true"></word-cloud>
                         </div>
                     </div>
                 </div>
@@ -235,7 +235,8 @@ function focusDistinctiveTab() {
 }
 
 function runFromMetadata(opts = {}) {
-    wholeCorpus.value = Object.keys(props.comparedMetadataValues).length === 0;
+    // Fields typed in, then erased, are still keys: whole corpus if none has a value
+    wholeCorpus.value = !Object.values(props.comparedMetadataValues).some((value) => value);
     // dateRangeHandler mutates comparedMetadataValues in place
     dateRangeHandler(props.metadataInputStyle, props.dateRange, props.dateType, props.comparedMetadataValues);
     // Refresh the right-hand biblio criteria up front -- comparativeCollocations

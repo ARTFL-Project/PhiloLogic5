@@ -29,6 +29,7 @@ const props = defineProps({
     wordWeights: { type: Array, required: true, default: () => [] },
     clickHandler: { type: Function, required: true },
     label: { type: String, required: false, default: "default" },
+    scores: { type: Boolean, required: false, default: false }, // weights are z-scores, not counts
 });
 
 const { t } = useI18n();
@@ -85,7 +86,8 @@ function buildWordCloud() {
     const highestValue = props.wordWeights[0].count;
     const coeff = (highestValue - lowestValue) / 20;
 
-    const adjustWeight = (count) => parseInt(Math.round((count - lowestValue) / coeff));
+    // All counts equal: one size for all (dividing by a coefficient of 0 gave every word NaN)
+    const adjustWeight = (count) => (coeff ? parseInt(Math.round((count - lowestValue) / coeff)) : 10);
 
     const weightedWordList = props.wordWeights.map((wordObject) => {
         const adjustedWeight = adjustWeight(wordObject.count);
@@ -119,7 +121,16 @@ function getSignificanceLevel(word) {
     return t("wordCloud.low");
 }
 
+const weightedByScore = () => props.scores;
+
 function getWordAriaLabel(word) {
+    if (weightedByScore()) {
+        return t("wordCloud.wordScoreAriaLabel", {
+            word: word.collocate,
+            score: getOriginalCount(word).toFixed(2),
+            significance: getSignificanceLevel(word),
+        });
+    }
     return t("wordCloud.wordAriaLabel", {
         word: word.collocate,
         frequency: getOriginalCount(word),
@@ -128,6 +139,9 @@ function getWordAriaLabel(word) {
 }
 
 function getWordTitle(word) {
+    if (weightedByScore()) {
+        return t("wordCloud.wordScoreTooltip", { word: word.collocate, score: getOriginalCount(word).toFixed(2) });
+    }
     return t("wordCloud.wordTooltip", {
         word: word.collocate,
         frequency: getOriginalCount(word),

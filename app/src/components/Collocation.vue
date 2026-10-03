@@ -64,6 +64,7 @@
         </div>
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
+            :stopwords-missing="stopwordsMissing"
             v-if="['frequency', 'timeSeries', 'wordMap'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
@@ -71,6 +72,10 @@
             <Frequency v-if="mode === 'frequency'" ref="frequencyRef"
                 :sorted-list="sortedList" :results-length="resultsLength"
                 @pivot-to-compare="pivotToCompare" />
+            <div class="mx-2 my-3" role="status"
+                v-if="mode == 'frequency' && !searching && (!resultsLength || !sortedList.length)">
+                {{ resultsLength ? $t("collocation.noCollocates") : $t("resultsSummary.noResults") }}
+            </div>
 
             <Compare v-if="mode === 'compare'" ref="compareRef"
                 :sorted-list="sortedList" :biblio="biblio" :results-length="resultsLength"
@@ -145,6 +150,7 @@ const wordMapRef = useTemplateRef("wordMapRef");
 const mode = ref("frequency");
 const results = ref({});
 const filterList = ref([]);
+const stopwordsMissing = ref(false);
 // Whether the primary collocation fetch has run for the current query. False
 // when the page was loaded directly on a detection tab (wordMap/timeSeries),
 // which only run pattern detection — so switching to frequency/similar/compare
@@ -252,7 +258,7 @@ function setMode(newMode, { updateUrl = true } = {}) {
 }
 
 function handleMobileMethodChange() {
-    setMode(mode.value, { updateUrl: false });
+    setMode(mode.value);
 }
 
 //  Primary fetch (shared by frequency / compare / similar entry paths)
@@ -261,6 +267,7 @@ function updateCollocation() {
         .then((response) => {
             resultsLength.value = response.data.results_length;
             filterList.value = response.data.filter_list;
+            stopwordsMissing.value = Boolean(response.data.stopwords_missing);
             collocatesFilePath.value = response.data.file_path;
             searching.value = false;
             primaryFetched.value = true;
@@ -280,7 +287,15 @@ async function runPostFetchModeAction() {
     mode.value = route.query.collocation_method || "frequency";
     await nextTick();  // ensure the active mode's child is mounted
     if (mode.value === "similar") {
-        similarRef.value?.runSimilar(route.query.similarity_by);
+        // A URL without the field to compare by (the server needs one): the first one configured
+        const similarityBy = route.query.similarity_by || fieldsToCompare.value[0]?.value;
+        if (!similarityBy) {
+            setMode("frequency", { updateUrl: false });
+            await nextTick();
+            frequencyRef.value?.fetchOutliers();
+            return;
+        }
+        similarRef.value?.runSimilar(similarityBy);
     } else if (mode.value === "compare") {
         compareRef.value?.runFromMetadata();
     } else if (mode.value === "frequency") {
@@ -323,6 +338,7 @@ async function pivotToCompare(payload) {
 // Changing only these (e.g. clicking a tab) must NOT trigger a re-search.
 function isViewOnlyParam(key) {
     return (
+        key === "report" || // the route says which: links may have it, the URLs pushed here don't
         key === "collocation_method" ||
         key === "similarity_by" ||
         key === "time_series_interval" ||
@@ -333,7 +349,7 @@ function isViewOnlyParam(key) {
 function shouldRefetchOnQueryChange(newQuery, oldQuery) {
     const allKeys = new Set([...Object.keys(newQuery), ...Object.keys(oldQuery)]);
     for (const key of allKeys) {
-        if (newQuery[key] === oldQuery[key]) continue;
+        if ((newQuery[key] ?? "") === (oldQuery[key] ?? "")) continue; // missing is empty (method_arg)
         if (!isViewOnlyParam(key)) return true;
     }
     return false;
