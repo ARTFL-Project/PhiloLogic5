@@ -6,6 +6,19 @@ import { useMainStore } from "../src/stores/main.js";
 import timeSeriesFixture from "./fixtures/time_series.json";
 import TimeSeries from "../src/components/TimeSeries.vue";
 
+// The chart as a canvas that draws nothing: jsdom has no canvas context, so chart.js threw (unhandled) once mounted.
+// (A stub by name can't replace it: vue-chartjs's components have no name.)
+vi.mock("vue-chartjs", async () => {
+    const { defineComponent, h } = await import("vue");
+    return {
+        Bar: defineComponent({
+            name: "Bar",
+            props: ["data", "options"],
+            setup: () => () => h("canvas", { class: "chart-stub" }),
+        }),
+    };
+});
+
 function mountTimeSeries(overrides = {}) {
     const http = overrides.http || createMockHttp({ "time_series.py": timeSeriesFixture });
     const global = createGlobalConfig({
@@ -13,7 +26,6 @@ function mountTimeSeries(overrides = {}) {
         route: { name: "time_series", path: "/time_series", query: { q: "liberty", report: "time_series", start_date: "1500", end_date: "1800", year_interval: "50" } },
         stubs: {
             ResultsSummary: { template: "<div class='results-summary-stub' />" },
-            Bar: { template: "<canvas class='chart-stub' />", props: ["data", "options"] },
         },
         ...overrides,
     });
