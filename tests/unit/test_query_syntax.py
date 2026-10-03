@@ -13,6 +13,7 @@ from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.Query import (
     MAX_DISTANCE,
     check_method,
+    check_parentheses,
     check_phrases,
     phrase_lengths,
     query_parse,
@@ -280,6 +281,34 @@ class TestPhrasesAlone:
     )
     def test_allowed(self, query):
         check_phrases(group_terms(parse_query(query)))
+
+
+@pytest.mark.unit
+class TestCheckParentheses:
+    """| splits terms first, so parentheses meant to group became parts of terms that silently matched nothing: such
+    queries are refused, while a regex group within a term still searches."""
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "(amour|haine)",
+            "libert(é|e)s?",
+            "([Cc]h[Iiï]ne | Canton) NOT machine",  # a 2025 query
+            "( amour | haine )",
+            "(Judi. XVI)",  # pasted text, 2025
+            "lemma:(être|avoir)",
+            "x)y(",
+        ],
+    )
+    def test_refused(self, query):
+        with pytest.raises(BadRequest, match="unmatched parenthesis"):
+            check_parentheses(group_terms(parse_query(query)))
+
+    @pytest.mark.parametrize(
+        "query", ["(re)?faire", "amour (haine)", '"(amour"', "[(]x", r"a\(b", "lord[", "amour | haine"],
+    )
+    def test_allowed(self, query):
+        check_parentheses(group_terms(parse_query(query)))
 
 
 @pytest.mark.unit

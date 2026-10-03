@@ -196,6 +196,7 @@ class DB:
         if qs:
             grouped = QuerySyntax.group_terms(QuerySyntax.parse_query(qs, query_patterns=self.locals.query_patterns))
             Query.check_phrases(grouped)
+            Query.check_parentheses(grouped)
             Query.check_method(Query.split_terms(grouped), method, method_arg)
         if isinstance(limit, str):
             try:
