@@ -72,6 +72,15 @@ class TestGroupByRange:
     def test_range(self, config):
         assert list(browse(config, "title", "ei")) == ["E"]
 
+    def test_digits(self, config):
+        """Single characters are initials: "0-9" were the years 0 to 9, so titles starting with a digit were in no tab."""
+        assert browse(config, "title", "09") == {"5": [("500 millions de la Bégum", 1)]}
+
+    def test_years(self, config):
+        request = SimpleNamespace(group_by_field="year", display_count="false")
+        result = group_by_range(["1550", "1560"], request, config)
+        assert result["content_type"] == "date" and sorted(result["content"]) == ["1550", "1555", "1560"]
+
     def test_authors_counted(self, config):
         """Browsing by author, an author's documents still make one entry, with their count."""
         assert browse(config, "author", "pr") == {"P": [("Parny", 1)], "R": [("Ronsard", 2)]}

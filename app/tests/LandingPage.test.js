@@ -98,3 +98,53 @@ describe("LandingPage", () => {
         }
     });
 });
+
+describe("LandingPage title browse", () => {
+    const CitationsStub = { template: "<span class='citations-stub' />", props: ["citation", "resultNumber"] };
+    const citations = [
+        { field: "author", object_level: "doc", prefix: "", suffix: ", ", link: false, style: {} },
+        { field: "title", object_level: "doc", prefix: "", suffix: "", link: true, style: {} },
+        { field: "year", object_level: "doc", prefix: " [", suffix: "]", link: false, style: {} },
+    ];
+    const content = {
+        content: {
+            B: {
+                prefix: "B",
+                results: [
+                    // 66 volumes alike in all the citation's fields: one entry
+                    { metadata: { title: "Bible", author: null, year: 1910, philo_id: "5 0 0 0 0 0 0" }, count: 66 },
+                    { metadata: { title: "Bérénice", author: "Racine", year: 1670, philo_id: "6 0 0 0 0 0 0" }, count: 1 },
+                ],
+            },
+        },
+        citations,
+        display_count: "false",
+        content_type: "title",
+    };
+
+    async function mountTitles() {
+        const browse = { label: "Title", group_by_field: "title", display_count: false, queries: ["A-D"], is_range: true, citation: citations };
+        const global = createGlobalConfig({
+            http: createMockHttp({ "get_landing_page_content.py": content }),
+            philoConfig: { landing_page_browsing: "default", default_landing_page_browsing: [browse] },
+            route: { name: "landing", path: "/landing", query: { browse: "title", range: "A-D", display_count: "false", is_range: "true" } },
+            stubs: { Citations: CitationsStub, ProgressSpinner: { template: "<div />" } },
+        });
+        await global.plugins[2].isReady(); // the router, with the browse in its query
+        useMainStore().formData = { ...useMainStore().formData, report: "landing" };
+        const wrapper = mount(LandingPage, { global });
+        await flushPromises();
+        await nextTick();
+        return wrapper;
+    }
+
+    it("links an entry of several documents to their bibliography, and says how many", async () => {
+        const wrapper = await mountTitles();
+        const [bible, berenice] = wrapper.findAllComponents(CitationsStub).map((c) => c.props("citation").find((x) => x.field === "title").href);
+        expect(bible).toEqual({ path: "/bibliography", query: { title: '"Bible"', author: "NULL", year: "1910" } });
+        expect(berenice).toBe("/navigate/6/table-of-contents");
+        const items = wrapper.findAll("li.pt-1");
+        expect(items[0].text()).toContain("(66 documents)");
+        expect(items[1].text()).not.toContain("documents");
+    });
+});

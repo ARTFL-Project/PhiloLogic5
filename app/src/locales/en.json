@@ -300,7 +300,8 @@
         "dictionaryNavigation": "Dictionary navigation",
         "browseByVolumeLabel": "Browse by volume",
         "browseByLetterAction": "Browse entries starting with letter {letter}",
-        "browseResults": "Browse results"
+        "browseResults": "Browse results",
+        "documentCount": "{n} documents"
     },
     "searchTips": {
         "title": "Search Syntax Help",
