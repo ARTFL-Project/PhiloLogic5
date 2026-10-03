@@ -1,5 +1,5 @@
 """Unit tests for metadata query syntax (MetadataQuery.make_grouped_sql_clause, QuerySyntax): ranges, OR, NOT and NULL,
-run on a small toms table."""
+run on a small toms table; and for the values of div fields bulk_load_metadata finds for hits."""
 
 import sqlite3
 import sys
@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime.exceptions import BadRequest
-from philologic.runtime.MetadataQuery import make_grouped_sql_clause
+from philologic.runtime.MetadataQuery import bulk_load_metadata, make_grouped_sql_clause
 from philologic.runtime.QuerySyntax import group_terms, parse_metadata_query, quote_metadata_value, quoted_text
 
 YEARS = [1650, 1700, 1720, 1750, 1789, 1800, 1850, 1900, None]
@@ -138,3 +138,46 @@ class TestQuotedValues:
         expanded = [[token] for token in parse_metadata_query('"Les Révoltés de la ""Bounty"""')]
         clause = make_grouped_sql_clause(expanded, "title", titles)
         assert [t for (t,) in titles.dbh.execute(f"SELECT title FROM toms WHERE {clause}")] == ['Les Révoltés de la "Bounty"']
+
+
+@pytest.fixture(scope="module")
+def articles():
+    """Divs as the Encyclopédie has them: an article (div1) with its head and author, whose words are in an implicit
+    div2 and div3 without them; an article with a part (div2) of its own head; an article without an author."""
+    dbh = sqlite3.connect(":memory:")
+    dbh.execute("CREATE TABLE toms (philo_type text, philo_id text, head text, author text)")
+    dbh.executemany(
+        "INSERT INTO toms VALUES (?, ?, ?, ?)",
+        [
+            ("doc", "1 0 0 0 0 0 0", None, None),
+            ("div1", "1 1 0 0 0 0 0", "ABEILLE", "Diderot"),
+            ("div2", "1 1 1 0 0 0 0", None, None),
+            ("div3", "1 1 1 1 0 0 0", None, None),
+            ("div1", "1 2 0 0 0 0 0", "ABRI", "Jaucourt"),
+            ("div2", "1 2 1 0 0 0 0", "Abri, en Marine", None),
+            ("div3", "1 2 1 1 0 0 0", "", None),
+            ("div1", "1 3 0 0 0 0 0", "ABSENCE", None),
+            ("div2", "1 3 1 0 0 0 0", None, None),
+            ("div3", "1 3 1 1 0 0 0", None, None),
+        ],
+    )
+    return SimpleNamespace(dbh=dbh, locals=SimpleNamespace(metadata_types={"head": "div", "author": "div"}))
+
+
+@pytest.mark.unit
+class TestDivValues:
+    def test_inherited(self, articles):
+        """A div with no value of a div field has that of its div2, else of its div1, as a hit's citation shows it."""
+        caches = bulk_load_metadata(articles, ["head", "author"], inherit=True)
+        assert caches["head"] == (4, {
+            (1, 1, 0, 0): "ABEILLE", (1, 1, 1, 0): "ABEILLE", (1, 1, 1, 1): "ABEILLE",
+            (1, 2, 0, 0): "ABRI", (1, 2, 1, 0): "Abri, en Marine", (1, 2, 1, 1): "Abri, en Marine",
+            (1, 3, 0, 0): "ABSENCE", (1, 3, 1, 0): "ABSENCE", (1, 3, 1, 1): "ABSENCE",
+        })
+        authors = caches["author"][1]
+        assert authors[1, 1, 1, 1] == "Diderot" and authors[1, 2, 1, 1] == "Jaucourt" and authors[1, 3, 1, 1] == ""
+
+    def test_own(self, articles):
+        """Without inherit, each div has its own value: the frequency report sums each div's words once."""
+        heads = bulk_load_metadata(articles, ["head"])["head"][1]
+        assert heads[1, 1, 1, 1] == "" and heads[1, 2, 1, 0] == "Abri, en Marine"

@@ -169,7 +169,7 @@ def _build_hit_bags(
     sent_idx = np.searchsorted(sent_keys_s24, hit_arr)
     matched = (sent_idx < n_sents) & (sent_keys_s24[np.clip(sent_idx, 0, n_sents - 1)] == hit_arr)
 
-    field_obj_index, metadata_cache = bulk_load_metadata(db, ["year"])["year"]
+    field_obj_index, metadata_cache = bulk_load_metadata(db, ["year"], inherit=True)["year"]
     all_years = _extract_years(all_hits, field_obj_index, metadata_cache).copy()
     # Force unmatched hits to year=-1 so the downstream year filter naturally
     # drops them alongside the year-missing ones.

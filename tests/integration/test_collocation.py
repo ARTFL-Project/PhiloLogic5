@@ -126,3 +126,18 @@ class TestRequests:
 
         with pytest.raises(BadRequest, match="metadata field"):
             collocation_with(shakespeare_db, q="lord", map_field="word_count")
+
+
+@pytest.mark.integration
+class TestByMetadata:
+    def test_div_field(self, shakespeare_db):
+        """Collocates counted by a div field ("Similar Usage") are grouped by the values the hits' citations show. The
+        words of a scene, in its implicit div3, had the div3's empty head instead: a single group, named ""."""
+        from philologic.runtime.reports.collocation import load_map_field_cache
+
+        report, _ = collocation_with(shakespeare_db, q="lord", colloc_filter_choice="nofilter", map_field="head")
+        group_names = load_map_field_cache(report["file_path"])[3]
+        hits = shakespeare_db.query("lord", "single_term", "0")
+        hits.finish()
+        assert len(group_names) > 1 and "" not in group_names
+        assert set(group_names) == {hit["head"] for hit in hits} - {""}
