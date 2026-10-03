@@ -1,4 +1,5 @@
 // import Vue from 'vue'
+import { Modal } from "bootstrap";
 import { createRouter, createWebHistory } from "vue-router";
 import { databaseUrl, whenTallEnough } from "../utils.js";
 
@@ -93,4 +94,13 @@ const router = createRouter({
         }
     },
 });
+
+// A navigation closes the dialog it starts from, such as the results' titles, whose links open texts and searches:
+// the page holding the dialog may go, and a dialog removed while open left its backdrop over the next page
+router.beforeEach(() => {
+    for (const modal of document.querySelectorAll(".modal.show")) {
+        Modal.getInstance(modal)?.hide();
+    }
+});
+
 export default router;
