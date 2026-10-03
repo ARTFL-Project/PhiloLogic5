@@ -28,33 +28,40 @@
                     </div>
                     {{ termsProximity }}
                 </span>
-                <div class="card outline-secondary shadow" id="query-terms" v-if="showQueryTerms" role="dialog"
-                    aria-modal="true" :aria-labelledby="'query-terms-title'" ref="queryTermsDialog"
-                    @keydown="handleDialogKeydown">
-                    <button type="button" class="btn btn-secondary btn-sm close" @click="closeTermsList()"
-                        :aria-label="$t('common.close')" ref="closeButton">
-                        <span class="icon-x"></span>
-                    </button>
-                    <span class="pe-4 h6" id="query-terms-title">
-                        {{ $t("searchArgs.termsExpanded", { length: words.length }) }}:
-                    </span>
-                    <h4 class="h6" v-if="words.length > 100" id="query-terms-frequent">{{
-                        $t("searchArgs.mostFrequentTerms") }}</h4>
-                    <button type="button" class="btn btn-secondary btn-sm" style="margin: 10px 0px"
-                        v-if="wordListChanged" @click="rerunQuery()">
-                        {{ $t("searchArgs.rerunQuery") }}
-                    </button>
-                    <div class="row" id="query-terms-list">
-                        <div class="col-3" v-for="word in words" :key="word">
-                            <div class="term-groups-container">
-                                <span class="term-word">{{ word.replace(/"/g, "") }}</span>
-                                <button type="button" class="close-pill"
+                <div class="card shadow" id="query-terms" v-if="showQueryTerms" role="dialog" aria-modal="true"
+                    aria-labelledby="query-terms-title" aria-describedby="query-terms-description"
+                    ref="queryTermsDialog" @keydown="handleDialogKeydown">
+                    <div class="card-header d-flex align-items-center">
+                        <h2 class="h6 mb-0 flex-grow-1" id="query-terms-title">{{ $t("searchArgs.searchTerms") }}</h2>
+                        <button type="button" class="btn btn-sm close-box close" @click="closeTermsList()"
+                            :aria-label="$t('common.close')" ref="closeButton">
+                            <span class="icon-x" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <p class="query-terms-summary" id="query-terms-description">
+                            {{ $t("searchArgs.termCount", { term: selectedTerm, n: words.length }) }}
+                            <span v-if="words.length > 100">({{ $t("searchArgs.mostFrequentTerms") }})</span>
+                        </p>
+                        <ul id="query-terms-list" aria-labelledby="query-terms-title" ref="termsList"
+                            @keydown="moveBetweenTerms">
+                            <li class="term-chip" v-for="word in words" :key="word">
+                                <span class="term-chip-word">{{ bare(word) }}</span>
+                                <button type="button" class="term-chip-remove"
                                     @click="removeFromTermsList(word, groupIndexSelected)"
-                                    :aria-label="$t('searchArgs.excludeTerm', { term: word })">
-                                    <span class="icon-x"></span>
+                                    :aria-label="$t('searchArgs.excludeTerm', { term: bare(word) })">
+                                    <span class="icon-x" aria-hidden="true"></span>
                                 </button>
-                            </div>
-                        </div>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-footer d-flex align-items-center flex-wrap gap-2" v-if="wordListChanged">
+                        <span class="flex-grow-1" role="status">
+                            {{ $t("searchArgs.termsExcluded", { n: excludedCount }) }}
+                        </span>
+                        <button type="button" class="btn btn-secondary btn-sm" @click="rerunQuery()" ref="rerunButton">
+                            {{ $t("searchArgs.rerunQuery") }}
+                        </button>
                     </div>
                 </div>
             </div>
@@ -135,6 +142,15 @@ const termGroupButtons = ref({});
 const triggerButtonIndex = ref(null);
 
 const wordGroups = computed(() => description.value.termGroups);
+const excludedCount = ref(0);  // the words taken out of the dialog's list since it opened
+const termsList = useTemplateRef("termsList");
+const rerunButton = useTemplateRef("rerunButton");
+const bare = (word) => word.replace(/"/g, "");  // a word of the list, without the quotes of its search
+// What the dialog's list expanded from: the term typed, for an approximate search's similar words
+const selectedTerm = computed(() => {
+    const index = groupIndexSelected.value;
+    return description.value.approximateGroups?.[index]?.term ?? wordGroups.value?.[index] ?? "";
+});
 
 // Sub-mode within the collocation report — frequency / compare / similar /
 // timeSeries / wordMap. Used to pick the right "occurrences" wording.
@@ -226,6 +242,7 @@ function removeMetadata(metadata) {
 function getQueryTerms(group, index) {
     groupIndexSelected.value = index;
     triggerButtonIndex.value = index;
+    excludedCount.value = 0;
     $http
         .get(`${$dbUrl}/scripts/get_query_terms.py`, {
             params: {
@@ -277,10 +294,37 @@ function handleDialogKeydown(event) {
     }
 }
 
+// The remove buttons of the dialog's words, in order
+const removeButtons = () => [...(termsList.value?.querySelectorAll(".term-chip-remove") || [])];
+
+// Arrow keys, Home and End move between the words' remove buttons: Tab goes through them too, one by one
+function moveBetweenTerms(event) {
+    const buttons = removeButtons();
+    const current = buttons.indexOf(document.activeElement);
+    if (current === -1) return;
+    const last = buttons.length - 1;
+    const targets = {
+        ArrowRight: current + 1, ArrowDown: current + 1, ArrowLeft: current - 1, ArrowUp: current - 1, Home: 0, End: last,
+    };
+    if (!(event.key in targets)) return;
+    event.preventDefault();
+    buttons[Math.max(0, Math.min(targets[event.key], last))].focus();
+}
+
 function removeFromTermsList(word, groupIndex) {
     const index = words.value.indexOf(word);
+    const removedWithKeyboard = removeButtons().includes(document.activeElement);
     words.value.splice(index, 1);
     wordListChanged.value = true;
+    excludedCount.value += 1;
+    if (removedWithKeyboard) {
+        // its button is gone: the next word's, or the last one's, or the dialog's rerun button
+        nextTick(() => {
+            const buttons = removeButtons();
+            const next = buttons[Math.min(index, buttons.length - 1)] || rerunButton.value || closeButton.value;
+            if (next) next.focus();
+        });
+    }
     if (termGroupsCopy.value.length === 0) {
         termGroupsCopy.value = copyObject(wordGroups.value);
     }
@@ -347,21 +391,82 @@ fetchSearchArgs();
 #query-terms {
     position: absolute;
     z-index: 100;
-    padding: 10px 15px 0px 15px;
-    box-shadow: 0px 0.2em 8px 0.01em rgba(0, 0, 0, 0.1);
+    width: min(46rem, 95vw);
+    border: 1px solid theme.$card-header-color;
 }
 
-#query-terms>button:first-child {
-    position: absolute;
-    right: 2px;
-    top: 0;
+#query-terms .card-header {
+    font-variant: small-caps;
+    padding: 0.4rem 0.5rem 0.4rem 1rem;
+}
+
+.query-terms-summary {
+    margin-bottom: 0.75rem;
 }
 
 #query-terms-list {
-    margin: 10px -5px;
-    max-height: 400px;
-    max-width: 800px;
-    overflow-y: scroll;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    list-style: none;
+    margin: 0;
+    padding: 2px;
+    max-height: min(22rem, 50vh);
+    overflow-y: auto;
+}
+
+.term-chip {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(theme.$link-color, 0.45);
+    border-radius: 50rem;
+    background-color: rgba(theme.$link-color, 0.06);
+    color: #212529;
+    line-height: 1.5;
+}
+
+.term-chip-word {
+    padding: 0.1rem 0.35rem 0.1rem 0.7rem;
+}
+
+#query-terms .term-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    margin-right: 0.1rem;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: theme.$link-color;
+    cursor: pointer;
+}
+
+#query-terms .term-chip-remove .icon-x {
+    flex-shrink: 0;
+    background-color: theme.$link-color !important; /* the theme's .icon-x is !important too */
+    width: 0.8em;
+    height: 0.8em;
+}
+
+#query-terms .term-chip-remove:hover,
+#query-terms .term-chip-remove:focus-visible {
+    background-color: theme.$link-color;
+}
+
+#query-terms .term-chip-remove:hover .icon-x,
+#query-terms .term-chip-remove:focus-visible .icon-x {
+    background-color: #fff !important; /* 6.7:1 on the button's red */
+}
+
+#query-terms .term-chip-remove:focus-visible {
+    outline-offset: 1px !important; /* the theme's ring, clear of the word */
+}
+
+#query-terms .card-footer {
+    background-color: rgba(theme.$link-color, 0.06);
 }
 
 .term-groups-container {

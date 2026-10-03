@@ -150,7 +150,10 @@
         "inThisOrder": "dans cet ordre",
         "termCut": "{term} correspond à plus de {n} formes : seules les {n} premières ont été cherchées, ces résultats sont donc incomplets. Commencez le terme par quelques lettres pour en chercher toutes les formes.",
         "notTermCut": "{term}, après NOT, correspond à plus de {n} formes : seules les {n} premières ont été exclues, ces résultats peuvent donc contenir des formes qu'il devait exclure. Commencez le terme par quelques lettres pour les exclure toutes.",
-        "similarTerms": "{term} ({n} termes similaires)"
+        "similarTerms": "{term} ({n} termes similaires)",
+        "searchTerms": "Termes de recherche",
+        "termCount": "{term} : {n} termes",
+        "termsExcluded": "Termes exclus : {n}"
     },
     "resultsSummary": {
         "heading": "Récapitulatif des résultats",
