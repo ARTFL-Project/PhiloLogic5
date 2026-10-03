@@ -282,7 +282,8 @@
         "performance": "For performance reasons, only the first 1000 results are displayed. Click on the link above for full results.",
         "resultsRegion": "Aggregation results",
         "expandBreakdown": "Expand breakdown details for {name}",
-        "collapseBreakdown": "Collapse breakdown details for {name}"
+        "collapseBreakdown": "Collapse breakdown details for {name}",
+        "fromDocuments": "from {n} documents"
     },
     "landingPage": {
         "title": "Browse Collection",

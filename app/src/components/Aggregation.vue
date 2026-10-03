@@ -25,6 +25,11 @@
                     <span :id="`result-heading-${resultIndex}`">
                         <citations :citation="result.citation" :result-number="resultIndex + 1"></citations>
                     </span>
+                    <!-- A group of several documents with no breakdown (titles): its row shows what they share -->
+                    <span class="d-inline-block ps-1 text-muted"
+                        v-if="result.object_count > 1 && !result.break_up_field.length && statsConfig?.object_level === 'doc'">
+                        {{ $t("aggregation.fromDocuments", { n: result.object_count }) }}
+                    </span>
 
                     <!-- Breakdown summary -->
                     <span class="d-inline-block ps-1" v-if="breakUpFields[resultIndex].results.length">
@@ -164,8 +169,7 @@ function buildStatResults(results) {
         result.citation = buildCitationObject(
             groupedByField.value,
             statsConfig.value.field_citation,
-            result.metadata_fields,
-            groupedByField.value === "title" // the server groups titles by object, not by value
+            result.metadata_fields
         );
         return result;
     });
