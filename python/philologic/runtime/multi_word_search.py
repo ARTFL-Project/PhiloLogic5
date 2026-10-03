@@ -942,11 +942,9 @@ def search_phrase(db_path, hitlist_filename, overflow_words, corpus=None):
 
 
 def search_within_word_span(db_path, hitlist_filename, overflow_words, n, cooc_order, exact_distance, corpus=None):
-    """Search for co-occurrences of multiple words within n words of each other in the database."""
+    """Search for co-occurrences of multiple words in the database whose span, from the first word to the last, is at
+    most n words (with exact_distance, exactly n). n groups side by side span n - 1."""
     word_groups = get_word_groups(f"{hitlist_filename}.terms")
-
-    if len(word_groups) > 1 and n == 1:
-        n = len(word_groups) - 1
 
     # Use document-level approach for all cases
     _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_words,
