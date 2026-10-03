@@ -3,6 +3,7 @@
 
 from urllib.parse import quote_plus
 
+from philologic.runtime.exceptions import BadRequest, NotFound
 from philologic.runtime.sql_validation import validate_object_level
 
 
@@ -64,12 +65,20 @@ def byte_range_to_link(db, config, request, obj_level="div1"):
     # Validate obj_level to prevent SQL injection
     obj_level = validate_object_level(obj_level)
 
+    if not request.filename or not isinstance(request.start_byte, int):
+        raise BadRequest("A filename and a start_byte are required")
     cursor = db.dbh.cursor()
     cursor.execute("SELECT philo_id FROM toms WHERE filename=?", (request.filename,))
-    doc_id = cursor.fetchone()[0].split()[0]
+    row = cursor.fetchone()
+    if row is None:
+        raise NotFound(f"No document {request.filename!r}")
+    doc_id = row[0].split()[0]
     next_doc_id = str(int(doc_id) + 1)
     cursor.execute("SELECT rowid FROM toms WHERE philo_doc_id=?", (next_doc_id,))
-    rowid = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    if row is None:  # the last document: up to the end of toms
+        row = cursor.execute("SELECT max(rowid) + 1 FROM toms").fetchone()
+    rowid = row[0]
 
     # Use parameterized query for all user-controlled values
     # Note: obj_level is validated above, so it's safe to interpolate
@@ -77,7 +86,10 @@ def byte_range_to_link(db, config, request, obj_level="div1"):
         "SELECT philo_id FROM toms WHERE rowid < ? AND philo_type=? AND philo_id LIKE ? AND CAST(start_byte AS decimal) <= ? ORDER BY rowid DESC",
         (rowid, obj_level, f"{doc_id} %", request.start_byte)
     )
-    philo_id = cursor.fetchone()[0]
+    row = cursor.fetchone()
+    if row is None:
+        raise NotFound(f"No {obj_level} of {request.filename!r} at byte {request.start_byte}")
+    philo_id = row[0]
     philo_id = philo_id.split()
     while int(philo_id[-1]) == 0:
         philo_id.pop()

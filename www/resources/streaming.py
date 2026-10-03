@@ -5,7 +5,7 @@ custom headers (Set-Cookie), or non-JSON responses (302 redirect).
 """
 
 import os
-import sys
+import sqlite3
 
 import falcon
 import orjson
@@ -30,7 +30,9 @@ from philologic.runtime import (
     time_series_to_csv,
 )
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.HitWrapper import ObjectWrapper
+from philologic.runtime.link import make_absolute_object_link
 from wsgi_helpers import resolve
 
 TAGS = re.compile(r"<[^>]+>")
@@ -168,61 +170,38 @@ def _nav_query(obj, db):
 
 
 class ResolveCiteResource:
-    """Resolve a citation query and redirect to the matching text object."""
+    """Resolve a citation query and redirect to the matching text object: the division of the document whose
+    abbreviation (toms' abbrev column) starts the citation, and whose head is the citation. With none, the database's
+    home page."""
 
     def on_get(self, req, resp, db_name):
         config = req.context.config
-        request = req.context.request
         db = DB(config.db_path + "/data/")
-        c = db.dbh.cursor()
-        q = request.q
+        citation = req.get_param("q") or ""  # as typed: query_parser_regex rewrites the search's q
+        home = f"{req.root_path}/{db_name}/"  # root_path: the SCRIPT_NAME of the deployment's prefix
 
-        best_url = config["db_url"]
-
-        if " - " in q:
-            milestone = q.split(" - ")[0]
-        else:
-            milestone = q
-
-        milestone_segments = []
-        last_segment = 0
-        milestone_prefixes = []
-        for separator in re.finditer(r" (?!\.)|\.(?! )", milestone):
-            milestone_prefixes += [milestone[: separator.start()]]
-            milestone_segments += [milestone[last_segment : separator.start()]]
-            last_segment = separator.end()
-        milestone_segments += [milestone[last_segment:]]
-        milestone_prefixes += [milestone]
-
-        print("SEGMENTS", repr(milestone_segments), file=sys.stderr)
-        print("PREFIXES", repr(milestone_prefixes), file=sys.stderr)
-
+        milestone = citation.split(" - ")[0]
+        separators = re.finditer(r" (?!\.)|\.(?! )", milestone)
+        milestone_prefixes = [milestone[: separator.start()] for separator in separators]
+        milestone_prefixes.append(milestone)
         abbrev_match = None
-        for pos, v in enumerate(milestone_prefixes):
-            print("QUERYING for abbrev = ", v, file=sys.stderr)
-            abbrev_q = c.execute("SELECT * FROM toms WHERE abbrev = ?;", (v,)).fetchone()
-            if abbrev_q:
-                abbrev_match = abbrev_q
+        try:
+            for prefix in milestone_prefixes:  # the longest that is an abbreviation
+                row = db.dbh.execute("SELECT philo_id FROM toms WHERE abbrev = ?", (prefix,)).fetchone()
+                if row:
+                    abbrev_match = row
+        except sqlite3.OperationalError:  # no abbrev column: no citation resolves
+            abbrev_match = None
 
-        print("ABBREV", abbrev_match["abbrev"], abbrev_match["philo_id"], file=sys.stderr)
-        doc_obj = ObjectWrapper(abbrev_match["philo_id"].split(), db)
-
-        nav = _nav_query(doc_obj, db)
-
-        best_match = None
-        for n in nav:
-            if n["head"] == request.q:
-                print("MATCH", n["philo_id"], n["n"], n["head"], file=sys.stderr)
-                best_match = n
-                break
-
-        if best_match:
+        best_url = home
+        if abbrev_match:
+            doc_obj = ObjectWrapper(abbrev_match["philo_id"].split(), db)
             type_offsets = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5}
-            t = best_match["philo_type"]
-            short_id = best_match["philo_id"].split()[: type_offsets[t]]
-            # Note: original uses f.make_absolute_object_link which may not exist
-            best_url = config["db_url"]
-
+            for n in _nav_query(doc_obj, db):
+                if n["head"] == citation:
+                    short_id = n["philo_id"].split()[: type_offsets[n["philo_type"]]]
+                    best_url = home.rstrip("/") + make_absolute_object_link(config, short_id)
+                    break
         raise falcon.HTTPFound(best_url)
 
 
@@ -237,12 +216,18 @@ class SortedKWICResource:
         config = req.context.config
         request = req.context.request
 
+        # Before the stream starts, so that a bad request gets its 400: once streaming, it cut the response short
+        if not request.q:
+            raise BadRequest("A search term (q) is required to sort a KWIC")
+        db = DB(config.db_path + "/data/")
+        hits = db.query(request["q"], request["method"], request["arg"], **request.metadata)
+
         resp.content_type = "application/x-ndjson; charset=UTF-8"
         resp.set_header("X-Accel-Buffering", "no")
         resp.set_header("Cache-Control", "no-cache")
-        resp.stream = self._generate(request, config)
+        resp.stream = self._generate(request, config, db, hits)
 
-    def _generate(self, request, config):
+    def _generate(self, request, config, db, hits):
         """Yield NDJSON progress lines and final result."""
         from scripts.get_sorted_kwic import (
             _collect_metadata_sort,
@@ -251,9 +236,6 @@ class SortedKWICResource:
             _paginate,
             _sort_cache,
         )
-
-        db = DB(config.db_path + "/data/")
-        hits = db.query(request["q"], request["method"], request["arg"], **request.metadata)
 
         cache_path = _get_cache_path(request, db)
         sorted_path = f"{cache_path}.sorted"

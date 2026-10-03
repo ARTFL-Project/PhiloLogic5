@@ -16,6 +16,7 @@ from philologic.runtime.reports.collocation import (
     load_map_field_cache,
     score_with_top_k_positive,
 )
+from philologic.runtime.WSGIHandler import whole_number
 
 
 def get_outlier_groups(request, config):
@@ -26,9 +27,9 @@ def get_outlier_groups(request, config):
     )
     group_hits = load_group_hits(file_path)  # None for legacy caches
 
-    min_hits = int(request.min_hits or 10)
-    top_n = int(request.top_n or 50)
-    top_k = int(request.top_k or 20)
+    min_hits = whole_number("min_hits", request.min_hits, 10)
+    top_n = whole_number("top_n", request.top_n, 50)
+    top_k = whole_number("top_k", request.top_k, 20)
 
     n_groups = len(group_names)
     if n_groups == 0 or len(tids) == 0:

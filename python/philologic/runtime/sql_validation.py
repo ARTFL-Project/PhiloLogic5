@@ -76,6 +76,14 @@ def validate_request_column(column, db):
         raise BadRequest(str(error)) from None
 
 
+def validate_request_metadata_field(field, db):
+    """A metadata field the request names, for reports that look it up by object type. Other columns validate_column
+    lets through for SQL (word_count, philo_id) make it a bad request (400): they gave KeyErrors (500)."""
+    if field not in db.locals["metadata_types"]:
+        raise BadRequest(f"{field!r} is no metadata field of this database")
+    return field
+
+
 def validate_columns(columns, db):
     """Validate a list of column names.
 

@@ -68,6 +68,8 @@ class DB:
             hit = [int(x) for x in row["philo_id"].split(" ")]
             return HitWrapper(hit, self)
         hit = [int(x) for x in hit_s.split(" ")]
+        if not self.get_page(hit):  # its text was read from the empty bytes of no page (a 500)
+            raise NotFound(f"No page {hit_s}")
         return PageWrapper(hit, self)
 
     def get_id_lowlevel(self, item):

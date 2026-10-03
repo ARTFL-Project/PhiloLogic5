@@ -58,6 +58,8 @@ def format_query(q, field, db):
         else:
             parsed_split += [(l, t)]
     output_string = []
+    if not parsed_split:  # an empty or blank term: nothing to complete
+        return output_string
     label, token = parsed_split[-1]
     prefix = " ".join('"' + t[1] + '"' if t[0] == "QUOTE_S" else t[1] for t in parsed_split[:-1])
     if prefix:
