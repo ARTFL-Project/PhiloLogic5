@@ -444,7 +444,7 @@ def _vectorized_collocation(
     for i in range(len(sent_indices)):
         prefix = tuple(hit_prefixes[i].tolist())
         mv = metadata_cache.get(prefix)
-        if mv is not None:
+        if mv not in (None, ""):  # hits with no value make no group: it would have no name to compare it by
             if mv not in group_lookup:
                 group_lookup[mv] = len(group_names)
                 group_names.append(mv)
@@ -617,7 +617,7 @@ def collocation_results(request, config):
 
     map_field_info = None
     if map_field is not None:
-        field_obj_index, metadata_cache = bulk_load_metadata(db, [map_field])[map_field]
+        field_obj_index, metadata_cache = bulk_load_metadata(db, [map_field], inherit=True)[map_field]
         map_field_info = (metadata_cache, field_obj_index)
 
     if total_hits == 0:

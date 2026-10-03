@@ -20,7 +20,7 @@ os.environ["PATH"] += ":/usr/local/bin/"
 _OBJ_PREFIX_LEN = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6}
 
 
-def bulk_load_metadata(db, fields, extra_columns=None):
+def bulk_load_metadata(db, fields, extra_columns=None, inherit=False):
     """Bulk-load metadata fields from toms into dicts keyed by philo_id prefix.
 
     Groups fields by object level and runs one SQL query per level.
@@ -28,6 +28,10 @@ def bulk_load_metadata(db, fields, extra_columns=None):
 
     Returns {field_name: (prefix_len, {philo_id_prefix_tuple: value})}
     When extra_columns is provided, values become tuples: (value, extra1, extra2, ...)
+
+    A div field is keyed by the 4 numbers of each div, so a hit finds the one of its innermost div. With inherit
+    (and no extra_columns), a div with no value has that of the div holding it, as HitWrapper reads a div field: the
+    words of an article's implicit div2 and div3 have its head and author.
     """
     metadata_types = db.locals.metadata_types
     caches = {}
@@ -66,8 +70,24 @@ def bulk_load_metadata(db, fields, extra_columns=None):
                 if field not in caches:
                     caches[field] = (prefix_len, {})
                 caches[field][1][prefix] = val
+        if inherit and obj_type == "div":
+            for field in obj_fields:
+                if field in caches:
+                    caches[field] = (prefix_len, _inherited_div_values(caches[field][1]))
 
     return caches
+
+
+def _inherited_div_values(values):
+    """values, keyed by div (doc, div1, div2, div3), with a div's missing value taken from its div2, else its div1."""
+    inherited = {}
+    for (doc, div1, div2, div3), value in values.items():
+        if not value and div3:
+            value = values.get((doc, div1, div2, 0))
+        if not value and div2:
+            value = values.get((doc, div1, 0, 0))
+        inherited[doc, div1, div2, div3] = value or ""
+    return inherited
 
 
 def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, ascii_conversion=True, lock=None):

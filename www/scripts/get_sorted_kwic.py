@@ -299,7 +299,7 @@ def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
 
     # Bulk-load metadata and rank its values in the order the concordance sorts them (regardless of case, and of
     # accents with ascii_conversion): values sorting alike share a rank, missing ones come last
-    metadata_caches = bulk_load_metadata(db, metadata_fields)
+    metadata_caches = bulk_load_metadata(db, metadata_fields, inherit=True)
     meta_rank_maps = {}
     for field in metadata_fields:
         prefix_len, cache = metadata_caches.get(field, (1, {}))

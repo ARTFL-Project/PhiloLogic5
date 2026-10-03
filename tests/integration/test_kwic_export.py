@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from philologic.runtime.HitList import sort_key
+from philologic.runtime.MetadataQuery import bulk_load_metadata
 
 QUERY = {"q": "love", "method": "proxy", "method_arg": "", "results_per_page": "25"}
 
@@ -36,6 +37,31 @@ class TestSortedKwic:
         titles = [r["metadata_fields"]["title"] for r in last_json(web("scripts/get_sorted_kwic.py", **params))["results"]]
         assert len(titles) == len(hits) and len(set(titles)) > 1
         assert titles == sorted(titles, key=lambda title: sort_key(title, eltec_db.locals.ascii_conversion))
+
+    def test_div_field_order_is_the_citation_order(self, web, eltec_db, monkeypatch):
+        """Sorted by a div field, the KWIC lists its hits in the order of the values their citations show. Each hit
+        had the value of its innermost div, empty for the words of an implicit div: the order didn't change."""
+        from philologic.Config import Config
+
+        real = Config.__getitem__
+        monkeypatch.setattr(
+            Config, "__getitem__", lambda self, item: ["head"] if item == "kwic_metadata_sorting_fields" else real(self, item)
+        )
+        params = {**QUERY, "q": "lover", "first_kwic_sorting_option": "head", "start": "1", "end": "1000"}
+        heads = [r["metadata_fields"]["head"] for r in last_json(web("scripts/get_sorted_kwic.py", **params))["results"]]
+        assert len(set(heads)) > 10
+        assert heads == sorted(heads, key=lambda head: sort_key(head, eltec_db.locals.ascii_conversion))
+
+    def test_div_field_values_are_the_citations(self, eltec_db):
+        """The value of a div field the KWIC sort and the collocations by metadata find for a hit, by its innermost
+        div, is that of its citation: of the innermost div that has one."""
+        hits = eltec_db.query("lover", "single_term", "0")
+        hits.finish()
+        prefix_len, heads = bulk_load_metadata(eltec_db, ["head"], inherit=True)["head"]
+        _, own_heads = bulk_load_metadata(eltec_db, ["head"])["head"]
+        divs = [tuple(hit.hit[:prefix_len]) for hit in hits]
+        assert [heads.get(div, "") for div in divs] == [hit["head"] for hit in hits]
+        assert any(heads.get(div) and not own_heads.get(div) for div in divs)  # some of them inherited
 
 
 @pytest.mark.integration
