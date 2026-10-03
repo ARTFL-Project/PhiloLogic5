@@ -12,7 +12,7 @@
                 </button>
             </div>
             <div class="modal-body">
-                <ul id="results-bibliography">
+                <ul id="results-bibliography-list">
                     <li v-for="(result, resultIndex) in uniquedResults" :key="resultIndex">
                         <router-link :to="`/${formData.report}?${buildLink(result.metadata_fields.title)}`"
                             class="result-card-link" role="listitem" :aria-label="$t('resultsBiblio.viewOccurrences', {
@@ -93,7 +93,7 @@ function buildLink(title) {
 
 onMounted(() => {
     // Remove aria-hidden when modal is shown (accessibility fix)
-    const modal = document.getElementById("results-bibliography");
+    const modal = document.getElementById("results-bibliography-list");
     if (modal && modal.closest(".modal")) {
         modal.closest(".modal").removeAttribute("aria-hidden");
     }
@@ -103,7 +103,7 @@ onMounted(() => {
 <style scoped lang="scss">
 @use "../assets/styles/theme.module.scss" as theme;
 
-#results-bibliography {
+#results-bibliography-list {
     padding: 0;
     margin: 0;
 }

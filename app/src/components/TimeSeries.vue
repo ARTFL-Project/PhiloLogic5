@@ -3,7 +3,7 @@
         <div id="time-series-container" class="mt-4">
             <results-summary :description="results.description"></results-summary>
             <div class="card mt-4 mx-2" id="time-series">
-                <div class="btn-group d-inline-block" role="group" aria-label="Frequency type selection">
+                <div class="btn-group d-inline-block" role="group" :aria-label="$t('timeSeries.frequencyTypeSelection')">
                     <button type="button" class="btn btn-secondary"
                         :class="{ active: frequencyType == 'absolute_time' }" @click="toggleFrequency('absolute_time')"
                         :aria-pressed="frequencyType == 'absolute_time'" :disabled="searching">
@@ -42,18 +42,16 @@
                         </div>
 
                         <div class="visually-hidden" id="chart-instructions">
-                            Use arrow keys to navigate between time periods, Enter or Space to view detailed results for
-                            selected period, Escape to dismiss tooltip. A complete data table is available below for
-                            screen readers.
+                            {{ $t("timeSeries.chartInstructions") }}
                         </div>
 
                         <!-- Hidden data table for screen readers -->
                         <div class="visually-hidden">
-                            <table role="table" aria-label="Time series data table">
-                                <caption>Time series data showing frequency over time periods</caption>
+                            <table role="table" :aria-label="$t('timeSeries.dataTable')">
+                                <caption>{{ $t("timeSeries.dataTableCaption") }}</caption>
                                 <thead>
                                     <tr>
-                                        <th scope="col">Year</th>
+                                        <th scope="col">{{ $t("timeSeries.year") }}</th>
                                         <th scope="col">{{ currentFrequencyLabel }}</th>
                                     </tr>
                                 </thead>
@@ -135,7 +133,7 @@ const currentFrequencyLabel = computed(() =>
 const chartAriaLabel = computed(() => {
     const dataPoints = dateLabels.value.length;
     const range = dataPoints > 0
-        ? `${dateLabels.value[0]} to ${dateLabels.value[dataPoints - 1]}`
+        ? t("timeSeries.periodRange", { start: dateLabels.value[0], end: dateLabels.value[dataPoints - 1] })
         : "";
     return t("timeSeries.chartAriaLabel", {
         type: currentFrequencyLabel.value,

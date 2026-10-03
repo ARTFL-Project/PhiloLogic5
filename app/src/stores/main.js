@@ -138,6 +138,10 @@ export const useMainStore = defineStore("main", {
                     ...commonFields,
                     "method", "cooc_order", "method_arg", "group_by",
                 ]),
+                bibliography: new Set([
+                    ...commonFields,
+                    "results_per_page", "sort_by", "start", "end", "frequency_field",
+                ]),
             };
         },
 

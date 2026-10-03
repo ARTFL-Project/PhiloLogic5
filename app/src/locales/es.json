@@ -47,7 +47,8 @@
         "closeCitationDialog": "Cerrar cuadro de diálogo de citas",
         "goHome": "Ir a página principal",
         "citeUs": "Citadnos",
-        "contactUs": "Contactad con nosotros"
+        "contactUs": "Contactad con nosotros",
+        "accessedOn": "Consultado el {date}"
     },
     "searchForm": {
         "searchInterface": "Interfaz de búsqueda",
@@ -118,7 +119,8 @@
         "coOccurrenceMethodLabel": "Seleccionar método de búsqueda de coocurrencias",
         "collocNWordsLabel": "Cantidad de palabras para buscar colocaciones",
         "advancedSearchOptions": "Opciones avanzadas de búsqueda",
-        "selectDateType": "Seleccionar tipo de dato por"
+        "selectDateType": "Seleccionar tipo de dato por",
+        "selectSort": "elegir"
     },
     "resultsBiblio": {
         "heading": "Resultados bibliográficos de esta página",
@@ -143,7 +145,9 @@
         "exactPhrase": "la frase exacta",
         "expandTermGroup": "Expandir grupo de términos: {group}",
         "removeTerm": "Eliminar el término: {term}",
-        "excludeTerm": "Excluir el término: {term}"
+        "excludeTerm": "Excluir el término: {term}",
+        "adjacent": "uno junto a otro",
+        "inThisOrder": "en este orden"
     },
     "resultsSummary": {
         "heading": "Resumen de resultados",
@@ -318,7 +322,8 @@
         "exportAs": "Exportar como",
         "htmlDescription": "Mantener formato de texto, enlaces y estilos",
         "plainDescription": "Limpiar texto de etiquetas o formato HTML",
-        "downloadNote": "Los ficheros se descargarán en su carpeta predeterminada de descarga"
+        "downloadNote": "Los ficheros se descargarán en su carpeta predeterminada de descarga",
+        "exporting": "Exportando {format}..."
     },
     "kwic": {
         "sortResultsBy": "Ordenar resultados por",
@@ -448,7 +453,12 @@
         "per10000Words": "por cada 10 000 palabras",
         "chartAriaLabel": "Gráfico de series temporales {type}  muestra {count} de datos para  {range}",
         "selectionAnnouncement": "{year} seleccionado: {value} {unit}",
-        "loadingProgress": "Cargando datos de la serie temporal: {current} de {total} resultados procesados"
+        "loadingProgress": "Cargando datos de la serie temporal: {current} de {total} resultados procesados",
+        "frequencyTypeSelection": "Selección del tipo de frecuencia",
+        "dataTable": "Tabla de datos de la serie temporal",
+        "dataTableCaption": "Datos de la serie temporal: frecuencia por período",
+        "chartInstructions": "Use las flechas para pasar de un período a otro, Intro o Espacio para ver los resultados del período elegido, Escape para cerrar la información emergente. Más abajo hay una tabla completa de los datos para lectores de pantalla.",
+        "periodRange": "{start} a {end}"
     },
     "bibliography": {
         "dictionaryResultsRegion": "Resultados bibliográficos del diccionario",
@@ -471,7 +481,9 @@
         "viewText": "Visualizar texto {resultNumber}"
     },
     "pages": {
-        "searchResultsPages": "Páginas del resultado de la búsqueda"
+        "searchResultsPages": "Páginas del resultado de la búsqueda",
+        "first": "Primera",
+        "last": "Última"
     },
     "toc": {
         "showHeader": "Mostrar encabezado",

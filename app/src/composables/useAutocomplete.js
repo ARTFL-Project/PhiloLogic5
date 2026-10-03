@@ -26,12 +26,15 @@ export function useAutocomplete({ http, dbUrl, philoConfig, metadataValues, rout
         if (timeout) clearTimeout(timeout);
         timeout = setTimeout(() => {
             let currentFieldValue = route.query[field];
-            if (metadataValues[field] && metadataValues[field].length > 1 && metadataValues[field] !== currentFieldValue) {
+            const term = metadataValues[field];
+            if (term && term.length > 1 && term !== currentFieldValue) {
                 http
                     .get(`${dbUrl}/scripts/autocomplete_metadata.py`, {
-                        params: { term: metadataValues[field], field: field },
+                        params: { term, field: field },
                     })
                     .then((response) => {
+                        // not once the field is left or changed: a late list would cover what is clicked next
+                        if (metadataValues[field] !== term || document.activeElement?.name !== field) return;
                         autoCompleteResults[field] = response.data.map((result) =>
                             result.replace(/CUTHERE/, "<last/>")
                         );
@@ -42,7 +45,7 @@ export function useAutocomplete({ http, dbUrl, philoConfig, metadataValues, rout
     }
 
     function onArrowDown(field) {
-        if (arrowCounters[field] < autoCompleteResults[field].length) {
+        if (arrowCounters[field] < autoCompleteResults[field].length - 1) {
             arrowCounters[field] = arrowCounters[field] + 1;
         }
         if (arrowCounters[field] > 5) {

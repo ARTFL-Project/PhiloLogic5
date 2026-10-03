@@ -64,7 +64,7 @@ const $http = inject("$http");
 const philoConfig = inject("$philoConfig");
 const route = useRoute();
 const router = useRouter();
-const { locale: i18nLocale, t } = useI18n();
+const { locale: i18nLocale, availableLocales, t } = useI18n();
 const store = useMainStore();
 const { formData, urlUpdate, showFacets, searchError } = storeToRefs(store);
 
@@ -143,11 +143,13 @@ function setupApp() {
 
 // ── Initial dispatch (replaces created()) ────────────────────────────────────
 if (philoConfig.valid_config) {
-    updateDocumentTitle(route.name);
-
-    const currentLocale = i18nLocale.value || localStorage.getItem("lang") || "en";
+    // the language picked last (i18n starts in English, so it came first and the choice was lost on reload)
+    const savedLocale = localStorage.getItem("lang");
+    const currentLocale = availableLocales.includes(savedLocale) ? savedLocale : i18nLocale.value || "en";
     document.documentElement.setAttribute("lang", currentLocale);
     i18nLocale.value = currentLocale;
+
+    updateDocumentTitle(route.name);
 
     accessAuthorized.value = !philoConfig.access_control;
     if (philoConfig.access_control) {
@@ -201,6 +203,11 @@ watch(
         updateDocumentTitle(route.name);
     }
 );
+
+watch(i18nLocale, (newLocale) => {
+    document.documentElement.setAttribute("lang", newLocale);
+    updateDocumentTitle(route.name);
+});
 
 watch(accessAuthorized, (authorized) => {
     if (authorized) setupApp();
@@ -499,7 +506,7 @@ span.note {
 }
 
 .cite {
-    height: 38px;
+    min-height: 38px; /* long citations wrap rather than overflow the header */
     display: inline-block;
 }
 

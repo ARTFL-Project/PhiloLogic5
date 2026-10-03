@@ -75,6 +75,16 @@ describe("dateRangeHandler", () => {
         expect(result.year).toBe("-1900");
     });
 
+    it("clears the value when both range boxes are emptied", () => {
+        const result = dateRangeHandler(
+            { year: "int" },
+            { year: { start: "", end: "" } },
+            { year: "range" },
+            { year: "1750-1800" }
+        );
+        expect(result.year).toBe("");
+    });
+
     it("does not modify exact date fields", () => {
         const values = { year: "1850" };
         const result = dateRangeHandler(

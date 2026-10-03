@@ -28,7 +28,8 @@
                                 </template>
                                 <progress-spinner progress="0" :sm="true" v-else />
                             </span>
-                            <span class="d-inline-flex" style=" align-items: center;" v-if="fieldSummary.length > 0">
+                            <span class="d-inline-flex" style=" align-items: center;"
+                                v-if="fieldSummary.length > 0 && resultsLength > 0">
                                 <span>&nbsp;{{ $t("resultsSummary.spreadAcross") }}&nbsp;</span>
                                 <progress-spinner progress="0" :sm="true" v-if="!hitlistStatsDone" />
                                 <span v-else>

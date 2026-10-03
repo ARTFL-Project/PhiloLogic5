@@ -81,7 +81,7 @@
             </div>
             <input type="text" class="form-control" :id="prefixId(field.value + '-input-filter')"
                 :name="field.value" :placeholder="field.example"
-                v-model="modelValue[field.value]"                :aria-labelledby="prefixId(field.value + '-date-label')"
+                v-model="modelValue[field.value]" :aria-labelledby="prefixId(field.value + '-date-label')"
                 v-if="dateTypeState[field.value] === 'exact'" />
             <span class="d-inline-block" v-if="dateTypeState[field.value] === 'range'">
                 <div class="input-group ms-3">
@@ -162,6 +162,9 @@ watchEffect(() => {
     for (let field in props.inputStyles) {
         if (!["date", "int"].includes(props.inputStyles[field])) continue;
         let val = props.modelValue[field] ? String(props.modelValue[field]) : "";
+        // A range typed in the exact field stays there: at the "-" of "1750-1800", the field switched to ranges, the
+        // input was replaced, and the "1800" went nowhere
+        if (document.activeElement?.id === prefixId(field + "-input-filter")) continue;
         if (props.inputStyles[field] === "date" && val.includes("<=>")) {
             let parts = val.split("<=>");
             dateTypeState[field] = "range";

@@ -35,7 +35,8 @@
                                 v-model="comparedMetadataValues[field.value]"
                                 @input="autocompleteOnChange(field.value)" @keydown.down="onArrowDown(field.value)"
                                 @keydown.up="onArrowUp(field.value)" @keyup.enter="onEnter(field.value)"
-                                @keyup.escape="clearAutoCompletePopup" autocomplete="off"
+                                @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
+                                autocomplete="off"
                                 :aria-label="`${$t('collocation.filterBy')} ${field.label}`" />
                             <ul :id="'compare-autocomplete-' + field.value" class="autocomplete-results shadow"
                                 :style="autoCompletePosition(field.value)"

@@ -1,11 +1,11 @@
 <template>
     <div>
         <div class="dropdown">
-            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" id="language-selector"
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" :id="selectorId"
                 data-bs-toggle="dropdown" aria-expanded="false" :aria-label="$t('common.changeLanguage')">
                 <img src="../assets/language.png" height="18" width="18" :alt="$t('common.languageIcon')" />
             </button>
-            <ul class="dropdown-menu" aria-labelledby="language-selector">
+            <ul class="dropdown-menu" :aria-labelledby="selectorId">
                 <li v-for="locale in $i18n.availableLocales" :key="`locale-${locale}`">
                     <button type="button" class="dropdown-item" @click="changeLocale(locale)">
                         {{ localNames[locale] }}
@@ -16,9 +16,11 @@
     </div>
 </template>
 <script setup>
+import { useId } from "vue";
 import { useI18n } from "vue-i18n";
 
 const { locale } = useI18n();
+const selectorId = `language-selector-${useId()}`; // the header has two, for small and large screens
 
 const localNames = {
     en: "English",
