@@ -33,6 +33,12 @@ if "PHILOLOGIC_DB_ROOT" not in os.environ and os.path.exists(_CONFIG_FILE):
 PHILOLOGIC_DB_ROOT = os.environ["PHILOLOGIC_DB_ROOT"]
 
 
+def is_database_name(part):
+    """Whether part, a component of a URL path, names a database: a directory of PHILOLOGIC_DB_ROOT. "." and ".." are
+    directories too, but they would make the database root, or its parent, pass for a database."""
+    return part not in ("", ".", "..") and os.path.isdir(os.path.join(PHILOLOGIC_DB_ROOT, part))
+
+
 def _get_database_path(path_info):
     """Extract the database filesystem path from the URL.
 
@@ -41,10 +47,8 @@ def _get_database_path(path_info):
     Returns (db_path, db_name) or (None, None).
     """
     for part in path_info.split("/"):
-        if part:
-            candidate = os.path.join(PHILOLOGIC_DB_ROOT, part)
-            if os.path.isdir(candidate):
-                return candidate, part
+        if is_database_name(part):
+            return os.path.join(PHILOLOGIC_DB_ROOT, part), part
     return None, None
 
 
