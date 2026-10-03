@@ -73,7 +73,7 @@ import { useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
-import { debug, deepEqual, paramsFilter, paramsToRoute } from "../utils.js";
+import { debug, deepEqual, paramsFilter, paramsToRoute, quoteMetadataValue } from "../utils.js";
 import citations from "./Citations";
 import ResultsSummary from "./ResultsSummary";
 
@@ -175,7 +175,7 @@ function buildStatResults(results) {
 // fields too, as objects can share a title ("Histoire de France", by Bainville and by Michelet). A value that is
 // empty (the group N/A) is NULL.
 function buildCitationObject(fieldToLink, citationObject, metadataFields, singleObject = false) {
-    const quoted = (value) => (typeof value === "number" ? `${value}` : `"${value}"`);
+    const quoted = (value) => (typeof value === "number" ? `${value}` : quoteMetadataValue(value));
     const valueOrNull = (value) => (value == null || value.length === 0 ? "NULL" : quoted(value));
     const out = [];
     for (const citation of citationObject) {

@@ -655,18 +655,17 @@ TYPOGRAPHIC_TWINS = str.maketrans(
 )
 
 
-def query_parse(query_terms, config, keep_quoted=False):
-    """query_terms with the database's query_parser_regex rules applied, as hyphens and apostrophes turned into spaces
-    (where its index splits words). Not inside the bracket expressions of regexes, whose hyphens make ranges
-    ("[a-z]"), and with keep_quoted not inside quotes either: quoted metadata values are matched whole, as they are.
+def query_parse(query_terms, config):
+    """The search terms query_terms with the database's query_parser_regex rules applied, as hyphens and apostrophes
+    turned into spaces (where its index splits words). Not inside the bracket expressions of regexes, whose hyphens
+    make ranges ("[a-z]"). (Metadata values have their own grammar: QuerySyntax.parse_metadata_query.)
 
     With ascii_conversion, typographic apostrophes and hyphens (’, ‐, –) are first made their ASCII twins, so that the
     rules for ' and - apply to them too: aujourd’hui gave 0 where aujourd'hui gives 61,505 in frantext. Without it,
     the index keeps forms as they are, so they are left alone."""
     db_locals = getattr(config, "db_locals", None)
     twins = db_locals is not None and db_locals["ascii_conversion"] is True
-    protected = r'\[[^\]]*\]|"[^"]*"' if keep_quoted else r"\[[^\]]*\]"
-    parts = re.split(f"({protected})", query_terms)
+    parts = re.split(r"(\[[^\]]*\])", query_terms)
     for i in range(0, len(parts), 2):  # those between the protected ones
         if twins:
             parts[i] = parts[i].translate(TYPOGRAPHIC_TWINS)

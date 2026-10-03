@@ -26,7 +26,7 @@
                         </li>
                         <li>
                             {{ $t('searchTips.range') }}
-                            <code class="code-block" aria-label="code example">a-f</code>
+                            <code class="code-block" aria-label="code example">1700-1750</code>
                         </li>
                         <li>
                             {{ $t('searchTips.booleanOr') }}
@@ -113,6 +113,9 @@
                             <code class="code-block" aria-label="code example">contrat NOT social</code> {{
                                 $t('searchTips.isLegal') }},
                             <code class="code-block" aria-label="code example">NOT rousseau</code>
+                        </li>
+                        <li>
+                            <code class="code-block" aria-label="code example">NULL</code> {{ $t('searchTips.metadataNull') }}
                         </li>
                     </ol>
                 </section>

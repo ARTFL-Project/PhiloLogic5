@@ -191,6 +191,7 @@ import {
     paramsFilter,
     paramsToRoute,
     paramsToUrlString,
+    quoteMetadataValue,
     saveToLocalStorage,
 } from "../utils.js";
 import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
@@ -443,7 +444,7 @@ function facetClick(metadata) {
     const value = metadata[selectedFacet.value.facet];
     store.updateFormDataField({
         key: selectedFacet.value.facet,
-        value: value === "NULL" ? value : `"${value}"`, // NULL, the objects with none, unquoted
+        value: value === "NULL" ? value : quoteMetadataValue(value), // NULL, the objects with none, unquoted
     });
     const routeParams = paramsToRoute({ ...formData.value, start: "0", end: "0" });
     delete routeParams.query.facet;

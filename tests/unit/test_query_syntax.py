@@ -291,8 +291,8 @@ class TestCheckParentheses:
 
 @pytest.mark.unit
 class TestQueryParserRules:
-    """The database's query_parser_regex rules (frantext's, in part) rewrite queries, but not regex bracket expressions,
-    nor quoted metadata values."""
+    """The database's query_parser_regex rules (frantext's, in part) rewrite search terms, but not regex bracket
+    expressions. (Metadata values have their own grammar, in test_metadata_query.py.)"""
 
     config = type("Config", (), {"query_parser_regex": [(" OR ", " | "), ("'", " "), (",", ""), ("-", " ")]})()
 
@@ -309,17 +309,6 @@ class TestQueryParserRules:
     )
     def test_search_terms(self, query, rewritten):
         assert query_parse(query, self.config) == rewritten
-
-    @pytest.mark.parametrize(
-        "value, rewritten",
-        [
-            ('zola | "Hugo, Victor, 1802-1885."', 'zola | "Hugo, Victor, 1802-1885."'),
-            ('NOT "Hugo, Victor, 1802-1885."', 'NOT "Hugo, Victor, 1802-1885."'),
-            ("rousseau, jean-jacques", "rousseau jean jacques"),
-        ],
-    )
-    def test_metadata_values(self, value, rewritten):
-        assert query_parse(value, self.config, keep_quoted=True) == rewritten
 
 
 @pytest.mark.unit
@@ -354,10 +343,6 @@ class TestTypographicTwins:
     def test_rules_of_the_database(self):
         """A database that keeps ' in words keeps ’ as ': the index has made it one."""
         assert query_parse("aujourd\u2019hui", self.config(True, rules=[])) == "aujourd'hui"
-
-    def test_quoted_metadata_value(self):
-        assert query_parse('"Qu\u2019en dira-t-on"', self.config(True), keep_quoted=True) == '"Qu\u2019en dira-t-on"'
-        assert query_parse("Qu\u2019en", self.config(True), keep_quoted=True) == "Qu en"
 
     def test_without_ascii_conversion(self):
         assert query_parse("aujourd\u2019hui peut\u2013être", self.config(False)) == "aujourd\u2019hui peut\u2013être"

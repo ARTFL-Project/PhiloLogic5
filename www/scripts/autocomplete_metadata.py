@@ -4,21 +4,10 @@ import re as re_stdlib
 import regex as re
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import metadata_pattern_search
+from philologic.runtime.QuerySyntax import parse_metadata_query, quote_metadata_value, quoted_text
 from unidecode import unidecode
 
 from wsgi_helpers import BadRequest
-
-patterns = [
-    ("QUOTE", r'".+?"'),
-    ("QUOTE", r'".+'),
-    ("NOT", "NOT"),
-    ("OR", r"\|"),
-    ("RANGE", r"[^|\s]+?\-[^|\s]+"),
-    ("RANGE", r"\d+\-\Z"),
-    ("RANGE", r"\-\d+\Z"),
-    ("NULL", r"NULL"),
-    ("TERM", r'[^|"]+'),  # with hyphens: "Rousseau, Jean-J" is one name being typed
-]
 
 accented_roman_chars = re.compile(r"[\u00c0-\u0174]")
 
@@ -43,59 +32,44 @@ def autocomplete_metadata(request, config):
 
 
 def format_query(q, field, db):
-    """Format query"""
-    parsed = parse_query(q)
-    parsed_split = []
-    for label, token in parsed:
-        l, t = label, token
-        if l == "QUOTE":
-            if t[-1] != '"':
-                t += '"'
-            subtokens = t[1:-1].split("|")
-            parsed_split += [("QUOTE_S", sub_t) for sub_t in subtokens if sub_t]
-        elif l == "RANGE":
-            parsed_split += [("TERM", t)]
-        else:
-            parsed_split += [(l, t)]
-    output_string = []
-    if not parsed_split:  # an empty or blank term: nothing to complete
-        return output_string
-    label, token = parsed_split[-1]
-    prefix = " ".join('"' + t[1] + '"' if t[0] == "QUOTE_S" else t[1] for t in parsed_split[:-1])
+    """Suggestions for the term being typed at the end of q, a metadata value (QuerySyntax.parse_metadata_query): the
+    values of field it may begin, each after the rest of q and CUTHERE, where the client puts the one chosen back,
+    quoted. The term is a quoted value, or the words since the last operator ("victor hu", "Rousseau, Jean-J")."""
+    tokens = parse_metadata_query(q, db.locals.metadata_sql_types.get(field, "text"))
+    start = len(tokens)
+    if tokens and tokens[-1][0] == "QUOTE":
+        start -= 1
+        token = quoted_text(tokens[-1][1])
+    else:
+        while start > 0 and tokens[start - 1][0] in ("TERM", "RANGE"):
+            start -= 1
+        token = " ".join(word for _, word in tokens[start:])
+    if not token.strip():  # an empty or blank term, or one ending with an operator: nothing to complete
+        return []
+    prefix = " ".join(quote_metadata_value(quoted_text(t)) if kind == "QUOTE" else t for kind, t in tokens[:start])
     if prefix:
         prefix = prefix + " CUTHERE "
-    if label == "QUOTE_S" or label == "TERM":
-        norm_tok = token.lower()
-        if db.locals.ascii_conversion is True:
-            norm_tok = unidecode(norm_tok)
 
-        safe_norm_tok = re_stdlib.escape(norm_tok).encode("utf-8")
-        words = re_stdlib.findall(r"\w+", norm_tok)
-        if len(words) > 1:
-            matches = values_with_words(words, field, db)
-        else:
-            matches = metadata_pattern_search(
-                safe_norm_tok, db.locals.db_path + "/data/frequencies/normalized_%s_frequencies" % field,
-                db.locals.ascii_conversion,
-            )
-            # by the normalized token, as the index's words are: "émi" finds "Émile"
-            exact_matches = exact_word_pattern_search(
-                re_stdlib.escape(norm_tok) + ".*", db.locals.db_path + "/data/frequencies/", field, label,
-                db.locals.ascii_conversion,
-            )
-            for m in exact_matches:
-                if m not in matches:
-                    matches.append(m)
-        matches = highlighter(matches, token, db.locals.ascii_conversion)
-        for m in matches:
-            if label == "QUOTE_S":
-                output_string.append(prefix + '"%s"' % m)
-            else:
-                if re.search(r"\|", m):
-                    m = '"' + m + '"'
-                output_string.append(prefix + m)
-
-    return output_string
+    norm_tok = token.lower()
+    if db.locals.ascii_conversion is True:
+        norm_tok = unidecode(norm_tok)
+    words = re_stdlib.findall(r"\w+", norm_tok)
+    if len(words) > 1:
+        matches = values_with_words(words, field, db)
+    else:
+        matches = metadata_pattern_search(
+            re_stdlib.escape(norm_tok), db.locals.db_path + "/data/frequencies/normalized_%s_frequencies" % field,
+            db.locals.ascii_conversion,
+        )
+        # by the normalized token, as the index's words are: "émi" finds "Émile"
+        exact_matches = exact_word_pattern_search(
+            re_stdlib.escape(norm_tok) + ".*", db.locals.db_path + "/data/frequencies/", field, "TERM",
+            db.locals.ascii_conversion,
+        )
+        for m in exact_matches:
+            if m not in matches:
+                matches.append(m)
+    return [prefix + m for m in highlighter(matches, token, db.locals.ascii_conversion)]
 
 
 def values_with_words(words, field, db, max_results=100):
@@ -111,22 +85,6 @@ def values_with_words(words, field, db, max_results=100):
     return sorted(v for v in values if any(w.startswith(last) for w in re_stdlib.findall(r"\w+", normalize(v))))[
         :max_results
     ]
-
-
-def parse_query(qstring):
-    """Parse query"""
-    buf = qstring[:]
-    parsed = []
-    while len(buf) > 0:
-        for label, pattern in patterns:
-            m = re.match(pattern, buf)
-            if m:
-                parsed.append((label, m.group()))
-                buf = buf[m.end() :]
-                break
-        else:
-            buf = buf[1:]
-    return parsed
 
 
 def exact_word_pattern_search(term, path, field, label, ascii_conversion):

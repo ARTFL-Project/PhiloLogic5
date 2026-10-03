@@ -37,14 +37,12 @@ def expand_approximate_query(request, config):
 
 
 def parse_metadata(cgi, q, metadata_fields, metadata_sql_types, config):
-    """Parse metadata fields from query params. Returns (metadata_dict, no_metadata)."""
+    """Parse metadata fields from query params. Returns (metadata_dict, no_metadata). Their values are read by the
+    metadata grammar (QuerySyntax.parse_metadata_query), not rewritten by the word-search rules."""
     metadata = {}
     num_empty = 0
     for field in metadata_fields:
         if field in cgi and cgi[field]:
-            if metadata_sql_types[field] not in ("int", "date") and isinstance(cgi[field][0], str):
-                if field != "filename":
-                    cgi[field][0] = query_parse(cgi[field][0], config, keep_quoted=True)
             if q != "":
                 metadata[field] = cgi[field][0]
             elif cgi[field][0] != "":
