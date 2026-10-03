@@ -57,6 +57,7 @@ export const useMainStore = defineStore("main", {
             totalResults: 0,
         },
         totalResultsDone: false,
+        searchError: "",
         showFacets: true,
         urlUpdate: "",
         metadataUpdate: {},

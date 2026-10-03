@@ -13,6 +13,7 @@
         "documentTitleWithReport": "{dbname} under PhiloLogic - A Text Analysis Platform - {report} Report",
         "invalidConfigTitle": "Invalid web config file: {path}",
         "invalidConfigMessage": "Check for syntax errors in the configuration file.",
+        "searchRefused": "This search cannot be run: {message}",
         "loading": "Loading content, please wait",
         "and": "and",
         "showFacets": "Show Facets",
