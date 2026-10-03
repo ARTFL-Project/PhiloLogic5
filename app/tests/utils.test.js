@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { useMainStore } from "../src/stores/main.js";
 import { createTestConfig, createTestPinia } from "./helpers.js";
 import {
@@ -8,6 +8,7 @@ import {
     refusedSearchMessage,
     quoteMetadataValue,
     paramsToRoute,
+    whenTallEnough,
     deepEqual,
     extractSurfaceFromCollocate,
     sortResults,
@@ -372,5 +373,37 @@ describe("paramsToRoute", () => {
 
     it("with no search terms, those of a bibliography: no word search fields", () => {
         expect(route({ ...form, q: "" })).toEqual({ path: "/bibliography", query: { author: "hugo" } });
+    });
+});
+
+// ---------------------------------------------------------------------------
+// whenTallEnough (the router's scroll back)
+// ---------------------------------------------------------------------------
+describe("whenTallEnough", () => {
+    function pageHeight(height) {
+        Object.defineProperty(document.documentElement, "scrollHeight", { configurable: true, value: height });
+    }
+
+    it("waits for the page to be long enough to scroll back", async () => {
+        vi.useFakeTimers();
+        pageHeight(500); // the results not loaded yet
+        let resolved = null;
+        whenTallEnough({ left: 0, top: 3300 }).then((position) => (resolved = position));
+        await vi.advanceTimersByTimeAsync(300);
+        expect(resolved).toBeNull();
+        pageHeight(20000); // they are
+        await vi.advanceTimersByTimeAsync(100);
+        expect(resolved).toEqual({ left: 0, top: 3300 });
+        vi.useRealTimers();
+    });
+
+    it("gives up after the timeout", async () => {
+        vi.useFakeTimers();
+        pageHeight(500);
+        let resolved = null;
+        whenTallEnough({ left: 0, top: 3300 }, 1000).then((position) => (resolved = position));
+        await vi.advanceTimersByTimeAsync(1100);
+        expect(resolved).toEqual({ left: 0, top: 3300 });
+        vi.useRealTimers();
     });
 });

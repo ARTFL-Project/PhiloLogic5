@@ -17,9 +17,9 @@
 
                     <div class="term-groups-container" v-for="(group, index) in wordGroups" :key="index">
                         <button type="button" class="term-group-word" @click="getQueryTerms(group, index, $event)"
-                            :aria-label="$t('searchArgs.expandTermGroup', { group: group })"
+                            :aria-label="$t('searchArgs.expandTermGroup', { group: groupLabel(group, index) })"
                             :ref="el => { if (el) termGroupButtons[index] = el }">
-                            {{ group }}
+                            {{ groupLabel(group, index) }}
                         </button>
                         <button type="button" class="close-pill" @click="removeTerm(index)"
                             :aria-label="$t('searchArgs.removeTerm', { term: group })">
@@ -131,6 +131,13 @@ const triggerButtonIndex = ref(null);
 
 const wordGroups = computed(() => description.value.termGroups);
 
+// The similar words of a term of an approximate search, folded: liberté (27 similar terms), not the 27 of them
+// (152 at 80%), whose list the button's dialog shows
+function groupLabel(group, index) {
+    const folded = description.value.approximateGroups?.[index];
+    return folded ? t("searchArgs.similarTerms", { term: folded.term, n: folded.variants }) : group;
+}
+
 // How the term groups are searched together, as the server reads the form (Query.resolve_method): no distance, or 0,
 // is a phrase. One group ("a | b", or a word with "NOT") has nothing to describe.
 const termsProximity = computed(() => {
@@ -186,6 +193,7 @@ function fetchSearchArgs() {
                 end: props.resultEnd,
                 results_per_page: formData.value.results_per_page,
                 termGroups: response.data.term_groups,
+                approximateGroups: response.data.approximate_groups || [],
                 cutTerms: response.data.cut_terms || [],
                 expansionCap: response.data.expansion_cap,
             });
