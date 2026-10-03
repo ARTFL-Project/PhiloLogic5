@@ -19,8 +19,7 @@ WORKDIR /PhiloLogic5
 RUN ./install.sh && rm /etc/philologic/philologic5.secret && mkdir -p /var/www/html/philologic
 
 # Configure global variables
-RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic5.cfg && \
-    sed -i 's/url_root = None/url_root = "http:\/\/localhost\/philologic\/"/' /etc/philologic/philologic5.cfg
+RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic5.cfg
 
 COPY docker_entrypoint.sh /docker_entrypoint.sh
 RUN chmod +x /docker_entrypoint.sh

@@ -15,7 +15,6 @@ import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from glob import iglob
-from json import dump
 
 import lmdb
 import lxml.etree
@@ -109,7 +108,6 @@ class Loader:
     default_object_level = "doc"
     post_filters = []
     token_regex = ""
-    url_root = ""
     cores = 2
     ascii_conversion = ASCII_CONVERSION
     lemmas = None
@@ -146,7 +144,6 @@ class Loader:
         cls.debug = loader_options["debug"]
         cls.default_object_level = loader_options["default_object_level"]
         cls.token_regex = loader_options["token_regex"]
-        cls.url_root = loader_options["url_root"]
         cls.cores = loader_options["cores"]
         cls.ascii_conversion = loader_options["ascii_conversion"]
         cls.metadata_sql_types = loader_options["metadata_sql_types"]
@@ -1147,10 +1144,9 @@ class Loader:
         if self.debug is False:
             os.system(f"rm -rf {self.workdir}")
 
+        # Built for no host or path: the web app gives each page the database's own path as its base
         print("Building Web Client Application...", end=" ", flush=True)
         os.chdir(self.web_app_dir)
-        with open(os.path.join(self.web_app_dir, "appConfig.json"), "w", encoding="utf8") as app_config:
-            dump({"dbUrl": ""}, app_config)
         npm = "/var/lib/philologic5/bin/npm"
         os.system(
             f"cd {self.web_app_dir}; {npm} install > {self.web_app_dir}/web_app_build.log 2>&1 && {npm} run build >> {self.web_app_dir}/web_app_build.log 2>&1"

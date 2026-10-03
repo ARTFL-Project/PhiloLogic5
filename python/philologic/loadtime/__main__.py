@@ -4,7 +4,7 @@ import os
 import sys
 
 from philologic.loadtime.Loader import Loader, setup_db_dir
-from philologic.loadtime.LoadOptions import CONFIG_FILE, LoadOptions
+from philologic.loadtime.LoadOptions import LoadOptions
 
 os.environ["LC_ALL"] = "C"  # Exceedingly important to get uniform sort order.
 os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -37,4 +37,5 @@ if __name__ == "__main__":
             )
         )
 
-    print(f"Application viewable at {os.path.join(CONFIG_FILE.url_root, load_options.dbname)}\n")
+    print(f"Database loaded in {load_options['db_destination']}: the web app serves it at /{load_options.dbname}/ "
+          "under its URL prefix (e.g. /philologic5/)\n")

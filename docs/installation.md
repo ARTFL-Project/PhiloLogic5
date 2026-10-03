@@ -121,22 +121,21 @@ The installer:
 
 ## Global Configuration
 
-Edit `/etc/philologic/philologic5.cfg` to set two required paths:
+Edit `/etc/philologic/philologic5.cfg` to set the required path:
 
 ```python
 # Filesystem path where databases will be stored
 database_root = "/var/www/html/philologic5/"
-
-# URL root matching the database_root location
-url_root = "http://localhost/philologic5/"
 ```
 
-On macOS, typical values would be:
+On macOS, a typical value would be:
 
 ```python
 database_root = "/Library/WebServer/Documents/philologic/"
-url_root = "http://localhost:8080/"
 ```
+
+There is no URL to set: a database is served under whatever host and URL prefix your web server passes to Gunicorn
+(`/philologic5/` in the examples below), so it can also be copied to another machine and served there as it is.
 
 Make sure the `database_root` directory exists and is writable by your user:
 
@@ -194,7 +193,7 @@ On macOS, the simplest setup is to bind Gunicorn directly to a TCP port (no reve
 bind = "127.0.0.1:8080"
 ```
 
-Make sure the port matches the one in your `url_root` in `/etc/philologic/philologic5.cfg`.
+Databases are then served at `http://127.0.0.1:8080/<database name>/`.
 
 You can then start Gunicorn manually:
 
@@ -258,7 +257,7 @@ location /philologic5/ {
 }
 ```
 
-Adjust the URL prefix (`/philologic5`) to match your `url_root` setting in `/etc/philologic/philologic5.cfg`.
+The URL prefix (`/philologic5`) is yours to choose: databases are served under whatever prefix the proxy passes.
 
 ## Docker
 

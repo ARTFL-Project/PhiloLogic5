@@ -1,10 +1,17 @@
 import { useMainStore } from "./stores/main";
 
 export function dbUrlOnThisHost(dbUrl, location = window.location) {
-    // The database's URL on the host this page came from, rather than the one it was built for (dbUrl, of
-    // appConfig.json): behind a proxy such as EZproxy, which rewrites host names in pages but not in this code,
-    // requests must go through the proxy too, as it is what access control lets in, and it holds the cookies.
+    // The database's URL on the host this page came from: behind a proxy such as EZproxy, which rewrites host names
+    // in pages but not in this code, requests must go through the proxy too, as it is what access control lets in,
+    // and it holds the cookies.
     return location.origin + new URL(dbUrl, location.href).pathname;
+}
+
+export function databaseUrl(doc = document, devUrl = import.meta.env.VITE_DB_URL) {
+    // The database's URL: the <base href> the server gives its pages, the database's own path. The client is built
+    // for no path in particular, so a database can be served under any prefix, or copied to another machine,
+    // without rebuilding it. With `npm run dev`, VITE_DB_URL is the database to work with (in .env.development.local).
+    return devUrl || doc.baseURI;
 }
 
 export function refusedSearchMessage(error) {

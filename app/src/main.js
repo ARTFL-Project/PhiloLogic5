@@ -7,11 +7,10 @@ import vueScrollTo from "vue-scrollto";
 import App from "./App.vue";
 import router from "./router";
 
-import appConfig from "../appConfig.json";
 import i18n from "./i18n";
-import { dbUrlOnThisHost } from "./utils";
+import { databaseUrl, dbUrlOnThisHost } from "./utils";
 
-const dbUrl = dbUrlOnThisHost(appConfig.dbUrl);
+const dbUrl = dbUrlOnThisHost(databaseUrl());
 
 axios
     .get(`${dbUrl}/scripts/get_web_config.py`, {})

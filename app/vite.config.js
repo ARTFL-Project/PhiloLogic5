@@ -1,6 +1,5 @@
 import VueI18nPlugin from "@intlify/unplugin-vue-i18n/vite";
 import vue from "@vitejs/plugin-vue";
-import fs from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vite";
@@ -28,9 +27,10 @@ export default defineConfig({
             filter: /\.(js|css|html|svg|json)$/i, // Only compress specific file types
         }),
     ],
-    // The path of the database's URL, without its host: the client's files load from whatever host served the page,
-    // such as a proxy (EZproxy) that serves it under its own name, rewriting host names in pages but not in code
-    base: process.env.NODE_ENV === "production" ? new URL(getBaseUrl(), "http://localhost").pathname : "/",
+    // Paths relative to the <base href> the server gives each page, the database's own path: the client is built for
+    // no host or prefix in particular, so a database can be served anywhere, behind a proxy (EZproxy) as under its
+    // own name, or copied to another machine, without rebuilding it
+    base: process.env.NODE_ENV === "production" ? "./" : "/",
     resolve: {
         alias: {
             "@": fileURLToPath(new URL("./src", import.meta.url)),
@@ -44,24 +44,3 @@ export default defineConfig({
         },
     },
 });
-
-function getBaseUrl() {
-    let appConfig = fs.readFileSync("appConfig.json");
-    let dbUrl = JSON.parse(appConfig).dbUrl;
-    if (dbUrl == "") {
-        let dbPath = __dirname.replace(/app$/, "");
-        let dbname = dbPath.split("/").reverse()[1];
-        let config = fs.readFileSync("/etc/philologic/philologic5.cfg", "utf8");
-        let re = /url_root = ["']([^"]+)["']/gm;
-        let match = re.exec(config);
-        let rootPath = match[1];
-        if (rootPath.endsWith("/")) {
-            rootPath = rootPath.slice(0, -1);
-        }
-        dbUrl = rootPath + "/" + dbname + "/";
-        let jsonString = JSON.stringify({ dbUrl: dbUrl });
-        fs.writeFileSync("./appConfig.json", jsonString);
-        return dbUrl;
-    }
-    return dbUrl;
-}

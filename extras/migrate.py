@@ -7,7 +7,7 @@ Usage:
 Performs the following phases (ordered to minimize disruption):
   1. Migrate collocation data, build normalized_word_frequencies.lmdb, and clean stale KWIC caches
   2. Remove legacy CGI files (reports/, scripts/, dispatcher.py, webApp.py, .htaccess)
-  3. Copy updated app/ source to each database (preserving each db's appConfig.json)
+  3. Copy updated app/ source to each database
   4. Rebuild the frontend (npm run build) for each database
 
 Prerequisites:
@@ -345,7 +345,8 @@ def remove_legacy_files(db_path):
 # ---------------------------------------------------------------------------
 
 def copy_app(db_path):
-    """Copy app/ source to database, preserving its appConfig.json."""
+    """Copy app/ source to database. Its old appConfig.json goes with the old app/: the server now gives the client
+    its URL."""
     name = os.path.basename(db_path)
     if name in _SKIP_APP_COPY:
         print(f"  Skipped (custom app)")
@@ -356,13 +357,6 @@ def copy_app(db_path):
         print(f"  Warning: {db_app_dir} does not exist, skipping")
         return
 
-    # Save the database's appConfig.json
-    config_path = os.path.join(db_app_dir, "appConfig.json")
-    config_backup = None
-    if os.path.exists(config_path):
-        with open(config_path) as f:
-            config_backup = f.read()
-
     # Delete old app/ and copy fresh from repo
     shutil.rmtree(db_app_dir)
 
@@ -372,18 +366,11 @@ def copy_app(db_path):
             ignored.add("node_modules")
         if "dist" in contents:
             ignored.add("dist")
-        if os.path.relpath(directory, REPO_APP_DIR) == ".":
-            ignored.add("appConfig.json")
         return ignored
 
     shutil.copytree(REPO_APP_DIR, db_app_dir, ignore=ignore)
 
-    # Restore the database's appConfig.json
-    if config_backup is not None:
-        with open(config_path, "w") as f:
-            f.write(config_backup)
-
-    print(f"  App source updated (appConfig.json preserved)")
+    print(f"  App source updated")
 
 
 # ---------------------------------------------------------------------------

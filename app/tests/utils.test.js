@@ -5,6 +5,7 @@ import {
     copyObject,
     dateRangeHandler,
     dbUrlOnThisHost,
+    databaseUrl,
     refusedSearchMessage,
     quoteMetadataValue,
     paramsToRoute,
@@ -405,5 +406,22 @@ describe("whenTallEnough", () => {
         await vi.advanceTimersByTimeAsync(1100);
         expect(resolved).toEqual({ left: 0, top: 3300 });
         vi.useRealTimers();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// databaseUrl
+// ---------------------------------------------------------------------------
+describe("databaseUrl", () => {
+    it("is the <base href> the server gives the page: the client is built for no path", () => {
+        const doc = document.implementation.createHTMLDocument("");
+        const base = doc.createElement("base");
+        base.href = "http://localhost:8000/philologic5/frantext-01-26/";
+        doc.head.appendChild(base);
+        expect(databaseUrl(doc, undefined)).toBe("http://localhost:8000/philologic5/frantext-01-26/");
+    });
+
+    it("is VITE_DB_URL with npm run dev", () => {
+        expect(databaseUrl(document, "http://localhost:8000/philologic5/mydb/")).toBe("http://localhost:8000/philologic5/mydb/");
     });
 });

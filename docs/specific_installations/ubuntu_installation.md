@@ -24,7 +24,6 @@ Edit `/etc/philologic/philologic5.cfg`:
 
 ```python
 database_root = "/var/www/html/philologic5/"
-url_root = "http://localhost/philologic5/"
 ```
 
 Create the database directory:

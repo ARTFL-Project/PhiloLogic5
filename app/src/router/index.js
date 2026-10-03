@@ -1,7 +1,6 @@
 // import Vue from 'vue'
 import { createRouter, createWebHistory } from "vue-router";
-import appConfig from "../../appConfig.json";
-import { whenTallEnough } from "../utils.js";
+import { databaseUrl, whenTallEnough } from "../utils.js";
 
 const concordance = () => import("../components/Concordance");
 const kwic = () => import("../components/Kwic");
@@ -15,9 +14,7 @@ const aggregation = () => import("../components/Aggregation");
 const notFound = () => import("../components/NotFound");
 
 const router = createRouter({
-    history: createWebHistory(
-        appConfig.dbUrl.replace(/https?:\/\/[^/]+\//, "")
-    ),
+    history: createWebHistory(new URL(databaseUrl(), window.location.href).pathname),
     routes: [
         {
             path: "/",
