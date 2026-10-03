@@ -76,6 +76,27 @@ def _get_doc_year_data(db, year_field):
     return year_array, year_word_counts, year_doc_counts, min_date, max_date
 
 
+def _corpus_year_counts(db, year_array, metadata):
+    """The words and the objects of each year among those metadata selects, as _get_doc_year_data's year_word_counts
+    and year_doc_counts are for the whole database: by the year of their document."""
+    corpus = db.query(**metadata)
+    ids = corpus.read_array()
+    cursor = db.dbh.cursor()
+    cursor.execute("CREATE TEMP TABLE IF NOT EXISTS _time_series_corpus (philo_id TEXT)")
+    cursor.execute("DELETE FROM _time_series_corpus")
+    cursor.executemany("INSERT INTO _time_series_corpus VALUES (?)", ((" ".join(map(str, row[:7])),) for row in ids))
+    cursor.execute("SELECT toms.philo_id, toms.word_count FROM toms JOIN _time_series_corpus USING (philo_id)")
+    year_word_counts, year_object_counts = {}, {}
+    for philo_id, word_count in cursor:
+        doc_id = int(philo_id.split()[0])
+        year = int(year_array[doc_id]) if doc_id < len(year_array) else 0
+        if year:
+            year_word_counts[year] = year_word_counts.get(year, 0) + int(word_count or 0)
+            year_object_counts[year] = year_object_counts.get(year, 0) + 1
+    cursor.execute("DELETE FROM _time_series_corpus")
+    return year_word_counts, year_object_counts
+
+
 @numba.jit(nopython=True, nogil=True, cache=True)
 def _bucket_hits_by_year(doc_ids, year_array, start_date, interval, n_ranges):
     """Single-pass: read doc_id → look up year → bucket into range."""
@@ -111,6 +132,8 @@ def generate_time_series(request, config):
         interval = int(request.year_interval)
     except (ValueError, TypeError):
         interval = int(config.time_series_interval)
+    if interval < 1:  # makes no ranges (range() fails on 0)
+        interval = int(config.time_series_interval)
 
     # Get cached doc→year mapping (SQL only on first request per worker)
     year_array, year_word_counts, year_doc_counts, min_date, max_date = _get_doc_year_data(db, year_field)
@@ -119,11 +142,14 @@ def generate_time_series(request, config):
     start_date = int(request.start_date) if request.start_date else min_date
     end_date = int(request.end_date) if request.end_date else max_date
 
+    # The metadata the request filters by: its own year filter too, which the range of the time series is added to
+    filters = {field: value for field, value in request.metadata.items() if value}
+
     # Fire the word query now that we have start/end dates
     hits = None
     if request.q:
         metadata = dict(request.metadata)
-        metadata[year_field] = "%d-%d" % (start_date, end_date)
+        metadata[year_field] = [value for value in (filters.get(year_field), f"{start_date}-{end_date}") if value]
         hits = db.query(request["q"], request["method"], request["arg"], raw_results=True, **metadata)
 
     # Generate date ranges for output
@@ -135,12 +161,14 @@ def generate_time_series(request, config):
         date_ranges.append((start, "%d-%d" % (start, end)))
     n_ranges = len(date_ranges)
 
-    # Aggregate word counts / doc counts into date ranges
+    # Aggregate word counts / doc counts into date ranges: of the objects the metadata selects, if it does
+    if filters:
+        year_word_counts, year_doc_counts = _corpus_year_counts(db, year_array, filters)
     year_totals = year_word_counts if request.q else year_doc_counts
     date_counts = {}
     for range_start, _ in date_ranges:
         total = 0
-        range_end = range_start + interval
+        range_end = min(range_start + interval, end_date + 1)  # the last range may be cut by end_date
         for y in range(range_start, range_end):
             total += year_totals.get(y, 0)
         date_counts[range_start] = total
