@@ -13,6 +13,7 @@ import regex as re
 from unidecode import unidecode
 
 from philologic.runtime.lmdb_env import lmdb_env
+from philologic.runtime.QuerySyntax import quoted_text
 
 
 # Flat files (in frequencies/) that feed word_forms.lmdb
@@ -30,7 +31,10 @@ def _norm_key(token: str, lowercase: bool = True) -> bytes:
 
 
 def _lmdb_lookup(txn, key: bytes) -> list[str]:
-    """Return list of original forms for a normalized key, or []."""
+    """Return list of original forms for a normalized key, or []. A term normalized to nothing, as an emoji, is no
+    key: LMDB fails on an empty one."""
+    if not key:
+        return []
     val = txn.get(key)
     if val is None:
         return []
@@ -326,11 +330,11 @@ def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowerca
         else:
             return [token]
     elif kind == "QUOTE":
-        inner = token[1:-1]  # strip surrounding quotes
+        inner = quoted_text(token)
         if _is_regex_pattern(inner):  # accent-sensitive, as quoted words: matched against the forms as they are
             norm_prefix, _ = _normalize_pattern(inner, lowercase)
             return _lmdb_expand_term(txn, norm_prefix, form_pattern=inner)
-        return [inner]
+        return [inner] if inner else []
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
             prefix_bytes, pattern_str = _forms_pattern(token)
@@ -356,7 +360,7 @@ def _expand_exclude(kind: str, token: str, txn, ascii_conversion: bool, lowercas
         else:
             return {token}
     elif kind == "QUOTE":
-        inner = token[1:-1]
+        inner = quoted_text(token)
         if _is_regex_pattern(inner):
             norm_prefix, _ = _normalize_pattern(inner, lowercase)
             return set(_lmdb_expand_term(txn, norm_prefix, form_pattern=inner))
@@ -582,7 +586,7 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
         return []
 
     if kind in ("TERM", "QUOTE"):
-        raw_token = token[1:-1] if kind == "QUOTE" else token
+        raw_token = quoted_text(token) if kind == "QUOTE" else token
         if not raw_token:
             return []
         with lmdb_env(frequency_file + ".lmdb") as env:

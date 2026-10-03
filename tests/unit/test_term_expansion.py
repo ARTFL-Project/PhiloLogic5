@@ -117,6 +117,16 @@ class TestQuotedRegex:
         with norm_words.begin(buffers=True) as txn:
             assert sorted(_expand_positive("QUOTE", token, txn, True, True)) == sorted(forms)
 
+    def test_empty_term(self, norm_words):
+        """A term normalized to nothing (an emoji) matches nothing: LMDB fails on an empty key."""
+        with norm_words.begin(buffers=True) as txn:
+            assert _expand_positive("TERM", "\U0001F600", txn, True, True) == []
+            assert _expand_positive("QUOTE", '""', txn, True, True) == []
+
+    def test_unclosed_quote(self, norm_words):
+        with norm_words.begin(buffers=True) as txn:
+            assert _expand_positive("QUOTE", '"état', txn, True, True) == ["état"]
+
     def test_plain(self, norm_words):
         with norm_words.begin(buffers=True) as txn:
             assert sorted(_expand_positive("TERM", "ét.s", txn, True, True)) == sorted(["étés", "êtes"])

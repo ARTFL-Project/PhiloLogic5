@@ -25,7 +25,7 @@ numba.config.CACHE_DIR = _cache_dir
 from philologic.runtime import HitList
 from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.lmdb_env import lmdb_env
-from philologic.runtime.QuerySyntax import group_terms, parse_query
+from philologic.runtime.QuerySyntax import group_terms, parse_query, quoted_text
 
 
 @numba.jit(nopython=True, cache=True, nogil=True)
@@ -561,11 +561,29 @@ def get_expanded_query(hitlist):
     return query
 
 
+def check_method(split, method, method_arg):
+    """Raise BadRequest for a search of several groups by an unknown method, which found nothing, or with a negative
+    distance, which had no limit. (One group is searched by single_term whatever the method.)"""
+    if len(split) < 2 or not method:
+        return
+    if method not in SEARCH_METHODS:
+        raise BadRequest(f"Unknown search method: {method}")
+    try:
+        negative = int(method_arg) < 0
+    except (ValueError, TypeError):
+        negative = False
+    if negative:
+        raise BadRequest(f"The number of words a search spans can't be negative: {method_arg}")
+
+
 def check_phrases(grouped):
     """Raise BadRequest for a quoted phrase in a group of several terms ("a b" | c, or c NOT "a b"): a phrase is
     searched as the words of several groups, one each, so it can only be a group of its own. Searched as one word of
-    its group, it silently matched nothing, or each of its words."""
+    its group, it silently matched nothing, or each of its words. And for NOT with no term before it, which filters
+    nothing: the search found nothing."""
     for group in grouped:
+        if group and group[0][0] == "NOT":
+            raise BadRequest("NOT can only filter the words of a term before it, as in a.* NOT abalone")
         if len(group) > 1:
             for kind, token in group:
                 if kind == "QUOTE" and " " in token.strip('"').strip():
@@ -580,8 +598,8 @@ def split_terms(grouped):
     for group in grouped:
         if len(group) == 1:
             kind, token = group[0]
-            if kind == "QUOTE" and token.find(" ") > 1:  # we can split quotes on spaces if there is no OR
-                for split_tok in token[1:-1].split(" "):
+            if kind == "QUOTE" and len(quoted_text(token).split()) > 1:  # a phrase: one group a word
+                for split_tok in quoted_text(token).split():
                     split.append((("QUOTE", '"' + split_tok + '"'),))
             elif kind == "RANGE":
                 split.append((("TERM", token),))
@@ -599,8 +617,8 @@ def phrase_lengths(grouped):
     lengths = []
     for group in grouped:
         kind, token = group[0]
-        if len(group) == 1 and kind == "QUOTE" and token.find(" ") > 1:  # as split_terms splits it
-            lengths.append(len(token[1:-1].split(" ")))
+        if len(group) == 1 and kind == "QUOTE" and len(quoted_text(token).split()) > 1:  # as split_terms splits it
+            lengths.append(len(quoted_text(token).split()))
         else:
             lengths.append(1)
     return lengths
@@ -618,6 +636,16 @@ def query_parse(query_terms, config, keep_quoted=False):
     return "".join(parts)
 
 
+# The search methods: those of the search form, and those they resolve to (which links of the client use too)
+SEARCH_METHODS = {
+    "proxy", "exact_cooc", "sentence", "single_term", "phrase_ordered", "phrase_unordered", "proxy_ordered",
+    "proxy_unordered", "exact_cooc_ordered", "exact_cooc_unordered", "sentence_ordered", "sentence_unordered",
+}
+
+# More words than any sentence has: a longer distance is no limit, and would overflow the kernels' integers
+MAX_DISTANCE = 1_000_000
+
+
 def resolve_method(q, method, method_arg, cooc_order, query_patterns=None):
     """Resolve user-facing search parameters into internal method name and arg.
 
@@ -632,6 +660,7 @@ def resolve_method(q, method, method_arg, cooc_order, query_patterns=None):
         arg = int(method_arg)
     except (ValueError, TypeError):
         arg = 0
+    arg = min(arg, MAX_DISTANCE)
     if len(groups) == 1:
         method = "single_term"
     elif arg == 0 and method in ("proxy", "exact_cooc"):

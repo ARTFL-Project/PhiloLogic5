@@ -192,8 +192,9 @@ class DB:
     ):  # pylint: disable=dangerous-default-value
         """query the PhiloLogic database"""
         if qs:
-            parsed = QuerySyntax.parse_query(qs, query_patterns=self.locals.query_patterns)
-            Query.check_phrases(QuerySyntax.group_terms(parsed))
+            grouped = QuerySyntax.group_terms(QuerySyntax.parse_query(qs, query_patterns=self.locals.query_patterns))
+            Query.check_phrases(grouped)
+            Query.check_method(Query.split_terms(grouped), method, method_arg)
         if isinstance(limit, str):
             try:
                 limit = int(limit)

@@ -265,7 +265,8 @@ class TestAuthCookies:
         config = make_config(tmp_path / "mydb")
         name, value = cookie_header(auth_cookie(config)).split("=", 1)
         timestamp, signature = value.split(".")
-        for forged in (f"{int(timestamp) + 1}.{signature}", f"{timestamp}.{signature[:-1]}0", f"{timestamp}.", timestamp):
+        other_digit = "1" if signature.endswith("0") else "0"
+        for forged in (f"{int(timestamp) + 1}.{signature}", f"{timestamp}.{signature[:-1]}{other_digit}", f"{timestamp}.", timestamp):
             assert not is_authenticated({"HTTP_COOKIE": f"{name}={forged}"}, config)
 
     def test_cookie_without_secret_cannot_be_forged(self, installation_secret, tmp_path):
