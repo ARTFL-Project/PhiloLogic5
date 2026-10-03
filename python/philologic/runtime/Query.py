@@ -440,33 +440,36 @@ def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowe
     try:
         write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index)
 
-        method_arg = int(method_arg) if method_arg else 0
         if phrases is not None and len(phrases) == 1 and method not in ("single_term", "phrase_ordered"):
             # The query is one phrase, a unit for the other searches: whatever they ask of it, it is the phrase
             method = "phrase_ordered"
+        # The span of a match, from its first term to its last: no distance means side by side, which for n terms
+        # is n - 1 (check_method refuses distances below that). A phrase is one term.
+        n_terms = len(phrases) if phrases is not None else len(split)
+        span = int(method_arg) if method_arg and int(method_arg) > 0 else max(n_terms - 1, 1)
         if method == "single_term":
             search_word(db_path, filename, overflow_words, corpus=corpus)
         elif method == "phrase_ordered":
             search_phrase(db_path, filename, overflow_words, corpus=corpus)
         elif method == "phrase_unordered":
             search_within_word_span(
-                db_path, filename, overflow_words, method_arg or 1, False, False, corpus=corpus, phrases=phrases
+                db_path, filename, overflow_words, span, False, False, corpus=corpus, phrases=phrases
             )
         elif method == "proxy_ordered":
             search_within_word_span(
-                db_path, filename, overflow_words, method_arg or 1, True, False, corpus=corpus, phrases=phrases
+                db_path, filename, overflow_words, span, True, False, corpus=corpus, phrases=phrases
             )
         elif method == "proxy_unordered":
             search_within_word_span(
-                db_path, filename, overflow_words, method_arg or 1, False, False, corpus=corpus, phrases=phrases
+                db_path, filename, overflow_words, span, False, False, corpus=corpus, phrases=phrases
             )
         elif method == "exact_cooc_ordered":
             search_within_word_span(
-                db_path, filename, overflow_words, method_arg or 1, True, True, corpus=corpus, phrases=phrases
+                db_path, filename, overflow_words, span, True, True, corpus=corpus, phrases=phrases
             )
         elif method == "exact_cooc_unordered":
             search_within_word_span(
-                db_path, filename, overflow_words, method_arg or 1, False, True, corpus=corpus, phrases=phrases
+                db_path, filename, overflow_words, span, False, True, corpus=corpus, phrases=phrases
             )
         elif method == "sentence_ordered":
             search_within_text_object(
@@ -561,19 +564,32 @@ def get_expanded_query(hitlist):
     return query
 
 
-def check_method(split, method, method_arg):
-    """Raise BadRequest for a search of several groups by an unknown method, which found nothing, or with a negative
-    distance, which had no limit. (One group is searched by single_term whatever the method.)"""
+def check_method(split, method, method_arg, phrases=None):
+    """Raise BadRequest for a search of several groups by an unknown method, which found nothing, with a negative
+    distance, which had no limit, or with a distance its groups can't fit in. A distance is the span of a match, from
+    its first word to its last: n groups side by side already span n - 1, so "within 2" found nothing for 4 words,
+    while "within 1" was quietly taken as 3. (One group is searched by single_term whatever the method.) phrases are
+    the number of groups of each term (see phrase_lengths): a phrase is one term, one word of the span, and a query of
+    one phrase is searched as the phrase whatever the distance."""
     if len(split) < 2 or not method:
         return
     if method not in SEARCH_METHODS:
         raise BadRequest(f"Unknown search method: {method}")
     try:
-        negative = int(method_arg) < 0
+        distance = int(method_arg)
     except (ValueError, TypeError):
-        negative = False
-    if negative:
+        distance = 0
+    if distance < 0:
         raise BadRequest(f"The number of words a search spans can't be negative: {method_arg}")
+    terms = len(phrases) if phrases is not None else len(split)
+    least = terms - 1
+    if method.startswith(("proxy", "exact_cooc")) and 0 < distance < least:
+        how = "span exactly" if method.startswith("exact_cooc") else "fit within"
+        what = f"{terms} words" if terms == len(split) else f"{terms} terms (a quoted phrase is one)"
+        raise BadRequest(
+            f"{what} can't {how} {distance} word{'s' if distance > 1 else ''}: side by side, the last is already "
+            f"{least} words after the first. Use {least} or more, or no distance to search them side by side"
+        )
 
 
 def check_phrases(grouped):

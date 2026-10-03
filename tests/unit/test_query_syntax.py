@@ -378,5 +378,49 @@ class TestSearchChecks:
         check_method(two_groups, "sentence_unordered", "6")
         check_method(two_groups, "", "")
 
+    @pytest.mark.parametrize(
+        "query, method, distance",
+        [
+            ("la liberté de conscience", "proxy_ordered", "1"),  # was quietly taken as 3
+            ("la liberté de conscience", "proxy_unordered", "2"),  # found nothing
+            ("liberté de conscience", "proxy_unordered", "1"),
+            ("la liberté de conscience", "exact_cooc_ordered", "2"),
+        ],
+    )
+    def test_distance_too_small(self, query, method, distance):
+        """A distance is the span of a match, from its first word to its last: 4 words side by side span 3."""
+        with pytest.raises(BadRequest, match="can't (fit within|span exactly)"):
+            check_method(split_terms(group_terms(parse_query(query))), method, distance)
+
+    @pytest.mark.parametrize(
+        "query, method, distance",
+        [
+            ("la liberté de conscience", "proxy_ordered", "3"),
+            ("la liberté de conscience", "proxy_unordered", ""),  # no distance: side by side
+            ("la liberté de conscience", "phrase_unordered", "0"),
+            ("liberté conscience", "proxy_unordered", "1"),
+            ("la liberté de conscience", "sentence_unordered", "6"),
+        ],
+    )
+    def test_distance_fits(self, query, method, distance):
+        check_method(split_terms(group_terms(parse_query(query))), method, distance)
+
+    @pytest.mark.parametrize(
+        "query, method, distance, fits",
+        [
+            ('"la liberté" de conscience', "proxy_unordered", "2", True),  # a phrase is one term: 3 terms span 2
+            ('"la liberté" de conscience', "proxy_unordered", "1", False),
+            ('"la liberté de conscience"', "proxy_unordered", "1", True),  # one phrase: searched as the phrase
+            ('"la liberté de conscience"', "exact_cooc_ordered", "5", True),
+        ],
+    )
+    def test_distance_of_phrases(self, query, method, distance, fits):
+        grouped = group_terms(parse_query(query))
+        if fits:
+            check_method(split_terms(grouped), method, distance, phrase_lengths(grouped))
+        else:
+            with pytest.raises(BadRequest, match=r"3 terms \(a quoted phrase is one\) can't fit within 1 word:"):
+                check_method(split_terms(grouped), method, distance, phrase_lengths(grouped))
+
     def test_huge_distance(self):
         assert resolve_method("roi reine", "proxy", "99999999999999999999", "no") == ("proxy_unordered", str(MAX_DISTANCE))

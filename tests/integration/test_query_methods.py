@@ -9,6 +9,8 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
+from philologic.runtime.exceptions import BadRequest
+
 
 @pytest.mark.integration
 class TestSingleTerm:
@@ -122,6 +124,31 @@ class TestPhraseUnordered:
 
         # Unordered should give same results regardless of query order
         assert len(hits_ordered) == len(hits_reversed)
+
+
+@pytest.mark.integration
+class TestSpan:
+    """A distance is the span of a match, from its first word to its last, in order or not: n words side by side span
+    n - 1, which is what a phrase (no distance) searches."""
+
+    QUERY = "good my lord"
+
+    def count(self, db, method, method_arg):
+        hits = db.query(self.QUERY, method=method, method_arg=method_arg)
+        hits.finish()
+        return len(hits)
+
+    def test_unordered_phrase_is_the_least_span(self, shakespeare_db):
+        assert self.count(shakespeare_db, "phrase_unordered", "0") == self.count(shakespeare_db, "proxy_unordered", "2") > 0
+
+    def test_ordered_phrase_is_the_least_span(self, shakespeare_db):
+        assert self.count(shakespeare_db, "phrase_ordered", "0") == self.count(shakespeare_db, "proxy_ordered", "2") > 0
+
+    @pytest.mark.parametrize("method", ["proxy_ordered", "proxy_unordered", "exact_cooc_unordered"])
+    def test_too_small(self, shakespeare_db, method):
+        """3 words can't fit within 1: that was taken as side by side, and 2 of 4 words found nothing."""
+        with pytest.raises(BadRequest, match="3 words can't (fit within|span exactly) 1 word:"):
+            shakespeare_db.query(self.QUERY, method=method, method_arg="1")
 
 
 @pytest.mark.integration
