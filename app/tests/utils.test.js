@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
+import { useMainStore } from "../src/stores/main.js";
+import { createTestConfig, createTestPinia } from "./helpers.js";
 import {
     copyObject,
     dateRangeHandler,
     dbUrlOnThisHost,
     refusedSearchMessage,
     quoteMetadataValue,
+    paramsToRoute,
     deepEqual,
     extractSurfaceFromCollocate,
     sortResults,
@@ -345,5 +348,29 @@ describe("quoteMetadataValue", () => {
 
     it("doubles the quotes inside it", () => {
         expect(quoteMetadataValue('Les Révoltés de la "Bounty"')).toBe('"Les Révoltés de la ""Bounty"""');
+    });
+});
+
+// ---------------------------------------------------------------------------
+// paramsToRoute
+// ---------------------------------------------------------------------------
+describe("paramsToRoute", () => {
+    const form = { report: "concordance", method: "sentence", cooc_order: "yes", method_arg: "5", author: "hugo" };
+
+    function route(values) {
+        createTestPinia();
+        useMainStore().initFromConfig(createTestConfig());
+        return paramsToRoute(values);
+    }
+
+    it("takes the fields of the report it goes to", () => {
+        expect(route({ ...form, q: "liberté" })).toEqual({
+            path: "/concordance",
+            query: { q: "liberté", method: "sentence", cooc_order: "yes", method_arg: "5", author: "hugo" },
+        });
+    });
+
+    it("with no search terms, those of a bibliography: no word search fields", () => {
+        expect(route({ ...form, q: "" })).toEqual({ path: "/bibliography", query: { author: "hugo" } });
     });
 });

@@ -99,7 +99,9 @@ export function paramsToRoute(formValues) {
     } else {
         report = formValues.report;
     }
-    let localFormData = paramsFilter(formValues);
+    // the fields of the report the route goes to: with no search terms, a concordance's became a bibliography URL
+    // with cooc_order and method_arg
+    let localFormData = paramsFilter({ ...formValues, report });
     let routeObject = {
         path: `/${report}`,
         query: localFormData,
