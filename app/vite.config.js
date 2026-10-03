@@ -28,7 +28,9 @@ export default defineConfig({
             filter: /\.(js|css|html|svg|json)$/i, // Only compress specific file types
         }),
     ],
-    base: process.env.NODE_ENV === "production" ? getBaseUrl() : "/",
+    // The path of the database's URL, without its host: the client's files load from whatever host served the page,
+    // such as a proxy (EZproxy) that serves it under its own name, rewriting host names in pages but not in code
+    base: process.env.NODE_ENV === "production" ? new URL(getBaseUrl(), "http://localhost").pathname : "/",
     resolve: {
         alias: {
             "@": fileURLToPath(new URL("./src", import.meta.url)),
