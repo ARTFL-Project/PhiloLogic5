@@ -107,6 +107,11 @@ export function paramsToRoute(formValues) {
     return routeObject;
 }
 
+// A metadata value quoted, which matches it exactly: its quotes doubled ("Les Révoltés de la ""Bounty""")
+export function quoteMetadataValue(value) {
+    return `"${String(value).replace(/"/g, '""')}"`;
+}
+
 export function paramsToUrlString(params) {
     let filteredParams = paramsFilter(params);
     let queryParams = [];

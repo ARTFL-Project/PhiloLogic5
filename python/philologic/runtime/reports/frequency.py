@@ -6,6 +6,7 @@ from urllib.parse import quote_plus
 
 from philologic.runtime.DB import DB
 from philologic.runtime.MetadataQuery import bulk_load_metadata
+from philologic.runtime.QuerySyntax import quote_metadata_value
 from philologic.runtime.link import make_absolute_query_link
 from philologic.runtime.sql_validation import validate_request_metadata_field
 
@@ -145,14 +146,14 @@ def frequency_results(request, config):
         key = f"{key}"  # convert potential integers to strings
         if key not in counts:
             counts[key] = {"count": 0, "metadata": {frequency_field: key}}
-            counts[key]["url"] = f'{base_url}&{frequency_field}="{quote_plus(key)}"'
+            counts[key]["url"] = f"{base_url}&{frequency_field}={quote_plus(quote_metadata_value(key))}"
             if not biblio_search:
                 try:
                     counts[key]["total_word_count"] = word_counts_by_field_name[key]
                 except KeyError:
                     # Worst case when there are different values for the field in div1, div2, and div3
                     query_metadata = {k: v for k, v in request.metadata.items() if v}
-                    query_metadata[frequency_field] = f'"{key}"'
+                    query_metadata[frequency_field] = quote_metadata_value(key)
                     local_hits = db.query(**query_metadata)
                     counts[key]["total_word_count"] = local_hits.get_total_word_count()
         counts[key]["count"] += hit_count

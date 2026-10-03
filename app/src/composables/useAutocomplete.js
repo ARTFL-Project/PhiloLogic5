@@ -1,4 +1,5 @@
 import { reactive } from "vue";
+import { quoteMetadataValue } from "../utils.js";
 
 /**
  * Composable for metadata field autocomplete.
@@ -83,15 +84,8 @@ export function useAutocomplete({ http, dbUrl, philoConfig, metadataValues, rout
             } else {
                 lastInput = inputString.replace(/<[^>]+>/g, "").trim();
             }
-            if (lastInput.match(/"/)) {
-                if (lastInput.startsWith('"')) {
-                    lastInput = lastInput.slice(1);
-                }
-                if (lastInput.endsWith('"')) {
-                    lastInput = lastInput.slice(0, lastInput.length - 1);
-                }
-            }
-            let finalInput = `${prefix}"${lastInput}"`;
+            // the value chosen, as the server sends it: quoted here, its quotes doubled (the rest is quoted already)
+            let finalInput = `${prefix}${quoteMetadataValue(lastInput)}`;
             metadataValues[field] = finalInput;
             if (onSelect) {
                 onSelect(field, finalInput);

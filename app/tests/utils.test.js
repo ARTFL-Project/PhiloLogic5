@@ -4,6 +4,7 @@ import {
     dateRangeHandler,
     dbUrlOnThisHost,
     refusedSearchMessage,
+    quoteMetadataValue,
     deepEqual,
     extractSurfaceFromCollocate,
     sortResults,
@@ -331,5 +332,18 @@ describe("refusedSearchMessage", () => {
         expect(refusedSearchMessage(refused("http://h/db/scripts/get_similar_collocate_distributions.py"))).toBe("");
         expect(refusedSearchMessage(new Error("Network Error"))).toBe("");
         expect(refusedSearchMessage(refused("http://h/db/reports/kwic.py", 400, null))).toBe("");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// quoteMetadataValue
+// ---------------------------------------------------------------------------
+describe("quoteMetadataValue", () => {
+    it("quotes a value, to match it exactly", () => {
+        expect(quoteMetadataValue("Hugo, Victor, 1802-1885.")).toBe('"Hugo, Victor, 1802-1885."');
+    });
+
+    it("doubles the quotes inside it", () => {
+        expect(quoteMetadataValue('Les Révoltés de la "Bounty"')).toBe('"Les Révoltés de la ""Bounty"""');
     });
 });

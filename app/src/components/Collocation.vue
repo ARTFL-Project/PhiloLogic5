@@ -114,6 +114,7 @@ import {
     extractSurfaceFromCollocate,
     paramsFilter,
     paramsToRoute,
+    quoteMetadataValue,
 } from "../utils.js";
 import ResultsSummary from "./ResultsSummary";
 import Compare from "./collocation/Compare.vue";
@@ -320,8 +321,7 @@ async function pivotToCompare(payload) {
     clearComparedMetadata();
     // Quote-wrap so MARC-formatted values (e.g. authors with commas/dashes/years)
     // hit the metadata parser as a single exact-match QUOTE token.
-    const escaped = String(name).replace(/"/g, '\\"');
-    comparedMetadataValues[field] = `"${escaped}"`;
+    comparedMetadataValues[field] = quoteMetadataValue(name);
     setMode("compare");
     await nextTick();  // wait for Compare to mount
     if (!compareRef.value) return;

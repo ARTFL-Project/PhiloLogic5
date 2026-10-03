@@ -47,7 +47,7 @@ import { computed, inject, onMounted, unref } from "vue";
 import { storeToRefs } from "pinia";
 import { useMainStore } from "../stores/main";
 import citations from "./Citations";
-import { copyObject, paramsToUrlString } from "../utils.js";
+import { copyObject, paramsToUrlString, quoteMetadataValue } from "../utils.js";
 
 const results = inject("results");
 const store = useMainStore();
@@ -85,7 +85,7 @@ const uniquedResults = computed(() => {
 function buildLink(title) {
     return paramsToUrlString({
         ...formData.value,
-        title: `"${title}"`,
+        title: quoteMetadataValue(title),
         start: 1,
         end: formData.value.results_per_page,
     });

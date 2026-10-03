@@ -146,7 +146,7 @@ import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
-import { debug, paramsToRoute } from "../utils.js";
+import { debug, paramsToRoute, quoteMetadataValue } from "../utils.js";
 import Citations from "./Citations";  // eslint-disable-line no-unused-vars
 
 const $http = inject("$http");
@@ -294,7 +294,7 @@ function buildCitationObject(metadataFields, citations) {
             queryParams[citation.field] = ""; // Should be NULL but that's broken in the philo lib
             label = t("common.na");
         } else {
-            queryParams[citation.field] = `"${label}"`;
+            queryParams[citation.field] = quoteMetadataValue(label);
         }
         // workaround for broken NULL searches
         const href = queryParams[citation.field].length

@@ -568,7 +568,7 @@ def metadata_word_regex_scan(db_path: str, field: str, pattern: str) -> list[str
                     if not k.startswith(field_prefix):
                         break
                     word = k[len(field_prefix):].decode("utf-8", errors="replace")
-                    if compiled.search(word):
+                    if compiled.fullmatch(word):  # whole words, as in word search: e.* was any word with an e
                         for val in bytes(cursor.value()).decode("utf-8").split("\x00"):
                             if val not in seen:
                                 seen.add(val)

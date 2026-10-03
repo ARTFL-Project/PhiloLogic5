@@ -127,6 +127,7 @@ import {
     extractSurfaceFromCollocate,
     paramsFilter,
     paramsToRoute,
+    quoteMetadataValue,
 } from "../../utils.js";
 import { Modal } from "bootstrap";
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
@@ -291,7 +292,7 @@ let passagesFetchToken = 0;
 
 function onViewPassages(item, field) {
     const [name, , explainers] = item;
-    const escapedValue = `"${String(name).replace(/"/g, '\\"')}"`;
+    const escapedValue = quoteMetadataValue(name);
     modal.value = {
         groupName: name,
         field,

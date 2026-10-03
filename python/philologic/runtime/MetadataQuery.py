@@ -6,11 +6,12 @@ import sqlite3
 import struct
 import sys
 
+import regex
 from unidecode import unidecode
 
 from . import HitList
 from .exceptions import BadRequest
-from .QuerySyntax import group_terms, parse_date_query, parse_query, quoted_text
+from .QuerySyntax import group_terms, parse_date_query, parse_metadata_query, quoted_text
 from .sql_validation import validate_column, validate_sort_order
 
 os.environ["PATH"] += ":/usr/local/bin/"
@@ -195,12 +196,12 @@ def query_lowlevel(db, param_dict, sort_order, ascii_conversion):
         column = validate_column(column, db)
         norm_path = db.path + "/frequencies/normalized_" + column + "_frequencies"
         for v in values:
-            parsed = "text"
-            if db.locals.metadata_sql_types[column] in ("text", "int"):
-                parsed = parse_query(v, query_patterns=db.locals.query_patterns)
-            elif db.locals.metadata_sql_types[column] == "date":
+            field_type = db.locals.metadata_sql_types.get(column, "text")
+            if field_type == "date":
                 v = v.replace('"', "")  # remove quotes
                 parsed = parse_date_query(v)
+            else:
+                parsed = parse_metadata_query(v, field_type)
             grouped = group_terms(parsed)
             expanded = expand_grouped_query(grouped, norm_path, ascii_conversion)
             sql_clause = make_grouped_sql_clause(expanded, column, db)
@@ -292,7 +293,8 @@ def _range_bounds(kind, value, column, db):
 
 def make_grouped_sql_clause(expanded, column, db):
     """The SQL clause for the groups of a metadata value, which must all match: each group the OR of its ranges, its
-    values and NULL, or with NOT none of them (which, as in SQL, leaves out the objects with no value).
+    values and NULL, or with NOT none of them. NOT x is everything x doesn't select, objects with no value included
+    (SQL's NOT left them out: NOT hugo missed the 248 documents with no author), unless x is NULL or has it.
 
     Note: column is expected to be pre-validated by validate_column() in query_lowlevel()
     before being passed to this function, ensuring SQL injection protection.
@@ -315,13 +317,24 @@ def make_grouped_sql_clause(expanded, column, db):
         if values or not alternatives:
             alternatives.insert(0, f"{column} IN ({', '.join(values)})")
         clause = " OR ".join(alternatives)
-        clauses.append(f"NOT ({clause})" if negated else f"({clause})")
+        if not negated:
+            clauses.append(f"({clause})")
+        elif any(kind == "NULL" for kind, _ in group[1:]):
+            clauses.append(f"NOT ({clause})")
+        else:
+            clauses.append(f"(NOT ({clause}) OR {column} IS NULL)")
     return "(%s)" % " AND ".join(clauses)
 
 
+# The parts of a word, as jean-jacques or d'autriche has: runs of anything but hyphens, apostrophes and the punctuation
+# the index splits values at, regex bracket expressions whole ("[a-z]")
+_WORD_PARTS = regex.compile(r"(?:\[[^\]]*\]|[^\-'\u2019\u02bc,;:!/])+")
+
+
 def metadata_pattern_search(term, path, ascii_conversion=True):
-    """Find metadata values containing term as a word, using LMDB index. term is normalized (lowercase, and with
-    ascii_conversion unidecoded), as the index's words are."""
+    """The metadata values that have term as a word, using the LMDB index. term is normalized (lowercase, and with
+    ascii_conversion unidecoded), as the index's words are. A regex matches whole words. A word of several parts
+    (jean-jacques, d'autriche) needs its parts side by side and in that order, whatever separates them."""
     if isinstance(term, bytes):
         term = term.decode("utf-8", errors="replace")
 
@@ -333,22 +346,34 @@ def metadata_pattern_search(term, path, ascii_conversion=True):
 
     from .term_expansion import metadata_word_lookup, metadata_word_regex_scan, _is_regex_pattern
 
-    # Regex patterns need a cursor scan to match against indexed words
-    if _is_regex_pattern(term):
-        return metadata_word_regex_scan(db_path, field, term)
-
-    words = re.findall(r"\w+", term)
-    if not words:
+    parts = []  # (regex, pattern) or (word, word): those of the index, which are \w+ runs
+    for part in _WORD_PARTS.findall(term):
+        if _is_regex_pattern(part):
+            parts.append(("regex", part))
+        else:
+            parts.extend(("word", word) for word in re.findall(r"\w+", part))
+    if not parts:
         return []
-    if len(words) == 1:
-        return metadata_word_lookup(db_path, field, words[0])
-    # Multi-token (e.g. "o'brien"): intersect per-word results, filter
-    sets = [set(metadata_word_lookup(db_path, field, w)) for w in words]
-    common = sets[0]
-    for s in sets[1:]:
-        common &= s
-    # Compared normalized, as term is: "qu’en" (unidecoded to "qu'en") is in "Qu’en dira-t-on"
-    return [v for v in common if term in (unidecode(v.lower()) if ascii_conversion else v.lower())]
+    if len(parts) == 1:
+        kind, part = parts[0]
+        if kind == "regex":  # a cursor scan of the index's words
+            return metadata_word_regex_scan(db_path, field, part)
+        return metadata_word_lookup(db_path, field, part)
+    common = None
+    for kind, part in parts:
+        lookup = metadata_word_regex_scan if kind == "regex" else metadata_word_lookup
+        found = set(lookup(db_path, field, part))
+        common = found if common is None else common & found
+    matchers = [regex.compile(part).fullmatch if kind == "regex" else part.__eq__ for kind, part in parts]
+
+    def side_by_side(value):
+        # The words of the value, normalized as term is: "qu’en" (unidecoded to "qu'en") is in "Qu’en dira-t-on"
+        words = re.findall(r"\w+", unidecode(value.lower()) if ascii_conversion else value.lower())
+        return any(
+            all(match(words[i + k]) for k, match in enumerate(matchers)) for i in range(len(words) - len(matchers) + 1)
+        )
+
+    return [v for v in common if side_by_side(v)]
 
 
 def escape_sql_string(s):

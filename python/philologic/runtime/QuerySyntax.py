@@ -1,5 +1,7 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
+import unicodedata
+
 import regex as re
 
 YEAR_MONTH = re.compile(r"^(\d+)-(\d+)\Z")
@@ -52,6 +54,63 @@ def parse_query(qstring, query_patterns=None):
         else:
             buf = buf[1:]
     return parsed
+
+
+# Metadata values have a grammar of their own (docs/query_syntax.md): no word-search rules, and ranges only in numeric
+# fields, so that "-" and "'" are parts of words in text fields ("jean-jacques", "d'autriche")
+_METADATA_QUOTES = {'"': '"', "\u201c": "\u201d", "\u201d": "\u201d"}  # "…", “…”
+_METADATA_STOPS = set('|\uff5c"\u201c\u201d')  # | ｜ and the quotes end a word
+
+
+def quote_metadata_value(value):
+    """value as a quoted metadata value, which matches it exactly: its quotes doubled."""
+    return '"' + str(value).replace('"', '""') + '"'
+
+
+def parse_metadata_query(value, field_type="text"):
+    """The tokens of a metadata value for a field of field_type (its metadata_sql_types entry):
+    * QUOTE: a quoted value, "…" or “…”, matched whole and exactly, its doubled quotes ("") quotes of the value;
+      the token is the value between two quotes, as quoted_text reads it;
+    * OR (| or OR), NOT and NULL;
+    * RANGE, in int fields only: a word with a hyphen (1700-1750, -1750, 1750-);
+    * TERM: any other word (up to a space, |, or a quote), full-width forms made ASCII."""
+    tokens = []
+    i, n = 0, len(value)
+    while i < n:
+        char = value[i]
+        if char.isspace():
+            i += 1
+        elif char in _METADATA_QUOTES:
+            closing, j, text = _METADATA_QUOTES[char], i + 1, []
+            while j < n:
+                if value[j] == closing:
+                    if closing == '"' and j + 1 < n and value[j + 1] == '"':  # doubled: a quote of the value
+                        text.append('"')
+                        j += 2
+                        continue
+                    break
+                text.append(value[j])
+                j += 1
+            tokens.append(("QUOTE", '"' + "".join(text) + '"'))
+            i = j + 1
+        elif char in "|\uff5c":
+            tokens.append(("OR", "|"))
+            i += 1
+        else:
+            j = i
+            while j < n and not value[j].isspace() and value[j] not in _METADATA_STOPS:
+                j += 1
+            word = unicodedata.normalize("NFKC", value[i:j])
+            i = j
+            if word == "OR":
+                tokens.append(("OR", "|"))
+            elif word in ("NOT", "NULL"):
+                tokens.append((word, word))
+            elif field_type == "int" and "-" in word and "[" not in word:
+                tokens.append(("RANGE", word))
+            else:
+                tokens.append(("TERM", word))
+    return tokens
 
 
 def expand_date(date, start=True):

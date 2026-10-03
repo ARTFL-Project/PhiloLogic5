@@ -2,7 +2,7 @@ PhiloLogic4's query syntax has 5 basic operators:
 
 1. the plain token, essentially, any word at all, split on space, e.g. `token`
 2. the quoted token--a string in double quotes, which may contain a space, e.g. `"token"`
-3. the range--two tokens separated by a dash, e.g. `a-f`
+3. the range--two tokens separated by a dash, e.g. `1700-1750`
 4. boolean OR, represented grep-style as `|`, e.g. `token | word`
 5. boolean NOT, represented SQL-style as `NOT`, e.g. `token.* NOT tokens`
 
@@ -34,15 +34,17 @@ If you text collection contains lemma and/or word attribute information (usually
 
 ### Metadata Searches
 
-Metadata search does not support phrases, but supports more sophisticated Boolean searching.
+Metadata values have a syntax of their own: the database's word-search settings (`query_parser_regex`) don't apply to them.
 
-1. plain tokens separated by spaces have an implied AND between them, but are treated as position-independent tokens.
-   Regexes are permitted, but will not span over the bounds of a token.
-2. quoted tokens must now match against the ENTIRE metadata string value in the database, including spaces and punctuations.
-   It will not match a single term within a larger string, no matter how precise. Regexes are permitted
-3. range allows for numeric and string ranges on all metadata fields.
-4. `OR` can still be used to conjoin plain tokens, preceding the implied Boolean AND, as well as quoted tokens.
-5. `NOT` is still available as both a filter, or a stand-alone negation: `contrat NOT social` is legal, so is `NOT rousseau`
+1. plain words separated by spaces must all be words of the value, in any order, regardless of case and (with `ascii_conversion`) accents.
+   A word with hyphens or apostrophes, as `jean-jacques`, needs its parts side by side. Regexes are permitted, and match whole words.
+2. quoted text must match the ENTIRE value exactly, including spaces and punctuation. It is not a regex.
+   A quote inside it is written twice: `"Les Révoltés de la ""Bounty"""`.
+3. ranges, as `1700-1750`, `-1750` or `1750-`, work in numeric fields only. In text fields, `-` is part of a word.
+4. `OR` (or `|`) joins alternatives, preceding the implied Boolean AND.
+5. `NOT` excludes what follows, and may stand alone: `contrat NOT social` is legal, so is `NOT rousseau`.
+   Objects with no value are not excluded: `NOT rousseau NOT NULL` leaves them out too.
+6. `NULL` matches the objects with no value, `NOT NULL` those with one.
 
 Metadata objects also have the unique property of recursion, which creates some unusual consequences for search semantics.
 Searching for a div that has property `NOT x` does not guarantee that the result does not contain a child with property x,

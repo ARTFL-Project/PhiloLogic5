@@ -767,7 +767,7 @@ WEB_CONFIG_DEFAULTS = {
         ],
         "comment": "\n".join(
             [
-                "# A list of pattern with replacement to be run on all incoming queries",
+                "# A list of pattern with replacement to be run on all incoming word searches (not on metadata values)",
                 "# It is constructed as a list of tuples where the first element is the regex pattern to be matched",
                 "# and the second element is the replacement",
                 '# e.g.: [(" OR ", " | "), ("-", " ")]',
