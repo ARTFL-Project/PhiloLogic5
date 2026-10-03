@@ -186,10 +186,6 @@ fi
 
 cp -R www/* /var/lib/philologic5/web_app/
 cp -R app /var/lib/philologic5/web_app/
-# Delete appConfig.json if it exists
-if [ -f /var/lib/philologic5/web_app/app/appConfig.json ]; then
-    rm /var/lib/philologic5/web_app/app/appConfig.json
-fi
 
 # Upgrade gunicorn.conf.py, preserving user customizations
 # At this point the new conf/defaults are already in place (from cp -R www/*).
@@ -231,11 +227,6 @@ if [ ! -f /etc/philologic/philologic5.cfg ]; then
     # /var/www/html/philologic/ is conventional for linux,
     # /Library/WebServer/Documents/philologic for Mac OS.\n"
     echo -e "$db_url" | sed "s/^ *//g" | sudo tee /etc/philologic/philologic5.cfg > /dev/null
-
-    url_root="# Set the URL path to the same root directory for your philologic install.
-    url_root = None
-    # http://localhost/philologic/ is appropriate if you don't have a DNS hostname.\n"
-    echo -e "$url_root" | sed "s/^ *//g" | sudo tee -a /etc/philologic/philologic5.cfg > /dev/null
 
     hitlist_dir="# The directory for search results caches (hitlists), the only files the web app writes, so databases can be read-only.
     # Each database gets a subdirectory there, created when first needed. install.sh creates it for the web server's user.
@@ -345,8 +336,8 @@ elif [ -d /run/systemd/system ]; then
     echo "      proxy_buffering off;"
     echo "  }"
     echo ""
-    echo "  Adjust the URL prefix (/philologic5) to match your url_root setting"
-    echo "  in /etc/philologic/philologic5.cfg"
+    echo "  The URL prefix (/philologic5) is yours to choose: databases are served under"
+    echo "  whatever prefix the proxy passes, with no setting to change"
 
 else
     # No service manager to install into: a container (the Docker image's entrypoint runs Gunicorn itself),

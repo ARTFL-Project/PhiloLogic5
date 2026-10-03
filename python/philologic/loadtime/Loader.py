@@ -20,7 +20,6 @@ import zlib
 from collections import Counter, defaultdict
 from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, as_completed, wait
 from glob import iglob
-from json import dump
 from types import FunctionType
 
 import dill
@@ -94,7 +93,7 @@ RUN_OPTIONS = (
     "load_config",
     "web_config",
     "database_root",
-    "url_root",
+    "url_root",  # no option any more, but in the load configs databases loaded before saved
     "destination",
     "db_destination",
     "data_destination",
@@ -715,7 +714,6 @@ class Loader:
     default_object_level = "doc"
     post_filters = []
     token_regex = ""
-    url_root = ""
     cores = 2
     ascii_conversion = ASCII_CONVERSION
     lemmas = None
@@ -764,7 +762,6 @@ class Loader:
         cls.debug = loader_options["debug"]
         cls.default_object_level = loader_options["default_object_level"]
         cls.token_regex = loader_options["token_regex"]
-        cls.url_root = loader_options["url_root"]
         cls.cores = loader_options["cores"]
         cls.ascii_conversion = loader_options["ascii_conversion"]
         cls.metadata_sql_types = loader_options["metadata_sql_types"]
@@ -1828,9 +1825,8 @@ class Loader:
         print("\n### Finishing up ###")
         os.chmod(os.path.join(self.destination, "TEXT"), 0o775)
 
-        # The web app build only depends on appConfig.json (not on the database), so it runs while we finish up
-        with open(os.path.join(self.web_app_dir, "appConfig.json"), "w", encoding="utf8") as app_config:
-            dump({"dbUrl": ""}, app_config)
+        # The web app build doesn't depend on the database, so it runs while we finish up. Built for no host or path:
+        # the web app gives each page the database's own path as its base
         npm = "/var/lib/philologic5/bin/npm"
         # With the node installed next to npm, which isn't on the PATH of services, cron...
         node_dir = npm_node_dir(npm)

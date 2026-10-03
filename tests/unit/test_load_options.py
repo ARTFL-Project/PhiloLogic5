@@ -76,7 +76,6 @@ def test_old_saved_config_does_not_override_command_line(tmp_path, files, capsys
     assert options["force_delete"] is True
     assert options["debug"] is True
     assert options["database_root"] == CONFIG_FILE.database_root
-    assert options["url_root"] == CONFIG_FILE.url_root
     assert options["db_destination"] == os.path.join(CONFIG_FILE.database_root, "newdb")
     assert options["load_config"] == str(config)
     # The options of the database itself still come from the load config
@@ -84,7 +83,7 @@ def test_old_saved_config_does_not_override_command_line(tmp_path, files, capsys
     assert options["header"] == "dc"
     ignored = capsys.readouterr().err
     assert "Ignoring load config options" in ignored
-    for option in ("files", "cores", "database_root", "force_delete", "debug"):
+    for option in ("files", "cores", "database_root", "url_root", "force_delete", "debug"):
         assert option in ignored
 
 

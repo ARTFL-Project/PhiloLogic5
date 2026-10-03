@@ -103,7 +103,6 @@ class CorpusManager:
             self.database_root = cache_dir
         else:
             self.database_root = Path(CONFIG_FILE.database_root) / "test_dbs"
-        self.url_root = CONFIG_FILE.url_root.rstrip("/") + "/test_dbs"
         self.database_root.mkdir(parents=True, exist_ok=True)
 
     def get_corpus(self, config: CorpusConfig, force_rebuild: bool = False) -> Path:
@@ -214,7 +213,6 @@ class CorpusManager:
             "dbname": config.name,
             "files": file_paths,
             "database_root": str(self.database_root),
-            "url_root": self.url_root,
             "db_destination": str(db_destination),
             "data_destination": str(data_destination),
             "destination": "./",

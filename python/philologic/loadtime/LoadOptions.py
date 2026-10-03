@@ -14,11 +14,7 @@ from philologic.utils import load_module, pretty_print
 CONFIG_PATH = os.getenv("PHILOLOGIC_CONFIG", "/etc/philologic/philologic5.cfg")
 CONFIG_FILE = load_module("philologic5", CONFIG_PATH)
 
-if CONFIG_FILE.url_root is None:
-    print("url_root variable is not set in /etc/philologic/philologic5.cfg", file=sys.stderr)
-    print("See https://github.com/ARTFL-Project/PhiloLogic5/blob/master/docs/installation.md.", file=sys.stderr)
-    exit()
-elif CONFIG_FILE.database_root is None:
+if CONFIG_FILE.database_root is None:
     print("database_root variable is not set in /etc/philologic/philologic5.cfg", file=sys.stderr)
     print("See https://github.com/ARTFL-Project/PhiloLogic5/blob/master/docs/installation.md.", file=sys.stderr)
     exit()
@@ -30,7 +26,6 @@ class LoadOptions:
     def __init__(self):
         self.values = {}
         self.values["database_root"] = CONFIG_FILE.database_root
-        self.values["url_root"] = CONFIG_FILE.url_root
         self.values["destination"] = "./"
         self.values["load_config"] = ""
         self.values["default_object_level"] = Loader.DEFAULT_OBJECT_LEVEL

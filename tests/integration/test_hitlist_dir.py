@@ -33,7 +33,7 @@ def global_config(tmp_path, monkeypatch):
 
     def write(extra):
         path = tmp_path / "philologic5.cfg"
-        path.write_text(f'database_root = "{tmp_path}/"\nurl_root = "http://localhost/"\n{extra}', encoding="utf8")
+        path.write_text(f'database_root = "{tmp_path}/"\n{extra}', encoding="utf8")
         monkeypatch.setenv("PHILOLOGIC_CONFIG", str(path))
         global_hitlist_root.cache_clear()
 
@@ -217,7 +217,7 @@ class ReadOnlyService:
         self.db_locals_extra = f'hitlist_dir = "{self.cache.parent}"\n' if set_in == "db.locals.py" else ""
         self.config = tmp_path / "philologic5.cfg"
         self.config.write_text(
-            f'database_root = "{self.root}/"\nurl_root = "http://localhost/philologic5/"\n'
+            f'database_root = "{self.root}/"\n'
             f'hitlist_dir = "{self.unused if self.db_locals_extra else self.cache.parent}"\n',
             encoding="utf8",
         )

@@ -4,7 +4,9 @@ Handles access control (IP/domain checking, cookie setting) and
 Brotli pre-compression, replicating the logic from webApp.py.
 """
 
+import html
 import os
+import re
 
 import falcon
 
@@ -66,14 +68,19 @@ def spa_handler(req, resp):
         if cookie:
             resp.append_header("Set-Cookie", cookie)
 
-    # Serve Brotli-compressed index.html if client supports it
-    accept_encoding = req.get_header("Accept-Encoding") or ""
-    if "br" in accept_encoding:
-        index_file = "index.html.br"
-        resp.set_header("Content-Encoding", "br")
-    else:
-        index_file = "index.html"
-
-    index_path = os.path.join(config.db_path, "app", "dist", index_file)
+    # index.html with the database's own path as its base: the client is built with paths relative to it, so a
+    # database can be served under any prefix, or copied elsewhere, without rebuilding it (and no url_root setting)
+    index_path = os.path.join(config.db_path, "app", "dist", "index.html")
     with open(index_path, "rb") as f:
-        resp.data = f.read()
+        resp.data = with_base(f.read(), f"{req.root_path}/{db_name}/")
+
+
+_BASE_TAG = re.compile(rb"<base\b[^>]*>", re.I)
+
+
+def with_base(index_html, base):
+    """index_html with base as its <base href>: replacing the one it has, or else first in its <head>."""
+    tag = f'<base href="{html.escape(base)}" />'.encode()
+    if _BASE_TAG.search(index_html):
+        return _BASE_TAG.sub(lambda _: tag, index_html, count=1)
+    return re.sub(rb"(<head\b[^>]*>)", lambda m: m.group(1) + tag, index_html, count=1, flags=re.I)

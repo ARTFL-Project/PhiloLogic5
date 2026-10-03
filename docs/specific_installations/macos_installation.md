@@ -26,7 +26,6 @@ Edit `/etc/philologic/philologic5.cfg`:
 
 ```python
 database_root = "/Library/WebServer/Documents/philologic/"
-url_root = "http://localhost:8080/"
 ```
 
 Create the database directory:
@@ -44,7 +43,8 @@ On macOS, the simplest setup is to bind Gunicorn directly to a TCP port instead 
 bind = "127.0.0.1:8080"
 ```
 
-Make sure the port matches the one in your `url_root` above. This customization is preserved across reinstalls.
+Databases are then served at `http://localhost:8080/<database name>/`. This customization is preserved across
+reinstalls.
 
 ### 5. Start Gunicorn
 
