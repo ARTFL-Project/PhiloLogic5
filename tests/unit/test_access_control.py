@@ -21,13 +21,12 @@ from philologic.runtime.access_control import (
     check_login_info,
     client_address,
     database_key,
-    in_domain,
     is_allowed,
     is_authenticated,
 )
 
 
-HOSTNAME = access_control._hostname  # the real one, which fresh_state replaces
+HOSTNAME_DOMAIN = access_control._client_domain  # the real one, which fresh_state replaces
 
 
 @pytest.fixture(autouse=True)
@@ -36,7 +35,6 @@ def fresh_state(monkeypatch, tmp_path):
     monkeypatch.setattr(access_control, "_allowed", {})
     monkeypatch.setattr(access_control, "_COMPILED_IP_CACHE_DIR", str(tmp_path))
     monkeypatch.setattr(access_control, "_client_domain", lambda address: "unknown.example")
-    monkeypatch.setattr(access_control, "_hostname", lambda address: (None, False))
 
 
 def make_config(db_path, secret="", access_file=""):
@@ -114,11 +112,7 @@ ADDRESS_CASES = [
     ("Local network 127.x.x.x", "127.0.0.1", "example.org", False),
     ("Domain exact match", "203.0.113.1", "example.com", True),
     ("Domain suffix match", "203.0.113.1", "university.edu", True),
-    ("Subdomain match", "203.0.113.1", "www.cs.example.com", True),
     ("Domain non-match", "203.0.113.1", "example.net", False),
-    ("Domain ending like an allowed one", "203.0.113.1", "notexample.com", False),
-    ("Allowed domain inside the name", "203.0.113.1", "example.com.attacker.net", False),
-    ("No confirmed host name", "203.0.113.1", None, False),
     ("Blocked IP", "10.0.0.99", "example.org", False),
     ("Blocked IP overrides allowed network", "192.168.5.5", "example.org", False),
     ("Network prefix with 2 octets", "134.226.12.34", "example.org", True),
@@ -135,7 +129,7 @@ class TestAddressChecks:
     @pytest.mark.parametrize("description, address, domain, allowed", ADDRESS_CASES, ids=[c[0] for c in ADDRESS_CASES])
     def test_access_file(self, monkeypatch, tmp_path, description, address, domain, allowed):
         monkeypatch.setattr(access_control, "local_networks", [])
-        monkeypatch.setattr(access_control, "_hostname", lambda _: (domain, domain is not None))
+        monkeypatch.setattr(access_control, "_client_domain", lambda _: domain)
         access_file = tmp_path / "access.py"
         access_file.write_text(ACCESS_FILE)
         config = make_config(tmp_path / "db", access_file=str(access_file))
@@ -165,79 +159,40 @@ class TestAddressChecks:
 
 @pytest.mark.unit
 class TestDomains:
+    """Domains match as before 5.2.6: by substring of the client's domain, from a reverse DNS lookup the forward lookup
+    doesn't confirm. Stricter rules would have refused subscribers in the 2025 logs of artflsrv04: these cases."""
+
     @pytest.mark.parametrize(
-        "hostname, domain, inside",
+        "fqdn, domain_list",
         [
-            ("cs.uchicago.edu", "uchicago.edu", True),
-            ("uchicago.edu", "uchicago.edu", True),
-            ("cs.uchicago.edu", ".uchicago.edu", True),
-            ("cs.uchicago.edu", "*.uchicago.edu", True),
-            ("cs.uchicago.edu", ".edu", True),
-            ("cs.uchicago.edu", "UChicago.edu ", True),
-            ("notuchicago.edu", "uchicago.edu", False),
-            ("uchicago.edu.example.net", "uchicago.edu", False),
-            ("cs.uchicago.edu", "", False),
+            ("0587661688.vpn.umich.net", ["mich.net"]),  # UMich's VPN, by MichNet's entry
+            ("bul-pr-proxy02.bibl.ulaval.ca", ["laval.ca"]),
+            ("lib-ezproxy-01.oit.duke.edu", ["duke.edu"]),  # a name with no forward record
+            ("cornell.idm.oclc.org", ["idm.oclc.org"]),  # OCLC-hosted EZproxy
+            ("ezproxy.stjohnscollege.edu", ["stjohnscollege"]),
         ],
     )
-    def test_in_domain(self, hostname, domain, inside):
-        assert in_domain(hostname, domain) is inside
-
-    @pytest.fixture
-    def dns(self, monkeypatch):
-        """Reverse and forward lookups answered from the test's tables."""
-        monkeypatch.setattr(access_control, "_hostname", HOSTNAME)
-        reverse, forward = {}, {}
-
-        def gethostbyaddr(address):
-            if address not in reverse:
-                raise OSError("no PTR record")
-            return reverse[address], [], [address]
-
-        def getaddrinfo(host, port):
-            if host not in forward:
-                raise OSError("no such host")
-            return [(None, None, None, "", (address, 0)) for address in forward[host]]
-
-        monkeypatch.setattr(access_control.socket, "gethostbyaddr", gethostbyaddr)
-        monkeypatch.setattr(access_control.socket, "getaddrinfo", getaddrinfo)
-        return reverse, forward
-
-    def test_confirmed_name(self, dns):
-        reverse, forward = dns
-        reverse["198.51.100.7"] = "Host.CS.uchicago.edu."
-        forward["Host.CS.uchicago.edu."] = ["198.51.100.8", "198.51.100.7"]
-        assert access_control._hostname("198.51.100.7") == ("host.cs.uchicago.edu", True)
-
-    def test_name_that_does_not_give_the_address_back(self, dns):
-        """Anyone controlling an address's reverse DNS can name it in an allowed domain."""
-        reverse, forward = dns
-        reverse["203.0.113.7"] = "fake.uchicago.edu"
-        forward["fake.uchicago.edu"] = ["198.51.100.8"]
-        assert access_control._hostname("203.0.113.7") == ("fake.uchicago.edu", False)
-
-    def test_no_name(self, dns):
-        assert access_control._hostname("203.0.113.7") == (None, False)
-        dns[0]["203.0.113.7"] = "gone.example.com"
-        assert access_control._hostname("203.0.113.7") == ("gone.example.com", False)
-
-    def test_ipv6(self, dns):
-        reverse, forward = dns
-        reverse["2001:db8::7"] = "host.example.com"
-        forward["host.example.com"] = ["2001:db8:0:0:0:0:0:7%eth0"]
-        assert access_control._hostname("2001:db8::7") == ("host.example.com", True)
-
-    def test_unconfirmed_name_in_an_allowed_domain_is_refused_and_said(self, monkeypatch, tmp_path, capsys):
-        monkeypatch.setattr(access_control, "_hostname", lambda _: ("nat-pool-7.example.edu", False))
+    def test_allowed(self, monkeypatch, tmp_path, fqdn, domain_list):
+        monkeypatch.setattr(access_control, "_client_domain", HOSTNAME_DOMAIN)
+        monkeypatch.setattr(access_control.socket, "getfqdn", lambda address: fqdn)
         access_file = tmp_path / "access.py"
-        access_file.write_text('domain_list = ["example.edu"]\n')
-        assert not is_allowed({"REMOTE_ADDR": "203.0.113.7"}, make_config(tmp_path / "db", access_file=str(access_file)))
-        assert "nat-pool-7.example.edu is in an allowed domain, but the name doesn't resolve back" in capsys.readouterr().err
+        access_file.write_text(f"domain_list = {domain_list!r}\n")
+        assert is_allowed({"REMOTE_ADDR": "203.0.113.7"}, make_config(tmp_path / "db", access_file=str(access_file)))
+
+    @pytest.mark.parametrize(
+        "fqdn, domain",
+        [("cs.uchicago.edu", "uchicago.edu"), ("uchicago.edu", "uchicago.edu"), ("host.cs.ox.ac.uk", "host.cs.ox.ac.uk"),
+         ("example.org", "example.org"), ("203.0.113.7", "203.0.113.7")],
+    )
+    def test_client_domain(self, monkeypatch, fqdn, domain):
+        monkeypatch.setattr(access_control.socket, "getfqdn", lambda address: fqdn)
+        assert HOSTNAME_DOMAIN("203.0.113.7") == domain
 
     def test_no_lookup_without_domains(self, monkeypatch, tmp_path):
         def lookup(address):
             raise AssertionError("no domain_list, no DNS")
 
-        monkeypatch.setattr(access_control, "_hostname", lookup)
+        monkeypatch.setattr(access_control, "_client_domain", lookup)
         access_file = tmp_path / "access.py"
         access_file.write_text('allowed_ips = ["198.51.100.0/24"]\n')
         assert not is_allowed({"REMOTE_ADDR": "203.0.113.7"}, make_config(tmp_path / "db", access_file=str(access_file)))

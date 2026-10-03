@@ -254,32 +254,9 @@ def client_address(environ):
     return address
 
 
-def _hostname(incoming_address):
-    """The client's host name, from a reverse DNS lookup of its address, and whether the forward lookup of the name gives
-    the address back: whoever controls an address's reverse DNS can give it any name, one of an allowed domain too.
-    (None, False) if it has no name."""
-    try:
-        name = socket.gethostbyaddr(incoming_address)[0]
-    except (OSError, UnicodeError, ValueError):
-        return None, False
-    hostname = name.lower().rstrip(".")
-    try:
-        addresses = {info[4][0].split("%")[0] for info in socket.getaddrinfo(name, None)}
-        client = netaddr.IPAddress(incoming_address)
-        return hostname, any(netaddr.IPAddress(address) == client for address in addresses)
-    except (OSError, UnicodeError, ValueError, netaddr.AddrFormatError):
-        return hostname, False
-
-
-def in_domain(hostname, domain):
-    """Whether hostname is domain or in it: "cs.uchicago.edu" is in "uchicago.edu" (or ".uchicago.edu", or ".edu"),
-    "notuchicago.edu" isn't."""
-    domain = domain.strip().lower().lstrip("*").strip(".")
-    return bool(domain) and (hostname == domain or hostname.endswith("." + domain))
-
-
 def _client_domain(incoming_address):
-    """The client's domain, as the login screen shows it, from a reverse DNS lookup of its address."""
+    """The client's domain, which the access file's domain_list is matched against and the login screen shows, from a
+    reverse DNS lookup of its address."""
     fq_domain_name = socket.getfqdn(incoming_address).split(",")[-1]
     edit_domain = re.split(r"\.", fq_domain_name)
     if re.match("edu", edit_domain[-1]):
@@ -363,22 +340,16 @@ def _check_address(incoming_address, access_file, access_file_exists):
     except Exception as e:
         print(f"Error checking IP whitelist: {repr(e)}", file=sys.stderr)
 
-    # Check domain access, last: it takes DNS lookups
-    domain_list = getattr(access_config, "domain_list", [])
-    hostname, confirmed = _hostname(incoming_address) if domain_list else (None, False)
-    if hostname and any(in_domain(hostname, domain) for domain in domain_list):
-        if confirmed:
-            return True
-        print(
-            f"UNAUTHORIZED ACCESS TO:{incoming_address}: its name {hostname} is in an allowed domain, but the name"
-            " doesn't resolve back to it: allow the address, or have the name's DNS fixed",
-            file=sys.stderr,
-        )
-        return False
+    # Check domain access, last: it takes a reverse DNS lookup. By substring, and with no forward lookup to confirm
+    # the name: stricter rules would have refused subscribers' VPNs and proxies in the 2025 logs of artflsrv04.
+    domain_list = set(getattr(access_config, "domain_list", []))
+    match_domain = _client_domain(incoming_address) if domain_list else incoming_address
+    if match_domain in domain_list or any(domain in match_domain for domain in domain_list):
+        return True
 
     # If no match found, access denied
     print(
-        f"UNAUTHORIZED ACCESS TO:{incoming_address} from host {hostname or '(no confirmed name)'}: IP not in whitelist",
+        f"UNAUTHORIZED ACCESS TO:{incoming_address} from domain {match_domain}: IP not in whitelist",
         file=sys.stderr,
     )
     return False
