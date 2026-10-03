@@ -371,7 +371,8 @@
         "dictionaryNavigation": "Navigation du dictionnaire",
         "browseByVolumeLabel": "Parcourir par volume",
         "browseByLetterAction": "Parcourir les entrées commençant par la lettre {letter}",
-        "browseResults": "Parcourir les résultats"
+        "browseResults": "Parcourir les résultats",
+        "documentCount": "{n} documents"
     },
     "searchTips": {
         "title": "Aide sur la syntaxe de recherche",

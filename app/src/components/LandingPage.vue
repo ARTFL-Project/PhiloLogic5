@@ -122,9 +122,11 @@
                                 <li class="pt-1"
                                     v-for="(result, resultIndex) in group.results.slice(0, groupDisplay[groupIndex])"
                                     :key="resultIndex" role="listitem">
-                                    <citations :citation="buildCitationObject(result.metadata, citationList)"
+                                    <citations :citation="buildCitationObject(result.metadata, citationList, result.count)"
                                         :result-number="resultIndex + 1"></citations>
                                     <span v-if="displayCount == 'true'">&nbsp;({{ result.count }})</span>
+                                    <span v-else-if="result.count > 1">&nbsp;({{
+                                        $t("landingPage.documentCount", { n: result.count }) }})</span>
                                 </li>
                             </ul>
                             <div class="card-footer" v-if="group.results.length > groupDisplay[groupIndex]">
@@ -273,12 +275,24 @@ function getSimpleLandingPageData() {
         });
 }
 
-function buildCitationObject(metadataFields, citations) {
+// An entry's citation. Documents alike in all of its fields make one entry (count of them), whose title links to the
+// bibliography of those documents, rather than to one of them ("Bible", 66 volumes alike)
+function buildCitationObject(metadataFields, citations, count = 1) {
     const out = [];
     for (const citation of citations) {
         let label = metadataFields[citation.field] || "";
         if (!citation.link) {
             if (label) out.push({ ...citation, href: "", label });  // no ", ●" for a title without author
+            continue;
+        }
+        if (citation.field === "title" && count > 1) {
+            const params = { report: "bibliography" };
+            for (const { field } of citations) {
+                const value = metadataFields[field];
+                params[field] = value == null || value === "" ? "NULL"
+                    : typeof value === "number" ? `${value}` : quoteMetadataValue(value);
+            }
+            out.push({ ...citation, href: paramsToRoute(params), label: metadataFields.title });
             continue;
         }
         if (citation.field === "title") {

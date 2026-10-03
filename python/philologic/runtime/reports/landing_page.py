@@ -82,11 +82,13 @@ def group_by_range(request_range, request, config):
     """Group metadata by range"""
     db = DB(config.db_path + "/data/")
     metadata_queried = validate_request_column(request.group_by_field, db)
+    # Years, unless both bounds are single characters, which are initials: "0-9" were the years 0 to 9, so titles
+    # starting with a digit could be in no tab
     is_date = False
     try:
         int(request_range[0])
         int(request_range[1])
-        is_date = True
+        is_date = not all(len(bound) == 1 for bound in request_range)
     except ValueError:
         pass
 
