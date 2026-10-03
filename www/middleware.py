@@ -125,6 +125,11 @@ class CORSMiddleware:
             })
 
     def process_response(self, req, resp, resource, req_succeeded):
+        # Not for access-controlled databases: any site could read them through the browsers of the clients they let in
+        # by their address
+        config = getattr(req.context, "config", None)
+        if config is not None and config["access_control"]:
+            return
         origin = req.get_header("Origin") or "*"
         resp.set_header("Access-Control-Allow-Origin", origin)
 

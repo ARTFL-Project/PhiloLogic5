@@ -17,7 +17,8 @@ gets a 403 (Forbidden) for everything but the login screen.
 ### User authentication
 
 To use user authentication, you need to create a logins.txt file inside your `your_db_dir/data/` directory. This can be a symlink.
-If no file is found, no login succeeds.
+If no file is found, no login succeeds. The login form sends the username and password in the body of a POST request, so
+they don't end up in web server logs.
 The logins.txt should one user/pass per line, separated by a tab, such as
 
 ```
@@ -32,7 +33,11 @@ To use this feature, you need to specify the location of the file in `web_config
 This file should contain 3 Python variables: `domain_list`, `allowed_ips`,
 `blocked_ips`. Each variable should be a list containing the salient info.
 
-The `domain_list` variable should be a list of domains allowed to access you database.
+The `domain_list` variable should be a list of domains allowed to access you database. A client is in a domain if the host
+name of its address is that domain or ends with it: `uchicago.edu` lets in `cs.uchicago.edu`, not `notuchicago.edu`. The host
+name comes from a reverse DNS lookup of the address, and counts only if the forward lookup of the name gives the address back
+(anyone controlling an address's reverse DNS could otherwise name it in your domain). Clients whose DNS isn't set up that way
+need to be allowed by IP.
 
 ```Python
 domain_list = [
@@ -85,3 +90,6 @@ Cookies are signed with the database's key: the `secret` of its `data/db.locals.
 for this database from the installation's secret, which `install.sh` writes to `/etc/philologic/philologic5.secret` (readable
 by the web server's user only). Changing either one logs everybody out. Without the installation's secret, the web app draws
 one each time it starts, so restarting it logs everybody out too.
+
+The reports and scripts of a database with access control can't be read from web pages of other sites (they send no CORS
+headers), as browsers of clients let in by their address could otherwise be used to read them.
