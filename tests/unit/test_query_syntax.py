@@ -345,6 +345,47 @@ class TestQueryParserRules:
 
 
 @pytest.mark.unit
+class TestTypographicTwins:
+    """With ascii_conversion, typographic apostrophes and hyphens are their ASCII twins (as the index's normalization
+    makes them), so the database's rules for ' and - apply to them: aujourd’hui gave 0 in frantext. Without it, the
+    index keeps forms as they are, so the query does too."""
+
+    rules = [(" OR ", " | "), ("'", " "), (",", ""), ("-", " ")]
+
+    def config(self, ascii_conversion, rules=None):
+        return type("Config", (), {
+            "query_parser_regex": self.rules if rules is None else rules,
+            "db_locals": {"ascii_conversion": ascii_conversion},
+        })()
+
+    @pytest.mark.parametrize(
+        "query, rewritten",
+        [
+            ("aujourd\u2019hui", "aujourd hui"),
+            ("c\u2019est", "c est"),
+            ("peut\u2010être", "peut être"),
+            ("peut\u2013être", "peut être"),
+            ("liberté\u2014égalité", "liberté égalité"),
+            ('"aujourd\u2019hui"', '"aujourd hui"'),  # quoted words of a search are split as the index splits them
+            ("[\u2019']", "[\u2019']"),  # a bracket expression: as typed
+        ],
+    )
+    def test_twins(self, query, rewritten):
+        assert query_parse(query, self.config(True)) == rewritten
+
+    def test_rules_of_the_database(self):
+        """A database that keeps ' in words keeps ’ as ': the index has made it one."""
+        assert query_parse("aujourd\u2019hui", self.config(True, rules=[])) == "aujourd'hui"
+
+    def test_quoted_metadata_value(self):
+        assert query_parse('"Qu\u2019en dira-t-on"', self.config(True), keep_quoted=True) == '"Qu\u2019en dira-t-on"'
+        assert query_parse("Qu\u2019en", self.config(True), keep_quoted=True) == "Qu en"
+
+    def test_without_ascii_conversion(self):
+        assert query_parse("aujourd\u2019hui peut\u2013être", self.config(False)) == "aujourd\u2019hui peut\u2013être"
+
+
+@pytest.mark.unit
 class TestQuotedTerms:
     @pytest.mark.parametrize("token, text", [('"liberté"', "liberté"), ('"liberté', "liberté"), ('""', ""), ('"', "")])
     def test_quoted_text(self, token, text):

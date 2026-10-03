@@ -587,8 +587,8 @@ def check_method(split, method, method_arg, phrases=None):
         how = "span exactly" if method.startswith("exact_cooc") else "fit within"
         what = f"{terms} words" if terms == len(split) else f"{terms} terms (a quoted phrase is one)"
         raise BadRequest(
-            f"{what} can't {how} {distance} word{'s' if distance > 1 else ''}: side by side, the last is already "
-            f"{least} words after the first. Use {least} or more, or no distance to search them side by side"
+            f"{what} can't {how} {distance} word{'s' if distance > 1 else ''}: side by side, the last is "
+            f"already {least} words after the first. Use {least} or more, or no distance to search them side by side"
         )
 
 
@@ -676,13 +676,37 @@ def phrase_lengths(grouped):
     return lengths
 
 
+# Typographic apostrophes and hyphens as their ASCII twins, which the index's normalization (unidecode, with
+# ascii_conversion) already makes them, and the em dash, which separates words, as a space
+TYPOGRAPHIC_TWINS = str.maketrans(
+    {
+        "\u2019": "'",  # ’
+        "\u2018": "'",  # ‘
+        "\u02bc": "'",  # ʼ
+        "\u2010": "-",  # hyphen
+        "\u2011": "-",  # non-breaking hyphen
+        "\u2012": "-",  # figure dash
+        "\u2013": "-",  # en dash
+        "\u2014": " ",  # em dash
+    }
+)
+
+
 def query_parse(query_terms, config, keep_quoted=False):
     """query_terms with the database's query_parser_regex rules applied, as hyphens and apostrophes turned into spaces
     (where its index splits words). Not inside the bracket expressions of regexes, whose hyphens make ranges
-    ("[a-z]"), and with keep_quoted not inside quotes either: quoted metadata values are matched whole, as they are."""
+    ("[a-z]"), and with keep_quoted not inside quotes either: quoted metadata values are matched whole, as they are.
+
+    With ascii_conversion, typographic apostrophes and hyphens (’, ‐, –) are first made their ASCII twins, so that the
+    rules for ' and - apply to them too: aujourd’hui gave 0 where aujourd'hui gives 61,505 in frantext. Without it,
+    the index keeps forms as they are, so they are left alone."""
+    db_locals = getattr(config, "db_locals", None)
+    twins = db_locals is not None and db_locals["ascii_conversion"] is True
     protected = r'\[[^\]]*\]|"[^"]*"' if keep_quoted else r"\[[^\]]*\]"
     parts = re.split(f"({protected})", query_terms)
     for i in range(0, len(parts), 2):  # those between the protected ones
+        if twins:
+            parts[i] = parts[i].translate(TYPOGRAPHIC_TWINS)
         for pattern, replacement in config.query_parser_regex:
             parts[i] = re.sub(rf"{pattern}", rf"{replacement}", parts[i])
     return "".join(parts)
