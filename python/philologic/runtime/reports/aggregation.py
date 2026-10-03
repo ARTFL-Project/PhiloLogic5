@@ -71,18 +71,31 @@ def aggregation_by_field(request, config):
             batch,
         )
         for row in cursor:
-            if group_by == "title":
-                uniq_name = row[f"philo_{metadata_type}_id"]
-            else:
-                uniq_name = row[group_by]
+            # Grouped by value, titles too: by object, the volumes of a title made rows whose concordance link (the
+            # title) found the hits of all of them
+            uniq_name = row[group_by]
             metadata_dict[tuple(map(int, row[f"philo_{metadata_type}_id"].split()))] = {
                 **{field: row[field] or "" for field in metadata_fields_needed if row[field] or field == group_by},
                 "field_name": uniq_name,
             }
 
+    break_up_field_name = field_obj["break_up_field"]
+    results = group_results(id_counts, metadata_dict, metadata_type, break_up_field_name)
+
+    return {
+        "results": results,
+        "break_up_field": break_up_field_name or "",
+        "query": {k: v for k, v in request},
+        "total_results": total_results,
+    }
+
+
+def group_results(id_counts, metadata_dict, metadata_type, break_up_field_name=None):
+    """The aggregation's groups, by value of field_name: the hits of id_counts (object id -> hits) by the field values
+    of metadata_dict (object id -> its metadata), most hits first, each with its number of objects, and with a
+    break_up_field the breakdown by its values."""
     # Aggregate counts per metadata field value using pre-computed hit counts
     counts_by_field = {}
-    break_up_field_name = field_obj["break_up_field"]
     if break_up_field_name is not None:
         for philo_id, hit_count in id_counts.items():
             try:
@@ -98,9 +111,11 @@ def aggregation_by_field(request, config):
                     "count": hit_count,
                     "metadata_fields": metadata_dict[philo_id],
                     "break_up_field": {break_up_field: {"count": hit_count, "philo_id": philo_id}},
+                    "objects": [philo_id],
                 }
             else:
                 counts_by_field[field_name]["count"] += hit_count
+                counts_by_field[field_name]["objects"].append(philo_id)
                 if break_up_field not in counts_by_field[field_name]["break_up_field"]:
                     counts_by_field[field_name]["break_up_field"][break_up_field] = {"count": hit_count, "philo_id": philo_id}
                 else:
@@ -116,9 +131,20 @@ def aggregation_by_field(request, config):
                     "count": hit_count,
                     "metadata_fields": metadata_dict[philo_id],
                     "break_up_field": {},
+                    "objects": [philo_id],
                 }
             else:
                 counts_by_field[field_name]["count"] += hit_count
+                counts_by_field[field_name]["objects"].append(philo_id)
+
+    # A group of several objects shows what they all share: one object's place or year would pass for all of theirs
+    for values in counts_by_field.values():
+        if len(values["objects"]) > 1:
+            first = values["metadata_fields"]
+            values["metadata_fields"] = {
+                field: value for field, value in first.items()
+                if all(metadata_dict[o].get(field) == value for o in values["objects"][1:])
+            }
 
     if break_up_field_name is not None:
         results = []
@@ -127,6 +153,7 @@ def aggregation_by_field(request, config):
                 {
                     "metadata_fields": values["metadata_fields"],
                     "count": values["count"],
+                    "object_count": len(values["objects"]),
                     "break_up_field": [
                         {"count": v["count"], "metadata_fields": metadata_dict[v["philo_id"]]}
                         for v in sorted(values["break_up_field"].values(), key=lambda item: item["count"], reverse=True)
@@ -135,16 +162,15 @@ def aggregation_by_field(request, config):
             )
     else:
         results = [
-            {"metadata_fields": values["metadata_fields"], "count": values["count"], "break_up_field": []}
+            {
+                "metadata_fields": values["metadata_fields"],
+                "count": values["count"],
+                "object_count": len(values["objects"]),
+                "break_up_field": [],
+            }
             for values in sorted(counts_by_field.values(), key=lambda x: x["count"], reverse=True)
         ]
-
-    return {
-        "results": results,
-        "break_up_field": break_up_field_name or "",
-        "query": {k: v for k, v in request},
-        "total_results": total_results,
-    }
+    return results
 
 
 def aggregation_to_csv(results, break_up_field_name="", group_by=""):
@@ -157,8 +183,8 @@ def aggregation_to_csv(results, break_up_field_name="", group_by=""):
     if not results:
         return ""
     output = io.StringIO()
-    first = results[0]
-    group_keys = sorted(k for k in first["metadata_fields"].keys() if k not in ("field_name", "philo_id"))
+    # those of every group: a group of several objects has only the metadata they all share
+    group_keys = sorted({k for r in results for k in r["metadata_fields"] if k not in ("field_name", "philo_id")})
     has_breakdown = break_up_field_name and any(r["break_up_field"] for r in results)
     if has_breakdown:
         # Collect all metadata keys from breakdown entries

@@ -353,7 +353,8 @@
         "performance": "Por razones de rendimiento, solo se muestran los 1000 resultados iniciales. Pulsar sobre el enlace superior para verlos todos.",
         "resultsRegion": "Resultados acumulados",
         "expandBreakdown": "Expandir desglose detallado para {name}",
-        "collapseBreakdown": "Contraer desglose detallado para {name}"
+        "collapseBreakdown": "Contraer desglose detallado para {name}",
+        "fromDocuments": "de {n} documentos"
     },
     "landingPage": {
         "title": "Consultar la Colección",
