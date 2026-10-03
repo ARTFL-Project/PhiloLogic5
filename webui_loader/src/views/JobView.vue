@@ -25,7 +25,8 @@
                 </div>
                 <div v-if="job.state === 'succeeded'" class="alert alert-success">
                     <i class="bi bi-check-circle me-2"></i>{{ $t("job.done") }}
-                    <a :href="job.application_url || job.url" target="_blank" rel="noopener" class="d-block mt-1">{{ job.application_url || job.url }}</a>
+                    <a v-if="job.url" :href="job.url" target="_blank" rel="noopener" class="d-block mt-1">{{ absoluteUrl(job.url) }}</a>
+                    <div v-else class="mt-1">{{ $t("job.servedAt", { path: `/${job.dbname}/` }) }}</div>
                     <router-link class="btn btn-sm btn-outline-secondary mt-2" :to="`/databases/${job.dbname}/web_config`">{{ $t("databases.webConfig") }}</router-link>
                 </div>
                 <div v-if="['failed', 'interrupted'].includes(job.state)" class="alert alert-danger">
@@ -65,7 +66,7 @@ import { useI18n } from "vue-i18n";
 import { api } from "../api";
 import JobState from "../components/JobState.vue";
 import StageStepper from "../components/StageStepper.vue";
-import { formatDate, formatDuration } from "../utils";
+import { absoluteUrl, formatDate, formatDuration } from "../utils";
 
 // A running load is refreshed every half second while its page is seen (each refresh costs the server well under a
 // millisecond), less often in a hidden tab

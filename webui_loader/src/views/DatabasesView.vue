@@ -39,8 +39,8 @@
                             </span>
                         </td>
                         <td class="text-end text-nowrap">
-                            <a class="btn btn-sm btn-outline-secondary" :href="database.url" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>{{ $t("databases.open") }}</a>
-                            <router-link class="btn btn-sm btn-outline-secondary ms-1" :to="`/databases/${database.name}/web_config`"><i class="bi bi-sliders me-1"></i>{{ $t("databases.webConfig") }}</router-link>
+                            <a v-if="database.url" class="btn btn-sm btn-outline-secondary me-1" :href="database.url" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>{{ $t("databases.open") }}</a>
+                            <router-link class="btn btn-sm btn-outline-secondary" :to="`/databases/${database.name}/web_config`"><i class="bi bi-sliders me-1"></i>{{ $t("databases.webConfig") }}</router-link>
                             <div class="btn-group ms-1" v-if="database.has_load_config">
                                 <router-link class="btn btn-sm btn-outline-secondary" :class="{ disabled: !database.may_edit || !database.replaceable || database.loading }" :to="{ path: '/load', query: { from: database.name, again: 1 } }" :title="database.replaceable ? '' : database.replace_reason">{{ $t("databases.loadAgain") }}</router-link>
                                 <router-link class="btn btn-sm btn-outline-secondary" :to="{ path: '/load', query: { from: database.name } }">{{ $t("databases.loadLike") }}</router-link>

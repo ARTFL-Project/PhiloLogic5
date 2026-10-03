@@ -114,7 +114,7 @@
                         <label class="form-label" for="dbname">{{ $t("fields.dbname") }}</label>
                         <input id="dbname" class="form-control mono" :class="{ 'is-invalid': state.dbname && !validName }" v-model.trim="state.dbname" />
                         <div class="invalid-feedback">{{ $t("load.nameHelp") }}</div>
-                        <div class="form-text" v-if="system">{{ $t("load.urlWillBe", { url: `${system.url_root.replace(/\/$/, "")}/${state.dbname || "\u2026"}` }) }}</div>
+                        <div class="form-text" v-if="system && system.databases_url">{{ $t("load.urlWillBe", { url: absoluteUrl(`${system.databases_url}${state.dbname || "\u2026"}/`) }) }}</div>
                     </div>
                     <div class="col-sm-3">
                         <label class="form-label" for="cores">{{ $t("fields.cores") }}</label>
@@ -210,7 +210,7 @@ import OptionField from "../components/OptionField.vue";
 import PreviewPanel from "../components/PreviewPanel.vue";
 import Uploader from "../components/Uploader.vue";
 import { session } from "../session";
-import { clone, deepEqual, formatSize } from "../utils";
+import { absoluteUrl, clone, deepEqual, formatSize } from "../utils";
 
 const STATE_KEY = "philologic5-webui-loader-load";
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;

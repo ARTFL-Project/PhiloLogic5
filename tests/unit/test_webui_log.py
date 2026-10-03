@@ -43,7 +43,7 @@ LOG = (
 @pytest.fixture
 def jobs(tmp_path):
     settings = Settings(
-        mode="personal", state_dir=str(tmp_path), database_root=str(tmp_path), url_root="http://localhost/philologic5/"
+        mode="personal", state_dir=str(tmp_path), database_root=str(tmp_path)
     )
     jobs = Jobs(settings)
     os.makedirs(os.path.join(settings.loads_dir, JOB_ID))

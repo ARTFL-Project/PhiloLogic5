@@ -6,7 +6,6 @@ here must be literal values."""
 
 import os
 import sys
-import urllib.parse
 from dataclasses import dataclass, field
 
 from philologic.webui_loader.pyconfig import ConfigFile
@@ -15,8 +14,12 @@ GLOBAL_CONFIG = os.getenv("PHILOLOGIC_CONFIG", "/etc/philologic/philologic5.cfg"
 DEFAULT_STATIC_DIR = "/var/lib/philologic5/webui_loader/dist"
 DEFAULT_PORT = 8765
 DEFAULT_SERVICE_PORT = 8766
-# Where the web server of the databases serves the service, on their host (url_root)
+# Where the web server of the databases serves the service, on their host
 SERVICE_PATH = "/philologic5-webui-loader"
+# Where it serves the databases, on that host: the URL prefix of PhiloLogic's install. The UI links to them there
+DATABASES_PATH = "/philologic5"
+# PhiloLogic's gunicorn, which serves the databases itself when it listens on a TCP address, as on a Mac
+WEB_APP_CONFIG = "/var/lib/philologic5/web_app/gunicorn.conf.py"
 PREFIX = "webui_loader_"
 
 # Keys of the global config, without their prefix: those of the service, and those also used on your own machine
@@ -59,7 +62,6 @@ class Settings:
     mode: str  # "personal" or "service"
     state_dir: str
     database_root: str
-    url_root: str
     global_config: str = GLOBAL_CONFIG
     static_dir: str = DEFAULT_STATIC_DIR
     python: str = sys.executable  # runs philoload5 (python -m philologic.loadtime)
@@ -70,7 +72,7 @@ class Settings:
     bind: str = f"127.0.0.1:{DEFAULT_PORT}"
     threads: int = 8
     forwarded_allow_ips: list = field(default_factory=list)  # reverse proxies trusted for X-Forwarded-*
-    public_url: str = None  # service: URL at which users reach the UI, SERVICE_PATH on the host of url_root
+    web_app_url: str = None  # personal: where PhiloLogic's gunicorn serves the databases itself (see web_app_url)
     token: str = None  # personal: the secret in the URL opened in the browser
     # Service
     upload_dir: str = None
@@ -93,23 +95,24 @@ class Settings:
 
     @property
     def url_prefix(self):
-        """Path under which the UI is served, without a trailing slash ("" at the root)"""
-        if not self.public_url:
-            return ""
-        path = self.public_url.split("://", 1)[-1].partition("/")[2]
-        return ("/" + path).rstrip("/") if path else ""
+        """Path under which the UI is served, without a trailing slash ("" at the root): SERVICE_PATH in the service"""
+        return SERVICE_PATH if self.service else ""
 
     @property
-    def public_origin(self):
-        if not self.public_url:
-            return None
-        scheme, rest = self.public_url.split("://", 1)
-        return f"{scheme}://{rest.partition('/')[0]}"
+    def databases_url(self):
+        """Where the databases are served: on the host of the service, under DATABASES_PATH; on your own machine, where
+        PhiloLogic's gunicorn serves them itself (as on a Mac), else None: a web server serves them, under a prefix
+        of its own"""
+        return f"{DATABASES_PATH}/" if self.service else self.web_app_url
+
+    def database_url(self, name):
+        """Where the database name is served (see databases_url)"""
+        return f"{self.databases_url}{name}/" if self.databases_url else None
 
 
 def read_global_config(path=GLOBAL_CONFIG):
-    """database_root, url_root, whether the UI is on (webui_loader), and its webui_loader_* settings (without the
-    prefix), read without running the file: those keys must be literal values"""
+    """database_root, whether the UI is on (webui_loader), and its webui_loader_* settings (without the prefix), read
+    without running the file: those keys must be literal values"""
     try:
         with open(path, encoding="utf8") as config_file:
             config = ConfigFile(config_file.read())
@@ -120,7 +123,7 @@ def read_global_config(path=GLOBAL_CONFIG):
     used = [
         name
         for name in config.entries
-        if name in ("database_root", "url_root", "webui_loader") or name.startswith(PREFIX)
+        if name in ("database_root", "webui_loader") or name.startswith(PREFIX)
     ]
     code = [name for name in used if config.entries[name].is_code]
     if code:
@@ -130,21 +133,32 @@ def read_global_config(path=GLOBAL_CONFIG):
     unknown = set(loader) - set(SERVICE_KEYS)
     if unknown:
         raise SettingsError(f"unknown settings in {path}: {', '.join(PREFIX + key for key in sorted(unknown))}")
-    database_root, url_root = values.get("database_root"), values.get("url_root")
+    database_root = values.get("database_root")
     if not database_root or database_root == "None":
         raise SettingsError(f"database_root is not set in {path}")
-    if not url_root or url_root == "None":
-        raise SettingsError(f"url_root is not set in {path}")
     enabled = values.get("webui_loader", True)
     if not isinstance(enabled, bool):
         raise SettingsError(f"webui_loader is True or False in {path}")
-    return {"database_root": database_root.rstrip("/"), "url_root": url_root, "enabled": enabled, "loader": loader}
+    return {"database_root": database_root.rstrip("/"), "enabled": enabled, "loader": loader}
 
 
-def global_settings(global_config=GLOBAL_CONFIG):
-    """database_root and url_root of the global config"""
-    values = read_global_config(global_config)
-    return values["database_root"], values["url_root"]
+def web_app_url(path=WEB_APP_CONFIG):
+    """The address at which PhiloLogic's gunicorn serves the databases itself, at its root, if it listens on a TCP
+    address (bind = "127.0.0.1:8080", as on a Mac), read without running its config; None if it listens on a unix
+    socket, behind a web server"""
+    try:
+        with open(path, encoding="utf8") as config_file:
+            bind = ConfigFile(config_file.read()).values.get("bind")
+    except (OSError, SyntaxError):
+        return None
+    if isinstance(bind, (list, tuple)):  # gunicorn takes several
+        bind = next((address for address in bind if isinstance(address, str) and not address.startswith("unix:")), None)
+    if not isinstance(bind, str) or not bind or bind.startswith(("unix:", "fd://")):
+        return None
+    host, _, port = bind.rpartition(":") if ":" in bind else (bind, ":", "8000")  # gunicorn's default port
+    if host in ("", "0.0.0.0", "[::]"):
+        host = "localhost"
+    return f"http://{host}:{port}/"
 
 
 def check_enabled(values, path):
@@ -157,17 +171,19 @@ def check_max_cores(settings, path):
         raise SettingsError(f"{PREFIX}max_cores is a whole number, at least 1, or None in {path}")
 
 
-def personal_settings(port=DEFAULT_PORT, global_config=GLOBAL_CONFIG, static_dir=None, state_dir=None):
+def personal_settings(
+    port=DEFAULT_PORT, global_config=GLOBAL_CONFIG, static_dir=None, state_dir=None, web_app_config=WEB_APP_CONFIG
+):
     values = read_global_config(global_config)
     check_enabled(values, global_config)
     settings = Settings(
         mode="personal",
         state_dir=state_dir or personal_state_dir(),
         database_root=values["database_root"],
-        url_root=values["url_root"],
         global_config=global_config,
         static_dir=static_dir or DEFAULT_STATIC_DIR,
         bind=f"127.0.0.1:{port}",
+        web_app_url=web_app_url(web_app_config),
     )
     for key in PERSONAL_KEYS:
         if key in values["loader"]:
@@ -185,17 +201,14 @@ def service_settings(global_config=GLOBAL_CONFIG, check=True):
     values = read_global_config(global_config)
     if check:
         check_enabled(values, global_config)
-    url_root = urllib.parse.urlsplit(values["url_root"])
     settings = Settings(
         mode="service",
         # Not in /var/lib/philologic5, which install.sh deletes
         state_dir="/var/lib/philologic5-webui-loader",
         database_root=values["database_root"],
-        url_root=values["url_root"],
         global_config=global_config,
         bind=f"127.0.0.1:{DEFAULT_SERVICE_PORT}",
         forwarded_allow_ips=["127.0.0.1"],  # the web server, on this machine
-        public_url=f"{url_root.scheme.lower()}://{url_root.netloc}{SERVICE_PATH}",
     )
     for key, value in values["loader"].items():
         setattr(settings, key, value)
@@ -206,10 +219,6 @@ def service_settings(global_config=GLOBAL_CONFIG, check=True):
 
 def check_service_settings(settings, path):
     key = lambda name: PREFIX + name  # noqa: E731
-    if not settings.public_url.startswith("https://"):
-        raise SettingsError(
-            f"the UI needs HTTPS, and is served on the host of the databases: url_root must be https:// in {path}"
-        )
     if settings.bind.startswith("unix:"):
         raise SettingsError(f"{key('bind')} in {path} must be a TCP address, such as 127.0.0.1:8766")
     if not settings.allowed_roots and not settings.upload_dir:

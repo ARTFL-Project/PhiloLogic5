@@ -24,7 +24,6 @@ MAX_LOG_CHUNK = 256 * 1024
 TIMESTAMP = re.compile(r"^\w{3} \w{3} [ \d]\d \d\d:\d\d:\d\d \d{4}: ")
 TQDM = re.compile(r"(?P<desc>[^\r\n|]*?):?\s*(?P<percent>\d+)%\|[^|\r\n]*\|\s*(?P<done>\d+)/(?P<total>\d+)")
 REMOVED_FILES = re.compile(r"^File (?P<name>.+?): (?P<cause>invalid characters|no TEI header|invalid XML)$", re.M)
-APPLICATION_URL = re.compile(r"^Application viewable at (?P<url>\S+)", re.M)
 JOB_ID = re.compile(r"^[A-Za-z0-9._-]+-\d{8}-\d{6}-[0-9a-f]{6}$")
 
 
@@ -210,7 +209,7 @@ class Jobs:
                 "bibliography": bibliography,
                 "overwrite": overwrite,
                 "source": source,
-                "url": self.settings.url_root.rstrip("/") + "/" + dbname,
+                "url": self.settings.database_url(dbname),
             }
             write_json(os.path.join(job_dir, "job.json"), job)
             with open(os.path.join(job_dir, "runner.log"), "ab") as runner_log:
@@ -316,8 +315,6 @@ class Jobs:
             if state != "running":
                 log = self.read_log(job_dir)
                 status["removed_files"] = [match.groupdict() for match in REMOVED_FILES.finditer(log)][:1000]
-                url = APPLICATION_URL.search(log)
-                status["application_url"] = url.group("url") if url and state == "succeeded" else None
         return status
 
     @staticmethod

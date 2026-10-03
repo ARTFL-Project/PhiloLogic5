@@ -34,12 +34,14 @@ def jobs(tmp_path, monkeypatch):
     database_root.mkdir()
     global_config = tmp_path / "philologic5.cfg"
     global_config.write_text(
-        f'database_root = "{database_root}"\nurl_root = "http://localhost/test/"\nhitlist_dir = "{tmp_path / "hitlists"}"\n',
+        f'database_root = "{database_root}"\nhitlist_dir = "{tmp_path / "hitlists"}"\n',
         encoding="utf8",
     )
     # The loads run the code of this repository
     monkeypatch.setenv("PYTHONPATH", str(REPO_ROOT / "python"))
-    settings = personal_settings(global_config=str(global_config), state_dir=str(tmp_path / "state"))
+    settings = personal_settings(
+        global_config=str(global_config), state_dir=str(tmp_path / "state"), web_app_config=str(tmp_path / "none.py")
+    )
     return Jobs(settings)
 
 
@@ -68,7 +70,7 @@ def test_load(jobs):
     status = wait(jobs, job_id, lambda status: status["state"] != "running")
     assert status["state"] == "succeeded", jobs.log(job_id)["text"][-2000:]
     assert [stage["state"] for stage in status["stages"]] == ["done"] * 9
-    assert status["application_url"] == "http://localhost/test/folger3"
+    assert status["url"] is None  # on your own machine: the web server serves the databases under its own prefix
     assert not os.path.exists(jobs.lock_path("folger3"))
     saved = Path(jobs.settings.database_root, "folger3", "data", "load_config.py").read_text(encoding="utf8")
     assert "break_apost = False" in saved

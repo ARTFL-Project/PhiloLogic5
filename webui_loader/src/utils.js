@@ -123,3 +123,8 @@ export function lineDiff(before, after, context = 2) {
     });
     return shown;
 }
+
+// A path of the host of the page as a full URL, to show: the databases are served on the host of the service
+export function absoluteUrl(path) {
+    return new URL(path, window.location.origin).href;
+}

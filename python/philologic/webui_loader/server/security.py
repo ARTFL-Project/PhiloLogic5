@@ -33,7 +33,7 @@ CONTENT_SECURITY_POLICY = (
 
 
 class StripPrefix:
-    """WSGI middleware taking the URL prefix of the service (the path of public_url) off the path, whether the
+    """WSGI middleware taking the URL prefix of the service (SERVICE_PATH) off the path, whether the
     reverse proxy passed it on or not. The prefix itself is redirected to prefix/, where the relative URLs of the
     client's files lead."""
 
@@ -93,8 +93,9 @@ class SecurityMiddleware:
             self.hosts = {f"localhost:{port}", f"127.0.0.1:{port}", f"[::1]:{port}"}
             self.origins = {f"http://{host}" for host in self.hosts}
         else:
+            # The service is on whatever host the web server serves it: requests must come from a page of that host
             self.hosts = None
-            self.origins = {settings.public_origin}
+            self.origins = None
         self.user = current_user()
 
     def process_request(self, req, resp):
@@ -115,7 +116,10 @@ class SecurityMiddleware:
             if origin is None:
                 referer = req.get_header("Referer") or ""
                 origin = "/".join(referer.split("/", 3)[:3]) if "://" in referer else None
-            if origin not in self.origins:
+            # In the service, the origin of the request itself: the host the browser asked the web server for (which
+            # it passes on in Host or X-Forwarded-Host), over HTTPS
+            origins = self.origins if self.origins is not None else {f"https://{req.forwarded_host}"}
+            if origin not in origins:
                 raise falcon.HTTPForbidden(description="cross-origin request refused")
         if self.settings.service:
             self.identify_service_user(req)

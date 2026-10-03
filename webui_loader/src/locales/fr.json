@@ -206,6 +206,7 @@
         }
     },
     "job": {
+        "servedAt": "L'application web la sert à {path}, sous son préfixe d'URL (comme /philologic5/)",
         "startedBy": "lancé le {date} par {user}",
         "cancel": "Annuler",
         "cancelling": "Annulation…",

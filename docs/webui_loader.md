@@ -26,6 +26,8 @@ philologic5-webui-loader
 
 It prints an address such as `http://localhost:8765/#/?token=...` and opens it in your browser. The token in the address is what gives access to the UI: keep it to yourself. The UI only answers on your own machine (127.0.0.1), and runs as you, so the databases you load belong to you, and you can edit the web config of the databases you can write.
 
+This is also how it runs on a Mac. It links to the databases where PhiloLogic's gunicorn serves them itself, when it listens on a TCP address (`bind = "127.0.0.1:8080"` in `/var/lib/philologic5/web_app/gunicorn.conf.py`, as on a Mac): `http://127.0.0.1:8080/<name>/`. Behind a web server (gunicorn on a unix socket), it says where the web app serves them instead, `/<name>/` under the web server's URL prefix: there is no URL to set.
+
 -   Stop it with Control-C. Loads it launched keep running.
 -   `philologic5-webui-loader --background` keeps it running after the terminal closes; `philologic5-webui-loader url` prints its address again; `philologic5-webui-loader stop` stops it.
 -   `--port` sets the first port tried (8765 by default, then the next free ones); `--no-browser` doesn't open the browser.
@@ -71,7 +73,7 @@ The service runs as a dedicated account, which runs the loads and owns the datab
 
 ### Setting it up
 
-`install.sh` sets the service up (as does `sudo extras/webui_loader/setup_service.sh`), unless the UI is turned off (see [Settings](#settings)) or `url_root` is on localhost (a personal machine, where you run `philologic5-webui-loader` yourself). It:
+`install.sh` sets the service up wherever systemd runs (as does `sudo extras/webui_loader/setup_service.sh`), unless the UI is turned off (see [Settings](#settings)). It:
 
 -   creates the account of the service, `philologic` (`WEBUI_USER` sets another name), in the group which owns `database_root`, and gives `database_root` the setgid bit, so that the databases the service loads belong to the group and its members can still manage them from a shell (the service's umask is 002). The service can edit the web config of the databases it can write: those it loaded, and the group-writable ones;
 -   adds the settings of the service to the global config, `/etc/philologic/philologic5.cfg` (only those it doesn't set yet: see [Settings](#settings)), installs the systemd unit and starts the service, on `127.0.0.1:8766`. Loads run apart from the service (`KillMode=process`): restarting it doesn't stop them. `install.sh` restarts it when it reinstalls PhiloLogic.
@@ -93,7 +95,7 @@ Then:
 
 ### The web server
 
-The web server which serves the databases (Apache, Nginx...) also serves the UI, on their host and over HTTPS, at `https://<host of url_root>/philologic5-webui-loader/`: it passes the requests of that path on to the service, as it does those of the databases to PhiloLogic's gunicorn. No other port, host name or certificate is needed. With Apache (`sudo a2enmod proxy proxy_http headers`), add to the `<VirtualHost *:443>` of the databases:
+The web server which serves the databases (Apache, Nginx...) also serves the UI, on their host and over HTTPS, at `https://<their host>/philologic5-webui-loader/`: it passes the requests of that path on to the service, as it does those of the databases to PhiloLogic's gunicorn. No other port, host name or certificate is needed, nor any URL setting: the UI takes its address from the requests, and links to the databases at `/philologic5/<name>/` on the same host, the URL prefix of PhiloLogic's install. With Apache (`sudo a2enmod proxy proxy_http headers`), add to the `<VirtualHost *:443>` of the databases:
 
 ```
 <Location "/philologic5-webui-loader">
@@ -103,7 +105,7 @@ The web server which serves the databases (Apache, Nginx...) also serves the UI,
 </Location>
 ```
 
-and reload Apache (`sudo systemctl reload apache2`). For Nginx, see `extras/webui_loader/nginx.conf` (it allows requests of 10 MB: upload chunks are up to 8 MB). The service refuses requests which don't come over HTTPS through the web server: it only trusts `X-Forwarded-Proto` and `X-Forwarded-For` from `webui_loader_forwarded_allow_ips` (`127.0.0.1`), and listens on `webui_loader_bind` (`127.0.0.1:8766`). Other users of the machine can reach that local port: the service trusts what they send as coming from the web server (still needing a login).
+and reload Apache (`sudo systemctl reload apache2`). For Nginx, see `extras/webui_loader/nginx.conf` (it passes the host the browser asked for, which the service checks requests come from, and allows requests of 10 MB: upload chunks are up to 8 MB). The service refuses requests which don't come over HTTPS through the web server: it only trusts `X-Forwarded-Proto` and `X-Forwarded-For` from `webui_loader_forwarded_allow_ips` (`127.0.0.1`), and listens on `webui_loader_bind` (`127.0.0.1:8766`). Other users of the machine can reach that local port: the service trusts what they send as coming from the web server (still needing a login).
 
 ### Users and permissions
 

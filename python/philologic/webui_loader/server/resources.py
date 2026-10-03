@@ -134,7 +134,7 @@ class SessionResource:
                 "must_change_password": bool(session and session["must_change_password"]),
                 "hostname": socket.gethostname(),
                 "database_root": settings.database_root,
-                "url_root": settings.url_root,
+                "databases_url": settings.databases_url,
                 "version": version(),
                 "uploads": bool(settings.upload_dir),
                 "browser_trusted": bool(
@@ -267,7 +267,7 @@ class SystemResource:
         resp.media = {
             "mode": settings.mode,
             "database_root": settings.database_root,
-            "url_root": settings.url_root,
+            "databases_url": settings.databases_url,
             "cpu_count": os.cpu_count(),
             "memory_available": preflight.memory_available(),
             "disk_free": free,

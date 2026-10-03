@@ -2,7 +2,7 @@
     <div class="medium mx-auto" v-if="config && schema">
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
             <h1 class="h3 mb-0">{{ $t("webConfig.title") }} <span class="font-monospace">{{ name }}</span></h1>
-            <a class="btn btn-sm btn-outline-secondary ms-auto" :href="databaseUrl" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>{{ $t("databases.open") }}</a>
+            <a v-if="databaseUrl" class="btn btn-sm btn-outline-secondary ms-auto" :href="databaseUrl" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>{{ $t("databases.open") }}</a>
         </div>
         <p class="small text-body-secondary">{{ $t("webConfig.help") }}</p>
         <div v-if="!config.writable" class="alert alert-secondary"><i class="bi bi-lock me-2"></i>{{ $t("webConfig.readOnly") }}: {{ config.reason }}</div>
@@ -98,7 +98,8 @@ const saving = ref(false);
 const reviewing = ref(false);
 const asJson = reactive({});
 
-const databaseUrl = computed(() => `${(session.server.url_root || "").replace(/\/$/, "")}/${props.name}`);
+// Where the database is served: on the host of the service (none on your own machine)
+const databaseUrl = computed(() => (session.server.databases_url ? `${session.server.databases_url}${props.name}/` : null));
 const groupOptions = computed(() => schema.value.options.filter((option) => option.group === current.value));
 const changes = computed(() => schema.value.options.map((option) => option.key).filter((key) => isChanged(key)));
 const isChanged = (key) => !deepEqual(values[key], original.value[key]);

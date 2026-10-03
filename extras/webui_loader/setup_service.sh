@@ -1,6 +1,6 @@
 #!/bin/bash
 # Set up philologic5-webui-loader as a service (systemd), which the web server of the databases serves on their host,
-# at https://<host of url_root>/philologic5-webui-loader/:
+# at https://<their host>/philologic5-webui-loader/:
 #   sudo extras/webui_loader/setup_service.sh        (install.sh runs it)
 # With webui_loader = False in the global config, it stops and disables the service instead.
 # It creates the account of the service in the group of database_root and its state directory, adds its settings to
@@ -39,10 +39,9 @@ if [ ! -d /run/systemd/system ]; then
     exit 1
 fi
 
-# Whether the UI is on, database_root, the host of url_root, the URL of the UI, its path, and where the web server
-# passes requests on to
+# Whether the UI is on, database_root, the path of the UI, and where the web server passes requests on to
 VALUES=$("$PYTHON" -c "
-import sys, urllib.parse
+import sys
 from philologic.webui_loader.settings import SettingsError, read_global_config, service_settings
 try:
     values = read_global_config(sys.argv[1])
@@ -54,11 +53,10 @@ else:
     else:
         settings = service_settings(sys.argv[1], check=False)
         host, port = settings.bind.rsplit(':', 1)
-        print('ON'); print(settings.database_root); print(urllib.parse.urlsplit(settings.url_root).hostname)
-        print(settings.public_url); print(settings.url_prefix)
+        print('ON'); print(settings.database_root); print(settings.url_prefix)
         print(f\"http://{'127.0.0.1' if host in ('', '0.0.0.0') else host}:{port}\")
 " "$GLOBAL_CONFIG")
-{ read -r STATE; read -r DATABASE_ROOT; read -r HOST; read -r PUBLIC_URL; read -r URL_PATH; read -r TARGET; } <<< "$VALUES" || true
+{ read -r STATE; read -r DATABASE_ROOT; read -r URL_PATH; read -r TARGET; } <<< "$VALUES" || true
 if [ "$STATE" = OFF ]; then
     echo "philologic5-webui-loader is turned off (webui_loader = False in $GLOBAL_CONFIG): not set up."
     if [ -f "$UNIT" ]; then
@@ -66,18 +64,15 @@ if [ "$STATE" = OFF ]; then
     fi
     exit 0
 fi
-if [ "$STATE" != ON ] || [ -z "$HOST" ]; then
+if [ "$STATE" != ON ]; then
     echo "$DATABASE_ROOT"  # the message of the error
     echo "The web UI loader isn't set up: once $GLOBAL_CONFIG is right, run sudo $SCRIPT_DIR/setup_service.sh"
     exit 0
 fi
-case "$HOST" in
-    localhost | 127.* | ::1)
-        # Databases only served on this machine: its users start the UI themselves (philologic5-webui-loader)
-        echo "url_root is on $HOST: no service needed, run philologic5-webui-loader to load databases from a web page."
-        exit 0
-        ;;
-esac
+# The UI takes its address from the requests: this one, from the name of the machine, is only to check and say it
+HOST_NAME=$(hostname -A 2> /dev/null | awk '{print $1}')
+[ -n "$HOST_NAME" ] || HOST_NAME=$(hostname -f 2> /dev/null || hostname)
+PUBLIC_URL="https://$HOST_NAME$URL_PATH"
 GROUP=$(stat -c %G "$DATABASE_ROOT")
 echo "database_root: $DATABASE_ROOT (group $GROUP), the UI at $PUBLIC_URL/"
 
@@ -147,12 +142,14 @@ echo "Running (check it with: sudo systemctl status philologic5-webui-loader)"
 # Whether the web server serves it yet
 SERVED=""
 if [ -z "$DRY_RUN" ] && command -v curl > /dev/null; then
-    SERVED=$(curl -s --max-time 5 --retry 5 --retry-delay 1 "$PUBLIC_URL/api/session" | grep -o '"mode": "service"' || true)
+    # From the web server of this machine, under its name (whatever its certificate and DNS)
+    SERVED=$(curl -sk --resolve "$HOST_NAME:443:127.0.0.1" --max-time 5 --retry 5 --retry-delay 1 "$PUBLIC_URL/api/session" |
+        grep -o '"mode": "service"' || true)
 fi
 if [ -n "$SERVED" ]; then
     echo "Your web server serves it at $PUBLIC_URL/"
 else
-    echo "Have the web server of the databases serve it at $PUBLIC_URL/: add, where it serves $HOST over HTTPS,"
+    echo "Have the web server of the databases serve it at $PUBLIC_URL/: add, where it serves them over HTTPS,"
     echo "=== Apache === (sudo a2enmod proxy proxy_http headers), in its <VirtualHost *:443>:"
     echo "    <Location \"$URL_PATH\">"
     echo "        ProxyPass \"$TARGET$URL_PATH\" timeout=300"

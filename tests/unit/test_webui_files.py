@@ -58,7 +58,6 @@ def test_load_command(tmp_path):
         mode="service",
         state_dir=str(tmp_path / "state"),
         database_root=str(tmp_path),
-        url_root="https://example.org/",
         python="/bin/true",  # the runner of the load doesn't run
     )
     jobs = Jobs(settings)

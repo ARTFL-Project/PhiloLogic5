@@ -11,11 +11,17 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
-from philologic.webui_loader.settings import LoaderDisabled, SettingsError, personal_settings, service_settings
+from philologic.webui_loader.settings import (
+    LoaderDisabled,
+    SettingsError,
+    personal_settings,
+    service_settings,
+    web_app_url,
+)
 
 pytestmark = pytest.mark.unit
 
-GLOBAL = 'database_root = "/var/www/html/philologic5"\nurl_root = "https://philologic.example.edu/philologic5/"\n'
+GLOBAL = 'database_root = "/var/www/html/philologic5"\n'
 
 
 @pytest.fixture
@@ -34,21 +40,37 @@ def service(global_config, text):
 
 def test_service_on_the_host_of_the_databases(global_config):
     settings = service(global_config, "")
-    assert settings.public_url == "https://philologic.example.edu/philologic5-webui-loader"
-    assert settings.public_origin == "https://philologic.example.edu"
     assert settings.url_prefix == "/philologic5-webui-loader"
+    # The databases, on the same host, under the prefix of PhiloLogic's install
+    assert settings.databases_url == "/philologic5/" and settings.database_url("frantext") == "/philologic5/frantext/"
     assert settings.bind == "127.0.0.1:8766" and settings.forwarded_allow_ips == ["127.0.0.1"]
     assert settings.allowed_roots == ["/data"]
 
 
-def test_service_keeps_the_port_of_url_root(tmp_path):
-    path = tmp_path / "philologic5.cfg"
-    path.write_text(
-        'database_root = "/var/www/html/philologic5"\nurl_root = "https://philologic.example.edu:8443/philologic5/"\n'
-        'webui_loader_allowed_roots = ["/data"]\n',
-        encoding="utf8",
-    )
-    assert service_settings(str(path)).public_origin == "https://philologic.example.edu:8443"
+def test_no_url_setting(global_config):
+    """No URL to set: the service takes its own from the requests, and a url_root of earlier versions is ignored"""
+    settings = service(global_config, 'url_root = "http://philologic.example.edu/philologic5/"\n')
+    assert settings.databases_url == "/philologic5/"
+    # On your own machine, whose UI is on a port of localhost, no link to databases a web server serves
+    personal = personal_settings(global_config=global_config(""), web_app_config="/nonexistent/gunicorn.conf.py")
+    assert personal.url_prefix == "" and personal.databases_url is None and personal.database_url("frantext") is None
+
+
+@pytest.mark.parametrize(
+    "bind, url",
+    [
+        ('"127.0.0.1:8080"', "http://127.0.0.1:8080/"),  # as on a Mac: gunicorn serves the databases itself
+        ('"0.0.0.0:8000"', "http://localhost:8000/"),
+        ('["unix:/run/philologic/gunicorn.sock", "localhost:9000"]', "http://localhost:9000/"),
+        ('"unix:/var/run/philologic/gunicorn.sock"', None),  # behind a web server, under its prefix
+    ],
+)
+def test_databases_where_gunicorn_serves_them(global_config, tmp_path, bind, url):
+    config = tmp_path / "gunicorn.conf.py"
+    config.write_text(f"import multiprocessing\nbind = {bind}\nworkers = multiprocessing.cpu_count()\n", encoding="utf8")
+    assert web_app_url(str(config)) == url
+    personal = personal_settings(global_config=global_config(""), web_app_config=str(config))
+    assert personal.database_url("frantext") == (url and url + "frantext/")
 
 
 @pytest.mark.parametrize(
@@ -70,17 +92,6 @@ def test_refused(global_config, text, message):
         service(global_config, text)
 
 
-def test_refused_without_https(tmp_path):
-    path = tmp_path / "philologic5.cfg"
-    path.write_text(
-        'database_root = "/var/www/html/philologic5"\nurl_root = "http://philologic.example.edu/philologic5/"\n'
-        'webui_loader_allowed_roots = ["/data"]\n',
-        encoding="utf8",
-    )
-    with pytest.raises(SettingsError, match="HTTPS"):
-        service_settings(str(path))
-
-
 def test_turned_off(global_config):
     path = global_config("webui_loader = False\n")
     with pytest.raises(LoaderDisabled):
@@ -88,7 +99,7 @@ def test_turned_off(global_config):
     with pytest.raises(LoaderDisabled):
         service_settings(path)
     # Accounts can still be managed
-    assert service_settings(path, check=False).public_url == "https://philologic.example.edu/philologic5-webui-loader"
+    assert service_settings(path, check=False).url_prefix == "/philologic5-webui-loader"
 
 
 def test_personal_settings(global_config):

@@ -27,7 +27,6 @@ def uploads(tmp_path):
         mode="service",
         state_dir=str(tmp_path / "state"),
         database_root=str(tmp_path / "dbs"),
-        url_root="https://example.org/",
         upload_dir=str(tmp_path / "uploads"),
         upload_quota=10 * 1024**2,
         max_upload_files=100,

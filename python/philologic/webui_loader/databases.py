@@ -81,7 +81,7 @@ def info(settings, name):
         "name": name,
         "title": title(db_path),
         "path": db_path,
-        "url": settings.url_root.rstrip("/") + "/" + name,
+        "url": settings.database_url(name),
         "owner": user_name(details.st_uid),
         "group": group_name(details.st_gid),
         "group_writable": bool(details.st_mode & stat.S_IWGRP),

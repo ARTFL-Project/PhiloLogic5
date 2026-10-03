@@ -24,7 +24,6 @@ pytestmark = pytest.mark.unit
 
 PORT = 8765
 LOCAL = f"localhost:{PORT}"
-PUBLIC = "https://loader.example.org/philologic5-webui-loader"
 
 
 @pytest.fixture(autouse=True)
@@ -51,7 +50,6 @@ def personal(tmp_path):
         mode="personal",
         state_dir=str(tmp_path / "state"),
         database_root=str(root),
-        url_root="http://localhost/philologic5/",
         bind=f"127.0.0.1:{PORT}",
         token="secret-token",
         static_dir=str(tmp_path / "static"),
@@ -147,10 +145,8 @@ def service(tmp_path):
         mode="service",
         state_dir=str(tmp_path / "state"),
         database_root=str(root),
-        url_root="https://loader.example.org/philologic5/",
         bind="127.0.0.1:8766",
         forwarded_allow_ips=["127.0.0.1"],
-        public_url=PUBLIC,
         allowed_roots=[str(corpus)],
         static_dir=str(tmp_path / "static"),
     )
@@ -218,6 +214,25 @@ def test_https_only(service):
     assert result.status_code == 200
     # HSTS, which applies to the whole host, is up to its web server
     assert "Strict-Transport-Security" not in result.headers
+
+
+def test_origin_of_the_request(service):
+    """The service takes the requests of the pages of the host the browser asked for, whatever it is: as the web
+    server passes it on, in Host (Nginx, with proxy_set_header Host) or X-Forwarded-Host (Apache)"""
+    client, settings, accounts = service
+
+    def login_post(**headers):
+        return client.simulate_post(
+            "/philologic5-webui-loader/api/login", json={"username": "nobody", "password": "x"},
+            headers=https(**headers), protocol="https",
+        ).status_code
+
+    assert login_post(Origin="https://loader.example.org") == 401  # same origin: the login itself is refused
+    assert login_post(Origin="https://evil.example.org") == 403
+    assert login_post(Origin="http://loader.example.org") == 403  # not over HTTPS
+    apache = {"Host": "127.0.0.1:8766", "X-Forwarded-Host": "loader.example.org"}
+    assert login_post(Origin="https://loader.example.org", **apache) == 401
+    assert login_post(Origin="https://127.0.0.1:8766", **apache) == 403
 
 
 def test_prefix_redirects_to_its_directory(service):
