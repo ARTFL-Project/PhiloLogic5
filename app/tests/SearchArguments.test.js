@@ -128,7 +128,7 @@ describe("SearchArguments", () => {
         await flushPromises();
         await nextTick();
 
-        const termCloseBtns = wrapper.findAll("#query-terms-list .close-pill");
+        const termCloseBtns = wrapper.findAll("#query-terms-list .term-chip-remove");
         if (termCloseBtns.length > 0) {
             // Re-run button is rendered v-if="wordListChanged" — should not be present yet
             const rerunBefore = wrapper.findAll("button").filter(b => b.text().includes("rerun") || b.text().includes("Rerun"));
@@ -197,5 +197,70 @@ describe("SearchArguments with approximate search", () => {
         const button = wrapper.find(".term-group-word");
         expect(button.text()).toBe("liberté (27 similar terms)");
         expect(wrapper.text()).not.toContain("libert0");
+    });
+});
+
+describe("SearchArguments terms dialog with the keyboard", () => {
+    async function openDialog() {
+        const http = createMockHttp({
+            "get_term_groups.py": { term_groups: ["libert.*"] },
+            "get_query_terms.py": ["liberty", "liberties", "libertie"],
+        });
+        const pinia = createTestPinia();
+        const config = createTestConfig();
+        const router = createTestRouter({ name: "concordance", path: "/concordance", query: { q: "libert.*", report: "concordance" } });
+        await router.isReady();
+        const store = useMainStore();
+        store.formData = { ...store.formData, q: "libert.*", report: "concordance" };
+        store.description = { start: 1, end: 25, results_per_page: 25, termGroups: [] };
+        const wrapper = mount(SearchArguments, {
+            props: { resultStart: 1, resultEnd: 25 },
+            attachTo: document.body, // for the focus
+            global: {
+                plugins: [pinia, createTestI18n(), router],
+                provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
+                stubs: { BibliographyCriteria: { template: "<div />" } },
+                mocks: { $philoConfig: config, $dbUrl: "/testdb", $scrollTo: vi.fn() },
+            },
+        });
+        await flushPromises();
+        await wrapper.find(".term-group-word").trigger("click");
+        await flushPromises();
+        await nextTick();
+        return wrapper;
+    }
+    const focusedLabel = () => document.activeElement?.getAttribute("aria-label");
+
+    it("opens on its close button, as a labelled dialog", async () => {
+        const wrapper = await openDialog();
+        const dialog = wrapper.find("#query-terms");
+        expect(dialog.attributes("role")).toBe("dialog");
+        expect(wrapper.find(`#${dialog.attributes("aria-labelledby")}`).text()).toBe("Search terms");
+        expect(focusedLabel()).toBe("Close");
+        wrapper.unmount();
+    });
+
+    it("moves between the words with the arrow keys, Home and End", async () => {
+        const wrapper = await openDialog();
+        const buttons = wrapper.findAll(".term-chip-remove");
+        buttons[0].element.focus();
+        await buttons[0].trigger("keydown", { key: "ArrowRight" });
+        expect(focusedLabel()).toBe("Exclude term: liberties");
+        await buttons[1].trigger("keydown", { key: "End" });
+        expect(focusedLabel()).toBe("Exclude term: libertie");
+        await buttons[2].trigger("keydown", { key: "Home" });
+        expect(focusedLabel()).toBe("Exclude term: liberty");
+        wrapper.unmount();
+    });
+
+    it("keeps the focus on the next word when one is removed", async () => {
+        const wrapper = await openDialog();
+        const second = wrapper.findAll(".term-chip-remove")[1];
+        second.element.focus();
+        await second.trigger("click");
+        await nextTick();
+        expect(focusedLabel()).toBe("Exclude term: libertie");
+        expect(wrapper.find("#query-terms [role=status]").text()).toBe("Terms excluded: 1");
+        wrapper.unmount();
     });
 });

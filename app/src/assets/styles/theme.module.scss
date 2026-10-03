@@ -348,6 +348,15 @@ form button:focus-visible,
     box-shadow: 0 0 0 0.25rem rgba(     $button-color, 0.25) !important;
 }
 
+// Close boxes are on the card header's red, where that red ring didn't show: white, inside the button (5.8:1)
+.card .btn.close-box:focus-visible,
+.btn.close-box:focus-visible,
+button.close-box:focus-visible {
+    outline: 2px solid #fff !important;
+    outline-offset: -4px !important;
+    box-shadow: none !important;
+}
+
 // Export colors for JavaScript usage
 :export {
   color: $link-color;
