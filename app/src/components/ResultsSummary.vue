@@ -218,7 +218,6 @@
 </template>
 
 <script setup>
-import { Modal } from "bootstrap";
 import { computed, inject, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
@@ -362,10 +361,6 @@ function getHitListStats() {
 }
 
 function updateDescriptions() {
-    const modalEl = document.getElementById("results-bibliography");
-    if (modalEl) {
-        Modal.getOrCreateInstance(modalEl).hide();
-    }
     buildDescription();
     // For reports that set searching/totalResultsDone (concordance/kwic/bibliography),
     // defer updateTotalResults + getHitListStats until the report response arrives

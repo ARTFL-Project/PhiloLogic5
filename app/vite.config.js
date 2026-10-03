@@ -10,6 +10,13 @@ export default defineConfig({
     test: {
         environment: "jsdom",
         globals: true,
+        // appConfig.json, the database's URL, is written by a load: there is none in a checkout
+        alias: [
+            {
+                find: /^(\.\.\/)+appConfig\.json$/,
+                replacement: fileURLToPath(new URL("./tests/fixtures/appConfig.json", import.meta.url)),
+            },
+        ],
     },
     plugins: [
         vue(),
