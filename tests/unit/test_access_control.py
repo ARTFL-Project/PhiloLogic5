@@ -452,6 +452,6 @@ class TestWebApp:
     @pytest.mark.parametrize("path", ["reports/concordance.py", "scripts/get_total_results.py", "scripts/export_results.py"])
     def test_refused_search(self, client, path):
         """A search the runtime refuses is a 400 with its reason, from every kind of resource."""
-        resp = get(client, f"open/{path}?q=%22la+libert%C3%A9%22+%7C+roi&report=concordance", DENIED)
+        resp = get(client, f"open/{path}?q=%22la+libert%C3%A9%22+%7C+roi&report=concordance&output_format=json", DENIED)
         assert resp.status_code == 400
         assert "quoted phrase" in json.loads(resp.text)["description"]

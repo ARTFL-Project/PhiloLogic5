@@ -51,6 +51,9 @@ class TestBadParameters:
             ("scripts/get_word_property_count.py", {**Q, "word_property": "nothing"}, 400, "no word property"),
             ("reports/navigation.py", {"philo_id": "1 2 0 0 0 0 0 0 999999"}, 404, "No page"),
             ("reports/concordance.py", {"q": "(love|hate)"}, 400, "unmatched parenthesis"),
+            ("scripts/export_results.py", {**Q, "report": "concordance", "output_format": "xml"}, 400, "json or csv"),
+            ("scripts/export_results.py", {**Q, "output_format": "json"}, 400, "can't be exported"),
+            ("scripts/export_results.py", {**Q, "report": "navigation", "output_format": "csv"}, 400, "can't be exported"),
             ("scripts/get_total_results.py", {"q": "(love | hate) NOT war"}, 400, "unmatched parenthesis"),
         ],
     )

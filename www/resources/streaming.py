@@ -88,6 +88,10 @@ class AccessRequestResource:
 # export_results — JSON or CSV export
 # ---------------------------------------------------------------------------
 
+EXPORT_FORMATS = ("json", "csv")
+EXPORT_REPORTS = ("bibliography", "concordance", "kwic", "collocation", "time_series", "aggregation")
+
+
 class ExportResultsResource:
     """Export search results in JSON or CSV format."""
 
@@ -95,6 +99,12 @@ class ExportResultsResource:
         config = req.context.config
         request = req.context.request
         db_path = req.context.db_path
+
+        # Before running the report: another format got a 200 with an empty body, and another report an empty list
+        if request.output_format not in EXPORT_FORMATS:
+            raise BadRequest(f"output_format must be json or csv, not {request.output_format!r}")
+        if request.report not in EXPORT_REPORTS:
+            raise BadRequest(f"The {request.report!r} report can't be exported: only {', '.join(EXPORT_REPORTS)}")
 
         _bibliography_results = resolve(db_path, "bibliography_results", bibliography_results)
         _concordance_results = resolve(db_path, "concordance_results", concordance_results)
