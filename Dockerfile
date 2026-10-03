@@ -15,7 +15,8 @@ SHELL ["/bin/bash", "-c"]
 # Install PhiloLogic (uv, nvm, Node.js and Python are installed by install.sh)
 COPY . /PhiloLogic5
 WORKDIR /PhiloLogic5
-RUN ./install.sh && mkdir -p /var/www/html/philologic
+# Without the secret install.sh makes, which every container of the image would share: docker_entrypoint.sh draws one
+RUN ./install.sh && rm /etc/philologic/philologic5.secret && mkdir -p /var/www/html/philologic
 
 # Configure global variables
 RUN sed -i 's/database_root = None/database_root = "\/var\/www\/html\/philologic\/"/' /etc/philologic/philologic5.cfg && \

@@ -145,6 +145,13 @@ if (philoConfig.valid_config) {
 
     accessAuthorized.value = !philoConfig.access_control;
     if (philoConfig.access_control) {
+        // The server refuses requests once the auth cookie has expired: show the login screen again
+        $http.interceptors.response.use(undefined, (error) => {
+            if (error.response?.status === 403) {
+                accessAuthorized.value = false;
+            }
+            return Promise.reject(error);
+        });
         checkingAccess.value = true;
         $http
             .get(`${getBaseUrl()}/scripts/access_request.py`, {

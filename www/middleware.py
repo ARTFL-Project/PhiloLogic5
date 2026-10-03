@@ -15,7 +15,7 @@ from random import randint
 
 import falcon
 
-from philologic.runtime import WebConfig, WSGIHandler
+from philologic.runtime import WebConfig, WSGIHandler, access_control
 from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.HitWrapper import SHARED_CACHE
 from wsgi_helpers import resolve
@@ -31,6 +31,10 @@ if "PHILOLOGIC_DB_ROOT" not in os.environ and os.path.exists(_CONFIG_FILE):
         os.environ["PHILOLOGIC_DB_ROOT"] = _db_root
 
 PHILOLOGIC_DB_ROOT = os.environ["PHILOLOGIC_DB_ROOT"]
+
+# Scripts an access-controlled database answers whoever asks: the client needs them to show its login screen. So does
+# every resource with a true "public" attribute.
+PUBLIC_SCRIPTS = {"get_web_config"}
 
 
 def is_database_name(part):
@@ -83,14 +87,24 @@ class PhiloDBMiddleware:
             req.env["PHILOLOGIC_DBURL"] = ""
 
     def process_resource(self, req, resp, resource, params):
-        """Resolve per-database WebConfig and WSGIHandler, attach to req.context."""
+        """Resolve per-database WebConfig and WSGIHandler, attach to req.context. Refuse the clients an
+        access-controlled database doesn't let in: those with no auth cookie whose address the access file doesn't
+        allow."""
         if resource is None:
             return
         db_path = req.context.db_path
         _WebConfig = resolve(db_path, "WebConfig", WebConfig)
         _WSGIHandler = resolve(db_path, "WSGIHandler", WSGIHandler)
-        req.context.config = _WebConfig(db_path)
-        req.context.request = _WSGIHandler(req.env, req.context.config)
+        config = req.context.config = _WebConfig(db_path)
+        request = req.context.request = _WSGIHandler(req.env, config)
+        if (
+            config["access_control"]
+            and not getattr(resource, "public", False)
+            and params.get("script_name") not in PUBLIC_SCRIPTS
+            and not request.authenticated
+            and not access_control.is_allowed(req.env, config)
+        ):
+            raise falcon.HTTPForbidden(description="Access to this database is restricted")
 
 
 class CORSMiddleware:

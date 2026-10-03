@@ -2,24 +2,10 @@
 """Parses queries stored in the environ object."""
 
 
-import hashlib
 import urllib.parse
-from http.cookies import SimpleCookie
 
+from philologic.runtime.access_control import is_authenticated
 from philologic.runtime.Query import query_parse, resolve_method
-
-
-def check_cookie_auth(environ, secret):
-    """Validate auth cookie. Returns True if authenticated."""
-    if "HTTP_COOKIE" not in environ:
-        return False
-    cookies = SimpleCookie("".join(environ["HTTP_COOKIE"].split()))
-    if "hash" not in cookies or "timestamp" not in cookies:
-        return False
-    h = hashlib.md5()
-    h.update(cookies["timestamp"].value.encode("utf8"))
-    h.update(secret.encode("utf8"))
-    return cookies["hash"].value == h.hexdigest()
 
 
 def expand_approximate_query(request, config):
@@ -61,7 +47,7 @@ class WSGIHandler(object):
         self.query_string = environ["QUERY_STRING"]
         self.db_path = environ.get("PHILOLOGIC_DBURL", "")
 
-        self.authenticated = check_cookie_auth(environ, config.db_locals.secret)
+        self.authenticated = is_authenticated(environ, config)
         self.cgi = urllib.parse.parse_qs(self.query_string, keep_blank_values=True)
         self.defaults = {"results_per_page": "25", "start": "0", "end": "0"}
 

@@ -251,6 +251,15 @@ else
     echo "Please delete and rerun the install script to avoid incompatibilities\n"
 fi
 
+# The installation's secret, which signs the auth cookies of databases with access control: kept across reinstalls,
+# readable by the web server's user only
+SECRET_FILE=/etc/philologic/philologic5.secret
+if ! sudo test -s "$SECRET_FILE"; then
+    (umask 077 && /var/lib/philologic5/philologic_env/bin/python3 -c "import secrets; print(secrets.token_hex(32))" | sudo tee "$SECRET_FILE" > /dev/null)
+fi
+sudo chown "$WEB_USER:$WEB_GROUP" "$SECRET_FILE"
+sudo chmod 600 "$SECRET_FILE"
+
 # The directory for search results caches (hitlists), where the web server's user writes
 HITLIST_DIR=$(/var/lib/philologic5/philologic_env/bin/python3 -c "from philologic.runtime.hitlist_dir import global_hitlist_root; print(global_hitlist_root())")
 if [ ! -d "$HITLIST_DIR" ]; then
