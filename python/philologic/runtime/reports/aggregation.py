@@ -7,6 +7,7 @@ import io
 import numpy as np
 
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.sql_validation import validate_column, validate_object_level, validate_request_column
 
 OBJ_DICT = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6, "word": 7}
@@ -36,6 +37,8 @@ def aggregation_by_field(request, config):
 
     group_by = validate_request_column(request.group_by, db)
     field_obj = __get_field_config(group_by, config)
+    if not field_obj:
+        raise BadRequest(f"Results can't be grouped by {group_by}: aggregation_config has no entry for it")
     metadata_type = validate_object_level(field_obj["object_level"])
 
     metadata_fields_needed = {group_by, "philo_id", f"philo_{metadata_type}_id"}
@@ -46,6 +49,10 @@ def aggregation_by_field(request, config):
         for citation in field_obj["break_up_field_citation"]:
             if citation["field"] in db.locals["metadata_fields"]:
                 metadata_fields_needed.add(validate_column(citation["field"], db))
+    # and the search form's, which the client's links to one object narrow by (objects can share a title)
+    for field in config.metadata:
+        if field in db.locals["metadata_fields"]:
+            metadata_fields_needed.add(validate_column(field, db))
 
     hits.finish()
     id_counts, total_results = __expand_hits_counted(hits, metadata_type)
@@ -140,11 +147,12 @@ def aggregation_by_field(request, config):
     }
 
 
-def aggregation_to_csv(results, break_up_field_name=""):
+def aggregation_to_csv(results, break_up_field_name="", group_by=""):
     """Convert aggregation results to CSV string.
 
     Each breakdown entry gets its own row. Rows from the same group
-    are contiguous, with the group-level metadata repeated.
+    are contiguous, with the group-level metadata repeated: with a breakdown, only the group's own field (group_by),
+    as its other metadata are those of the group's first object, and each row has its breakdown entry's.
     """
     if not results:
         return ""
@@ -158,6 +166,8 @@ def aggregation_to_csv(results, break_up_field_name=""):
         for result in results:
             for sub in result["break_up_field"]:
                 breakdown_keys.update(k for k in sub["metadata_fields"].keys() if k not in ("field_name", "philo_id"))
+        if group_by in group_keys:
+            group_keys = [group_by]
         breakdown_keys = sorted(breakdown_keys - set(group_keys))
         fieldnames = group_keys + ["group_count"] + breakdown_keys + ["count"]
     else:

@@ -126,7 +126,7 @@ class ExportResultsResource:
         elif request.report == "aggregation":
             report_data = _aggregation_by_field(request, config)
             results = report_data["results"]
-            csv_output = aggregation_to_csv(results, report_data.get("break_up_field", ""))
+            csv_output = aggregation_to_csv(results, report_data.get("break_up_field", ""), request.group_by)
 
         if request.output_format == "json":
             resp.content_type = "application/json; charset=UTF-8"

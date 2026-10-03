@@ -55,7 +55,8 @@
                                     <citations :citation="buildCitationObject(
                                         statsConfig.break_up_field,
                                         statsConfig.break_up_field_citation,
-                                        value.metadata_fields
+                                        value.metadata_fields,
+                                        true
                                     )"></citations>
                                 </div>
                             </div>
@@ -163,13 +164,19 @@ function buildStatResults(results) {
         result.citation = buildCitationObject(
             groupedByField.value,
             statsConfig.value.field_citation,
-            result.metadata_fields
+            result.metadata_fields,
+            groupedByField.value === "title" // the server groups titles by object, not by value
         );
         return result;
     });
 }
 
-function buildCitationObject(fieldToLink, citationObject, metadataFields) {
+// The concordance of a group, or of one object (singleObject): with that object's values of the search form's
+// fields too, as objects can share a title ("Histoire de France", by Bainville and by Michelet). A value that is
+// empty (the group N/A) is NULL.
+function buildCitationObject(fieldToLink, citationObject, metadataFields, singleObject = false) {
+    const quoted = (value) => (typeof value === "number" ? `${value}` : `"${value}"`);
+    const valueOrNull = (value) => (value == null || value.length === 0 ? "NULL" : quoted(value));
     const out = [];
     for (const citation of citationObject) {
         let label = metadataFields[citation.field];
@@ -178,20 +185,21 @@ function buildCitationObject(fieldToLink, citationObject, metadataFields) {
         }
         if (citation.field === fieldToLink) {
             const queryParams = { ...formData.value, start: "0", end: "25" };
+            queryParams[fieldToLink] = valueOrNull(label);
             if (label == null || label.length === 0) {
-                // Should be NULL, but that's broken in the philo lib
-                queryParams[fieldToLink] = "";
                 label = t("common.na");
-            } else {
-                queryParams[fieldToLink] = `"${label}"`;
             }
             if (fieldToLink !== groupedByField.value) {
-                queryParams[groupedByField.value] = `"${metadataFields[groupedByField.value]}"`;
+                queryParams[groupedByField.value] = valueOrNull(metadataFields[groupedByField.value]);
             }
-            // workaround for broken NULL searches
-            const href = queryParams[fieldToLink].length
-                ? paramsToRoute({ ...queryParams, report: "concordance" })
-                : "";
+            if (singleObject) {
+                for (const field of philoConfig.metadata) {
+                    if (field !== fieldToLink && field !== groupedByField.value && metadataFields[field]) {
+                        queryParams[field] = quoted(metadataFields[field]);
+                    }
+                }
+            }
+            const href = paramsToRoute({ ...queryParams, report: "concordance" });
             out.push({ ...citation, href, label });
         } else {
             out.push({ ...citation, href: "", label });

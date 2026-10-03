@@ -271,7 +271,7 @@ const descriptionStart = ref(1);
 const descriptionEnd = ref(formData.value.results_per_page);
 const statsDescription = ref([]);
 const hitlistStatsDone = ref(false);
-const groupByLabel = ref(
+const groupByLabel = computed(() =>  // of the current grouping, which the form can change
     route.query.group_by in philoConfig.metadata_aliases
         ? philoConfig.metadata_aliases[route.query.group_by]
         : route.query.group_by
