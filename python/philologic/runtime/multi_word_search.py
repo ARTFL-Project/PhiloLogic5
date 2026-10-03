@@ -169,6 +169,56 @@ def _find_common_sentences(hits_list, cooc_slice=6):
     return result
 
 
+def _groups_overlap(word_groups):
+    """Whether a word of the text can be a hit of two query groups: only then can an unordered search make the same hit
+    twice (from the same words taken by the groups in another order). In order, the position order decides."""
+    return any(set(a) & set(b) for i, a in enumerate(word_groups) for b in word_groups[i + 1:])
+
+
+@numba.jit(nopython=True, cache=True, nogil=True)
+def _drop_repeated_rows(output, start, end):
+    """Remove from output[start:end] the rows equal to an earlier one of that range, keeping the order of the others;
+    return the range's new end. By sorting a hash of the rows: O(n log n), where comparing each row with all earlier
+    ones took hours for a sentence with hundreds of hits of each query group."""
+    n = end - start
+    if n < 2:
+        return end
+    n_cols = output.shape[1]
+    hashes = np.empty(n, dtype=np.uint64)
+    for i in range(n):
+        h = np.uint64(14695981039346656037)  # FNV-1a
+        for c in range(n_cols):
+            h = (h ^ np.uint64(output[start + i, c])) * np.uint64(1099511628211)
+        hashes[i] = h
+    order = np.argsort(hashes, kind="mergesort")  # stable: rows of equal hash in their order
+    keep = np.ones(n, dtype=np.bool_)
+    i = 0
+    while i < n:
+        j = i + 1
+        while j < n and hashes[order[j]] == hashes[order[i]]:
+            j += 1
+        for a in range(i, j):
+            if not keep[order[a]]:
+                continue
+            for b in range(a + 1, j):
+                if keep[order[b]]:
+                    same = True
+                    for c in range(n_cols):
+                        if output[start + order[a], c] != output[start + order[b], c]:
+                            same = False
+                            break
+                    if same:
+                        keep[order[b]] = False
+        i = j
+    kept = start
+    for i in range(n):
+        if keep[i]:
+            if kept != start + i:
+                output[kept] = output[start + i]
+            kept += 1
+    return kept
+
+
 @numba.jit(nopython=True, cache=True, nogil=True)
 def _phrases_together(all_hits, sent_starts, indices, positions, phrase_next, n_groups):
     """Whether the words of each phrase of a combination of hits are next to each other, in order, in the same
@@ -187,7 +237,7 @@ def _phrases_together(all_hits, sent_starts, indices, positions, phrase_next, n_
 
 @numba.jit(nopython=True, cache=True, nogil=True)
 def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sentences,
-                            cooc_order, mapping_order, max_distance, exact_distance, phrase_next, phrase_words):
+                            cooc_order, mapping_order, max_distance, exact_distance, phrase_next, phrase_words, dedup):
     """Process N word groups using Numba with odometer-style iteration.
 
     Args:
@@ -202,6 +252,7 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
         exact_distance: If True, distance must equal max_distance
         phrase_next: For each group, whether the next one is the next word of the same phrase (n_groups,), or None
         phrase_words: The number of words of the phrases after their first: a phrase is one word for the distance
+        dedup: Whether the same hit can come out twice (see _groups_overlap)
 
     Returns:
         Output array of valid hits
@@ -246,8 +297,7 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
         if total_combos == 0:
             continue
 
-        # Track seen outputs for deduplication within sentence
-        seen_start = out_idx
+        sentence_start = out_idx
 
         # Reset indices for odometer
         for g in range(n_groups):
@@ -337,21 +387,8 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
                     row[col + 1] = all_hits[hit_idx, 8]
                     col += 2
 
-                # Check for duplicate within this sentence
-                is_dup = False
-                for k in range(seen_start, out_idx):
-                    match = True
-                    for m in range(out_cols):
-                        if output[k, m] != row[m]:
-                            match = False
-                            break
-                    if match:
-                        is_dup = True
-                        break
-
-                if not is_dup:
-                    output[out_idx] = row
-                    out_idx += 1
+                output[out_idx] = row
+                out_idx += 1
 
             # Increment odometer
             for g in range(n_groups - 1, -1, -1):
@@ -360,11 +397,14 @@ def _process_n_groups_numba(all_hits, all_sizes, group_offsets, n_groups, n_sent
                     break
                 indices[g] = 0
 
+        if dedup:
+            out_idx = _drop_repeated_rows(output, sentence_start, out_idx)
+
     return output[:out_idx]
 
 
 def _process_n_groups(hits_list, sizes_list, cooc_order, mapping_order,
-                       max_distance, exact_distance, n_groups, phrase_next, phrase_words):
+                       max_distance, exact_distance, n_groups, phrase_next, phrase_words, dedup):
     """Process N word groups (general case) - prepares data for Numba kernel."""
     n_sentences = len(sizes_list[0])
 
@@ -389,7 +429,7 @@ def _process_n_groups(hits_list, sizes_list, cooc_order, mapping_order,
     # Call Numba function - returns numpy array directly
     return _process_n_groups_numba(
         all_hits, all_sizes, group_offsets, n_groups, n_sentences,
-        cooc_order, mapping_order_arr, max_distance, exact_distance, phrase_next, phrase_words
+        cooc_order, mapping_order_arr, max_distance, exact_distance, phrase_next, phrase_words, dedup
     )
 
 
@@ -546,7 +586,7 @@ def _phrase_match_doc(rare_hits, all_doc_hits, group_offsets, group_sizes,
 
 @numba.jit(nopython=True, cache=True, nogil=True)
 def _cooc_match_doc_two_groups(w1_hits, w2_hits, cooc_slice,
-                                cooc_order, max_distance, exact_distance):
+                                cooc_order, max_distance, exact_distance, dedup):
     """Find co-occurring pairs of two word groups within the same text object in one document.
 
     Computes sentence boundaries for the smaller group, then binary-searches
@@ -559,6 +599,7 @@ def _cooc_match_doc_two_groups(w1_hits, w2_hits, cooc_slice,
         cooc_order: Whether group 0 must precede group 1
         max_distance: Max word distance (0=no limit)
         exact_distance: If True, distance must equal max_distance
+        dedup: Whether the same pair can come out twice (see _groups_overlap)
 
     Returns:
         Output array (M x 11, uint32) of valid co-occurrence pairs
@@ -696,22 +737,6 @@ def _cooc_match_doc_two_groups(w1_hits, w2_hits, cooc_slice,
                             first_hit = scan_hits[si]
                             second_hit = search_hits[sj]
 
-                    # Check for duplicate within this sentence
-                    is_dup = False
-                    for k in range(sent_output_start, out_idx):
-                        match = True
-                        for c in range(9):
-                            if output[k, c] != first_hit[c]:
-                                match = False
-                                break
-                        if match:
-                            if output[k, 9] == second_hit[7] and output[k, 10] == second_hit[8]:
-                                is_dup = True
-                                break
-                        # Already not matching, continue
-                    if is_dup:
-                        continue
-
                     # Grow output if needed
                     if out_idx >= max_out:
                         max_out *= 2
@@ -726,6 +751,9 @@ def _cooc_match_doc_two_groups(w1_hits, w2_hits, cooc_slice,
                     output[out_idx, 9] = second_hit[7]
                     output[out_idx, 10] = second_hit[8]
                     out_idx += 1
+
+            if dedup:
+                out_idx = _drop_repeated_rows(output, sent_output_start, out_idx)
 
         s = s_end
 
@@ -985,6 +1013,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
     phrase_words = int(phrase_next.sum())
     if not phrase_words:
         phrase_next = None
+    dedup = not cooc_order and _groups_overlap(word_groups)
 
     # Keep transaction open for the entire processing to use zero-copy views
     with lmdb_env(f"{db_path}/words.lmdb") as env, env.begin(buffers=True) as txn:
@@ -1052,11 +1081,11 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                         if rare_idx == 0:
                             result = _cooc_match_doc_two_groups(
                                 rare_doc, common_doc, cooc_slice,
-                                cooc_order, max_distance, exact_distance)
+                                cooc_order, max_distance, exact_distance, dedup)
                         else:
                             result = _cooc_match_doc_two_groups(
                                 common_doc, rare_doc, cooc_slice,
-                                cooc_order, max_distance, exact_distance)
+                                cooc_order, max_distance, exact_distance, dedup)
                         if len(result) > 0:
                             output_file.write(result.tobytes())
                             if not flushed:
@@ -1104,11 +1133,11 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                         if rare_idx == 0:
                             result = _cooc_match_doc_two_groups(
                                 rare_doc, common_doc, cooc_slice,
-                                cooc_order, max_distance, exact_distance)
+                                cooc_order, max_distance, exact_distance, dedup)
                         else:
                             result = _cooc_match_doc_two_groups(
                                 common_doc, rare_doc, cooc_slice,
-                                cooc_order, max_distance, exact_distance)
+                                cooc_order, max_distance, exact_distance, dedup)
                         if len(result) > 0:
                             output_file.write(result.tobytes())
                             if not flushed:
@@ -1185,11 +1214,11 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
                         if rare_idx == 0:
                             result = _cooc_match_doc_two_groups(
                                 rare_doc, common_doc, cooc_slice,
-                                cooc_order, max_distance, exact_distance)
+                                cooc_order, max_distance, exact_distance, dedup)
                         else:
                             result = _cooc_match_doc_two_groups(
                                 common_doc, rare_doc, cooc_slice,
-                                cooc_order, max_distance, exact_distance)
+                                cooc_order, max_distance, exact_distance, dedup)
                         if len(result) > 0:
                             output_file.write(result.tobytes())
                             if not flushed:
@@ -1229,7 +1258,7 @@ def _search_two_groups_batched(db_path, hitlist_filename, word_groups, overflow_
 
                         result = _process_n_groups(
                             hits_list, sizes_list, cooc_order, mapping_order,
-                            max_distance, exact_distance, n_groups, phrase_next, phrase_words
+                            max_distance, exact_distance, n_groups, phrase_next, phrase_words, dedup
                         )
 
                         if len(result) > 0:
