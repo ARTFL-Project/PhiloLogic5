@@ -9,7 +9,8 @@ import sys
 from unidecode import unidecode
 
 from . import HitList
-from .QuerySyntax import group_terms, parse_date_query, parse_query
+from .exceptions import BadRequest
+from .QuerySyntax import group_terms, parse_date_query, parse_query, quoted_text
 from .sql_validation import validate_column, validate_sort_order
 
 os.environ["PATH"] += ":/usr/local/bin/"
@@ -245,7 +246,7 @@ def expand_grouped_query(grouped, norm_path, ascii_conversion):
                 norm_term = token.lower()
                 if ascii_conversion is True:
                     norm_term = unidecode(norm_term)
-                expanded_terms = metadata_pattern_search(norm_term, norm_path)
+                expanded_terms = metadata_pattern_search(norm_term, norm_path, ascii_conversion)
                 if expanded_terms:
                     expanded_tokens = [("QUOTE", '"' + e + '"') for e in expanded_terms]
                     fully_expanded_tokens = []
@@ -271,94 +272,56 @@ def expand_grouped_query(grouped, norm_path, ascii_conversion):
     return expanded
 
 
+def _range_bounds(kind, value, column, db):
+    """The bounds of a range: "1700-1750", "-1750" or "1700-" (filled with the column's lowest or highest value),
+    negative years too ("-500--400"), or a date range "x<=>y". BadRequest for anything else ("1789-07-14")."""
+    if kind == "DATE_RANGE":
+        bounds = value.split("<=>")
+    else:
+        match = re.fullmatch(r"(-?\d*)-(-?\d*)", value) or re.fullmatch(r"([^-]*)-([^-]*)", value)
+        bounds = list(match.groups()) if match else []
+    if len(bounds) != 2:
+        raise BadRequest(f"{value}: a range is two values, from-to, as 1700-1750")
+    for i, function in ((0, "min"), (1, "max")):
+        if not bounds[i]:
+            cursor = db.dbh.cursor()
+            cursor.execute(f"select {function}({column}) from toms")
+            bounds[i] = str(cursor.fetchone()[0])
+    return bounds
+
+
 def make_grouped_sql_clause(expanded, column, db):
-    """Make SQL clauses
+    """The SQL clause for the groups of a metadata value, which must all match: each group the OR of its ranges, its
+    values and NULL, or with NOT none of them (which, as in SQL, leaves out the objects with no value).
 
     Note: column is expected to be pre-validated by validate_column() in query_lowlevel()
     before being passed to this function, ensuring SQL injection protection.
     """
-    clauses = ""
     esc = escape_sql_string
-    first_group = True
+    clauses = []
     for group in expanded:
-        clause = ""
-        neg = False
-        has_null = False
-        first_token, first_value = group[0]
-        if first_token == "NOT":
-            neg = True
-            if len(group) > 1:
-                second_token, second_value = group[1]
-                if second_token in ("RANGE", "DATE_RANGE"):
-                    if first_token == "RANGE":
-                        lower, upper = second_value.split("-")
-                    else:
-                        lower, upper = second_value.split("<=>")
-                    clause += f"({column} < {esc(lower)} OR {column} > {esc(upper)})"
-                    if first_group:
-                        first_group = False
-                        clauses += clause
-                    else:
-                        clauses += f"AND {clause}"
-                    continue
-            clause += f"{column} NOT IN ("
-        else:
-            if first_token in ("RANGE", "DATE_RANGE"):
-                if first_token == "RANGE":
-                    lower, upper = first_value.split("-")
-                else:
-                    lower, upper = first_value.split("<=>")
-                if not lower:
-                    c = db.dbh.cursor()
-                    c.execute(f"select min({column}) from toms")
-                    lower = str(c.fetchone()[0])
-                if not upper:
-                    c = db.dbh.cursor()
-                    c.execute(f"select max({column}) from toms")
-                    upper = str(c.fetchone()[0])
-                clause += f"({column} >= {esc(lower)} AND {column} <= {esc(upper)})"
-                if first_group:
-                    first_group = False
-                    clauses += clause
-                else:
-                    clauses += f"AND {clause}"
-                continue
-            clause += f"{column} IN ("
-        # if we don't have a range, we have something that we can evaluate
-        # as an exact IN/NOT IN expression
-        first_value = True
-        for kind, token in group:
-            if kind == "OR" or kind == "NOT":
-                continue
-            if kind == "NULL":
-                #                clause += "NULL"
-                has_null = True  # this is a hack--NULL is both in the IN clause, where it is ineffectual
-                continue
-            if first_value:
-                first_value = False
-            else:
-                clause += ", "
-            if kind == "QUOTE":
-                clause += esc(token[1:-1])
-                # but harmless, as well was its own clause below.  Fix later, if possible.
-            if kind == "DATE":
-                clause += esc(token)
-        clause += ")"
-        if has_null:
-            if not neg:
-                clause += "OR %s IS NULL" % column
-            else:
-                clause += "AND %s IS NOT NULL" % column
-        if first_group:
-            first_group = False
-            clauses += "(%s)" % clause
-        else:
-            clauses += " AND (%s)" % clause
-    return "(%s)" % clauses
+        negated = group[0][0] == "NOT"
+        alternatives, values = [], []
+        for kind, token in group[1:] if negated else group:
+            if kind in ("RANGE", "DATE_RANGE"):
+                lower, upper = _range_bounds(kind, token, column, db)
+                alternatives.append(f"({column} >= {esc(lower)} AND {column} <= {esc(upper)})")
+            elif kind == "QUOTE":
+                values.append(esc(quoted_text(token)))
+            elif kind == "DATE":
+                values.append(esc(token))
+            elif kind == "NULL":
+                alternatives.append(f"{column} IS NULL")
+        if values or not alternatives:
+            alternatives.insert(0, f"{column} IN ({', '.join(values)})")
+        clause = " OR ".join(alternatives)
+        clauses.append(f"NOT ({clause})" if negated else f"({clause})")
+    return "(%s)" % " AND ".join(clauses)
 
 
-def metadata_pattern_search(term, path):
-    """Find metadata values containing term as a word, using LMDB index."""
+def metadata_pattern_search(term, path, ascii_conversion=True):
+    """Find metadata values containing term as a word, using LMDB index. term is normalized (lowercase, and with
+    ascii_conversion unidecoded), as the index's words are."""
     if isinstance(term, bytes):
         term = term.decode("utf-8", errors="replace")
 
@@ -384,7 +347,8 @@ def metadata_pattern_search(term, path):
     common = sets[0]
     for s in sets[1:]:
         common &= s
-    return [v for v in common if term in v.lower()]
+    # Compared normalized, as term is: "qu’en" (unidecoded to "qu'en") is in "Qu’en dira-t-on"
+    return [v for v in common if term in (unidecode(v.lower()) if ascii_conversion else v.lower())]
 
 
 def escape_sql_string(s):

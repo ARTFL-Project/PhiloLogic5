@@ -17,7 +17,7 @@ patterns = [
     ("RANGE", r"\d+\-\Z"),
     ("RANGE", r"\-\d+\Z"),
     ("NULL", r"NULL"),
-    ("TERM", r'[^\-|"]+'),
+    ("TERM", r'[^|"]+'),  # with hyphens: "Rousseau, Jean-J" is one name being typed
 ]
 
 accented_roman_chars = re.compile(r"[\u00c0-\u0174]")
@@ -67,20 +67,23 @@ def format_query(q, field, db):
         if db.locals.ascii_conversion is True:
             norm_tok = unidecode(norm_tok)
 
-        safe_token = re_stdlib.escape(token.lower())
         safe_norm_tok = re_stdlib.escape(norm_tok).encode("utf-8")
-
-        matches = metadata_pattern_search(
-            safe_norm_tok, db.locals.db_path + "/data/frequencies/normalized_%s_frequencies" % field
-        )
-
-        substr_token = safe_token.lower()
-        exact_matches = exact_word_pattern_search(
-            substr_token + ".*", db.locals.db_path + "/data/frequencies/", field, label, db.locals.ascii_conversion
-        )
-        for m in exact_matches:
-            if m not in matches:
-                matches.append(m)
+        words = re_stdlib.findall(r"\w+", norm_tok)
+        if len(words) > 1:
+            matches = values_with_words(words, field, db)
+        else:
+            matches = metadata_pattern_search(
+                safe_norm_tok, db.locals.db_path + "/data/frequencies/normalized_%s_frequencies" % field,
+                db.locals.ascii_conversion,
+            )
+            # by the normalized token, as the index's words are: "émi" finds "Émile"
+            exact_matches = exact_word_pattern_search(
+                re_stdlib.escape(norm_tok) + ".*", db.locals.db_path + "/data/frequencies/", field, label,
+                db.locals.ascii_conversion,
+            )
+            for m in exact_matches:
+                if m not in matches:
+                    matches.append(m)
         matches = highlighter(matches, token, db.locals.ascii_conversion)
         for m in matches:
             if label == "QUOTE_S":
@@ -91,6 +94,21 @@ def format_query(q, field, db):
                 output_string.append(prefix + m)
 
     return output_string
+
+
+def values_with_words(words, field, db, max_results=100):
+    """The values of field with all of words (normalized), the last one as a beginning: "victor hu" suggests
+    "Hugo, Victor, 1802-1885.", where only the last word counted."""
+    from philologic.runtime.term_expansion import metadata_word_lookup
+
+    *complete, last = words
+    values = set(metadata_word_lookup(db.path, field, complete[0]))
+    for word in complete[1:]:
+        values &= set(metadata_word_lookup(db.path, field, word))
+    normalize = (lambda v: unidecode(v.lower())) if db.locals.ascii_conversion is True else str.lower
+    return sorted(v for v in values if any(w.startswith(last) for w in re_stdlib.findall(r"\w+", normalize(v))))[
+        :max_results
+    ]
 
 
 def parse_query(qstring):
