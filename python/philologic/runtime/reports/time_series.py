@@ -205,7 +205,7 @@ def generate_time_series(request, config):
     for i, (range_start, date_range) in enumerate(date_ranges):
         params = {"report": "concordance", "start": "0", "end": "0"}
         params[year_field] = date_range
-        url = make_absolute_query_link(config, request, **params)
+        url = make_absolute_query_link(config, request, script_name="/concordance", **params)
         absolute_count[str(range_start)] = {
             "label": range_start,
             "count": int(bin_counts[i]),

@@ -33,6 +33,8 @@ from philologic.runtime.DB import DB
 from philologic.runtime.HitWrapper import ObjectWrapper
 from wsgi_helpers import resolve
 
+TAGS = re.compile(r"<[^>]+>")
+
 
 # ---------------------------------------------------------------------------
 # access_request — auth endpoint with Set-Cookie headers
@@ -129,6 +131,8 @@ class ExportResultsResource:
             csv_output = aggregation_to_csv(results, report_data.get("break_up_field", ""), request.group_by)
 
         if request.output_format == "json":
+            if filter_html and request.report in ("concordance", "kwic"):  # plain text, as in the CSV
+                results = [{**result, "context": TAGS.sub("", result["context"]).strip()} for result in results]
             resp.content_type = "application/json; charset=UTF-8"
             resp.data = orjson.dumps(results)
         elif request.output_format == "csv":

@@ -91,7 +91,7 @@ const store = useMainStore();
 const { formData } = storeToRefs(store);
 
 function getResults(format, filterHtml, event) {
-    const clickedButton = event ? event.target : null;
+    const clickedButton = event ? event.currentTarget : null;  // not its icon
     if (!clickedButton) return;
 
     clickedButton.disabled = true;
@@ -109,7 +109,8 @@ function getResults(format, filterHtml, event) {
         )
         .then((response) => {
             let text = "";
-            const filename = `${paramsToUrlString({ ...formData.value })}.${format}`;
+            const query = (formData.value.q || "").replace(/[^\p{L}\p{N}]+/gu, "_").replace(/^_+|_+$/g, "").slice(0, 50);
+            const filename = `${[formData.value.report, query].filter(Boolean).join("_")}.${format}`;
             if (format == "json") text = JSON.stringify(response.data);
             else if (format == "csv") text = response.data;
 

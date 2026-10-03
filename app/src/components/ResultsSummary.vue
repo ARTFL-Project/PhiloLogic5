@@ -13,22 +13,8 @@
                         {{ $t("resultsSummary.exportResults") }}
                     </button>
 
-                    <div class="modal fade" tabindex="-1" id="export-modal" role="dialog"
-                        aria-labelledby="export-modal-header">
-                        <div class="modal-dialog" role="document">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h2 class="modal-title" id="export-modal-header">{{
-                                        $t('resultsSummary.exportResults')
-                                    }}</h2>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"
-                                        :aria-label="$t('common.close')"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <export-results></export-results>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="modal fade" tabindex="-1" id="export-modal">
+                        <export-results></export-results>
                     </div>
 
                     <search-arguments class="pt-4" :result-start="descriptionStart"
@@ -396,6 +382,10 @@ function updateDescriptions() {
 function switchReport(reportName) {
     formData.value.report = reportName;
     formData.value.results_per_page = 25;
+    if (formData.value.end) {
+        // the same first result, on a page of 25
+        formData.value.end = String(Math.max(parseInt(formData.value.start) || 0, 1) + 24);
+    }
     router.push(paramsToRoute({ ...formData.value }));
 }
 
