@@ -1,5 +1,6 @@
 from philologic.runtime.Query import split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
+from philologic.runtime.term_expansion import REGEX_EXPANSION_CAP, cut_terms
 
 def get_term_groups(request, config):
     if not request["q"]:
@@ -22,4 +23,16 @@ def get_term_groups(request, config):
                 term_group += f" {term} "
         term_group = term_group.strip()
         term_groups.append(term_group)
-    return {"term_groups": term_groups, "original_query": request.original_q}
+    # The terms the search expanded to only REGEX_EXPANSION_CAP word forms, which the results summary says
+    cut = cut_terms(
+        all_groups,
+        config.db_path + "/data/frequencies/normalized_word_frequencies",
+        config.db_locals["ascii_conversion"],
+        config.db_locals["lowercase_index"],
+    )
+    return {
+        "term_groups": term_groups,
+        "original_query": request.original_q,
+        "cut_terms": [{"term": term, "not": negated} for term, negated in cut],
+        "expansion_cap": REGEX_EXPANSION_CAP,
+    }

@@ -19,6 +19,15 @@ from philologic.runtime.QuerySyntax import quoted_text
 # Flat files (in frequencies/) that feed word_forms.lmdb
 _FORMS_FLAT_FILES = ("lemmas", "word_attributes", "lemma_word_attributes")
 
+# A regex with no literal start scans the whole word index: it expands to this many word forms at most
+REGEX_EXPANSION_CAP = 10000
+
+
+class Forms(list):
+    """The word forms a term expands to. cut is True when a cap left some out."""
+
+    cut = False
+
 
 def _norm(token: str, lowercase: bool = True) -> str:
     if lowercase:
@@ -227,16 +236,16 @@ def _lmdb_expand_term(txn, norm_prefix: bytes, pattern_str: str | None = None,
     at their start. If form_pattern is given, keeps the original forms it matches whole (for quoted terms, which
     are accent-sensitive).
     When norm_prefix is empty, scans the whole DB filtered by pattern_str;
-    max_results defaults to 10000 in that case to cap unbounded full-DB scans.
-    max_results: stop after collecting that many forms (0 = unlimited).
+    max_results defaults to REGEX_EXPANSION_CAP in that case to cap unbounded full-DB scans.
+    max_results: stop after collecting that many forms (0 = unlimited). The Forms returned are cut if more matched.
     """
     if not norm_prefix and not pattern_str and not form_pattern:
-        return []
+        return Forms()
     form_match = re.compile(form_pattern).fullmatch if form_pattern else None
     if not norm_prefix and max_results == 0:
-        max_results = 10000
+        max_results = REGEX_EXPANSION_CAP
     match = _matcher(pattern_str, prefix_match)
-    results: list[str] = []
+    results = Forms()
     cursor = txn.cursor()
     try:
         if norm_prefix:
@@ -253,9 +262,10 @@ def _lmdb_expand_term(txn, norm_prefix: bytes, pattern_str: str | None = None,
                 for form in bytes(cursor.value()).decode("utf-8").split("\x00"):
                     if form_match is not None and not form_match(form):
                         continue
-                    results.append(form)
-                    if max_results and len(results) >= max_results:
+                    if max_results and len(results) >= max_results:  # one more than the cap allows
+                        results.cut = True
                         return results
+                    results.append(form)
             if not cursor.next():
                 break
     finally:
@@ -373,6 +383,38 @@ def _expand_exclude(kind: str, token: str, txn, ascii_conversion: bool, lowercas
             return set(_lemma_boundary_filter(kind, keys))
         return {token}
     return set()
+
+
+def _cap_applies(kind: str, token: str, ascii_conversion: bool, lowercase: bool) -> bool:
+    """Whether REGEX_EXPANSION_CAP can cut the expansion of a token: a regex with no literal start."""
+    if kind in ("TERM", "RANGE") and ascii_conversion:
+        pattern = token
+    elif kind == "QUOTE":
+        pattern = quoted_text(token)
+    else:
+        return False
+    return _is_regex_pattern(pattern) and not _normalize_pattern(pattern, lowercase)[0]
+
+
+def cut_terms(split, freq_file, ascii_conversion, lowercase=True) -> list[tuple[str, bool]]:
+    """The terms of the query groups split whose expansion REGEX_EXPANSION_CAP cut, as expand_query_not expands them,
+    each with whether it follows a NOT. A cut term misses some of its forms; a cut NOT excludes too few."""
+    tokens = []
+    for group in split:
+        negated = False
+        for kind, token in group:
+            if kind == "NOT":
+                negated = True
+            elif _cap_applies(kind, token, ascii_conversion, lowercase):
+                tokens.append((kind, token, negated))
+    if not tokens:  # no scan: the usual case
+        return []
+    cut = []
+    with lmdb_env(freq_file + ".lmdb") as env, env.begin(buffers=True) as txn:
+        for kind, token, negated in tokens:
+            if getattr(_expand_positive(kind, token, txn, ascii_conversion, lowercase), "cut", False):
+                cut.append((token, negated))
+    return cut
 
 
 def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True):

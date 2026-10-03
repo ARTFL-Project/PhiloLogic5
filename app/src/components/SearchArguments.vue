@@ -72,6 +72,13 @@
                         }}</b>
                 </div>
             </div>
+            <!-- Terms that matched more word forms than the search takes (regexes with no literal start) -->
+            <div class="alert alert-warning py-1 px-2 my-2 d-inline-block" role="note"
+                v-for="cut in description.cutTerms || []" :key="`${cut.term}-${cut.not}`">
+                {{ $t(cut.not ? "searchArgs.notTermCut" : "searchArgs.termCut", {
+                    term: cut.term, n: (description.expansionCap || 0).toLocaleString($i18n.locale),
+                }) }}
+            </div>
         </div>
         <bibliography-criteria :biblio="queryArgs.biblio" :queryReport="queryReport" :resultsLength="resultsLength"
             :start_date="formData.start_date" :end_date="formData.end_date"
@@ -188,6 +195,8 @@ function fetchSearchArgs() {
                 end: props.resultEnd,
                 results_per_page: formData.value.results_per_page,
                 termGroups: response.data.term_groups,
+                cutTerms: response.data.cut_terms || [],
+                expansionCap: response.data.expansion_cap,
             });
         })
         .catch((error) => {

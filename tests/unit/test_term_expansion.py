@@ -10,7 +10,17 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime.Query import get_word_groups, resolve_method, words_per_hit
-from philologic.runtime.term_expansion import _expand_positive, _forms_pattern, _is_regex_pattern, _normalize_pattern
+from philologic.runtime import term_expansion
+from philologic.runtime.QuerySyntax import group_terms, parse_query
+from philologic.runtime.Query import split_terms
+from philologic.runtime.term_expansion import (
+    _expand_positive,
+    _forms_pattern,
+    _is_regex_pattern,
+    _lmdb_expand_term,
+    _normalize_pattern,
+    cut_terms,
+)
 
 
 @pytest.mark.unit
@@ -131,6 +141,52 @@ class TestQuotedRegex:
         with norm_words.begin(buffers=True) as txn:
             assert sorted(_expand_positive("TERM", "ét.s", txn, True, True)) == sorted(["étés", "êtes"])
             assert sorted(_expand_positive("TERM", "ÉT.T.*", txn, True, True)) == sorted(["état", "etat", "ètat", "états"])
+
+
+@pytest.mark.unit
+class TestExpansionCap:
+    """A regex with no literal start expands to REGEX_EXPANSION_CAP forms at most, and says when it left some out:
+    the results summary tells the user (.*ez found 946,874 hits of 1,430,547, silently)."""
+
+    FORMS = 8  # those of "et.*" in norm_words: état etat ètat états été ete étés êtes
+
+    def test_all_forms(self, norm_words):
+        with norm_words.begin(buffers=True) as txn:
+            forms = _lmdb_expand_term(txn, b"", "et.*", max_results=self.FORMS)
+        assert len(forms) == self.FORMS and not forms.cut
+
+    def test_cut(self, norm_words):
+        with norm_words.begin(buffers=True) as txn:
+            forms = _lmdb_expand_term(txn, b"", "et.*", max_results=self.FORMS - 1)
+        assert len(forms) == self.FORMS - 1 and forms.cut
+
+    @pytest.fixture
+    def frequency_file(self, tmp_path):
+        """A normalized_word_frequencies.lmdb, closed for cut_terms to open it."""
+        import lmdb
+
+        env = lmdb.open(str(tmp_path / "normalized_word_frequencies.lmdb"), map_size=1 << 20)
+        with env.begin(write=True) as txn:
+            for key, forms in {"amour": ["amour"], "etat": ["état", "etat"], "ete": ["été"], "etes": ["étés"]}.items():
+                txn.put(key.encode(), "\x00".join(forms).encode())
+        env.close()
+        return str(tmp_path / "normalized_word_frequencies")
+
+    @pytest.mark.parametrize(
+        "query, cut",
+        [
+            (".*", [(".*", False)]),
+            ("amour NOT .*e.*", [(".*e.*", True)]),
+            ('".*t.*"', [('".*t.*"', False)]),
+            ("et.*", []),  # a literal start: no cap
+            (".*s", []),  # under the cap
+            ("amour", []),
+        ],
+    )
+    def test_cut_terms(self, frequency_file, monkeypatch, query, cut):
+        monkeypatch.setattr(term_expansion, "REGEX_EXPANSION_CAP", 2)
+        split = split_terms(group_terms(parse_query(query)))
+        assert cut_terms(split, frequency_file, True, True) == cut
 
 
 @pytest.mark.unit
