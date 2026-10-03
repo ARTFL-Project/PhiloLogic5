@@ -1,10 +1,14 @@
-import { describe, it, expect, vi } from "vitest";
-import { mount } from "@vue/test-utils";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import { enableAutoUnmount, mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createTestI18n } from "./helpers.js";
 import ProgressSpinner from "../src/components/ProgressSpinner.vue";
 
 const i18n = createTestI18n();
+
+// Each spinner unmounted after its test, which clears its announcement timer: left running, it fired once the test
+// environment was gone ("window is not defined", an unhandled error in some runs)
+enableAutoUnmount(afterEach);
 
 function mountSpinner(props = {}) {
     return mount(ProgressSpinner, {
