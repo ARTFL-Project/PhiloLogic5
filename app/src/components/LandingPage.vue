@@ -127,7 +127,7 @@
                                     <span v-if="displayCount == 'true'">&nbsp;({{ result.count }})</span>
                                 </li>
                             </ul>
-                            <div class="card-footer" v-if="group.results.length > 100">
+                            <div class="card-footer" v-if="group.results.length > groupDisplay[groupIndex]">
                                 <button type="button" class="btn btn-outline-secondary" @click="seeAll(groupIndex)"
                                     :aria-label="$t('landingPage.seeAllResults', { n: group.results.length, prefix: group.prefix })">
                                     {{ $t("landingPage.seeResults", { n: group.results.length }) }}
@@ -278,7 +278,7 @@ function buildCitationObject(metadataFields, citations) {
     for (const citation of citations) {
         let label = metadataFields[citation.field] || "";
         if (!citation.link) {
-            out.push({ ...citation, href: "", label });
+            if (label) out.push({ ...citation, href: "", label });  // no ", ●" for a title without author
             continue;
         }
         if (citation.field === "title") {
@@ -310,7 +310,7 @@ function goToLetter(letter) {
 }
 
 function seeAll(groupIndex) {
-    groupDisplay[groupIndex] = resultGroups.value[groupIndex].length;
+    groupDisplay[groupIndex] = resultGroups.value[groupIndex].results.length;
 }
 
 watch(() => route.fullPath, handleUrlParameters);

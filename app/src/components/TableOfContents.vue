@@ -7,7 +7,10 @@
                 </h5>
             </div>
         </div>
-        <div class="text-center">
+        <div class="alert alert-warning text-center col-8 offset-2 mt-4" role="alert" v-if="loadError">
+            {{ $t(loadError) }}
+        </div>
+        <div class="text-center" v-else>
             <div class="row">
                 <div class="col-12">
                     <div class="card mt-4 mb-4 py-4 px-2 d-inline-block shadow"
@@ -116,11 +119,13 @@ const tocElements = ref([]);
 const showHeader = ref(false);
 const headerButton = ref(t("toc.showHeader"));
 const isLoading = ref(false);
+const loadError = ref("");  // the message key, when the table of contents can't be shown
 
 const processedTocElements = computed(() => buildTocTree(tocElements.value));
 
 function fetchToC() {
     searching.value = true;
+    loadError.value = "";
     $http
         .get(`${$dbUrl}/reports/table_of_contents.py`, {
             params: { philo_id: route.params.pathInfo },
@@ -133,6 +138,7 @@ function fetchToC() {
         })
         .catch((error) => {
             searching.value = false;
+            loadError.value = error.response?.status === 404 ? "common.textNotFound" : "common.textLoadFailed";
             debug({ $options: { name: "tableOfContents" } }, error);
         });
 }

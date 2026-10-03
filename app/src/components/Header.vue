@@ -181,6 +181,9 @@ function getDocCitation() {
             .then((response) => {
                 docCitation.citation = response.data.citation;
                 docCitation.link = response.data.link;
+            })
+            .catch(() => {
+                docCitation.citation = [];  // no such text: the page says so
             });
     } else {
         docCitation.citation = [];

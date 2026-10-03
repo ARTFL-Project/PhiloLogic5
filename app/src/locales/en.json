@@ -36,7 +36,10 @@
         "opensInNewWindow": "(opens in new window)",
         "noDataAvailable": "No data available",
         "searchInterface": "Search Interface",
-        "forResult": "for result"
+        "forResult": "for result",
+        "textNotFound": "There is no such text in this database.",
+        "textLoadFailed": "This text could not be loaded.",
+        "pageNotFound": "There is no such page."
     },
     "header": {
         "toggleNavigation": "Toggle navigation menu",

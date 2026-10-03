@@ -36,7 +36,10 @@
         "opensInNewWindow": "(abrir en nueva ventana)",
         "noDataAvailable": "Dato no disponible",
         "searchInterface": "Interfaz de búsqueda",
-        "forResult": "para el resultado"
+        "forResult": "para el resultado",
+        "textNotFound": "Este texto no existe en esta base de datos.",
+        "textLoadFailed": "No se pudo cargar este texto.",
+        "pageNotFound": "Esta página no existe."
     },
     "header": {
         "toggleNavigation": "Conmutar menú de navegación",

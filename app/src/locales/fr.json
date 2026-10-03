@@ -36,7 +36,10 @@
         "or": "ou",
         "opensInNewWindow": "(s'ouvre dans une nouvelle fenêtre)",
         "searchInterface": "Interface de recherche",
-        "forResult": "pour le résultat"
+        "forResult": "pour le résultat",
+        "textNotFound": "Ce texte n'existe pas dans cette base.",
+        "textLoadFailed": "Ce texte n'a pas pu être chargé.",
+        "pageNotFound": "Cette page n'existe pas."
     },
     "header": {
         "toggleNavigation": "Basculer le menu de navigation",
