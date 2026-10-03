@@ -606,11 +606,16 @@ def phrase_lengths(grouped):
     return lengths
 
 
-def query_parse(query_terms, config):
-    """Parse query function."""
-    for pattern, replacement in config.query_parser_regex:
-        query_terms = re.sub(rf"{pattern}", rf"{replacement}", query_terms, flags=re.U)
-    return query_terms
+def query_parse(query_terms, config, keep_quoted=False):
+    """query_terms with the database's query_parser_regex rules applied, as hyphens and apostrophes turned into spaces
+    (where its index splits words). Not inside the bracket expressions of regexes, whose hyphens make ranges
+    ("[a-z]"), and with keep_quoted not inside quotes either: quoted metadata values are matched whole, as they are."""
+    protected = r'\[[^\]]*\]|"[^"]*"' if keep_quoted else r"\[[^\]]*\]"
+    parts = re.split(f"({protected})", query_terms)
+    for i in range(0, len(parts), 2):  # those between the protected ones
+        for pattern, replacement in config.query_parser_regex:
+            parts[i] = re.sub(rf"{pattern}", rf"{replacement}", parts[i])
+    return "".join(parts)
 
 
 def resolve_method(q, method, method_arg, cooc_order, query_patterns=None):

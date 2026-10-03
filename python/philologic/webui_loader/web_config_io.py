@@ -421,15 +421,19 @@ def apply_replacements(replacements, text, query=False):
     to the HTML of results (the formatting regexes, see the concordance, kwic and navigation reports): the text after
     each step, or the error of the step which failed (the runtime would fail there)"""
     steps = []
+    # The query's regex bracket expressions ("[a-z]") are left as they are, between the parts rules apply to
+    parts = regex.split(r"(\[[^\]]*\])", text) if query else [text]
     for pattern, replacement in replacements:
         try:
-            if query:
-                text = regex.sub(rf"{pattern}", rf"{replacement}", text, flags=regex.U)
-            else:
-                text = regex.sub(rf"{pattern}", replacement, text)
+            for i in range(0, len(parts), 2):
+                if query:
+                    parts[i] = regex.sub(rf"{pattern}", rf"{replacement}", parts[i])
+                else:
+                    parts[i] = regex.sub(rf"{pattern}", replacement, parts[i])
         except (regex.error, IndexError, ValueError) as error:
             steps.append({"error": str(error)})
             break
+        text = "".join(parts)
         steps.append({"text": text})
     return {"steps": steps, "result": text}
 

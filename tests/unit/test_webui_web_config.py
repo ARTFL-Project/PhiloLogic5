@@ -232,7 +232,7 @@ def test_replacements_tried_as_the_runtime_applies_them():
     from philologic.runtime.Query import query_parse
 
     rules = [("-", " "), (" OR ", " | "), ("(\\w+)'(\\w+)", "\\2 \\1")]
-    for text in ("rousseau-emile OR contrat", "l'esprit", "-" * 40):
+    for text in ("rousseau-emile OR contrat", "l'esprit", "-" * 40, "[a-z]-x OR [-']"):
         tried = web_config_io.apply_replacements(rules, text, query=True)
         assert tried["result"] == query_parse(text, SimpleNamespace(query_parser_regex=rules))
     # Every match is replaced (query_parse once gave re.U as the count: at most 32 replacements)
