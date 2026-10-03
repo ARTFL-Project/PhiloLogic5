@@ -89,3 +89,40 @@ class TestPhrase:
         expected = Counter(count(rows[:, :9], 1))
         expected.update(count(np.hstack([rows[:, :7], rows[:, 9:11]]), 1))
         assert count(rows, 2) == expected
+
+
+def collocation_with(db, **params):
+    root = os.path.dirname(os.path.normpath(db.path))
+    config = WebConfig(root)
+    request = WSGIHandler({"QUERY_STRING": urllib.parse.urlencode(params), "PHILOLOGIC_DBPATH": root}, config)
+    return collocation_results(request, config), config
+
+
+@pytest.mark.integration
+class TestRequests:
+    def test_missing_stopwords(self, shakespeare_db, monkeypatch):
+        """A stopwords list that isn't found is said, rather than taken for a word to filter."""
+        from philologic.runtime.reports import collocation as module
+
+        real = module.build_filter_list
+        report, config = collocation_with(shakespeare_db, q="lord", colloc_filter_choice="stopwords")
+        config.stopwords = "/nonexistent/stopwords.txt"
+        assert real(type("R", (), {"colloc_filter_choice": "stopwords", "filter_frequency": ""})(), config, False) is None
+
+    def test_bad_filter_frequency(self, shakespeare_db):
+        from philologic.runtime.exceptions import BadRequest
+
+        with pytest.raises(BadRequest, match="must be a number"):
+            collocation_with(shakespeare_db, q="lord", colloc_filter_choice="frequency", filter_frequency="1OO")
+
+    def test_negative_distance(self, shakespeare_db):
+        from philologic.runtime.exceptions import BadRequest
+
+        with pytest.raises(BadRequest, match="negative"):
+            collocation_with(shakespeare_db, q="lord", method_arg="-3")
+
+    def test_map_field_not_metadata(self, shakespeare_db):
+        from philologic.runtime.exceptions import BadRequest
+
+        with pytest.raises(BadRequest, match="metadata field"):
+            collocation_with(shakespeare_db, q="lord", map_field="word_count")

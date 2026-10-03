@@ -18,7 +18,7 @@ from philologic.runtime.DB import DB
 from philologic.runtime.exceptions import BadRequest, NotFound
 from philologic.runtime.hitlist_dir import get_hitlist_dir
 from philologic.runtime.MetadataQuery import bulk_load_metadata
-from philologic.runtime.Query import get_word_groups, phrase_lengths, rewrite_terms_file, split_terms
+from philologic.runtime.Query import MAX_DISTANCE, get_word_groups, phrase_lengths, rewrite_terms_file, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 from philologic.runtime.sql_validation import validate_request_column
 
@@ -567,11 +567,15 @@ def _vectorized_collocation(
     return unique_tids, unique_counts, group_bounds, group_names, group_hits
 
 def collocate_distance(request):
-    """The number of words collocates are counted within, or None for the whole sentence."""
+    """The number of words collocates are counted within, or None for the whole sentence. At most MAX_DISTANCE:
+    larger ones overflowed the counts' 32-bit integers."""
     try:
-        return int(request.method_arg)
+        distance = int(request.method_arg)
     except ValueError:
         return None
+    if distance < 0:
+        raise BadRequest(f"Collocates can't be counted within a negative number of words: {request.method_arg}")
+    return min(distance, MAX_DISTANCE)
 
 
 def phrase_words(q, query_patterns=None):
@@ -602,6 +606,10 @@ def collocation_results(request, config):
     map_field = request.map_field or None
     if map_field is not None:
         map_field = validate_request_column(map_field, db)
+        if map_field not in db.locals["metadata_fields"]:  # a column, but no metadata (lemma, word_count...)
+            raise BadRequest(f"Collocates can only be counted by a metadata field, not {map_field}")
+    if request.colloc_filter_choice == "attribute" and not request.q_attribute:
+        raise BadRequest("Filtering collocates by attribute needs the attribute (q_attribute)")
 
     if not request.q:  # collocates are counted around search hits: without a query there are none
         collocation_object.update({"filter_list": [], "results_length": 0, "distance": None})
@@ -655,7 +663,11 @@ def collocation_results(request, config):
         filter_list.update(f"{word}:{attribute}:{attribute_value}" for word in query_words)
         filter_list.add(f"{request.q}:{attribute}:{attribute_value}")
     elif request.colloc_filter_choice != "nofilter":
-        filter_list.update(build_filter_list(request, config, count_lemmas))
+        common_words = build_filter_list(request, config, count_lemmas)
+        if common_words is None:  # the stopwords list was not found: only the query's words are filtered
+            collocation_object["stopwords_missing"] = True
+            common_words = []
+        filter_list.update(common_words)
     collocation_object["filter_list"] = sorted(filter_list, key=lambda w: (w.lower(), w))
 
     hits.finish()
@@ -960,16 +972,17 @@ def _df_filter_list(db_path, count_lemmas, pct):
 
 
 def build_filter_list(request, config, count_lemmas):
-    """set up filtering with stopwords or most frequent terms."""
+    """The words to filter out: the database's stopwords, or its most frequent words (or lemmas). None if the
+    stopwords list is not found: its name was taken for a word to filter, and the report was unfiltered."""
     if config.stopwords and request.colloc_filter_choice == "stopwords":
         if config.stopwords and "/" not in config.stopwords:
             filter_file = os.path.join(config.db_path, "data", config.stopwords)
         elif os.path.isabs(config.stopwords):
             filter_file = config.stopwords
         else:
-            return ["stopwords list not found"]
+            return None
         if not os.path.exists(filter_file):
-            return ["stopwords list not found"]
+            return None
         filter_num = float("inf")
     else:
         df_pct = _df_threshold_pct(request)
@@ -981,7 +994,12 @@ def build_filter_list(request, config, count_lemmas):
                 filter_file = config.db_path + "/data/frequencies/lemmas"
             else:
                 filter_file = config.db_path + "/data/frequencies/word_frequencies"
-            filter_num = int(request.filter_frequency)
+            try:
+                filter_num = int(request.filter_frequency)
+            except ValueError:
+                raise BadRequest(
+                    f"The number of most frequent words to filter must be a number: {request.filter_frequency}"
+                )
         else:
             if df_pct is None:
                 df_pct = DEFAULT_DF_PCT

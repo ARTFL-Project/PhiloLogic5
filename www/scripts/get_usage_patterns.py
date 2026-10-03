@@ -6,6 +6,7 @@ collocate vocabulary, projected to time bins.
 """
 
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.reports.usage_patterns import detect_usage_patterns
 from philologic.runtime.reports.collocation import build_filter_list, collocate_distance
 
@@ -16,15 +17,19 @@ def _load_stopwords(request, config, count_lemmas):
 
     ``stop_set`` has the ``lemma:`` prefix stripped (pattern candidates are
     stored without it); ``raw_words`` keeps the prefix so the UI can display
-    the filtered words exactly as the frequency view does.
+    the filtered words exactly as the frequency view does. ``raw_words`` is None if the stopwords list is not found.
     """
     choice = (request.colloc_filter_choice or "").strip()
     if choice == "nofilter" or choice == "attribute":
         return set(), []
     try:
         words = build_filter_list(request, config, count_lemmas)
+    except BadRequest:  # as the collocation report, a bad filter_frequency
+        raise
     except Exception:
         return set(), []
+    if words is None:  # the stopwords list was not found: nothing is filtered, as in the collocation report
+        return set(), None
     stop = set()
     for w in words:
         if w.startswith("lemma:"):
@@ -83,5 +88,7 @@ def get_usage_patterns(request, config):
     # the frequency view (the streamgraph/word-map don't run the frequency
     # fetch that normally populates it).
     if isinstance(result, dict):
-        result["filter_list"] = sorted(filter_words, key=lambda w: (w.lower(), w))
+        if filter_words is None:
+            result["stopwords_missing"] = True
+        result["filter_list"] = sorted(filter_words or [], key=lambda w: (w.lower(), w))
     return result
