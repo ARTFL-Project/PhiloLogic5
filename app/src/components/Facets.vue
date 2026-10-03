@@ -104,7 +104,7 @@
                         :aria-describedby="`facet-result-desc-${result.label.replace(/[^a-zA-Z0-9]/g, '-')}`">
                         <div class="d-flex justify-content-between align-items-start">
                             <span class="sidebar-text text-content-area text-view">
-                                {{ result.label }}
+                                {{ facetLabel(result.label) }}
                             </span>
                             <span class="badge bg-secondary rounded-pill" aria-hidden="true">
                                 {{ result.count }}
@@ -112,7 +112,7 @@
                         </div>
                         <span :id="`facet-result-desc-${result.label.replace(/[^a-zA-Z0-9]/g, '-')}`"
                             class="visually-hidden">
-                            {{ $t('facets.filterBy') }} {{ result.label }}, {{ result.count }} {{
+                            {{ $t('facets.filterBy') }} {{ facetLabel(result.label) }}, {{ result.count }} {{
                                 $t('facets.occurrences') }}
                         </span>
 
@@ -179,6 +179,7 @@
 </template>
 
 <script setup>
+import { useI18n } from "vue-i18n";
 import { inject, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
@@ -193,6 +194,13 @@ import {
     saveToLocalStorage,
 } from "../utils.js";
 import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
+
+const { t } = useI18n();
+
+// The objects with no value of the field (the server's NULL), as the aggregation report says it
+function facetLabel(label) {
+    return label === "NULL" ? t("common.na") : label;
+}
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
@@ -432,9 +440,10 @@ function hideFacets(skipRouterPush = false) {
 }
 
 function facetClick(metadata) {
+    const value = metadata[selectedFacet.value.facet];
     store.updateFormDataField({
         key: selectedFacet.value.facet,
-        value: `"${metadata[selectedFacet.value.facet]}"`,
+        value: value === "NULL" ? value : `"${value}"`, // NULL, the objects with none, unquoted
     });
     const routeParams = paramsToRoute({ ...formData.value, start: "0", end: "0" });
     delete routeParams.query.facet;
