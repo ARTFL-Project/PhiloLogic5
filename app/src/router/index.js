@@ -1,6 +1,7 @@
 // import Vue from 'vue'
 import { createRouter, createWebHistory } from "vue-router";
 import appConfig from "../../appConfig.json";
+import { whenTallEnough } from "../utils.js";
 
 const concordance = () => import("../components/Concordance");
 const kwic = () => import("../components/Kwic");
@@ -86,7 +87,7 @@ const router = createRouter({
     ],
     scrollBehavior(to, from, savedPosition) {
         if (savedPosition) {
-            return savedPosition;
+            return whenTallEnough(savedPosition);
         } else {
             return {
                 left: 0,

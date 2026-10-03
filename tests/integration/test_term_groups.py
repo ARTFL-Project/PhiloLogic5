@@ -15,7 +15,9 @@ def term_groups(eltec_db_path):
 
     corpus = Path(eltec_db_path).parent
     with web_app_client(corpus.parent) as client:
-        yield lambda q: client.simulate_get(f"/philologic5/{corpus.name}/scripts/get_term_groups.py", params={"q": q}).json
+        yield lambda q, **params: client.simulate_get(
+            f"/philologic5/{corpus.name}/scripts/get_term_groups.py", params={"q": q, **params}
+        ).json
 
 
 @pytest.mark.integration
@@ -38,3 +40,16 @@ class TestCutTerms:
         hits.finish()
         (words,) = eltec_db.dbh.execute("SELECT SUM(word_count) FROM toms WHERE philo_type = 'doc'").fetchone()
         assert 0 < len(hits) < int(words)
+
+
+@pytest.mark.integration
+class TestApproximateGroups:
+    def test_folded(self, term_groups):
+        """Each group of an approximate search is the similar words of a term typed, which the summary folds."""
+        result = term_groups("love death", approximate="yes", approximate_ratio="80")
+        assert [group["term"] for group in result["approximate_groups"]] == ["love", "death"]
+        for group, words in zip(result["approximate_groups"], result["term_groups"]):
+            assert group["variants"] == len(words.split("|")) > 1
+
+    def test_not_approximate(self, term_groups):
+        assert term_groups("love death")["approximate_groups"] == []

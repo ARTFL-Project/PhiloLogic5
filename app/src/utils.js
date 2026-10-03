@@ -396,3 +396,20 @@ export function buildTocTree(elements) {
 
     return tree;
 }
+
+// The position to go back to, once the page is long enough to scroll there (or after 3 s): the results load after
+// the route changes, so the page was too short, and coming back from a text went back to the top
+export function whenTallEnough(position, timeout = 3000) {
+    const start = Date.now();
+    return new Promise((resolve) => {
+        const check = () => {
+            const tallEnough = document.documentElement.scrollHeight >= position.top + window.innerHeight;
+            if (tallEnough || Date.now() - start >= timeout) {
+                resolve(position);
+            } else {
+                setTimeout(check, 100);
+            }
+        };
+        check();
+    });
+}

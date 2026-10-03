@@ -149,7 +149,8 @@
         "adjacent": "next to each other",
         "inThisOrder": "in this order",
         "termCut": "{term} matches more than {n} word forms: only the first {n} were searched, so these results are incomplete. Begin the term with a few letters to search all of its forms.",
-        "notTermCut": "{term}, after NOT, matches more than {n} word forms: only the first {n} were excluded, so these results may include forms it should exclude. Begin the term with a few letters to exclude all of them."
+        "notTermCut": "{term}, after NOT, matches more than {n} word forms: only the first {n} were excluded, so these results may include forms it should exclude. Begin the term with a few letters to exclude all of them.",
+        "similarTerms": "{term} ({n} similar terms)"
     },
     "resultsSummary": {
         "heading": "Results Summary",

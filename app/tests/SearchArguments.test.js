@@ -166,3 +166,36 @@ describe("SearchArguments", () => {
         expect(text).toContain("liberty");
     });
 });
+
+describe("SearchArguments with approximate search", () => {
+    it("folds the similar words of a term: liberté (27 similar terms), not the 27 of them", async () => {
+        const variants = Array.from({ length: 27 }, (_, i) => `"libert${i}"`).join(" | ");
+        const http = createMockHttp({
+            "get_term_groups.py": {
+                term_groups: [variants],
+                approximate_groups: [{ term: "liberté", variants: 27 }],
+            },
+        });
+        const pinia = createTestPinia();
+        const config = createTestConfig();
+        const query = { q: "liberté", approximate: "yes", approximate_ratio: "90", report: "concordance" };
+        const router = createTestRouter({ name: "concordance", path: "/concordance", query });
+        await router.isReady();
+        const store = useMainStore();
+        store.formData = { ...store.formData, ...query };
+        store.description = { start: 1, end: 25, results_per_page: 25, termGroups: [] };
+        const wrapper = mount(SearchArguments, {
+            props: { resultStart: 1, resultEnd: 25 },
+            global: {
+                plugins: [pinia, createTestI18n(), router],
+                provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
+                stubs: { BibliographyCriteria: { template: "<div />" } },
+                mocks: { $philoConfig: config, $dbUrl: "/testdb", $scrollTo: vi.fn() },
+            },
+        });
+        await flushPromises();
+        const button = wrapper.find(".term-group-word");
+        expect(button.text()).toBe("liberté (27 similar terms)");
+        expect(wrapper.text()).not.toContain("libert0");
+    });
+});
