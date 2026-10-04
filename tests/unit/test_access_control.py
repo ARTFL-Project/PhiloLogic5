@@ -20,6 +20,7 @@ from philologic.runtime.access_control import (
     auth_cookie,
     check_login_info,
     client_address,
+    connected_address,
     database_key,
     is_allowed,
     is_authenticated,
@@ -56,14 +57,20 @@ class TestClientAddress:
         assert client_address(environ) == "203.0.113.7"
 
     @pytest.mark.parametrize("proxy", ["", "127.0.0.1", "::1"])
-    def test_behind_a_proxy_the_address_it_appended(self, proxy):
+    def test_behind_a_proxy_the_first_address(self, proxy):
+        """As in 5.2.6, the first address: a gateway before the proxy may have written its user's address there."""
+        environ = {"REMOTE_ADDR": proxy, "HTTP_X_FORWARDED_FOR": "198.51.100.4, 10.0.0.1, 203.0.113.7"}
+        assert client_address(environ) == "198.51.100.4"
+
+    @pytest.mark.parametrize("proxy", ["", "127.0.0.1", "::1"])
+    def test_connected_address_the_one_the_proxy_appended(self, proxy):
         """The proxy appends the address it got the request from: what comes before is the client's say."""
         environ = {"REMOTE_ADDR": proxy, "HTTP_X_FORWARDED_FOR": "127.0.0.1, 10.0.0.1, 203.0.113.7"}
-        assert client_address(environ) == "203.0.113.7"
+        assert connected_address(environ) == "203.0.113.7"
 
-    def test_behind_several_proxies(self):
+    def test_connected_address_behind_several_proxies(self):
         environ = {"REMOTE_ADDR": "", "HTTP_X_FORWARDED_FOR": "127.0.0.1, 203.0.113.7, 127.0.0.1"}
-        assert client_address(environ) == "203.0.113.7"
+        assert connected_address(environ) == "203.0.113.7"
 
     def test_proxy_without_forwarded_for(self):
         assert client_address({"REMOTE_ADDR": "127.0.0.1"}) == "127.0.0.1"
@@ -376,10 +383,18 @@ class TestWebApp:
         headers = {"X-Forwarded-For": ALLOWED}
         assert get(client, "closed/scripts/get_custom_landing_page.py", DENIED, headers=headers).status_code == 403
 
-    def test_behind_proxy(self, client):
+    def test_behind_proxy(self, client, capsys):
+        """The first address decides; when the one that connected would decide otherwise, the audit says so."""
         path = "closed/scripts/get_custom_landing_page.py"
-        assert get(client, path, "", headers={"X-Forwarded-For": f"{ALLOWED}, {DENIED}"}).status_code == 403
-        assert get(client, path, "", headers={"X-Forwarded-For": f"{DENIED}, {ALLOWED}"}).status_code == 200
+        assert get(client, path, "", headers={"X-Forwarded-For": f"{ALLOWED}, {DENIED}"}).status_code == 200
+        assert get(client, path, "", headers={"X-Forwarded-For": f"{DENIED}, {ALLOWED}"}).status_code == 403
+        audit = [line for line in capsys.readouterr().err.splitlines() if line.startswith("ACCESS AUDIT")]
+        assert audit == [
+            f"ACCESS AUDIT: closed: allowed by the first address of X-Forwarded-For, {ALLOWED}, refused by the one "
+            f"that connected, {DENIED}",
+            f"ACCESS AUDIT: closed: refused by the first address of X-Forwarded-For, {DENIED}, allowed by the one "
+            f"that connected, {ALLOWED}",
+        ]
 
     @pytest.mark.parametrize("path", ["", "concordance?q=a", "scripts/get_web_config.py", "assets/index.js"])
     def test_login_screen_needs(self, client, path):

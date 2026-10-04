@@ -73,7 +73,9 @@ blocked_ips = [
 ### Behind a reverse proxy
 
 The IP check uses the address of the client that connected to the web app, unless that is a reverse proxy: then it uses the
-address the proxy appended to the `X-Forwarded-For` header (the last one there, as anything before it came from the client).
+first address of the `X-Forwarded-For` header. Usually that is the only one, the address your proxy got the request from.
+When a proxy or gateway before yours wrote its user's address there, it is that address, which nothing verifies; the web
+app logs an `ACCESS AUDIT` line when the address your proxy saw connect would have been decided otherwise.
 Connections to the web app's unix socket, and from `127.0.0.1` or `::1`, are taken to be from a proxy. If your proxy runs
 elsewhere (another host, a Docker network), list its addresses in `/etc/philologic/philologic5.cfg`:
 
