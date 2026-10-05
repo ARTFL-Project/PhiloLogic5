@@ -3,6 +3,10 @@
         <h1 class="visually-hidden">{{ $t("searchForm.searchInterface") }}</h1>
         <div class="card shadow" style="border: transparent">
             <form @submit.prevent="onSubmit()" @reset="onReset" role="search">
+                <!-- for the fields with autocomplete: their description, and the number of suggestions shown -->
+                <span :id="instructionsId" class="visually-hidden">{{ $t("searchForm.autocompleteInstructions") }}</span>
+                <span class="visually-hidden" role="status">{{ openList
+                    ? $t("searchForm.autocompleteCount", { term: openList.term }, openList.count) : "" }}</span>
                 <div id="form-body">
                     <div id="initial-form">
                         <!-- Mobile: Dropdown selector for report types -->
@@ -47,19 +51,13 @@
                                         </button>
                                         <input type="text" class="form-control" id="query-term-input"
                                             aria-labelledby="search-terms-label" v-model="queryTermTyped"
-                                            @input="onChange('q')" @keyup.down="onArrowDown('q')"
-                                            @keyup.up="onArrowUp('q')" @keydown.enter="onEnter('q', $event)"
-                                            @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
+                                            v-bind="comboboxAttrs('q')" @input="onChange('q')"
+                                            @keydown="onKeydown('q', $event)" @blur="closeAutocomplete('q')"
                                             autocomplete="off" />
 
-                                        <ul id="autocomplete-q" class="autocomplete-results shadow"
-                                            :style="autoCompletePosition('q')" v-if="autoCompleteResults.q.length > 0"
-                                            role="listbox" :aria-label="$t('searchForm.autocompleteResults')">
-                                            <li tabindex="-1" v-for="(result, i) in autoCompleteResults.q" :key="result"
-                                                @click="setResult(result, 'q')" class="autocomplete-result"
-                                                :class="{ 'is-active': i === arrowCounters.q }" v-html="result"
-                                                role="option" :aria-selected="i === arrowCounters.q"></li>
-                                        </ul>
+                                        <AutocompleteList v-if="autoCompleteResults.q.length > 0" :id="listId('q')"
+                                            :results="autoCompleteResults.q" :active-index="arrowCounters.q"
+                                            :style="autoCompletePosition('q')" @toggle="toggle('q', $event)" />
                                         <button type="submit" class="btn btn-secondary" id="button-search">
                                             {{ $t("searchForm.search") }}
                                         </button>
@@ -78,25 +76,12 @@
                                     :aria-labelledby="metadataDisplay[headIndex].value + '-label'"
                                     :name="metadataDisplay[headIndex].value"
                                     :placeholder="metadataDisplay[headIndex].example" v-model="metadataValues.head"
-                                    @input="onChange('head')"
-                                    @keydown.down="onArrowDown(metadataDisplay[headIndex].value)"
-                                    @keydown.up="onArrowUp(metadataDisplay[headIndex].value)"
-                                    @keydown.enter="onEnter(metadataDisplay[headIndex].value, $event)"
-                                    @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
+                                    v-bind="comboboxAttrs('head')" @input="onChange('head')"
+                                    @keydown="onKeydown('head', $event)" @blur="closeAutocomplete('head')"
                                     autocomplete="off" />
-                                <ul :id="'autocomplete-' + metadataDisplay[headIndex].value"
-                                    class="autocomplete-results shadow"
-                                    :style="autoCompletePosition(metadataDisplay[headIndex].value)"
-                                    v-if="autoCompleteResults[metadataDisplay[headIndex].value].length > 0"
-                                    role="listbox" :aria-label="$t('searchForm.autocompleteResults')">
-                                    <li tabindex="-1"
-                                        v-for="(result, i) in autoCompleteResults[metadataDisplay[headIndex].value]"
-                                        :key="result" @click="setResult(result, metadataDisplay[headIndex].value)"
-                                        class="autocomplete-result" :class="{
-                                            'is-active': i === arrowCounters[metadataDisplay[headIndex].value],
-                                        }" v-html="result" role="option"
-                                        :aria-selected="i === arrowCounters[metadataDisplay[headIndex].value]"></li>
-                                </ul>
+                                <AutocompleteList v-if="autoCompleteResults.head?.length > 0" :id="listId('head')"
+                                    :results="autoCompleteResults.head" :active-index="arrowCounters.head"
+                                    :style="autoCompletePosition('head')" @toggle="toggle('head', $event)" />
                             </div>
                         </div>
                         <div id="search-buttons">
@@ -286,23 +271,14 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                 :id="field.value + 'input-filter'" :name="field.value"
                                                 :placeholder="field.example"
                                                 v-model="metadataValues[field.value]"
-                                                @input="onChange(field.value)"
-                                                @keydown.down="onArrowDown(field.value)"
-                                                @keydown.up="onArrowUp(field.value)"
-                                                @keydown.enter="onEnter(field.value, $event)"
-                                                @keyup.escape="clearAutoCompletePopup"
-                                                @keydown.tab="clearAutoCompletePopup" autocomplete="off" />
-                                            <ul :id="'autocomplete-' + field.value"
-                                                class="autocomplete-results shadow"
+                                                v-bind="comboboxAttrs(field.value)" @input="onChange(field.value)"
+                                                @keydown="onKeydown(field.value, $event)"
+                                                @blur="closeAutocomplete(field.value)" autocomplete="off" />
+                                            <AutocompleteList v-if="autoCompleteResults[field.value].length > 0"
+                                                :id="listId(field.value)" :results="autoCompleteResults[field.value]"
+                                                :active-index="arrowCounters[field.value]"
                                                 :style="autoCompletePosition(field.value)"
-                                                v-if="autoCompleteResults[field.value].length > 0">
-                                                <li tabindex="-1"
-                                                    v-for="(result, i) in autoCompleteResults[field.value]"
-                                                    :key="result" @click="setResult(result, field.value)"
-                                                    class="autocomplete-result"
-                                                    :class="{ 'is-active': i === arrowCounters[field.value] }"
-                                                    v-html="result"></li>
-                                            </ul>
+                                                @toggle="toggle(field.value, $event)" />
                                         </template>
                                     </MetadataFields>
                                 </div>
@@ -388,13 +364,14 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
 </template>
 
 <script setup>
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
+import { computed, inject, onMounted, reactive, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import { copyObject, dateRangeHandler, paramsToRoute } from "../utils.js";
 import { useAutocomplete } from "../composables/useAutocomplete";
+import AutocompleteList from "./AutocompleteList.vue";  // eslint-disable-line no-unused-vars
 import MetadataFields from "./MetadataFields.vue";  // eslint-disable-line no-unused-vars
 import SearchTips from "./SearchTips";  // eslint-disable-line no-unused-vars
 import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
@@ -417,29 +394,31 @@ const {
 
 // ── Autocomplete (composable) ────────────────────────────────────────────────
 const metadataValues = reactive({});
-const autocomplete = useAutocomplete({
+const queryTermTyped = ref(route.query.q || formData.value.q || "");
+const {
+    autoCompleteResults,
+    arrowCounters,
+    autoCompletePosition,
+    onChange,
+    onKeydown,
+    toggle,
+    closeAutocomplete,
+    clearAutoCompletePopup,
+    comboboxAttrs,
+    listId,
+    instructionsId,
+    openList,
+} = useAutocomplete({
     http: $http,
     dbUrl: $dbUrl,
     philoConfig,
     metadataValues,
     route,
+    queryTerm: queryTermTyped,
     onSelect(field, value) {
         store.updateFormDataField({ key: field, value });
     },
 });
-// Add "q" to the shared reactive objects for query term autocomplete
-autocomplete.autoCompleteResults.q = [];
-autocomplete.arrowCounters.q = -1;
-const {
-    autoCompleteResults,
-    arrowCounters,
-    autoCompletePosition,
-    onArrowDown,
-    onArrowUp,
-    clearAutoCompletePopup,
-    onChange: metadataOnChange,
-    setMetadataResult,
-} = autocomplete;
 
 // ── Local state ──────────────────────────────────────────────────────────────
 const dictionary = philoConfig.dictionary;
@@ -475,16 +454,11 @@ const metadataChoiceChecked = reactive({});
 const metadataChoiceSelected = reactive({});
 const selectedSortValues = ref("rowid");  // eslint-disable-line no-unused-vars
 const showTips = ref(false);
-const queryTermTyped = ref(route.query.q || formData.value.q || "");
 const dateType = reactive({});
 const dateRange = reactive({});
 const attributeSelected = ref("");
 const wordAttributeSelected = ref("");
 const collocFilteringSelected = ref({ key: "", value: "" });
-
-// Internal handle (not reactive — just a setTimeout id)
-let qTimeout = null;
-let onDocumentClick = null;
 
 // ── Computed ─────────────────────────────────────────────────────────────────
 const statFieldSelected = computed(() => getLoadedStatField());  // eslint-disable-line no-unused-vars
@@ -632,61 +606,6 @@ function reportChange(report) {        // eslint-disable-line no-unused-vars
     if (!formOpen.value) toggleForm();
 }
 
-// ── Autocomplete handlers (q + metadata fan-out) ────────────────────────────
-function onChange(field) {              // eslint-disable-line no-unused-vars
-    if (field !== "q") {
-        metadataOnChange(field);
-        return;
-    }
-    if (!philoConfig.autocomplete.includes(field)) return;
-    if (qTimeout) clearTimeout(qTimeout);
-    qTimeout = setTimeout(() => {
-        const currentQueryTerm = route.query.q;
-        const term = queryTermTyped.value;
-        if (term.replace('"', "").trim().length > 1 && term !== currentQueryTerm) {
-            $http
-                .get(`${$dbUrl}/scripts/autocomplete_term.py`, {
-                    params: { term },
-                })
-                .then((response) => {
-                    // not once the field is left or changed: a late list would cover what is clicked next
-                    if (queryTermTyped.value !== term || document.activeElement?.id !== "query-term-input") return;
-                    autoCompleteResults.q = response.data;
-                })
-                .catch(() => {});
-        }
-    }, 200);
-}
-
-function onEnter(field, event) {        // eslint-disable-line no-unused-vars
-    // Enter picks the highlighted suggestion; with none, it submits the form (once: the browser's implicit submission)
-    const result = autoCompleteResults[field][arrowCounters[field]];
-    if (typeof result === "undefined") return;
-    event.preventDefault();
-    setResult(result, field);
-}
-
-function setResult(inputString, field) {
-    if (field !== "q") {
-        setMetadataResult(inputString, field);
-        return;
-    }
-    if (typeof inputString !== "undefined") {
-        const inputGroup = inputString.replace(/<[^>]+>/g, "").split(/(\s*\|\s*|\s*OR\s*|\s+|\s*NOT\s*)/);
-        let lastInput = inputGroup.pop();
-        if (lastInput.match(/"/)) {
-            if (lastInput.startsWith('"')) lastInput = lastInput.slice(1);
-            if (lastInput.endsWith('"')) lastInput = lastInput.slice(0, -1);
-        }
-        // word property autocomplete (no quotes) vs regular term (quoted)
-        queryTermTyped.value = lastInput.includes(":")
-            ? `${inputGroup.join("")}${lastInput}`
-            : `${inputGroup.join("")}"${lastInput.trim()}"`;
-    }
-    autoCompleteResults.q = [];
-    arrowCounters.q = -1;
-}
-
 // ── Watchers ─────────────────────────────────────────────────────────────────
 watch(() => route.fullPath, updateInputData);
 
@@ -732,20 +651,6 @@ onMounted(() => {
     if (!queryTermTyped.value && formData.value?.q) {
         queryTermTyped.value = formData.value.q;
     }
-
-    // Global click listener to clear autocomplete popup. Captured in a named
-    // function (not an arrow-on-the-fly) so we can remove it on unmount.
-    nextTick(() => {
-        onDocumentClick = () => clearAutoCompletePopup();
-        document.addEventListener("click", onDocumentClick);
-    });
-});
-
-onBeforeUnmount(() => {
-    if (onDocumentClick) {
-        document.removeEventListener("click", onDocumentClick);
-    }
-    if (qTimeout) clearTimeout(qTimeout);
 });
 
 // ── Initial dispatch (replaces created()) ────────────────────────────────────
@@ -1017,40 +922,6 @@ input[type="text"] {
     font-size: inherit;
     line-height: inherit;
     width: 100%;
-}
-
-.autocomplete {
-    position: relative;
-}
-
-.autocomplete-results {
-    padding: 0;
-    margin: 3px 0 0 15px;
-    border: 1px solid #eeeeee;
-    border-top-width: 0px;
-    max-height: 216px;
-    overflow-y: scroll;
-    width: 267px;
-    position: absolute;
-    left: 0;
-    background-color: #fff;
-    z-index: 100;
-    top: 34px;
-    font-size: 1.2rem;
-}
-
-.autocomplete-result {
-    list-style: none;
-    text-align: left;
-    padding: 4px 12px;
-    cursor: pointer;
-    font-size: 1.2rem;
-}
-
-.autocomplete-result:hover,
-.is-active {
-    background-color: #ddd;
-    color: black;
 }
 
 ::placeholder {

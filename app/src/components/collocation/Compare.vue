@@ -3,6 +3,10 @@
         <!-- Comparison criteria card -->
         <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" role="region"
             :aria-label="$t('collocation.compareTo')">
+            <!-- for the fields with autocomplete: their description, and the number of suggestions shown -->
+            <span :id="instructionsId" class="visually-hidden">{{ $t("searchForm.autocompleteInstructions") }}</span>
+            <span class="visually-hidden" role="status">{{ openList
+                ? $t("searchForm.autocompleteCount", { term: openList.term }, openList.count) : "" }}</span>
             <div class="row">
                 <!-- Primary corpus criteria -->
                 <div class="col-12 col-md-6 mb-3 mb-md-0" role="region"
@@ -32,20 +36,14 @@
                             </label>
                             <input type="text" class="form-control" :id="'compare-' + field.value + '-input-filter'"
                                 :name="field.value" :placeholder="field.example"
-                                v-model="comparedMetadataValues[field.value]"
-                                @input="autocompleteOnChange(field.value)" @keydown.down="onArrowDown(field.value)"
-                                @keydown.up="onArrowUp(field.value)" @keyup.enter="onEnter(field.value)"
-                                @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
-                                autocomplete="off"
+                                v-model="comparedMetadataValues[field.value]" v-bind="comboboxAttrs(field.value)"
+                                @input="autocompleteOnChange(field.value)" @keydown="onKeydown(field.value, $event)"
+                                @blur="closeAutocomplete(field.value)" autocomplete="off"
                                 :aria-label="`${$t('collocation.filterBy')} ${field.label}`" />
-                            <ul :id="'compare-autocomplete-' + field.value" class="autocomplete-results shadow"
-                                :style="autoCompletePosition(field.value)"
-                                v-if="autoCompleteResults[field.value].length > 0">
-                                <li tabindex="-1" v-for="(result, i) in autoCompleteResults[field.value]"
-                                    :key="result" @click="setMetadataResult(result, field.value)"
-                                    class="autocomplete-result"
-                                    :class="{ 'is-active': i === arrowCounters[field.value] }" v-html="result"></li>
-                            </ul>
+                            <AutocompleteList v-if="autoCompleteResults[field.value].length > 0"
+                                :id="listId(field.value)" :results="autoCompleteResults[field.value]"
+                                :active-index="arrowCounters[field.value]"
+                                :style="autoCompletePosition(field.value)" @toggle="toggle(field.value, $event)" />
                         </template>
                     </MetadataFields>
                 </div>
@@ -132,7 +130,7 @@
 <script setup>
 import { Tab } from "bootstrap";
 import { storeToRefs } from "pinia";
-import { inject, nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { inject, nextTick, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAutocomplete } from "../../composables/useAutocomplete";
 import { useMainStore } from "../../stores/main";
@@ -146,6 +144,7 @@ import {
     paramsFilter,
     paramsToRoute,
 } from "../../utils.js";
+import AutocompleteList from "../AutocompleteList.vue";
 import BibliographyCriteria from "../BibliographyCriteria";
 import MetadataFields from "../MetadataFields.vue";
 import ProgressSpinner from "../ProgressSpinner";
@@ -175,24 +174,26 @@ const store = useMainStore();
 const { formData } = storeToRefs(store);
 
 // Autocomplete composable bound to the parent's comparedMetadataValues
-const autocomplete = useAutocomplete({
+const {
+    autoCompleteResults,
+    arrowCounters,
+    autoCompletePosition,
+    onChange: autocompleteOnChange,
+    onKeydown,
+    toggle,
+    closeAutocomplete,
+    comboboxAttrs,
+    listId,
+    instructionsId,
+    openList,
+} = useAutocomplete({
     http: $http,
     dbUrl: $dbUrl,
     philoConfig,
     metadataValues: props.comparedMetadataValues,
     route,
+    idPrefix: "compare-",
 });
-const {
-    autoCompleteResults,
-    arrowCounters,
-    autoCompletePosition,
-    onArrowDown,
-    onArrowUp,
-    onEnter,
-    onChange: autocompleteOnChange,
-    setMetadataResult,
-    clearAutoCompletePopup,
-} = autocomplete;
 
 const otherCollocates = ref([]);
 const otherBiblio = ref({});
@@ -312,17 +313,6 @@ function reset() {
     comparativeSearchStarted.value = false;
 }
 
-// Document-click listener for the autocomplete popup
-function onDocumentClick() {
-    clearAutoCompletePopup();
-}
-onMounted(() => {
-    document.addEventListener("click", onDocumentClick);
-});
-onBeforeUnmount(() => {
-    document.removeEventListener("click", onDocumentClick);
-});
-
 defineExpose({ runFromMetadata, runFromFilePath, reset });
 </script>
 
@@ -354,36 +344,6 @@ defineExpose({ runFromMetadata, runFromFilePath, reset });
     .compare-divider {
         border-left: solid 1px rgba(0, 0, 0, 0.176);
     }
-}
-
-.autocomplete-results {
-    padding: 0;
-    margin: 3px 0 0 15px;
-    border: 1px solid #eeeeee;
-    border-top-width: 0px;
-    max-height: 216px;
-    overflow-y: scroll;
-    width: 267px;
-    position: absolute;
-    left: 0;
-    background-color: #fff;
-    z-index: 100;
-    top: 34px;
-    font-size: 1.2rem;
-}
-
-.autocomplete-result {
-    list-style: none;
-    text-align: left;
-    padding: 4px 12px;
-    cursor: pointer;
-    font-size: 1.2rem;
-}
-
-.autocomplete-result:hover,
-.is-active {
-    background-color: #ddd;
-    color: black;
 }
 
 input[type="text"]:focus {

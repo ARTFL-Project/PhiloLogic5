@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createGlobalConfig, createMockHttp } from "./helpers.js";
@@ -33,7 +33,7 @@ function mountSearchForm(overrides = {}) {
         aggregation: new Set(["q", "method", "cooc_order", "method_arg", "group_by", ...webConfig.metadata]),
     };
 
-    return mount(SearchForm, { global });
+    return mount(SearchForm, { global, ...overrides.mountOptions });
 }
 
 describe("SearchForm", () => {
@@ -215,5 +215,79 @@ describe("SearchForm", () => {
         await wrapper.find("#show-search-form").trigger("click");
         await nextTick();
         expect(wrapper.find("#time-series-params").exists()).toBe(true);
+    });
+});
+
+describe("SearchForm autocomplete", () => {
+    beforeEach(() => vi.useFakeTimers());
+    afterEach(() => vi.useRealTimers());
+
+    const suggestions = ['<span class="highlight">lib</span>re', '<span class="highlight">lib</span>erté'];
+
+    async function typeTerms(value) {
+        const http = createMockHttp({ "autocomplete_term.py": suggestions });
+        const wrapper = mountSearchForm({ http, mountOptions: { attachTo: document.body } });
+        const input = wrapper.find("#query-term-input");
+        input.element.focus();
+        await input.setValue(value);
+        await vi.advanceTimersByTimeAsync(200);
+        await flushPromises();
+        return { wrapper, input };
+    }
+
+    it("lists the suggestions as options to add, the field a combobox describing its keys", async () => {
+        const { wrapper, input } = await typeTerms("lib");
+        const list = wrapper.find("#autocomplete-q");
+        expect(list.attributes("role")).toBe("listbox");
+        expect(list.attributes("aria-multiselectable")).toBe("true");
+        const options = list.findAll("[role=option]");
+        expect(options.map((o) => o.text())).toEqual(["libre", "liberté"]);
+        expect(options.map((o) => o.attributes("aria-selected"))).toEqual(["false", "false"]);
+        expect(input.attributes()).toMatchObject({
+            role: "combobox", "aria-autocomplete": "list", "aria-expanded": "true", "aria-controls": "autocomplete-q",
+        });
+        const instructions = wrapper.find(`#${input.attributes("aria-describedby")}`);
+        expect(instructions.text()).toContain("Space to add or remove");
+        expect(wrapper.find("[role=status]").text()).toBe("2 suggestions for lib");
+        wrapper.unmount();
+    });
+
+    it("adds a suggestion clicked, OR the ones before, and stays open", async () => {
+        const { wrapper, input } = await typeTerms("amour lib");
+        const options = () => wrapper.findAll("#autocomplete-q [role=option]");
+        await options()[1].trigger("click");
+        expect(input.element.value).toBe('amour "liberté"');
+        await options()[0].trigger("click");
+        expect(input.element.value).toBe('amour "libre" | "liberté"');
+        expect(options().map((o) => o.attributes("aria-selected"))).toEqual(["true", "true"]);
+        // a click keeps the focus in the field, whose blur closes the list
+        const press = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+        options()[0].element.dispatchEvent(press);
+        expect(press.defaultPrevented).toBe(true);
+        wrapper.unmount();
+    });
+
+    it("is used with the keys: arrows to move, Space to add, Enter to add and close", async () => {
+        const { wrapper, input } = await typeTerms("lib");
+        await input.trigger("keydown", { key: "ArrowDown" });
+        expect(input.attributes("aria-activedescendant")).toBe("autocomplete-q-option-0");
+        expect(wrapper.find("#autocomplete-q-option-0").classes()).toContain("is-active");
+        await input.trigger("keydown", { key: " " });
+        expect(input.element.value).toBe('"libre"');
+        await input.trigger("keydown", { key: "ArrowDown" });
+        await input.trigger("keydown", { key: "Enter" });
+        expect(input.element.value).toBe('"libre" | "liberté"');
+        expect(wrapper.find("#autocomplete-q").exists()).toBe(false);
+        expect(input.attributes("aria-expanded")).toBe("false");
+        expect(input.attributes("aria-activedescendant")).toBeUndefined();
+        wrapper.unmount();
+    });
+
+    it("closes the list when the field is left", async () => {
+        const { wrapper, input } = await typeTerms("lib");
+        await input.trigger("blur");
+        expect(wrapper.find("#autocomplete-q").exists()).toBe(false);
+        expect(wrapper.find("[role=status]").text()).toBe("");
+        wrapper.unmount();
     });
 });
