@@ -5,8 +5,12 @@ Handles all query-term expansion: normalized word lookups, regex pattern
 scanning, LEMMA/ATTR expansion, NOT-term exclusion, and autocomplete.
 """
 
+import hashlib
+import heapq
 import os
+import shutil
 from contextlib import nullcontext
+from itertools import groupby
 
 import lmdb
 import regex as re
@@ -613,16 +617,156 @@ def metadata_word_prefix_scan(db_path: str, field: str, prefix: str,
         return results
 
 
-def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str,
-                        ascii_conversion: bool, lowercase: bool,
-                        max_results: int = 100) -> list[str]:
+# ── Autocomplete, most frequent first ─────────────────────────────────────────
+
+# The suggestions an autocomplete gives at most, and those its tables keep for each prefix (build_autocomplete_tables)
+AUTOCOMPLETE_SUGGESTIONS = 100
+_AUTOCOMPLETE_WORDS = "autocomplete_words.lmdb"
+_AUTOCOMPLETE_LEMMAS = "autocomplete_lemmas.lmdb"
+_LEMMA_PREFIX = b"lemma:"
+
+
+def build_autocomplete_tables(db_path: str) -> int:
+    """Build the tables of the suggestions for the prefixes most words or lemmas start with: for each that more than
+    AUTOCOMPLETE_SUGGESTIONS start with, that many of them, most frequent first, as the frequency files order them.
+    Those of any other prefix are few enough to be ordered when asked for (_by_frequency).
+
+    Words, by the normalized prefix of normalized_word_frequencies: key the prefix, value NUL-joined forms. Lemmas, by
+    the prefix of the lemma: keys of the lemmas file, from "lemma:" on. Returns the number of prefixes kept.
+    """
+    freq_dir = os.path.join(db_path, "frequencies")
+    count = 0
+    words_file = os.path.join(freq_dir, "normalized_word_frequencies")
+    if os.path.exists(words_file):
+        count += _write_prefix_table(_word_entries(words_file), os.path.join(freq_dir, _AUTOCOMPLETE_WORDS), 1)
+    lemmas_file = os.path.join(freq_dir, "lemmas")
+    if os.path.exists(lemmas_file):
+        lemma_entries = ((line, line) for line in _lines(lemmas_file))
+        count += _write_prefix_table(lemma_entries, os.path.join(freq_dir, _AUTOCOMPLETE_LEMMAS), len(_LEMMA_PREFIX))
+    return count
+
+
+def _lines(path):
+    with open(path, "rb") as file:
+        for line in file:
+            line = line.rstrip(b"\n")
+            if line:
+                yield line
+
+
+def _word_entries(path):
+    """(normalized word, form) of each line of normalized_word_frequencies, as build_norm_word_lmdb reads them"""
+    for line in _lines(path):
+        tab = line.find(b"\t")
+        if tab > 0:
+            yield line[:tab], line[tab + 1 :]
+
+
+def _write_prefix_table(entries, lmdb_path, min_length):
+    """Write to lmdb_path the first AUTOCOMPLETE_SUGGESTIONS values of each prefix of min_length bytes or more of the
+    keys that more values have, entries being (key, value) in frequency order. Returns the number of prefixes."""
+    keys, values = [], []
+    for key, value in entries:
+        keys.append(key)
+        values.append(value)
+    # The ranks (line numbers) of the entries in the order of their keys: those of a key stay in frequency order
+    ranks = sorted(range(len(keys)), key=keys.__getitem__)
+    table = {}
+    length = min_length
+    while ranks:
+        longer = []  # the ranks of the prefixes kept: only theirs can have a longer prefix that many values have too
+        for prefix, prefix_ranks in groupby(ranks, key=lambda rank: keys[rank][:length]):
+            prefix_ranks = list(prefix_ranks)
+            if len(prefix) == length and len(prefix_ranks) > AUTOCOMPLETE_SUGGESTIONS:
+                if _whole_characters(prefix):  # what is typed: no prefix ending in the middle of a character
+                    most_frequent = heapq.nsmallest(AUTOCOMPLETE_SUGGESTIONS, prefix_ranks)
+                    table[prefix] = b"\x00".join(values[rank] for rank in most_frequent)
+                longer.extend(prefix_ranks)
+        ranks = longer
+        length += 1
+
+    # Replaced whole, for a database loaded already: written apart, then moved to lmdb_path
+    tmp_path, new_path = lmdb_path + ".tmp", lmdb_path + ".new"
+    for path in (tmp_path, new_path):
+        shutil.rmtree(path, ignore_errors=True)
+    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024, writemap=True, sync=False, metasync=False)
+    with tmp_env.begin(write=True) as txn:
+        for prefix in sorted(table):
+            txn.put(prefix, table[prefix], append=True)
+    tmp_env.sync(True)
+    os.makedirs(new_path)
+    tmp_env.copy(new_path, compact=True)
+    tmp_env.close()
+    shutil.rmtree(tmp_path)
+    shutil.rmtree(lmdb_path, ignore_errors=True)
+    os.rename(new_path, lmdb_path)
+    return len(table)
+
+
+def _whole_characters(prefix: bytes) -> bool:
+    try:
+        prefix.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def _table_suggestions(db_path: str, table: str, prefix: bytes) -> list[str] | None:
+    """The suggestions table keeps for prefix: [] when it keeps none (few enough start with prefix to be ordered),
+    None when the database has no such table (loaded before them)."""
+    table_path = os.path.join(db_path, "frequencies", table)
+    if not os.path.exists(table_path):
+        return None
+    with lmdb_env(table_path) as env:
+        with env.begin(buffers=True) as txn:
+            suggestions = txn.get(prefix)
+            return bytes(suggestions).decode("utf-8").split("\x00") if suggestions is not None else []
+
+
+def _by_frequency(keys: list[str], db_path: str, overflow_words, lemmas: bool = False) -> list[str]:
+    """Keys of words.lmdb (word forms, or lemmas), most frequent first, as the frequency files order them: by their
+    hits, the same number of them by key, from the last for words (PostFilters.write_word_frequency_table_from_runs),
+    from the first for lemmas (PostFilters.write_lemma_counts)."""
+    counted = []
+    with lmdb_env(os.path.join(db_path, "words.lmdb")) as env:
+        with env.begin(buffers=True) as txn:
+            for key in keys:
+                key_bytes = key.encode("utf-8")
+                if key in overflow_words:  # their hits are in a file of their own: as many bytes a hit
+                    file_name = f"{hashlib.sha256(key_bytes).hexdigest()}.bin"
+                    size = os.path.getsize(os.path.join(db_path, "overflow_words", file_name))
+                else:
+                    hits = txn.get(key_bytes)
+                    size = len(hits) if hits is not None else 0
+                counted.append((size, key_bytes, key))
+    if lemmas:
+        counted.sort(key=lambda entry: (-entry[0], entry[1]))
+    else:
+        counted.sort(key=lambda entry: entry[:2], reverse=True)
+    return [key for _, _, key in counted]
+
+
+def expand_autocomplete(
+    kind: str,
+    token: str,
+    frequency_file: str,
+    db_path: str,
+    ascii_conversion: bool,
+    lowercase: bool,
+    max_results: int = AUTOCOMPLETE_SUGGESTIONS,
+    overflow_words=frozenset(),
+) -> list[str]:
     """Expand a single autocomplete token using LMDB cursor scans (no subprocess).
 
     Returns a list of matching word strings:
-    - TERM/QUOTE: original word forms from norm_word.lmdb
-    - LEMMA/ATTR/LEMMA_ATTR: key strings from words.lmdb (e.g. "lemma:être")
+    - TERM/QUOTE: original word forms from norm_word.lmdb, most frequent first
+    - LEMMA: lemma keys from word_forms.lmdb (e.g. "lemma:être"), most frequent first
+    - ATTR/LEMMA_ATTR: key strings from word_forms.lmdb (e.g. "lemma:être:pos:VERB"), in alphabetical order
 
-    Supports regex patterns (e.g. sens.*, lemma:virt.*) via cursor + re.match.
+    The most frequent come from the tables built at load time (build_autocomplete_tables); a database without them
+    has its suggestions in alphabetical order. Supports regex patterns (e.g. sens.*, lemma:virt.*) via cursor +
+    re.match, the most frequent of the first REGEX_EXPANSION_CAP matches first. overflow_words are those of
+    db.locals, whose hits are in files of their own.
     """
     if kind in ("NOT", "OR", "NULL"):
         return []
@@ -635,14 +779,22 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
             with env.begin(buffers=True) as txn:
                 if _is_regex_pattern(raw_token):
                     norm_prefix, pattern_str = _normalize_pattern(raw_token, lowercase and ascii_conversion)
-                    return _lmdb_expand_term(txn, norm_prefix, pattern_str, max_results, prefix_match=True)
+                    forms = _lmdb_expand_term(txn, norm_prefix, pattern_str, REGEX_EXPANSION_CAP, prefix_match=True)
+                    return _by_frequency(forms, db_path, overflow_words)[:max_results]
                 elif ascii_conversion:
                     norm_prefix = _norm_key(raw_token, lowercase)
-                    return _lmdb_expand_term(txn, norm_prefix, None, max_results)
                 else:
                     # ascii_conversion=False: query token is the norm key as-is
                     norm_prefix = raw_token.lower().encode("utf-8") if lowercase else raw_token.encode("utf-8")
+                if not norm_prefix:  # a term normalized to nothing, as an emoji: LMDB fails on an empty key
+                    return []
+                suggestions = _table_suggestions(db_path, _AUTOCOMPLETE_WORDS, norm_prefix)
+                if suggestions is None:
                     return _lmdb_expand_term(txn, norm_prefix, None, max_results)
+                if suggestions:
+                    return suggestions[:max_results]
+                forms = _lmdb_expand_term(txn, norm_prefix, None, AUTOCOMPLETE_SUGGESTIONS)
+                return _by_frequency(forms, db_path, overflow_words)[:max_results]
 
     elif kind in ("LEMMA", "ATTR", "LEMMA_ATTR"):
         if not token:
@@ -653,9 +805,19 @@ def expand_autocomplete(kind: str, token: str, frequency_file: str, db_path: str
             with scan_env.begin(buffers=True) as txn:
                 if _is_regex_pattern(token):
                     prefix_bytes, pattern_str = _forms_pattern(token)
-                    keys = _lmdb_scan_keys(txn, prefix_bytes, pattern_str, max_results, prefix_match=True)
-                    return _lemma_boundary_filter(kind, keys)
-                else:
-                    return _lmdb_scan_keys(txn, token.encode("utf-8"), None, max_results)
+                    if kind != "LEMMA":
+                        return _lmdb_scan_keys(txn, prefix_bytes, pattern_str, max_results, prefix_match=True)
+                    keys = _lmdb_scan_keys(txn, prefix_bytes, pattern_str, REGEX_EXPANSION_CAP, prefix_match=True)
+                    keys = _lemma_boundary_filter(kind, keys)
+                    return _by_frequency(keys, db_path, overflow_words, lemmas=True)[:max_results]
+                prefix = token.encode("utf-8")
+                if kind == "LEMMA":
+                    suggestions = _table_suggestions(db_path, _AUTOCOMPLETE_LEMMAS, prefix)
+                    if suggestions:
+                        return suggestions[:max_results]
+                    if suggestions is not None:  # few lemmas: those, not their attributes, ordered
+                        keys = _lemma_boundary_filter(kind, _lmdb_scan_keys(txn, prefix, None))
+                        return _by_frequency(keys, db_path, overflow_words, lemmas=True)[:max_results]
+                return _lmdb_scan_keys(txn, prefix, None, max_results)
 
     return []

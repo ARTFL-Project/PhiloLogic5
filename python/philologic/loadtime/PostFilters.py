@@ -759,6 +759,17 @@ def build_word_forms_lmdb(loader_obj):
     print("%s: word_forms LMDB index built (%d keys)." % (time.ctime(), count), flush=True)
 
 
+def build_autocomplete_tables(loader_obj):
+    """Build the tables of the most frequent words and lemmas of the prefixes most start with, which autocomplete
+    suggests first. Reads normalized_word_frequencies and lemmas, so must run after they are written."""
+
+    from philologic.runtime.term_expansion import build_autocomplete_tables as _build
+
+    print("%s: Building autocomplete tables..." % time.ctime(), flush=True)
+    n_prefixes = _build(loader_obj.destination)
+    print("%s: Autocomplete tables built (%d prefixes)." % (time.ctime(), n_prefixes), flush=True)
+
+
 def build_metadata_word_index(loader_obj):
     """Build inverted word index LMDB for metadata fields.
 
@@ -919,6 +930,7 @@ DefaultPostFilters = [
     build_norm_word_lmdb,
     lemma_and_attribute_frequencies,
     build_word_forms_lmdb,
+    build_autocomplete_tables,
     metadata_frequencies,
     normalized_metadata_frequencies,
     build_metadata_word_index,

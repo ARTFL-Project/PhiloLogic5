@@ -82,6 +82,29 @@ class TestShakespeareCorpusBuild:
 
         env.close()
 
+    def test_autocomplete_most_frequent_first(self, shakespeare_db_path, shakespeare_db):
+        """Autocomplete suggests the most frequent words first: the first of normalized_word_frequencies, which is in
+        frequency order, to start with what is typed. From the tables the loader builds, or ordered when few."""
+        from philologic.runtime.term_expansion import expand_autocomplete
+
+        frequency_file = Path(shakespeare_db_path) / "frequencies" / "normalized_word_frequencies"
+        assert (frequency_file.parent / "autocomplete_words.lmdb").exists()
+        with open(frequency_file, encoding="utf-8") as lines:
+            words = [line.rstrip("\n").split("\t") for line in lines]
+        db_locals = shakespeare_db.locals
+        for prefix in ("t", "th", "lo", "lov", "hamle"):
+            suggestions = expand_autocomplete(
+                "TERM",
+                prefix,
+                str(frequency_file),
+                str(shakespeare_db_path),
+                db_locals.ascii_conversion,
+                db_locals.lowercase_index,
+                100,
+                db_locals.overflow_words,
+            )
+            assert suggestions == [form for norm, form in words if norm.startswith(prefix)][:100], prefix
+
 
 @pytest.mark.integration
 class TestELTeCCorpusBuild:

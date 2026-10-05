@@ -46,6 +46,7 @@ def format_query(q, db, config):
         ascii_conversion=db.locals.ascii_conversion,
         lowercase=db.locals["lowercase_index"],
         max_results=100,
+        overflow_words=db.locals.overflow_words,
     )
 
     if not matches:

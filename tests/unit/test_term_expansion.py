@@ -234,3 +234,143 @@ class TestHitWidth:
     def test_resolve_method_counts_groups(self, q, method):
         """single_term is for queries of one group, whatever their whitespace."""
         assert resolve_method(q, "proxy", "0", "no")[0] == method
+
+
+@pytest.fixture
+def autocomplete_db(tmp_path, monkeypatch):
+    """A database's frequency files and hits, the loader's way: words by number of hits, the same number of them from
+    the last word ("lit" before "libre"); lemmas the same, from the first lemma ("lemma:libre" before "lemma:lier").
+    "la" has its hits in an overflow file. Its tables keep 2 suggestions a prefix, built by build_tables()."""
+    import hashlib
+
+    import lmdb
+
+    monkeypatch.setattr(term_expansion, "AUTOCOMPLETE_SUGGESTIONS", 2)
+    data = tmp_path / "data"
+    frequencies = data / "frequencies"
+    frequencies.mkdir(parents=True)
+    words = [
+        ("le", "le", 50),
+        ("la", "la", 40),
+        ("le", "lé", 30),
+        ("les", "les", 30),
+        ("lit", "lit", 5),
+        ("libre", "libre", 5),
+        ("lac", "lac", 2),
+    ]  # (normalized, form, hits)
+    lemmas = [("lemma:le", 60), ("lemma:libre", 5), ("lemma:lier", 5), ("lemma:lys", 1)]
+    (frequencies / "normalized_word_frequencies").write_text("".join(f"{n}\t{f}\n" for n, f, _ in words), "utf-8")
+    (frequencies / "lemmas").write_text("".join(f"{lemma}\n" for lemma, _ in lemmas), "utf-8")
+
+    def write_lmdb(path, items):
+        env = lmdb.open(str(path), map_size=1 << 24)
+        with env.begin(write=True) as txn:
+            for key, value in items:
+                txn.put(key.encode("utf-8"), value)
+        env.close()
+
+    norm = {}
+    for n, f, _ in words:
+        norm.setdefault(n, []).append(f)
+    write_lmdb(
+        frequencies / "normalized_word_frequencies.lmdb", [(n, "\x00".join(f).encode()) for n, f in norm.items()]
+    )
+    hits = [(f, b"\x00" * 36 * h) for _, f, h in words if f != "la"] + [(k, b"\x00" * 36 * h) for k, h in lemmas]
+    write_lmdb(data / "words.lmdb", hits)
+    (data / "overflow_words").mkdir()
+    (data / "overflow_words" / f"{hashlib.sha256(b'la').hexdigest()}.bin").write_bytes(b"\x00" * 36 * 40)
+    forms = [lemma for lemma, _ in lemmas] + ["lemma:libre:pos:ADJ", "lemma:lier:pos:VERB"]
+    write_lmdb(frequencies / "word_forms.lmdb", [(key, b"") for key in forms])
+
+    def suggest(kind, token, max_results=10):
+        return term_expansion.expand_autocomplete(
+            kind, token, str(frequencies / "normalized_word_frequencies"), str(data), True, True, max_results, {"la"}
+        )
+
+    def build_tables():
+        return term_expansion.build_autocomplete_tables(str(data))
+
+    def table(name):
+        env = lmdb.open(str(frequencies / name), readonly=True, lock=False)
+        with env.begin() as txn:
+            content = {bytes(k).decode(): bytes(v).decode().split("\x00") for k, v in txn.cursor()}
+        env.close()
+        return content
+
+    return suggest, build_tables, table, frequencies
+
+
+@pytest.mark.unit
+class TestAutocompleteOrder:
+    """Autocomplete suggests the most frequent words and lemmas first, as the frequency files order them: from tables
+    built at load time for the prefixes more start with than it suggests, ordering the few of any other prefix."""
+
+    def test_tables(self, autocomplete_db):
+        _, build_tables, table, _ = autocomplete_db
+        assert build_tables() == 4
+        assert table("autocomplete_words.lmdb") == {"l": ["le", "la"], "le": ["le", "lé"]}
+        # from "lemma:" on, what a LEMMA term is: "lemma:" alone suggests the most frequent lemmas
+        assert table("autocomplete_lemmas.lmdb") == {
+            "lemma:": ["lemma:le", "lemma:libre"],
+            "lemma:l": ["lemma:le", "lemma:libre"],
+        }
+
+    def test_from_the_table(self, autocomplete_db):
+        suggest, build_tables, _, _ = autocomplete_db
+        build_tables()
+        assert suggest("TERM", "l") == ["le", "la"]
+        assert suggest("TERM", "Lé") == ["le", "lé"]  # normalized, as the words are
+        assert suggest("QUOTE", '"le') == ["le", "lé"]
+        assert suggest("TERM", "l", max_results=1) == ["le"]
+        assert suggest("LEMMA", "lemma:l") == ["lemma:le", "lemma:libre"]
+
+    def test_few_ordered(self, autocomplete_db):
+        """A prefix the table keeps nothing for has few enough words to order them: by hits, overflow ones too, the
+        same number of them from the last word, as in the frequency file."""
+        suggest, build_tables, _, _ = autocomplete_db
+        build_tables()
+        assert suggest("TERM", "li") == ["lit", "libre"]
+        assert suggest("TERM", "la") == ["la", "lac"]  # "la" in its overflow file
+        assert suggest("TERM", "x") == []
+
+    def test_few_lemmas_ordered(self, autocomplete_db):
+        """The lemmas only, not their attributes, the same number of hits from the first lemma, as in the lemmas file"""
+        suggest, build_tables, _, _ = autocomplete_db
+        build_tables()
+        assert suggest("LEMMA", "lemma:li") == ["lemma:libre", "lemma:lier"]
+
+    def test_regex(self, autocomplete_db):
+        suggest, build_tables, _, _ = autocomplete_db
+        build_tables()
+        assert suggest("TERM", "l.*", max_results=4) == ["le", "la", "lé", "les"]
+        assert suggest("LEMMA", "lemma:li.*") == ["lemma:libre", "lemma:lier"]
+
+    def test_without_tables(self, autocomplete_db):
+        """A database loaded before the tables suggests as before: the first words in alphabetical order."""
+        suggest, _, _, _ = autocomplete_db
+        assert suggest("TERM", "l", max_results=3) == ["la", "lac", "le"]
+        assert suggest("LEMMA", "lemma:li") == [
+            "lemma:libre",
+            "lemma:libre:pos:ADJ",
+            "lemma:lier",
+            "lemma:lier:pos:VERB",
+        ]
+
+    def test_rebuilt(self, autocomplete_db):
+        """Built again, as for a database loaded before them, a table is replaced whole."""
+        _, build_tables, table, frequencies = autocomplete_db
+        build_tables()
+        (frequencies / "normalized_word_frequencies").write_text("la\tla\nle\tle\nles\tles\n", "utf-8")
+        build_tables()
+        assert table("autocomplete_words.lmdb") == {"l": ["la", "le"]}
+        assert sorted(p.name for p in frequencies.iterdir() if "autocomplete" in p.name) == [
+            "autocomplete_lemmas.lmdb",
+            "autocomplete_words.lmdb",
+        ]
+
+    def test_prefixes_of_whole_characters(self, tmp_path, monkeypatch):
+        """Prefixes are of bytes, but only those of whole characters can be asked for."""
+        monkeypatch.setattr(term_expansion, "AUTOCOMPLETE_SUGGESTIONS", 2)
+        entries = [(word.encode(), word.encode()) for word in ("étape", "étoile", "été")]
+        path = str(tmp_path / "table.lmdb")
+        assert term_expansion._write_prefix_table(iter(entries), path, 1) == 2  # "é" and "ét", not half an "é"
