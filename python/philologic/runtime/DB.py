@@ -189,7 +189,6 @@ class DB:
         sort_order=["rowid"],
         raw_results=False,
         raw_bytes=False,
-        get_word_count_field=None,
         **metadata,
     ):  # pylint: disable=dangerous-default-value
         """query the PhiloLogic database"""
@@ -221,10 +220,6 @@ class DB:
                 has_metadata = True
                 key_value = "%s=%s" % (key, "|".join(value))
                 hash.update(key_value.encode("utf8"))
-        if get_word_count_field is not None:
-            return MetadataQuery.metadata_total_word_count_query(
-                self, metadata, get_word_count_field, ascii_conversion=self.locals.ascii_conversion
-            )
         if has_metadata:
             corpus_hash = hash.hexdigest()
             corpus_file = os.path.join(self.hitlist_dir, corpus_hash + ".hitlist")
@@ -261,8 +256,6 @@ class DB:
                 if lock is not None:  # this means it contains a word query too
                     corpus = produce(lock=lock)
             if lock is None:  # no word query here
-                if sort_order == ["rowid"]:
-                    sort_order = None
                 corpus = HitList.HitList(
                     corpus_file,
                     0,
@@ -288,8 +281,6 @@ class DB:
             hash.update(str(limit).encode("utf8"))
             search_hash = hash.hexdigest()
             search_file = os.path.join(self.hitlist_dir, search_hash + ".hitlist")
-            if sort_order == ["rowid"]:
-                sort_order = None
             with claim_hitlist(search_file) as lock:
                 if lock is not None:
                     return Query.query(

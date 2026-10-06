@@ -1,8 +1,6 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
-import os
 import re
-import sqlite3
 import struct
 import sys
 
@@ -12,10 +10,7 @@ from unidecode import unidecode
 from . import HitList
 from .exceptions import BadRequest
 from .QuerySyntax import group_terms, parse_date_query, parse_metadata_query, quoted_text
-from .sql_validation import validate_column, validate_sort_order
-
-os.environ["PATH"] += ":/usr/local/bin/"
-
+from .sql_validation import validate_column
 
 _OBJ_PREFIX_LEN = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6}
 
@@ -98,7 +93,7 @@ def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, asc
     for d in param_dicts:
         # The file is always written in load order, which filtering word hits against it relies on, and it is
         # cached whatever sort was asked for: sort_order only applies to the HitList returned below.
-        query = query_recursive(db, d, prev, None, ascii_conversion=ascii_conversion)
+        query = query_recursive(db, d, prev, ascii_conversion=ascii_conversion)
         prev = query
     try:
         corpus_fh = open(filename, "wb")
@@ -114,80 +109,9 @@ def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, asc
     return HitList.HitList(filename, 0, db, raw=raw_results, sort_order=sort_order, ascii_conversion=ascii_conversion)
 
 
-def metadata_total_word_count_query(db, metadata, metadata_field_name, ascii_conversion=True):
-    """Retrieve word count from text object"""
-    metadata_field_name = validate_column(metadata_field_name, db)
-    param_dicts = [{} for _ in db.locals["metadata_hierarchy"]]
-    # Taken from DB.query
-    for k, v in list(metadata.items()):
-        for i, params in enumerate(db.locals["metadata_hierarchy"]):
-            if v and (k in params):
-                param_dicts[i][k] = v
-                if k in db.locals["metadata_types"]:
-                    this_type = db.locals["metadata_types"][k]
-                    if this_type == "div":
-                        param_dicts[i]["philo_type"] = ['"div"|"div1"|"div2"|"div3"']
-                    else:
-                        param_dicts[i]["philo_type"] = ['"%s"' % db.locals["metadata_types"][k]]
-    param_dicts = [d for d in param_dicts if d]
-    if "philo_id" in metadata:
-        if param_dicts:
-            param_dicts[-1]["philo_id"] = metadata["philo_id"]
-        else:
-            param_dicts.append({"philo_id": metadata["philo_id"]})
-    prev = None
-    query = None
-    for param_dict in param_dicts:
-        query = query_recursive(db, param_dict, prev, None, ascii_conversion=ascii_conversion)
-        prev = query
-    cursor = db.dbh.cursor()
-    philo_type = db.locals["metadata_types"][metadata_field_name]
-    results = {}
-
-    if query is not None:
-        philo_ids = []
-        for row in query:
-            philo_ids.append(row["philo_id"])
-
-        # SQLite has a limit of ~999 SQL variables, so batch large queries
-        BATCH_SIZE = 900
-        for i in range(0, len(philo_ids), BATCH_SIZE):
-            batch = philo_ids[i:i + BATCH_SIZE]
-            placeholders = ', '.join('?' for _ in batch)
-            if philo_type != "div":
-                cursor.execute(
-                    f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_id IN ({placeholders}) AND philo_type='{philo_type}' GROUP BY {metadata_field_name}",
-                    tuple(batch),
-                )
-            else:
-                cursor.execute(
-                    f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_id IN ({placeholders}) AND philo_type IN ('div1', 'div2', 'div3') GROUP BY {metadata_field_name}",
-                    tuple(batch),
-                )
-            for row in cursor:
-                key = row[metadata_field_name]
-                if key in results:
-                    results[key] += row["total_sum"]
-                else:
-                    results[key] = row["total_sum"]
-    else:
-        if philo_type != "div":
-            cursor.execute(
-                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_type='{philo_type}' GROUP BY {metadata_field_name}"
-            )
-        else:
-            cursor.execute(
-                f"SELECT {metadata_field_name}, SUM(word_count) AS total_sum FROM toms WHERE philo_type IN ('div1', 'div2', 'div3') GROUP BY {metadata_field_name}"
-            )
-        for row in cursor:
-            results[row[metadata_field_name]] = row["total_sum"]
-
-    return results
-
-
-def query_recursive(db, param_dict, parent, sort_order, ascii_conversion=True):
+def query_recursive(db, param_dict, parent, ascii_conversion=True):
     """Build recursise SQL query"""
-    r = query_lowlevel(db, param_dict, sort_order, ascii_conversion)
+    r = query_lowlevel(db, param_dict, ascii_conversion)
     if parent:
         try:
             outer_hit = next(parent)
@@ -208,13 +132,11 @@ def query_recursive(db, param_dict, parent, sort_order, ascii_conversion=True):
             yield row
 
 
-def query_lowlevel(db, param_dict, sort_order, ascii_conversion):
+def query_lowlevel(db, param_dict, ascii_conversion):
     """SQL query builder"""
-    vars = []
     clauses = []
     for column, values in param_dict.items():
         column = validate_column(column, db)
-        norm_path = db.path + "/frequencies/normalized_" + column + "_frequencies"
         for v in values:
             field_type = db.locals.metadata_sql_types.get(column, "text")
             if field_type == "date":
@@ -223,7 +145,7 @@ def query_lowlevel(db, param_dict, sort_order, ascii_conversion):
             else:
                 parsed = parse_metadata_query(v, field_type)
             grouped = group_terms(parsed)
-            expanded = expand_grouped_query(grouped, norm_path, ascii_conversion)
+            expanded = expand_grouped_query(grouped, db.path, column, ascii_conversion)
             sql_clause = make_grouped_sql_clause(expanded, column, db)
             if db.locals["debug"]:
                 print("METADATA_TOKENS:", parsed, file=sys.stderr)
@@ -231,35 +153,19 @@ def query_lowlevel(db, param_dict, sort_order, ascii_conversion):
                 print("METADATA_SYNTAX EXPANDED:", expanded, file=sys.stderr)
                 print("SQL_SYNTAX:", sql_clause, file=sys.stderr)
             clauses.append(sql_clause)
-    if not sort_order:
-        sort_order = ["rowid"]
-    else:
-        sort_order = validate_sort_order(sort_order, db)
     if clauses:
         query = "SELECT philo_id FROM toms WHERE " + " AND ".join("(%s)" % c for c in clauses)
     else:
         query = "SELECT philo_id FROM toms"
-    if sort_order:
-        query = f"{query} ORDER BY {', '.join(sort_order)}"
+    query += " ORDER BY rowid"
     if db.locals["debug"]:
-        print("INNER QUERY: ", "%s %% %s" % (query, vars), sort_order, file=sys.stderr, flush=True)
-    results = db.dbh.execute(query, vars)
-    return results
+        print("INNER QUERY: ", query, file=sys.stderr, flush=True)
+    return db.dbh.execute(query)
 
 
-def expand_grouped_query(grouped, norm_path, ascii_conversion):
+def expand_grouped_query(grouped, db_path, field, ascii_conversion):
     """Expand grouped SQL query"""
     expanded = []
-    pure = True
-    # first test to see if this is a "pure" query, which can be entirely evaluated in rg
-    # this requires that it is only AND and OR's, for now--I may be able to add the others later
-    for group in grouped:
-        for kind, token in group:
-            if kind == "RANGE" or kind == "NULL":
-                pure = False
-    if pure:
-        # will implement this later
-        pass
     for group in grouped:
         expanded_group = []
         for kind, token in group:
@@ -267,7 +173,7 @@ def expand_grouped_query(grouped, norm_path, ascii_conversion):
                 norm_term = token.lower()
                 if ascii_conversion is True:
                     norm_term = unidecode(norm_term)
-                expanded_terms = metadata_pattern_search(norm_term, norm_path, ascii_conversion)
+                expanded_terms = metadata_pattern_search(norm_term, db_path, field, ascii_conversion)
                 if expanded_terms:
                     expanded_tokens = [("QUOTE", '"' + e + '"') for e in expanded_terms]
                     fully_expanded_tokens = []
@@ -351,18 +257,12 @@ def make_grouped_sql_clause(expanded, column, db):
 _WORD_PARTS = regex.compile(r"(?:\[[^\]]*\]|[^\-'\u2019\u02bc,;:!/])+")
 
 
-def metadata_pattern_search(term, path, ascii_conversion=True):
+def metadata_pattern_search(term, db_path, field, ascii_conversion=True):
     """The metadata values that have term as a word, using the LMDB index. term is normalized (lowercase, and with
     ascii_conversion unidecoded), as the index's words are. A regex matches whole words. A word of several parts
     (jean-jacques, d'autriche) needs its parts side by side and in that order, whatever separates them."""
     if isinstance(term, bytes):
         term = term.decode("utf-8", errors="replace")
-
-    # Extract db_path and field from freq file path
-    # path = "{db}/frequencies/normalized_{field}_frequencies"
-    db_path = os.path.dirname(os.path.dirname(path))
-    basename = os.path.basename(path)
-    field = basename[len("normalized_"):-len("_frequencies")]
 
     from .term_expansion import metadata_word_lookup, metadata_word_regex_scan, _is_regex_pattern
 
@@ -400,22 +300,6 @@ def escape_sql_string(s):
     """Escape SQL string"""
     s = s.replace("'", "''")
     return "'%s'" % s
-
-
-def hit_to_string(hit, width):
-    """Convert Philo hit to a string"""
-    if isinstance(hit, sqlite3.Row):
-        hit = hit["philo_id"]
-    if isinstance(hit, str):
-        hit = list(map(int, hit.split(" ")))
-    if isinstance(hit, int):
-        hit = [hit]
-    if len(hit) > width:
-        hit = hit[:width]
-    pad = width - len(hit)
-    hit_string = " ".join(map(str, hit))
-    hit_string += "".join(" 0" for _ in range(pad))
-    return hit_string
 
 
 def str_to_hit(string):

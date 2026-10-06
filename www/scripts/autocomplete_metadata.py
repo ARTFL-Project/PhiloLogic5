@@ -58,8 +58,7 @@ def format_query(q, field, db):
         matches = values_with_words(words, field, db)
     else:
         matches = metadata_pattern_search(
-            re_stdlib.escape(norm_tok), db.locals.db_path + "/data/frequencies/normalized_%s_frequencies" % field,
-            db.locals.ascii_conversion,
+            re_stdlib.escape(norm_tok), db.locals.db_path + "/data", field, db.locals.ascii_conversion
         )
         # by the normalized token, as the index's words are: "émi" finds "Émile"
         exact_matches = exact_word_pattern_search(
