@@ -45,6 +45,9 @@ Metadata values have a syntax of their own: the database's word-search settings 
 5. `NOT` excludes what follows, and may stand alone: `contrat NOT social` is legal, so is `NOT rousseau`.
    Objects with no value are not excluded: `NOT rousseau NOT NULL` leaves them out too.
 6. `NULL` matches the objects with no value, `NOT NULL` those with one.
+7. In date fields, dates are written `1789`, `1789-07` or `1789-07-14`, and a year or a month matches all its days.
+   A range joins two dates with `<=>`, from the first day of one to the last of the other, as `1789<=>1790-06`;
+   leave one out for no bound: `<=>1790`, `1789<=>`. Dates separated by spaces are alternatives, as with `OR`.
 
 Metadata objects also have the unique property of recursion, which creates some unusual consequences for search semantics.
 Searching for a div that has property `NOT x` does not guarantee that the result does not contain a child with property x,

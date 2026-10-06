@@ -171,10 +171,12 @@ class TestParseDateQuery:
         assert "1850" in result[0][1]
 
     def test_date_or_query(self):
-        """Test parsing OR in date query."""
-        result = parse_date_query("1800 | 1850")
-        # Should contain OR operator
-        assert any(item[0] == "OR" for item in result)
+        """Both years: the dates before the last were dropped."""
+        assert parse_date_query("1800 | 1850") == [
+            ("DATE_RANGE", "1800-01-01<=>1800-12-31"),
+            ("OR", "|"),
+            ("DATE_RANGE", "1850-01-01<=>1850-12-31"),
+        ]
 
 
 @pytest.mark.unit

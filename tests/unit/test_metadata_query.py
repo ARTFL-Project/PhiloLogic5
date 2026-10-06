@@ -123,18 +123,72 @@ class TestSyntax:
         assert [(negated, [t for _, t in tokens]) for negated, tokens in value_groups(value)] == groups
 
     def test_dates_join(self):
-        """In date fields, dates join the group before them, as alternatives (only after a line break does the date
-        grammar read a second one)."""
-        assert value_groups("1789<=>1790\n1800", "date") == [
-            (False, [("DATE_RANGE", "1789-01-01<=>1790-12-31"), ("DATE_RANGE", "1800-01-01<=>1800-12-31")])
+        """In date fields, values join the group before them, as alternatives."""
+        assert value_groups("1789<=>1790 1800 NULL", "date") == [
+            (
+                False,
+                [
+                    ("DATE_RANGE", "1789-01-01<=>1790-12-31"),
+                    ("DATE_RANGE", "1800-01-01<=>1800-12-31"),
+                    ("NULL", "NULL"),
+                ],
+            )
         ]
-        assert value_groups("NOT 1789", "date") == [(True, [("DATE_RANGE", "1789-01-01<=>1789-12-31")])]
+        assert value_groups("NOT 1789 1790", "date") == [
+            (True, [("DATE_RANGE", "1789-01-01<=>1789-12-31"), ("DATE_RANGE", "1790-01-01<=>1790-12-31")])
+        ]
 
     @pytest.mark.parametrize("value", ['Les Révoltés de la "Bounty"', '"Bounty"', "a | b", ""])
     def test_quoted_values(self, value):
         """A quote inside a quoted value is doubled: values with quotes could not be matched."""
         tokens = parse_metadata_query(quote_metadata_value(value))
         assert [kind for kind, _ in tokens] == ["QUOTE"] and quoted_text(tokens[0][1]) == value
+
+
+DATES = ["0800-01-01", "1789-07-14", "1789-12-31", "1790-06-15", "1850-01-01", None]  # as the loader stores them
+
+
+@pytest.fixture(scope="module")
+def dated():
+    dbh = sqlite3.connect(":memory:")
+    dbh.execute("CREATE TABLE toms (date date)")
+    dbh.executemany("INSERT INTO toms VALUES (?)", [(d,) for d in DATES])
+    return SimpleNamespace(dbh=dbh, path="/nonexistent/")
+
+
+@pytest.mark.unit
+class TestDates:
+    def dates(self, db, value):
+        clause = groups_clause(db, "date", value_groups(value, "date"))
+        return [d for (d,) in db.dbh.execute(f"SELECT date FROM toms WHERE {clause} ORDER BY rowid")]
+
+    @pytest.mark.parametrize(
+        "value, expected",
+        [
+            ("1789", ["1789-07-14", "1789-12-31"]),
+            ("1789-07", ["1789-07-14"]),
+            ("1789-7-14", ["1789-07-14"]),  # as stored, zero-padded
+            ("800", ["0800-01-01"]),
+            ("1789 | 1850", ["1789-07-14", "1789-12-31", "1850-01-01"]),  # was 1850 alone
+            ("1789 1850", ["1789-07-14", "1789-12-31", "1850-01-01"]),
+            ("1789-07<=>1790", ["1789-07-14", "1789-12-31", "1790-06-15"]),
+            (" 1789-07 <=> 1790 ", ["1789-07-14", "1789-12-31", "1790-06-15"]),
+            ("<=>1789-07", ["0800-01-01", "1789-07-14"]),  # was July 1789 alone
+            ("1790<=>", ["1790-06-15", "1850-01-01"]),
+            ("800<=>800 1850<=>", ["0800-01-01", "1850-01-01"]),  # two ranges were a ValueError
+            ('"1850"', ["1850-01-01"]),
+            ("NOT 1789", ["0800-01-01", "1790-06-15", "1850-01-01", None]),
+            ("NULL", [None]),
+            ("NOT NULL", DATES[:-1]),
+        ],
+    )
+    def test_dates(self, dated, value, expected):
+        assert self.dates(dated, value) == expected
+
+    @pytest.mark.parametrize("value", ["abc", "1789<=>abc", "1789-07-14-01", "-500"])
+    def test_no_date(self, dated, value):
+        with pytest.raises(BadRequest, match="is no date"):
+            self.dates(dated, value)
 
 
 @pytest.fixture(scope="module")
