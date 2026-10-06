@@ -72,6 +72,27 @@ class TestNot:
 
 
 @pytest.mark.integration
+class TestPhiloType:
+    """philo_type is no metadata field, and is ignored: alone, it made a metadata query with nothing to query (a 500)."""
+
+    def test_search(self, web):
+        response = web("scripts/get_total_results.py", q="love", philo_type="doc")
+        assert response.status_code == 200, response.text[:300]
+        assert response.json == web("scripts/get_total_results.py", q="love").json > 0
+
+    def test_concordance(self, web):
+        assert web("reports/concordance.py", q="love", philo_type="doc").status_code == 200
+
+    def test_with_a_field(self, web):
+        assert docs(web, title="folle-farine", philo_type="div1") == docs(web, title="folle-farine") == 1
+
+    def test_query(self, eltec_db):
+        hits = eltec_db.query(philo_type="doc")
+        hits.finish()
+        assert len(hits) == sql_count(eltec_db, "1")
+
+
+@pytest.mark.integration
 class TestAutocomplete:
     def test_hyphenated_word(self, web):
         suggestions = web("scripts/autocomplete_metadata.py", term="folle-f", field="title").json

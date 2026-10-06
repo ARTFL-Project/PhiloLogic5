@@ -49,7 +49,6 @@ def parse_metadata(cgi, q, metadata_fields, metadata_sql_types, config):
                 metadata[field] = cgi[field][0]
         if field not in cgi or not cgi[field][0]:
             num_empty += 1
-    metadata["philo_type"] = cgi.get("philo_type", [""])[0]
     no_metadata = num_empty == len(metadata_fields)
     return metadata, no_metadata
 

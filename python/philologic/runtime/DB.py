@@ -217,14 +217,15 @@ class DB:
                 has_metadata = True
                 key_value = "%s=%s" % (key, "|".join(value))
                 hash.update(key_value.encode("utf8"))
-        if has_metadata:
+        levels = MetadataQuery.query_levels(self, metadata) if has_metadata else []  # none for philo_type alone
+        if levels:
             corpus_hash = hash.hexdigest()
             corpus_file = os.path.join(self.hitlist_dir, corpus_hash + ".hitlist")
             produce = partial(
                 MetadataQuery.metadata_query,
                 self,
                 corpus_file,
-                MetadataQuery.query_levels(self, metadata),
+                levels,
                 sort_order,
                 raw_results=raw_results,
                 ascii_conversion=self.locals.ascii_conversion,

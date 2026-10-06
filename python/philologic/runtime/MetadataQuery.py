@@ -99,7 +99,7 @@ def query_levels(db, metadata):
                     philo_types = _philo_types(db.locals["metadata_types"][field])
         if fields:
             levels.append((philo_types, fields))
-    if "philo_id" in metadata:
+    if metadata.get("philo_id"):
         if levels:
             levels[-1][1]["philo_id"] = metadata["philo_id"]
         else:
@@ -135,8 +135,6 @@ def metadata_query(db, filename, levels, sort_order, raw_results=False, ascii_co
 def object_ids(db, levels, ascii_conversion=True):
     """The philo_ids, as tuples in load order, of the objects the last of levels selects within those the levels
     before it select: author and head, the divs with that head in that author's documents."""
-    if not levels:  # metadata with no field to query, as philo_type alone: it fails, as it always did
-        raise ValueError("No metadata field to select objects by")
     outer = None
     for n, (philo_types, fields) in enumerate(levels):
         rows = level_query(db, philo_types, fields, ascii_conversion)
