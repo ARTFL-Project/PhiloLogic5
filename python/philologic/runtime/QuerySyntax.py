@@ -113,6 +113,29 @@ def parse_metadata_query(value, field_type="text"):
     return tokens
 
 
+def value_groups(value, field_type="text"):
+    """The groups of a metadata value for a field of field_type, all of which must match: (negated, tokens), each
+    the OR of its tokens. A value starts a group unless an OR or a NOT is before it, a NOT starts a negated group, and
+    dates join the group before them (in date fields, "1789 1790" is either year)."""
+    if field_type == "date":
+        tokens = parse_date_query(value.replace('"', ""))
+    else:
+        tokens = parse_metadata_query(value, field_type)
+    groups, joined = [], False
+    for kind, token in tokens:
+        if kind == "NOT":
+            groups.append((True, []))
+            joined = True
+        elif kind == "OR":
+            joined = True
+        else:
+            if not groups or not (joined or kind in ("DATE", "DATE_RANGE")):
+                groups.append((False, []))
+            groups[-1][1].append((kind, token))
+            joined = False
+    return groups
+
+
 def expand_date(date, start=True):
     """Expand incomplete dates"""
     if YEAR.search(date):

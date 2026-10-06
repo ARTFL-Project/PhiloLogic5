@@ -1,19 +1,21 @@
-"""Unit tests for metadata query syntax (MetadataQuery.make_grouped_sql_clause, QuerySyntax): ranges, OR, NOT and NULL,
+"""Unit tests for metadata query syntax (MetadataQuery.groups_clause, QuerySyntax): ranges, OR, NOT and NULL,
 run on a small toms table; and for the values of div fields bulk_load_metadata finds for hits."""
 
 import sqlite3
 import sys
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
+from philologic.runtime import MetadataQuery
 from philologic.runtime.exceptions import BadRequest
-from philologic.runtime.MetadataQuery import bulk_load_metadata, make_grouped_sql_clause, object_ids
-from philologic.runtime.QuerySyntax import group_terms, parse_metadata_query, quote_metadata_value, quoted_text
+from philologic.runtime.MetadataQuery import bulk_load_metadata, groups_clause, object_ids
+from philologic.runtime.QuerySyntax import parse_metadata_query, quote_metadata_value, quoted_text, value_groups
 
 YEARS = [1650, 1700, 1720, 1750, 1789, 1800, 1850, 1900, None]
 
@@ -23,26 +25,13 @@ def db():
     dbh = sqlite3.connect(":memory:")
     dbh.execute("CREATE TABLE toms (year int)")
     dbh.executemany("INSERT INTO toms VALUES (?)", [(y,) for y in YEARS])
-    return SimpleNamespace(dbh=dbh)
+    return SimpleNamespace(dbh=dbh, path="/nonexistent/")
 
 
 def years(db, value):
-    """The years a metadata value selects (its terms are values as they are, as expand_grouped_query makes them)."""
-    grouped = group_terms(parse_metadata_query(value, "int"))
-    expanded = []
-    for group in grouped:  # as expand_grouped_query does: NOT starts a group, OR is dropped, terms become values
-        current = []
-        for kind, token in group:
-            if kind == "NOT":
-                if current:
-                    expanded.append(current)
-                current = [(kind, token)]
-            elif kind == "TERM":
-                current.append(("QUOTE", f'"{token}"'))
-            elif kind != "OR":
-                current.append((kind, token))
-        expanded.append(current)
-    clause = make_grouped_sql_clause(expanded, "year", db)
+    """The years a metadata value selects (its terms the values they are, as the index of the years has them)."""
+    with patch.object(MetadataQuery, "metadata_pattern_search", lambda term, *args: [term]):
+        clause = groups_clause(db, "year", value_groups(value, "int"))
     return sorted((y for (y,) in db.dbh.execute(f"SELECT year FROM toms WHERE {clause}")), key=lambda y: (y is not None, y))
 
 
@@ -107,15 +96,39 @@ class TestSyntax:
         assert parse_metadata_query(value, field_type) == tokens
 
     def test_ranges_in_or(self):
-        assert group_terms(parse_metadata_query("1700-1750 | 1800-1850", "int")) == [
-            [("RANGE", "1700-1750"), ("OR", "|"), ("RANGE", "1800-1850")]
+        assert value_groups("1700-1750 | 1800-1850", "int") == [
+            (False, [("RANGE", "1700-1750"), ("RANGE", "1800-1850")])
         ]
 
     def test_ranges_and(self):
-        assert group_terms(parse_metadata_query("1700-1750 1800-1850", "int")) == [
-            [("RANGE", "1700-1750")],
-            [("RANGE", "1800-1850")],
+        assert value_groups("1700-1750 1800-1850", "int") == [
+            (False, [("RANGE", "1700-1750")]),
+            (False, [("RANGE", "1800-1850")]),
         ]
+
+    @pytest.mark.parametrize(
+        "value, groups",
+        [
+            ("hugo zola", [(False, ["hugo"]), (False, ["zola"])]),
+            ("hugo | zola", [(False, ["hugo", "zola"])]),
+            ("hugo NOT zola", [(False, ["hugo"]), (True, ["zola"])]),
+            ("NOT hugo | zola", [(True, ["hugo", "zola"])]),
+            ("hugo OR NOT zola", [(False, ["hugo"]), (True, ["zola"])]),  # NOT starts a group of its own
+            ("NOT hugo zola", [(True, ["hugo"]), (False, ["zola"])]),
+            ("| hugo", [(False, ["hugo"])]),
+            ("hugo NOT", [(False, ["hugo"]), (True, [])]),  # a NOT of nothing, which selects everything
+        ],
+    )
+    def test_groups(self, value, groups):
+        assert [(negated, [t for _, t in tokens]) for negated, tokens in value_groups(value)] == groups
+
+    def test_dates_join(self):
+        """In date fields, dates join the group before them, as alternatives (only after a line break does the date
+        grammar read a second one)."""
+        assert value_groups("1789<=>1790\n1800", "date") == [
+            (False, [("DATE_RANGE", "1789-01-01<=>1790-12-31"), ("DATE_RANGE", "1800-01-01<=>1800-12-31")])
+        ]
+        assert value_groups("NOT 1789", "date") == [(True, [("DATE_RANGE", "1789-01-01<=>1789-12-31")])]
 
     @pytest.mark.parametrize("value", ['Les Révoltés de la "Bounty"', '"Bounty"', "a | b", ""])
     def test_quoted_values(self, value):
@@ -135,8 +148,7 @@ def titles():
 @pytest.mark.unit
 class TestQuotedValues:
     def test_quote_inside(self, titles):
-        expanded = [[token] for token in parse_metadata_query('"Les Révoltés de la ""Bounty"""')]
-        clause = make_grouped_sql_clause(expanded, "title", titles)
+        clause = groups_clause(titles, "title", value_groups('"Les Révoltés de la ""Bounty"""'))
         assert [t for (t,) in titles.dbh.execute(f"SELECT title FROM toms WHERE {clause}")] == ['Les Révoltés de la "Bounty"']
 
 

@@ -9,7 +9,7 @@ from unidecode import unidecode
 
 from . import HitList
 from .exceptions import BadRequest
-from .QuerySyntax import group_terms, parse_date_query, parse_metadata_query, quoted_text
+from .QuerySyntax import quoted_text, value_groups
 from .sql_validation import validate_column
 
 _OBJ_PREFIX_LEN = {"doc": 1, "div1": 2, "div2": 3, "div3": 4, "para": 5, "sent": 6}
@@ -175,22 +175,12 @@ def level_query(db, philo_types, fields, ascii_conversion):
     clauses, params = [], []
     for column, values in fields.items():
         column = validate_column(column, db)
-        for v in values:
-            field_type = db.locals.metadata_sql_types.get(column, "text")
-            if field_type == "date":
-                v = v.replace('"', "")  # remove quotes
-                parsed = parse_date_query(v)
-            else:
-                parsed = parse_metadata_query(v, field_type)
-            grouped = group_terms(parsed)
-            expanded = expand_grouped_query(grouped, db.path, column, ascii_conversion)
-            sql_clause = make_grouped_sql_clause(expanded, column, db)
+        field_type = db.locals.metadata_sql_types.get(column, "text")
+        for value in values:
+            groups = value_groups(value, field_type)
             if db.locals["debug"]:
-                print("METADATA_TOKENS:", parsed, file=sys.stderr)
-                print("METADATA_SYNTAX GROUPED:", grouped, file=sys.stderr)
-                print("METADATA_SYNTAX EXPANDED:", expanded, file=sys.stderr)
-                print("SQL_SYNTAX:", sql_clause, file=sys.stderr)
-            clauses.append(sql_clause)
+                print("METADATA_SYNTAX:", column, groups, file=sys.stderr)
+            clauses.append(groups_clause(db, column, groups, ascii_conversion))
     if philo_types:
         clauses.append(f"philo_type IN ({', '.join('?' for _ in philo_types)})")
         params = list(philo_types)
@@ -202,42 +192,6 @@ def level_query(db, philo_types, fields, ascii_conversion):
     if db.locals["debug"]:
         print("INNER QUERY: ", query, params, file=sys.stderr, flush=True)
     return db.dbh.execute(query, params)
-
-
-def expand_grouped_query(grouped, db_path, field, ascii_conversion):
-    """Expand grouped SQL query"""
-    expanded = []
-    for group in grouped:
-        expanded_group = []
-        for kind, token in group:
-            if kind == "TERM":
-                norm_term = token.lower()
-                if ascii_conversion is True:
-                    norm_term = unidecode(norm_term)
-                expanded_terms = metadata_pattern_search(norm_term, db_path, field, ascii_conversion)
-                if expanded_terms:
-                    expanded_tokens = [("QUOTE", '"' + e + '"') for e in expanded_terms]
-                    fully_expanded_tokens = []
-                    first = True
-                    for e in expanded_tokens:
-                        if first:
-                            first = False
-                        else:
-                            fully_expanded_tokens.append(("OR", "|"))
-                        fully_expanded_tokens.append(e)
-                else:  # if we have no matches, just put an inexact match in as placeholder.  Will fail later.
-                    fully_expanded_tokens = [("QUOTE", '"' + norm_term + '"')]
-                expanded_group.extend(fully_expanded_tokens)
-            else:
-                if kind == "NOT":
-                    if expanded_group:
-                        expanded.append(expanded_group)
-                    expanded_group = [(kind, token)]
-                elif kind != "OR":
-                    expanded_group.append((kind, token))
-        if expanded_group:
-            expanded.append(expanded_group)
-    return expanded
 
 
 def _range_bounds(kind, value, column, db):
@@ -258,21 +212,28 @@ def _range_bounds(kind, value, column, db):
     return bounds
 
 
-def make_grouped_sql_clause(expanded, column, db):
-    """The SQL clause for the groups of a metadata value, which must all match: each group the OR of its ranges, its
-    values and NULL, or with NOT none of them. NOT x is everything x doesn't select, objects with no value included
-    (SQL's NOT left them out: NOT hugo missed the 248 documents with no author), unless x is NULL or has it.
+def groups_clause(db, column, groups, ascii_conversion=True):
+    """The SQL clause for the groups of a metadata value (QuerySyntax.value_groups), which must all match: each group
+    the OR of its ranges, its values and NULL, or with NOT none of them. A term is the values with it as a word
+    (metadata_pattern_search), or, with none, itself, normalized. NOT x is everything x doesn't select, objects with
+    no value included (SQL's NOT left them out: NOT hugo missed the 248 documents with no author), unless x is NULL or
+    has it.
 
     Note: column is expected to be pre-validated by validate_column() in level_query()
     before being passed to this function, ensuring SQL injection protection.
     """
     esc = escape_sql_string
     clauses = []
-    for group in expanded:
-        negated = group[0][0] == "NOT"
+    for negated, tokens in groups:
         alternatives, values = [], []
-        for kind, token in group[1:] if negated else group:
-            if kind in ("RANGE", "DATE_RANGE"):
+        for kind, token in tokens:
+            if kind == "TERM":
+                term = token.lower()
+                if ascii_conversion is True:
+                    term = unidecode(term)
+                found = metadata_pattern_search(term, db.path, column, ascii_conversion)
+                values.extend(map(esc, found or [term]))
+            elif kind in ("RANGE", "DATE_RANGE"):
                 lower, upper = _range_bounds(kind, token, column, db)
                 alternatives.append(f"({column} >= {esc(lower)} AND {column} <= {esc(upper)})")
             elif kind == "QUOTE":
@@ -286,7 +247,7 @@ def make_grouped_sql_clause(expanded, column, db):
         clause = " OR ".join(alternatives)
         if not negated:
             clauses.append(f"({clause})")
-        elif any(kind == "NULL" for kind, _ in group[1:]):
+        elif any(kind == "NULL" for kind, _ in tokens):
             clauses.append(f"NOT ({clause})")
         else:
             clauses.append(f"(NOT ({clause}) OR {column} IS NULL)")
