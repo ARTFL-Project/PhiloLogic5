@@ -29,15 +29,13 @@ The `philoload5` command requires the following required arguments::
 
 `-h`, `--help` show this help message and exit
 
-`-a WEB_APP_DIR`, `--app_dir=WEB_APP_DIR` Define custom location for the web app directory
-
 `-b BIBLIOGRAPHY`, `--bibliography=BIBLIOGRAPHY` Defines a file containing the document-level bibliography of the texts. One of the fields needs to be the filename
 
 `-c CORES`, `--cores=CORES` define the number of cores used for parsing
 
 `-d`, `--debug` add debugging at parse time
 
-`-f`, `--force_delete` overwrite database without confirmation
+`-D`, `--force_delete` overwrite database without confirmation
 
 `-F`, `--file-list` Defines whether the file argument is a file containing fullpaths to the files to load
 
@@ -45,7 +43,9 @@ The `philoload5` command requires the following required arguments::
 
 `-l LOAD_CONFIG`, `--load_config=LOAD_CONFIG` load external config for specialized load
 
-`-t FILE_TYPE`, `--file-type=FILE_TYPE` Define file type for parsing: plain_text or xml
+`-t FILE_TYPE`, `--file-type=FILE_TYPE` Define file type for parsing: plain_text, xml, or html
+
+`-w WEB_CONFIG`, `--use-webconfig=WEB_CONFIG` use a predefined web_config.cfg file instead of generating one, e.g. to keep the settings of a database you are reloading
 
 So our command for loading texts could be::
 
