@@ -78,3 +78,37 @@ class TestBadParameters:
         response = web("scripts/resolve_cite.py", q="Gen. 1.1")
         assert response.status_code == 302
         assert response.headers["location"].endswith(f"/{Path(response.headers['location']).name}/")
+
+
+@pytest.fixture(scope="module")
+def older_web_config(eltec_db_path, tmp_path_factory):
+    """The test corpus served with a web config listing, as those of databases loaded before October 2026 did, fields
+    no text has: who and resp, which toms has no column for."""
+    pytest.importorskip("falcon")
+    from tests.fixtures.web_app import web_app_client
+
+    corpus = Path(eltec_db_path).parent
+    root = tmp_path_factory.mktemp("older") / "root"
+    data = root / corpus.name / "data"
+    data.mkdir(parents=True)
+    for entry in (corpus / "data").iterdir():
+        if entry.name not in ("web_config.cfg", "hitlists"):
+            (data / entry.name).symlink_to(entry)
+    web_config = {}
+    exec((corpus / "data" / "web_config.cfg").read_text(), web_config)
+    fields = web_config["metadata"]
+    (data / "web_config.cfg").write_text(
+        (corpus / "data" / "web_config.cfg").read_text()
+        + f"\nmetadata = {fields + ['who', 'resp']!r}\nfacets = {web_config['facets'] + ['who']!r}\n"
+    )
+    with web_app_client(root) as client:
+        yield client.simulate_get(f"/philologic5/{corpus.name}/scripts/get_web_config.py").json, fields
+
+
+@pytest.mark.integration
+class TestWebConfig:
+    def test_fields_toms_has(self, older_web_config):
+        """The search form and the facets offer the fields toms has: searching or faceting by the others was a 500."""
+        web_config, fields = older_web_config
+        assert web_config["metadata"] == fields
+        assert "who" not in web_config["facets"] and "author" in web_config["facets"]

@@ -5,8 +5,10 @@ import hashlib
 import hmac
 import json
 import os
+import sqlite3
 import sys
 import time
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -340,6 +342,8 @@ def web_root(tmp_path_factory):
         (root / name / "data" / "db.locals.py").write_text("metadata_sql_types = {}\nmetadata_fields = []\n")
         (root / name / "data" / "web_config.cfg").write_text(web_config)
         (root / name / "data" / "logins.txt").write_text("user\tpass\n")
+        with closing(sqlite3.connect(root / name / "data" / "toms.db")) as dbh:
+            dbh.execute("CREATE TABLE toms (philo_id text)")
         (root / name / "app" / "dist" / "assets").mkdir(parents=True)
         (root / name / "app" / "dist" / "index.html").write_text("<html>app</html>")
         (root / name / "app" / "dist" / "assets" / "index.js").write_text("app")
