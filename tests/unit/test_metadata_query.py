@@ -14,7 +14,7 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime import MetadataQuery
 from philologic.runtime.exceptions import BadRequest
-from philologic.runtime.MetadataQuery import bulk_load_metadata, groups_clause, object_ids
+from philologic.runtime.MetadataQuery import bulk_load_metadata, groups_clause, level_query, object_ids
 from philologic.runtime.QuerySyntax import parse_metadata_query, quote_metadata_value, quoted_text, value_groups
 
 YEARS = [1650, 1700, 1720, 1750, 1789, 1800, 1850, 1900, None]
@@ -273,3 +273,29 @@ class TestObjectIds:
     def test_any_type(self, plays):
         """A level of no type, as philo_id alone makes, selects objects of any."""
         assert self.ids(plays, (None, {"head": ['"Prologue"']})) == ["1 2 0 0 0"]
+
+
+@pytest.mark.unit
+class TestIndexes:
+    """With no statistics, SQLite took the philo_type index, which selects every object of a type, over a field's, as
+    soon as a value had 5 alternatives: head=chapitre went through all of frantext's divs, in 0.35 s, not 0.05."""
+
+    def plan(self, db, philo_types, fields):
+        executed = []
+
+        class Recorder:
+            def execute(self, query, params):
+                executed.append((query, params))
+                return db.dbh.execute(query, params)
+
+        recorded = SimpleNamespace(dbh=Recorder(), path=db.path, locals=db.locals)
+        level_query(recorded, philo_types, fields, True).fetchall()
+        query, params = executed[-1]
+        return " ".join(row[3] for row in db.dbh.execute("EXPLAIN QUERY PLAN " + query, params))
+
+    def test_field_index(self, plays):
+        plays.dbh.execute("CREATE INDEX IF NOT EXISTS toms_philo_type_index ON toms (philo_type)")
+        plays.dbh.execute("CREATE INDEX IF NOT EXISTS toms_head_index ON toms (head)")
+        heads = " | ".join(f'"{head}"' for head in ("Acte", "Scène", "Prologue", "Épilogue", "Intermède"))
+        assert "toms_head_index" in self.plan(plays, DIVS, {"head": [heads]})
+        assert "toms_philo_type_index" in self.plan(plays, DIVS, {"head": [f"NOT {heads}"]})  # most divs

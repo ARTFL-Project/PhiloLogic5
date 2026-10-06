@@ -172,7 +172,7 @@ def _depth(philo_id):
 
 def level_query(db, philo_types, fields, ascii_conversion):
     """The rows (philo_id) of the objects of philo_types (any if None) with the values of fields, in load order."""
-    clauses, params = [], []
+    clauses, params, selective = [], [], False
     for column, values in fields.items():
         column = validate_column(column, db)
         field_type = db.locals.metadata_sql_types.get(column, "text")
@@ -181,8 +181,14 @@ def level_query(db, philo_types, fields, ascii_conversion):
             if db.locals["debug"]:
                 print("METADATA_SYNTAX:", column, groups, file=sys.stderr)
             clauses.append(groups_clause(db, column, groups, ascii_conversion))
+            selective = selective or any(
+                not negated and all(kind != "NULL" for kind, _ in tokens) for negated, tokens in groups
+            )
     if philo_types:
-        clauses.append(f"philo_type IN ({', '.join('?' for _ in philo_types)})")
+        # With no statistics (ANALYZE) to tell it that the philo_type index selects many objects, SQLite takes it over
+        # a field's: "+" keeps it off when the field's values or ranges select (NOT and NULL select too many)
+        hint = "+" if selective else ""
+        clauses.append(f"{hint}philo_type IN ({', '.join('?' for _ in philo_types)})")
         params = list(philo_types)
     if clauses:
         query = "SELECT philo_id FROM toms WHERE " + " AND ".join("(%s)" % c for c in clauses)
