@@ -153,16 +153,13 @@ class DB:
         hash.update(philo_type.encode("utf8"))
         all_hash = hash.hexdigest()
         all_file = os.path.join(self.hitlist_dir, all_hash + ".hitlist")
-        if philo_type == "div":
-            param_dicts = [{"philo_type": ['"div1"|"div2"|"div3"']}]
-        else:
-            param_dicts = [{"philo_type": ['"%s"' % philo_type]}]
+        philo_types = ("div1", "div2", "div3") if philo_type == "div" else (philo_type,)
         # write out the corpus file
         produce = partial(
             MetadataQuery.metadata_query,
             self,
             all_file,
-            param_dicts,
+            [(philo_types, {})],
             sort_order,
             raw_results=raw_results,
             ascii_conversion=self.locals.ascii_conversion,
@@ -223,31 +220,11 @@ class DB:
         if has_metadata:
             corpus_hash = hash.hexdigest()
             corpus_file = os.path.join(self.hitlist_dir, corpus_hash + ".hitlist")
-
-            # before we query, we need to figure out what type each parameter belongs to,
-            # and sort them into a list of dictionaries, one for each type.
-            metadata_dicts = [{} for level in self.locals["metadata_hierarchy"]]
-            for k, v in list(metadata.items()):
-                for i, params in enumerate(self.locals["metadata_hierarchy"]):
-                    if v and (k in params):
-                        metadata_dicts[i][k] = v
-                        if k in self.locals["metadata_types"]:
-                            this_type = self.locals["metadata_types"][k]
-                            if this_type == "div":
-                                metadata_dicts[i]["philo_type"] = ['"div"|"div1"|"div2"|"div3"']
-                            else:
-                                metadata_dicts[i]["philo_type"] = ['"%s"' % self.locals["metadata_types"][k]]
-            metadata_dicts = [d for d in metadata_dicts if d]
-            if "philo_id" in metadata:
-                if metadata_dicts:
-                    metadata_dicts[-1]["philo_id"] = metadata["philo_id"]
-                else:
-                    metadata_dicts.append({"philo_id": metadata["philo_id"]})
             produce = partial(
                 MetadataQuery.metadata_query,
                 self,
                 corpus_file,
-                metadata_dicts,
+                MetadataQuery.query_levels(self, metadata),
                 sort_order,
                 raw_results=raw_results,
                 ascii_conversion=self.locals.ascii_conversion,

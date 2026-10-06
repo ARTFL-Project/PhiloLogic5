@@ -85,22 +85,45 @@ def _inherited_div_values(values):
     return inherited
 
 
-def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, ascii_conversion=True, lock=None):
-    """Prepare and execute SQL metadata query. Releases lock (see HitList.claim_hitlist) once filename is complete."""
+def query_levels(db, metadata):
+    """The levels of a metadata query: the fields of metadata with values (lists of them), by level of
+    metadata_hierarchy, doc first, each level with the philo_types of the objects it selects, those of its last field
+    in metadata with a type (None if none has one). philo_id goes on the last level."""
+    levels = []
+    for level_fields in db.locals["metadata_hierarchy"]:
+        philo_types, fields = None, {}
+        for field, values in metadata.items():
+            if values and field in level_fields:
+                fields[field] = values
+                if field in db.locals["metadata_types"]:
+                    philo_types = _philo_types(db.locals["metadata_types"][field])
+        if fields:
+            levels.append((philo_types, fields))
+    if "philo_id" in metadata:
+        if levels:
+            levels[-1][1]["philo_id"] = metadata["philo_id"]
+        else:
+            levels.append((None, {"philo_id": metadata["philo_id"]}))
+    return levels
+
+
+def _philo_types(metadata_type):
+    """The philo_types of the objects of a metadata type: those of div1, div2 and div3 for div fields."""
+    return ("div", "div1", "div2", "div3") if metadata_type == "div" else (metadata_type,)
+
+
+def metadata_query(db, filename, levels, sort_order, raw_results=False, ascii_conversion=True, lock=None):
+    """Write to filename the object ids the levels of a metadata query (query_levels) select, and return their
+    HitList. Releases lock (see HitList.claim_hitlist) once filename is complete."""
     if db.locals["debug"]:
-        print("METADATA_QUERY:", param_dicts, "\nASCII CONVERSION", ascii_conversion, file=sys.stderr)
-    prev = None
-    for d in param_dicts:
-        # The file is always written in load order, which filtering word hits against it relies on, and it is
-        # cached whatever sort was asked for: sort_order only applies to the HitList returned below.
-        query = query_recursive(db, d, prev, ascii_conversion=ascii_conversion)
-        prev = query
+        print("METADATA_QUERY:", levels, "\nASCII CONVERSION", ascii_conversion, file=sys.stderr)
+    # The file is always written in load order, which filtering word hits against it relies on, and it is cached
+    # whatever sort was asked for: sort_order only applies to the HitList returned below.
+    pack = struct.Struct("7I").pack
     try:
-        corpus_fh = open(filename, "wb")
-        for corpus_obj in query:
-            obj_id = [int(x) for x in corpus_obj["philo_id"].split(" ")]
-            corpus_fh.write(struct.pack("7I", *obj_id))
-        corpus_fh.close()
+        with open(filename, "wb") as corpus_fh:
+            for philo_id in object_ids(db, levels, ascii_conversion):
+                corpus_fh.write(pack(*philo_id))
     except Exception:
         # Not an empty corpus: have the next request query it again, and this one fail rather than show no results
         HitList.fail_hitlist(filename, lock)
@@ -109,33 +132,48 @@ def metadata_query(db, filename, param_dicts, sort_order, raw_results=False, asc
     return HitList.HitList(filename, 0, db, raw=raw_results, sort_order=sort_order, ascii_conversion=ascii_conversion)
 
 
-def query_recursive(db, param_dict, parent, ascii_conversion=True):
-    """Build recursise SQL query"""
-    r = query_lowlevel(db, param_dict, ascii_conversion)
-    if parent:
-        try:
-            outer_hit = next(parent)
-        except StopIteration:
+def object_ids(db, levels, ascii_conversion=True):
+    """The philo_ids, as tuples in load order, of the objects the last of levels selects within those the levels
+    before it select: author and head, the divs with that head in that author's documents."""
+    if not levels:  # metadata with no field to query, as philo_type alone: it fails, as it always did
+        raise ValueError("No metadata field to select objects by")
+    outer = None
+    for n, (philo_types, fields) in enumerate(levels):
+        rows = level_query(db, philo_types, fields, ascii_conversion)
+        ids = (tuple(map(int, row[0].split(" "))) for row in rows)
+        if outer is not None:
+            ids = _within(ids, outer)
+        if n == len(levels) - 1:
+            yield from ids
+        else:
+            outer = list(ids)
+            if not outer:
+                return
+
+
+def _within(ids, outer):
+    """Those of ids (in load order) within one of the outer objects (in load order), whose philo_id they start with,
+    up to its first 0. They end after the last outer object, or the outermost one containing it."""
+    prefixes = {philo_id[: _depth(philo_id)] for philo_id in outer}
+    lengths = sorted({len(prefix) for prefix in prefixes})
+    last = outer[-1][: _depth(outer[-1])]
+    last = next(last[:n] for n in lengths if last[:n] in prefixes)
+    for philo_id in ids:
+        if philo_id[: len(last)] > last:
             return
-        for inner_hit in r:
-            while corpus_cmp(str_to_hit(outer_hit["philo_id"]), str_to_hit(inner_hit["philo_id"])) < 0:
-                try:
-                    outer_hit = next(parent)
-                except StopIteration:
-                    return
-            if corpus_cmp(str_to_hit(outer_hit["philo_id"]), str_to_hit(inner_hit["philo_id"])) > 0:
-                continue
-            else:
-                yield inner_hit
-    else:
-        for row in r:
-            yield row
+        if any(philo_id[:n] in prefixes for n in lengths):
+            yield philo_id
 
 
-def query_lowlevel(db, param_dict, ascii_conversion):
-    """SQL query builder"""
-    clauses = []
-    for column, values in param_dict.items():
+def _depth(philo_id):
+    """The length of a philo_id up to its first 0."""
+    return philo_id.index(0) if 0 in philo_id else len(philo_id)
+
+
+def level_query(db, philo_types, fields, ascii_conversion):
+    """The rows (philo_id) of the objects of philo_types (any if None) with the values of fields, in load order."""
+    clauses, params = [], []
+    for column, values in fields.items():
         column = validate_column(column, db)
         for v in values:
             field_type = db.locals.metadata_sql_types.get(column, "text")
@@ -153,14 +191,17 @@ def query_lowlevel(db, param_dict, ascii_conversion):
                 print("METADATA_SYNTAX EXPANDED:", expanded, file=sys.stderr)
                 print("SQL_SYNTAX:", sql_clause, file=sys.stderr)
             clauses.append(sql_clause)
+    if philo_types:
+        clauses.append(f"philo_type IN ({', '.join('?' for _ in philo_types)})")
+        params = list(philo_types)
     if clauses:
         query = "SELECT philo_id FROM toms WHERE " + " AND ".join("(%s)" % c for c in clauses)
     else:
         query = "SELECT philo_id FROM toms"
     query += " ORDER BY rowid"
     if db.locals["debug"]:
-        print("INNER QUERY: ", query, file=sys.stderr, flush=True)
-    return db.dbh.execute(query)
+        print("INNER QUERY: ", query, params, file=sys.stderr, flush=True)
+    return db.dbh.execute(query, params)
 
 
 def expand_grouped_query(grouped, db_path, field, ascii_conversion):
@@ -222,7 +263,7 @@ def make_grouped_sql_clause(expanded, column, db):
     values and NULL, or with NOT none of them. NOT x is everything x doesn't select, objects with no value included
     (SQL's NOT left them out: NOT hugo missed the 248 documents with no author), unless x is NULL or has it.
 
-    Note: column is expected to be pre-validated by validate_column() in query_lowlevel()
+    Note: column is expected to be pre-validated by validate_column() in level_query()
     before being passed to this function, ensuring SQL injection protection.
     """
     esc = escape_sql_string
@@ -300,27 +341,3 @@ def escape_sql_string(s):
     """Escape SQL string"""
     s = s.replace("'", "''")
     return "'%s'" % s
-
-
-def str_to_hit(string):
-    """Convert string to hit"""
-    return list(map(int, string.split(" ")))
-
-
-def obj_cmp(x, y):
-    """Compare function"""
-    for a, b in zip(x, y):
-        if a < b:
-            return -1
-        if a > b:
-            return 1
-    else:
-        return 0
-
-
-def corpus_cmp(x, y):
-    if 0 in x:
-        depth = x.index(0)
-    else:
-        depth = len(x)
-    return obj_cmp(x[:depth], y[:depth])

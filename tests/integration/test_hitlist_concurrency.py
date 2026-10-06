@@ -138,14 +138,14 @@ class TestFilesRemovedOrFailing:
         expected = fingerprint(db.query("man", "single_term", "0", raw_results=True, year=ALL_YEARS))
         for f in hitlist_files(db):
             os.remove(f)
-        query_recursive = MetadataQuery.query_recursive
+        object_ids = MetadataQuery.object_ids
 
-        def failing_query_recursive(*args, **kwargs):
-            rows = query_recursive(*args, **kwargs)
-            yield next(rows)
+        def failing_object_ids(*args, **kwargs):
+            ids = object_ids(*args, **kwargs)
+            yield next(ids)
             raise RuntimeError("metadata query crashed")
 
-        monkeypatch.setattr(MetadataQuery, "query_recursive", failing_query_recursive)
+        monkeypatch.setattr(MetadataQuery, "object_ids", failing_object_ids)
         with pytest.raises(RuntimeError):  # the request fails, rather than search an empty corpus
             db.query("man", "single_term", "0", raw_results=True, year=ALL_YEARS)
         monkeypatch.undo()

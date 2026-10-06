@@ -12,7 +12,7 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime.exceptions import BadRequest
-from philologic.runtime.MetadataQuery import bulk_load_metadata, make_grouped_sql_clause
+from philologic.runtime.MetadataQuery import bulk_load_metadata, make_grouped_sql_clause, object_ids
 from philologic.runtime.QuerySyntax import group_terms, parse_metadata_query, quote_metadata_value, quoted_text
 
 YEARS = [1650, 1700, 1720, 1750, 1789, 1800, 1850, 1900, None]
@@ -181,3 +181,83 @@ class TestDivValues:
         """Without inherit, each div has its own value: the frequency report sums each div's words once."""
         heads = bulk_load_metadata(articles, ["head"])["head"][1]
         assert heads[1, 1, 1, 1] == "" and heads[1, 2, 1, 0] == "Abri, en Marine"
+
+
+class Locals(dict):
+    """db.locals, whose entries are attributes too"""
+
+    __getattr__ = dict.__getitem__
+
+
+@pytest.fixture(scope="module")
+def plays():
+    """Documents by two authors, with acts (div1) and scenes (div2) whose heads repeat, and speeches (para)."""
+    dbh = sqlite3.connect(":memory:")
+    dbh.execute("CREATE TABLE toms (philo_type text, philo_id text, author text, head text, who text)")
+    dbh.executemany(
+        "INSERT INTO toms VALUES (?, ?, ?, ?, ?)",
+        [
+            ("doc", "1 0 0 0 0 0 0", "Racine", None, None),
+            ("div1", "1 1 0 0 0 0 0", None, "Acte", None),
+            ("div2", "1 1 1 0 0 0 0", None, "Scène", None),
+            ("para", "1 1 1 1 1 0 0", None, None, "Phèdre"),
+            ("div2", "1 1 2 0 0 0 0", None, "Acte", None),
+            ("para", "1 1 2 1 1 0 0", None, None, "Phèdre"),
+            ("div2", "1 1 3 0 0 0 0", None, "Scène", None),
+            ("para", "1 1 3 1 1 0 0", None, None, "Phèdre"),
+            ("div1", "1 2 0 0 0 0 0", None, "Prologue", None),
+            ("para", "1 2 1 1 1 0 0", None, None, "Phèdre"),
+            ("doc", "2 0 0 0 0 0 0", "Corneille", None, None),
+            ("div1", "2 1 0 0 0 0 0", None, "Acte", None),
+            ("para", "2 1 1 1 1 0 0", None, None, "Phèdre"),
+        ],
+    )
+    return SimpleNamespace(
+        dbh=dbh,
+        path="/nonexistent/",
+        locals=Locals(
+            debug=False,
+            metadata_fields=["author", "head", "who"],
+            word_attributes=[],
+            metadata_sql_types={},
+        ),
+    )
+
+
+DOCS, DIVS, PARAS = ("doc",), ("div", "div1", "div2", "div3"), ("para",)
+
+
+@pytest.mark.unit
+class TestObjectIds:
+    """The objects of the last level of a metadata query, within those of the levels before it."""
+
+    def ids(self, db, *levels):
+        return [" ".join(map(str, philo_id[:5])) for philo_id in object_ids(db, list(levels))]
+
+    def test_one_level(self, plays):
+        assert self.ids(plays, (DIVS, {"head": ['"Acte"']})) == ["1 1 0 0 0", "1 1 2 0 0", "2 1 0 0 0"]
+
+    def test_within_documents(self, plays):
+        assert self.ids(plays, (DOCS, {"author": ['"Racine"']}), (DIVS, {"head": ['"Acte"']})) == [
+            "1 1 0 0 0",
+            "1 1 2 0 0",
+        ]
+
+    def test_within_nested_divs(self, plays):
+        """The last act found (1 1 2) is in the first (1 1): the speech after it in the first is in an act too."""
+        assert self.ids(plays, (DIVS, {"head": ['"Acte"']}), (PARAS, {"who": ['"Phèdre"']})) == [
+            "1 1 1 1 1",
+            "1 1 2 1 1",
+            "1 1 3 1 1",
+            "2 1 1 1 1",
+        ]
+        assert self.ids(
+            plays, (DOCS, {"author": ['"Racine"']}), (DIVS, {"head": ['"Acte"']}), (PARAS, {"who": ['"Phèdre"']})
+        ) == ["1 1 1 1 1", "1 1 2 1 1", "1 1 3 1 1"]
+
+    def test_none_above(self, plays):
+        assert self.ids(plays, (DOCS, {"author": ['"Molière"']}), (PARAS, {"who": ['"Phèdre"']})) == []
+
+    def test_any_type(self, plays):
+        """A level of no type, as philo_id alone makes, selects objects of any."""
+        assert self.ids(plays, (None, {"head": ['"Prologue"']})) == ["1 2 0 0 0"]
