@@ -416,6 +416,10 @@ span.note {
 }
 
 .toc-tree {
+    /* Vertical padding of section links; the tree branches are offset by it */
+    --toc-link-padding-y: 0.1rem;
+    /* Middle of a link's first line, measured from the top of its row */
+    --toc-branch-top: calc(var(--toc-link-padding-y) + 0.85em);
     list-style: none;
     padding-left: 0;
     margin: 0;
@@ -460,7 +464,7 @@ span.note {
     content: '';
     position: absolute;
     left: -0.75rem;
-    top: calc(0.25rem + 0.85em);
+    top: var(--toc-branch-top);
     width: 0.75rem;
     height: 1px;
     border-top: 1px dotted rgba(theme.$link-color, 0.4);
@@ -472,7 +476,7 @@ span.note {
     position: absolute;
     left: -0.75rem;
     top: -100vh;
-    height: calc(100vh + 0.25rem + 0.75em);
+    height: calc(100vh + var(--toc-branch-top));
     width: 0px;
     border-left: 1px dotted rgba(theme.$link-color, 0.4);
 }

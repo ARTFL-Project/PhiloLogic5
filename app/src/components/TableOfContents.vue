@@ -205,7 +205,7 @@ fetchToC();
     text-decoration: none;
     transition: all 0.15s ease-in-out;
     display: inline-block;
-    padding: 0.25rem 0.25rem 0.25rem 0.25rem;
+    padding: var(--toc-link-padding-y) 0.25rem;
     border-radius: 4px;
 }
 
