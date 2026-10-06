@@ -1,6 +1,7 @@
 """Unit tests for XMLParser."""
 
 import io
+import json
 import sys
 from pathlib import Path
 
@@ -170,3 +171,35 @@ class TestMetadataExtraction:
         assert metadata["title"] == "Letters &c. Printed at Boston"
         assert metadata["author"] == "Becket & DeHondt"
         assert metadata["pub_place"] == "1 < 2 é"
+
+
+def parse_div_head(head):
+    """Parse a div with the given head, and return the head the parser gives the div."""
+    text = f'<TEI><text><body><div type="chapter">\n{head}\n<p>Some text.</p>\n</div></body></text></TEI>\n'
+    output = io.StringIO()
+    parser = XMLParser(output, 1, len(text.encode()), known_metadata={"filename": "t.xml"}, metadata_sql_types={})
+    parser.parse(io.StringIO(text))
+    for line in output.getvalue().splitlines():
+        if line.startswith("div1"):
+            return json.loads(line.split("\t")[3])["head"]
+
+
+@pytest.mark.unit
+class TestDivHead:
+    """Tests for the heads of divs, as table of contents labels."""
+
+    @pytest.mark.parametrize(
+        "head, expected",
+        [
+            ("<head>HISTOIRE<lb/>\nDES COLONIES</head>", "HISTOIRE DES COLONIES"),
+            ("<head>HISTOIRE<lb/>DES COLONIES</head>", "HISTOIRE DES COLONIES"),
+            ('<head>PROS<lb break="no"/>\nPERITE</head>', "PROSPERITE"),
+            ("<head>CHAPITRE I.</head><head>Des Colonies</head>", "CHAPITRE I. Des Colonies"),
+            ('<head><hi rend="initial">L</hi>ETTRES</head>', "LETTRES"),
+            ('<head>1<hi rend="sup">re</hi> PARTIE</head>', "1re PARTIE"),
+            ("<head></head>", "chapter"),
+        ],
+    )
+    def test_head(self, head, expected):
+        """Test that tags break words in heads as in the index, and that heads are kept apart."""
+        assert parse_div_head(head) == expected

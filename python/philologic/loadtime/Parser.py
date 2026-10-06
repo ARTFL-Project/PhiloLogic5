@@ -230,6 +230,9 @@ head_self_close_tag = re.compile(r"<head\/>", re.I)
 closed_div_tag = re.compile(r"<\/div", re.I)
 head_tag = re.compile(r"<head", re.I)
 closed_head_tag = re.compile(r"<\/head>", re.I)
+any_tag = re.compile(r"<[^>]*>")
+# A line break within a word, with the whitespace around it, which TEI ignores
+LB_NO_BREAK = r"""\s*<lb\b[^>]*\bbreak=["']no["'][^>]*>\s*"""
 apost_ent = re.compile(r"\&apos;", re.I)
 macr_ent = re.compile(r"\&([A-Za-z])macr;", re.I)
 inverted_ent = re.compile(r"\&inverted([a-zA-Z0-9]);", re.I)
@@ -422,6 +425,9 @@ class XMLParser:
             tag_exceptions = parse_options["tag_exceptions"]
         else:
             tag_exceptions = TAG_EXCEPTIONS
+
+        # Tags which don't break words, which div heads lose without a space
+        self.in_word_tags = re.compile("|".join([*tag_exceptions, LB_NO_BREAK]), re.I)
 
         tag_exceptions = "|".join(tag_exceptions)
         try:
@@ -961,7 +967,7 @@ class XMLParser:
                 div_head = self.clear_char_ents(div_head)
                 div_head = self.latin1_ents_to_utf8(div_head)
                 div_head = self.convert_other_ents(div_head)
-                div_head = re.sub(r"\n?<[^>]*>\n?", "", div_head)
+                div_head = self.remove_head_tags(div_head)
                 div_head = div_head.replace("_", "")
                 div_head = div_head.replace("\t", "")
                 div_head = " ".join(div_head.split())  # remove double or more spaces
@@ -1347,6 +1353,8 @@ class XMLParser:
                 break  # don't go past an open or close <div.
             if head_tag.search(next_line):
                 read_more = True
+                if div_head:
+                    div_head += " "  # between heads, such as "Chapitre I" and its title
             if read_more:
                 while read_more:
                     look_ahead += 1
@@ -1365,7 +1373,7 @@ class XMLParser:
             div_head = self.clear_char_ents(div_head)
             div_head = self.latin1_ents_to_utf8(div_head)
             div_head = self.convert_other_ents(div_head)
-            div_head = re.sub(r"\n?<[^>]*>\n?", "", div_head)
+            div_head = self.remove_head_tags(div_head)
             div_head = div_head.replace("_", "")
             div_head = div_head.replace("\t", "")
             div_head = " ".join(div_head.split())  # remove double or more spaces
@@ -1389,6 +1397,11 @@ class XMLParser:
         div_head = convert_entities(div_head)
         div_head = div_head.replace('"', "")
         return div_head
+
+    def remove_head_tags(self, div_head):
+        """Remove the tags of a div head, putting a space for those which break words, as in the word index:
+        "HISTOIRE<lb/>DES" was "HISTOIREDES"."""
+        return any_tag.sub(" ", self.in_word_tags.sub("", div_head))
 
     def clear_char_ents(self, text):
         """Replaces a selected set of SGML character ents with spaces in order to keep the byte count right."""
