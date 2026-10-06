@@ -238,15 +238,29 @@ def trusted_proxies():
     return frozenset(proxies if proxies is not None else ("127.0.0.1", "::1"))
 
 
+def _forwarded_for(environ):
+    return [a.strip() for a in environ.get("HTTP_X_FORWARDED_FOR", "").split(",") if a.strip()]
+
+
 def client_address(environ):
-    """The client's IP address. A reverse proxy appends the address it got the request from to X-Forwarded-For, after
-    whatever the client sent there, so behind trusted proxies it is the last address that is not one of theirs: anyone
-    can send "X-Forwarded-For: 127.0.0.1"."""
+    """The client's IP address, which the access file is checked against. Behind trusted proxies, the first of
+    X-Forwarded-For, as in 5.2.6: when a proxy or gateway before them wrote its user's address there, that address,
+    which no one verifies, rather than the one that connected (connected_address), in case access files name it."""
+    address = environ.get("REMOTE_ADDR", "")
+    if address and address not in trusted_proxies():
+        return address
+    forwarded = _forwarded_for(environ)
+    return forwarded[0] if forwarded else address
+
+
+def connected_address(environ):
+    """The address that connected to the trusted proxies: the last of X-Forwarded-For that is not theirs, which they
+    appended themselves (whatever comes before is the client's say)."""
     address = environ.get("REMOTE_ADDR", "")
     proxies = trusted_proxies()
     if address and address not in proxies:
         return address
-    forwarded = [a.strip() for a in environ.get("HTTP_X_FORWARDED_FOR", "").split(",") if a.strip()]
+    forwarded = _forwarded_for(environ)
     while forwarded:
         address = forwarded.pop()
         if address not in proxies:
@@ -285,19 +299,29 @@ def is_allowed(environ, config):
     if key in _allowed and now - _allowed[key][1] < _ALLOWED_TTL:
         return _allowed[key][0]
     allowed = _check_address(incoming_address, access_file, mtime is not None)
+    connected = connected_address(environ)
+    if connected != incoming_address and _check_address(connected, access_file, mtime is not None, log=False) != allowed:
+        # Whether checking the address that connected, as 5.2.7 did, would refuse anyone: the first address decides
+        print(
+            f"ACCESS AUDIT: {os.path.basename(os.path.normpath(config.db_path))}: "
+            f"{'allowed' if allowed else 'refused'} by the first address of X-Forwarded-For, {incoming_address}, "
+            f"{'refused' if allowed else 'allowed'} by the one that connected, {connected}",
+            file=sys.stderr,
+        )
     if len(_allowed) > 10000:
         _allowed.clear()
     _allowed[key] = (allowed, now)
     return allowed
 
 
-def _check_address(incoming_address, access_file, access_file_exists):
-    """Whether access_file lets incoming_address in."""
+def _check_address(incoming_address, access_file, access_file_exists, log=True):
+    """Whether access_file lets incoming_address in; refusals are logged, if log."""
+    say = print if log else (lambda *args, **kwargs: None)
     if not access_file:
-        print(f"UNAUTHORIZED ACCESS TO:{incoming_address}: no access file is defined", file=sys.stderr)
+        say(f"UNAUTHORIZED ACCESS TO:{incoming_address}: no access file is defined", file=sys.stderr)
         return False
     if not access_file_exists:
-        print(f"ACCESS FILE DOES NOT EXIST. UNAUTHORIZED ACCESS TO: {incoming_address}", file=sys.stderr)
+        say(f"ACCESS FILE DOES NOT EXIST. UNAUTHORIZED ACCESS TO: {incoming_address}", file=sys.stderr)
         return False
 
     # Load access config and IP whitelist
@@ -305,14 +329,14 @@ def _check_address(incoming_address, access_file, access_file_exists):
         access_config = load_module("access_config", access_file)
         ip_whitelist = load_or_compile_ip_whitelist(access_file)
     except Exception as e:
-        print("ACCESS ERROR", repr(e), file=sys.stderr)
-        print(f"UNAUTHORIZED ACCESS TO:{incoming_address}: can't load access config", file=sys.stderr)
+        say("ACCESS ERROR", repr(e), file=sys.stderr)
+        say(f"UNAUTHORIZED ACCESS TO:{incoming_address}: can't load access config", file=sys.stderr)
         return False
 
     # Check blocked IPs
     blocked_ips = set(getattr(access_config, "blocked_ips", []))
     if incoming_address in blocked_ips:
-        print(f"BLOCKED IP ACCESS ATTEMPT: {incoming_address}", file=sys.stderr)
+        say(f"BLOCKED IP ACCESS ATTEMPT: {incoming_address}", file=sys.stderr)
         return False
 
     # Check IP whitelist
@@ -338,7 +362,7 @@ def _check_address(incoming_address, access_file, access_file_exists):
             if pattern.search(incoming_address):
                 return True
     except Exception as e:
-        print(f"Error checking IP whitelist: {repr(e)}", file=sys.stderr)
+        say(f"Error checking IP whitelist: {repr(e)}", file=sys.stderr)
 
     # Check domain access, last: it takes a reverse DNS lookup. By substring, and with no forward lookup to confirm
     # the name: stricter rules would have refused subscribers' VPNs and proxies in the 2025 logs of artflsrv04.
@@ -348,7 +372,7 @@ def _check_address(incoming_address, access_file, access_file_exists):
         return True
 
     # If no match found, access denied
-    print(
+    say(
         f"UNAUTHORIZED ACCESS TO:{incoming_address} from domain {match_domain}: IP not in whitelist",
         file=sys.stderr,
     )
