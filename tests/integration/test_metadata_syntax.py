@@ -93,6 +93,25 @@ class TestPhiloType:
 
 
 @pytest.mark.integration
+class TestNoValue:
+    """A blank value, or one of operators alone, is no value, as "" is: it was a 500 (an SQL syntax error). The web
+    client sends a value of spaces as it is."""
+
+    @pytest.mark.parametrize("value", [" ", "  ", "|", "OR", " | "])
+    def test_bibliography(self, web, value):
+        assert docs(web, author=value) == docs(web)
+
+    @pytest.mark.parametrize("value", [" ", "|"])
+    def test_search(self, web, value):
+        response = web("scripts/get_total_results.py", q="love", author=value)
+        assert response.status_code == 200, response.text[:300]
+        assert response.json == web("scripts/get_total_results.py", q="love").json
+
+    def test_with_a_value(self, web):
+        assert docs(web, author=" ", title="folle-farine") == docs(web, title="folle-farine") == 1
+
+
+@pytest.mark.integration
 class TestAutocomplete:
     def test_hyphenated_word(self, web):
         suggestions = web("scripts/autocomplete_metadata.py", term="folle-f", field="title").json

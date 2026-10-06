@@ -93,18 +93,25 @@ def query_levels(db, metadata):
     for level_fields in db.locals["metadata_hierarchy"]:
         philo_types, fields = None, {}
         for field, values in metadata.items():
-            if values and field in level_fields:
+            if field in level_fields and (values := _queried(db, field, values)):
                 fields[field] = values
                 if field in db.locals["metadata_types"]:
                     philo_types = _philo_types(db.locals["metadata_types"][field])
         if fields:
             levels.append((philo_types, fields))
-    if metadata.get("philo_id"):
+    if philo_ids := _queried(db, "philo_id", metadata.get("philo_id")):
         if levels:
-            levels[-1][1]["philo_id"] = metadata["philo_id"]
+            levels[-1][1]["philo_id"] = philo_ids
         else:
-            levels.append((None, {"philo_id": metadata["philo_id"]}))
+            levels.append((None, {"philo_id": philo_ids}))
     return levels
+
+
+def _queried(db, field, values):
+    """Those of the values of field (a list, if any) with something to query: a blank one, or one of operators alone
+    (| or OR), is no value, as "" is."""
+    field_type = db.locals.metadata_sql_types.get(field, "text")
+    return [value for value in values or () if value_groups(value, field_type)]
 
 
 def _philo_types(metadata_type):
