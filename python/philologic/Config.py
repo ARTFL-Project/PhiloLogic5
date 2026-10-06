@@ -920,6 +920,16 @@ class Config:
     def __setitem__(self, item, value):
         self.data[item] = value
 
+    def copy(self):
+        """A copy of the config whose values, and db_locals, are its own to change: one parsed once, copied for each
+        request (runtime.web_config.WebConfig)"""
+        config = object.__new__(type(self))
+        config.__dict__.update(self.__dict__)
+        config.data = copy.deepcopy(self.data)
+        if isinstance(self.__dict__.get("db_locals"), Config):
+            config.db_locals = self.db_locals.copy()
+        return config
+
     def __str__(self):
         string = "\n".join([line.strip() for line in self.header.splitlines() if line.strip()]) + "\n\n"
         written_keys = []
