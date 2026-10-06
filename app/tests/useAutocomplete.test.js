@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { reactive, ref } from "vue";
-import { useAutocomplete } from "../src/composables/useAutocomplete.js";
+import { AUTOCOMPLETE_DELAY, useAutocomplete } from "../src/composables/useAutocomplete.js";
 
 let input;
 
@@ -34,7 +34,7 @@ async function type(ac, field, value) {
     if (field === "q") ac.queryTerm.value = value;
     else ac.metadataValues[field] = value;
     ac.onChange(field);
-    await vi.advanceTimersByTimeAsync(200);
+    await vi.advanceTimersByTimeAsync(AUTOCOMPLETE_DELAY);
 }
 
 function key(name) {
@@ -148,8 +148,23 @@ describe("search term suggestions", () => {
         ac.queryTerm.value = "libert";
         ac.onChange("q");
         input.blur();
-        await vi.advanceTimersByTimeAsync(200);
+        await vi.advanceTimersByTimeAsync(AUTOCOMPLETE_DELAY);
         expect(ac.autoCompleteResults.q).toEqual([]);
+    });
+});
+
+describe("timing", () => {
+    it("asks once typing pauses, keys typed fast making one request", async () => {
+        const ac = autocomplete([]);
+        for (const value of ["li", "lib", "libe"]) {
+            ac.queryTerm.value = value;
+            ac.onChange("q");
+            await vi.advanceTimersByTimeAsync(AUTOCOMPLETE_DELAY - 10);
+        }
+        expect(ac.http.get).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(10);
+        expect(ac.http.get).toHaveBeenCalledTimes(1);
+        expect(ac.http.get).toHaveBeenCalledWith("/scripts/autocomplete_term.py", { params: { term: "libe" } });
     });
 });
 

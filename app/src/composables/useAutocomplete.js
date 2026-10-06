@@ -3,6 +3,10 @@ import { quoteMetadataValue } from "../utils.js";
 
 const OR = " | ";
 
+// How long typing must pause before suggestions are asked for: keys typed fast, or a paste, make one request. A request
+// takes the server about a millisecond: the 200 ms waited when each one started a CGI process made the list lag.
+export const AUTOCOMPLETE_DELAY = 50;
+
 function stripTags(html) {
     return html.replace(/<[^>]+>/g, "");
 }
@@ -109,7 +113,7 @@ export function useAutocomplete({ http, dbUrl, philoConfig, metadataValues, rout
                     arrowCounters[field] = -1;
                 })
                 .catch(() => {});
-        }, 200);
+        }, AUTOCOMPLETE_DELAY);
     }
 
     function toggle(field, index) {
