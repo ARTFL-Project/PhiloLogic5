@@ -142,3 +142,31 @@ class TestMetadataExtraction:
         assert "create_date" in DEFAULT_DOC_XPATHS
         assert "pub_date" in DEFAULT_DOC_XPATHS
         assert len(DEFAULT_DOC_XPATHS["pub_date"]) > 0
+
+    def test_header_values_keep_xml_entities(self, tmp_path):
+        """Test that &amp; and &lt; in a TEI header are decoded, without losing the text after them."""
+        from philologic.loadtime.Loader import Loader
+
+        (tmp_path / "text.xml").write_text(
+            "<TEI><teiHeader><titleStmt><title>Letters &amp;c. Printed at Boston</title>"
+            "<author>Becket &amp; DeHondt</author></titleStmt>"
+            "<sourceDesc><bibl><pubPlace>1 &lt; 2 &eacute;</pubPlace></bibl></sourceDesc></teiHeader>"
+            "<text><body><p>text</p></body></text></TEI>",
+            encoding="utf8",
+        )
+        loader = Loader.__new__(Loader)
+        loader.textdir = str(tmp_path)
+        loader.deleted_files = []
+        loader.debug = False
+        loader.parser_config = {
+            "doc_xpaths": {
+                "title": [".//titleStmt/title"],
+                "author": [".//titleStmt/author"],
+                "pub_place": [".//sourceDesc/bibl/pubPlace"],
+            },
+            "metadata_sql_types": {},
+        }
+        [metadata] = loader.parse_tei_header(verbose=False)
+        assert metadata["title"] == "Letters &c. Printed at Boston"
+        assert metadata["author"] == "Becket & DeHondt"
+        assert metadata["pub_place"] == "1 < 2 é"

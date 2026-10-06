@@ -7,12 +7,18 @@ import regex as re
 
 entities_match = re.compile(r"&#?\w+;")
 
+# Entities XML defines itself
+XML_ENTITIES = {"amp", "lt", "gt", "quot", "apos"}
 
-def convert_entities(text):
-    """Convert entities"""
+
+def convert_entities(text, keep_xml_entities=False):
+    """Convert entities. With keep_xml_entities, leave those an XML parser decodes itself (character references
+    and XML_ENTITIES): decoding &amp; or &lt; before parsing leaves a bare & or <, which breaks the XML."""
 
     def fixup(m):
         text = m.group(0)
+        if keep_xml_entities and (text[:2] == "&#" or text[1:-1] in XML_ENTITIES):
+            return text
         if text[:2] == "&#":
             # character reference
             try:

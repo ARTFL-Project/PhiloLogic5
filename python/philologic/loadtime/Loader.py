@@ -370,7 +370,7 @@ class Loader:
                 deleted_files_error_cause.append((file.name, "no TEI header"))
                 continue
             header = file_content[start_header_index:end_header_index]
-            header = convert_entities(header)
+            header = convert_entities(header, keep_xml_entities=True)
             if self.debug:
                 print("parsing %s header..." % file.name)
             parser = lxml.etree.XMLParser(recover=True)
