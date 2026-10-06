@@ -824,7 +824,7 @@ fetchText();
 .toc-link {
     text-decoration: none;
     font-size: 0.95rem;
-    padding: 0.25rem 0.5rem;
+    padding: var(--toc-link-padding-y) 0.5rem;
     border-radius: 4px;
     transition: all 0.15s ease-in-out;
 }
