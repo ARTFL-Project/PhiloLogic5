@@ -32,6 +32,7 @@ JSON_SCRIPTS = {
     "get_query_terms",
     "get_usage_patterns",
     "get_representative_passages",
+    "get_sense_passages",
     "get_similar_collocate_distributions",
     "get_sorted_frequency",
     "get_table_of_contents",
@@ -39,6 +40,7 @@ JSON_SCRIPTS = {
     "get_text_object",
     "get_total_results",
     "get_web_config",
+    "get_word_senses",
     "get_word_property_count",
     "lookup_word",
 }

@@ -13,6 +13,7 @@
                 <option value="similar">{{ $t("collocation.similarUsage") }}</option>
                 <option value="timeSeries">{{ $t("collocation.timeSeries") }}</option>
                 <option value="wordMap">{{ $t("collocation.wordMap") }}</option>
+                <option value="senses">{{ $t("collocation.wordSenses") }}</option>
             </select>
         </div>
 
@@ -60,12 +61,20 @@
                         {{ $t("collocation.wordMap") }}
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="word-senses-tab" data-bs-toggle="tab"
+                        :class="{ active: mode === 'senses' }" data-bs-target="#word-senses-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'senses'"
+                        @click="setMode('senses')">
+                        {{ $t("collocation.wordSenses") }}
+                    </button>
+                </li>
             </ul>
         </div>
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
-            v-if="['frequency', 'timeSeries', 'wordMap'].includes(mode)"
+            v-if="['frequency', 'timeSeries', 'wordMap', 'senses'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -99,6 +108,9 @@
 
             <WordMap v-if="mode === 'wordMap'" ref="wordMapRef"
                 @filter-list="filterList = $event" />
+
+            <WordSenses v-if="mode === 'senses'" ref="wordSensesRef"
+                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
         </div>
     </div>
 </template>
@@ -121,6 +133,7 @@ import Compare from "./collocation/Compare.vue";
 import Frequency from "./collocation/Frequency.vue";
 import Similar from "./collocation/Similar.vue";
 import UsagePatternsTimeline from "./collocation/UsagePatternsTimeline.vue";
+import WordSenses from "./collocation/WordSenses.vue";
 // Lazy-loaded: WordMap (with its force sim + canvas rendering) only ships when
 // the user actually opens the word-map tab, not on entry to Collocation.
 const WordMap = defineAsyncComponent(() => import("./collocation/WordMap.vue"));
@@ -146,6 +159,7 @@ const compareRef = useTemplateRef("compareRef");
 const similarRef = useTemplateRef("similarRef");
 const usagePatternsTimelineRef = useTemplateRef("usagePatternsTimelineRef");
 const wordMapRef = useTemplateRef("wordMapRef");
+const wordSensesRef = useTemplateRef("wordSensesRef");
 
 //  Shared state
 const mode = ref("frequency");
@@ -246,7 +260,7 @@ function updateCollocationUrl() {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
-    if (mode.value === "wordMap") {
+    if (mode.value === "wordMap" || mode.value === "senses") {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -381,6 +395,11 @@ watch(
                 wordMapRef.value?.runDetection();
                 return;
             }
+            if (newMode === "senses") {
+                await nextTick();
+                wordSensesRef.value?.runDetection();
+                return;
+            }
             // Switching to frequency/similar/compare, but the primary fetch
             // never ran (page was loaded directly on a detection tab) — run it
             // now so the view isn't empty.
@@ -405,6 +424,9 @@ watch(
         } else if (newMode === "wordMap") {
             await nextTick();
             wordMapRef.value?.runDetection();
+        } else if (newMode === "senses") {
+            await nextTick();
+            wordSensesRef.value?.runDetection();
         } else {
             fetchResults();  // .then() runs runPostFetchModeAction for similar/compare/frequency
         }
@@ -439,6 +461,10 @@ onMounted(async () => {
         case "wordMap":
             await nextTick();
             wordMapRef.value?.runDetection();
+            break;
+        case "senses":
+            await nextTick();
+            wordSensesRef.value?.runDetection();
             break;
         case "compare":
             fetchResults();  // primary fetch then runPostFetchModeAction → compareRef.runFromMetadata

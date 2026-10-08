@@ -24,8 +24,8 @@
                         <span v-for="s in signature" :key="s.word" class="sig-chip">{{ s.word }}</span>
                     </div>
 
-                    <p v-if="signature && signature.length > 0" class="ordering-note mb-3">
-                        {{ $t('distinctivePassages.orderingNote') }}
+                    <p v-if="orderingNote || (signature && signature.length > 0)" class="ordering-note mb-3">
+                        {{ orderingNote || $t('distinctivePassages.orderingNote') }}
                     </p>
 
                     <div v-if="loading && passages.length === 0" class="text-center py-5">
@@ -43,6 +43,7 @@
                                     </span>
                                 </div>
                             </div>
+                            <p v-if="p.note" class="passage-note mx-3 mt-2 mb-0">{{ p.note }}</p>
                             <div class="row">
                                 <div class="col m-3 concordance-text passage-context" v-html="p.context"></div>
                             </div>
@@ -88,6 +89,8 @@ defineProps({
     loading: { type: Boolean, default: false },
     hasMore: { type: Boolean, default: false },
     viewAllUrl: { type: [String, Object], default: "" },
+    // What orders the passages, when not the signature collocates they contain
+    orderingNote: { type: String, default: "" },
 });
 
 defineEmits(["load-more", "view-all"]);
@@ -135,6 +138,11 @@ onBeforeUnmount(() => {
     border-radius: 0.5rem;
     color: theme.$link-color;
     font-size: 0.85rem;
+}
+
+.passage-note {
+    font-size: 0.85rem;
+    color: #495057;
 }
 
 .ordering-note {

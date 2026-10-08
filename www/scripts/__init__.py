@@ -17,6 +17,7 @@ from .get_outlier_groups import get_outlier_groups
 from .get_usage_patterns import get_usage_patterns
 from .get_query_terms import get_query_terms
 from .get_representative_passages import get_representative_passages
+from .get_sense_passages import get_sense_passages
 from .get_similar_collocate_distributions import get_similar_collocate_distributions
 from .get_sorted_frequency import get_sorted_frequency
 from .get_table_of_contents import get_table_of_contents
@@ -24,5 +25,6 @@ from .get_term_groups import get_term_groups
 from .get_text_object import get_text_object
 from .get_total_results import get_total_results
 from .get_web_config import get_web_config
+from .get_word_senses import get_word_senses
 from .get_word_property_count import get_word_property_count
 from .lookup_word import lookup_word

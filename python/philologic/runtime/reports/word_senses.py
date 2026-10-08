@@ -1,0 +1,1725 @@
+"""The senses a word is used in, and how their use rises and falls.
+
+The sentences the query is in are split in two, again and again, by the words around it. Each sentence counts once
+(identical sentences, such as repeated titles or reprints, once in all), as three groups of words: its words (or those
+within n of the query, when collocates are counted within n words), the word just before the query and the word just
+after it.
+
+The two senses of a split differ from the sense they were split from (at the top, from the whole corpus) only in the
+words that mark either: the query's collocates (words markedly more frequent around it than in the corpus) markedly
+more or less frequent in one of them than in their parent, by a likelihood ratio above the threshold of the Bayesian
+information criterion. Both have their own rates for those words, discounted (so that a word of the other sense keeps
+a small rate), and every other word keeps its parent's rate (Law, Figueiredo and Jain 2004: features salient or not),
+so splitting the sentences does not estimate again, from fewer of them, the rates of the many words that have nothing
+to do with the senses. At the top, the rates are the query's own, by Katz backoff with absolute discounting (Ney,
+Essen and Kneser 1994) to the corpus's. No list of words is filtered: in telling which sense a
+sentence is in, each word's evidence weighs by its inverse document frequency, so that frequent words (je, vous, les,
+de) count for less than rarer ones.
+
+A split starts from the sentences with one of the query's collocates, the seed: of those whose sentences differ most
+from the others in their other collocates, the most promising are tried, and expectation-maximization moves the
+sentences to the sense they fit, each with a probability of being in either (first letting every collocate tell the
+senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark either). A split is kept if, fitted without each of
+N_FOLDS groups of works in turn, it predicts the sentences of the works left out better than its unsplit sense, paying
+for saying which sense each is in, by more than EVIDENCE standard errors over the sentences. Holding out whole works
+keeps the sentences of a passage, which share their words, from predicting one another.
+
+Each split has its importance: how much it improves the prediction of the words around the query, per use of the
+word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the largest
+drop in importance from one distinction to the next (natural_break),
+down to FINEST, under which none are looked for.
+
+Over time, the sentences of each year are shared out among the senses by their probabilities. The share of each sense
+and its uses per million words are smoothed by a Whittaker-Henderson smoother whose smoothness generalized
+cross-validation chooses, with a band from resampling the works.
+"""
+
+import hashlib
+import json
+import math
+import os
+import struct
+import tempfile
+import time
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+
+import numba
+import numpy as np
+from scipy.sparse import csr_matrix, hstack
+from scipy.special import gammaincinv, ndtr
+
+from philologic.runtime.reports.collocation import (
+    _load_sentence_df,
+    _nb_build_filter,
+    _nb_span_with,
+    collocation_search_method,
+    phrase_words,
+)
+from philologic.runtime.reports.time_series import _corpus_year_counts, _get_doc_year_data
+
+# The conventions the method rests on: none is fitted to any corpus.
+N_FOLDS = 5  # folds of the sentences a split is tested on, the usual number for cross-validation
+EVIDENCE = 2  # standard errors over the sentences a split's gain must exceed: the usual 95% or so
+N_RESAMPLES = 200  # resamplings of the works for the bands over time
+BAND = (2.5, 97.5)  # percentiles of the resamplings the band spans: 95% of them
+
+# Numerical settings, not choices about the data
+_TOL = 1e-6
+_MAX_ITER = 200
+FINEST = 0.10  # the finest detail that can be shown: distinctions less important are not looked for
+_SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the search, not the test)
+_LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
+_MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
+_MAX_EXAMPLES = 50  # example sentences sent for each sense
+_CACHE_TAG = b"senses12\0"  # bump when the result changes
+
+
+class Dist:
+    """The probabilities a sense gives the words of a group: p over the words of the sentences, rest for all others;
+    markers (a mask of the words, or None for all) are the words that may mark a sense below it; weights (or None),
+    how much each word's evidence counts in telling which sense a sentence is in; discount, the absolute discount of
+    the group's counts."""
+
+    __slots__ = ("p", "rest", "markers", "weights", "discount")
+
+    def __init__(self, p, rest, markers=None, weights=None, discount=0.0):
+        self.p = p
+        self.rest = rest
+        self.markers = markers
+        self.weights = weights
+        self.discount = discount
+
+
+class Node:
+    """A sense: its sentences (the indices of those most likely in it), its probabilities for each group of words and
+    the soft counts they were fitted on. Split, it has the model of its two children and the test of the split."""
+
+    def __init__(self, units, dists, counts, parent_dists):
+        self.units = units
+        self.dists = dists
+        self.counts = counts
+        self.parent_dists = parent_dists
+        self.children = []
+        self.k = None  # the component of the parent's model this sense is
+        self.model = None  # (pi, dists[channel][component]) once split
+        self.test = None
+        self.reason = None
+        self.id = None  # its place in the tree, each sense before those it splits into
+        self.parent = None
+
+
+# ----------------------------- The sense model ------------------------------
+
+
+def discount(counts):
+    """The absolute discount of a group of words, from how many of them are in exactly one and exactly two sentences:
+    n1 / (n1 + 2 n2) (Ney, Essen and Kneser 1994). With no word in exactly one, as if one were: a discount of 0 would
+    leave nothing for the words a sense has not seen, and make the sentences of unseen works impossible."""
+    counts = np.rint(counts)
+    n1 = max(1, int(np.count_nonzero(counts == 1)))
+    n2 = int(np.count_nonzero(counts == 2))
+    return n1 / (n1 + 2 * n2)
+
+
+def fit_dist(c, parent, d):
+    """A sense's probabilities for a group of words from its (soft) counts c: each word's count less the discount d,
+    and the discounted mass shared out among the words the sense has not seen, as the parent's probabilities are (Katz
+    backoff with absolute discounting). Interpolating every word with the parent instead would compound the parent's
+    own discount for words new to both, and predict the words of unseen works far too rarely."""
+    total = float(c.sum())
+    if total <= 0:
+        return parent
+    kept = np.maximum(c - d, 0.0)
+    seen = kept > 0
+    backoff = 1.0 - float(kept.sum()) / total
+    unseen = parent.rest + float(parent.p[~seen].sum())  # the parent's probability of the words the sense has not seen
+    scale = backoff / unseen if unseen > 0 else 0.0
+    return Dist(np.where(seen, kept / total, parent.p * scale), parent.rest * scale)
+
+
+def markedly_more_frequent(c, parent_p, or_less=False):
+    """The words more frequent in a sense than expected from its parent by a likelihood ratio G2 above the log of the
+    sense's total count (the threshold of the Bayesian information criterion: the better fit is worth one more
+    number), from its (soft) counts c; or_less, more or less frequent. (local indices, G2), most significant first."""
+    return _markedly(c, parent_p, or_less, None)
+
+
+def _markedly(c, parent_p, or_less, markers):
+    total = float(c.sum())
+    if total <= 0:
+        return np.empty(0, dtype=np.int64), np.empty(0)
+    use = markers is not None
+    over, g2 = _g2_over(c, parent_p, total, float(np.log(total)), or_less, markers if use else _NO_MASK, use)
+    order = np.argsort(-g2, kind="stable")
+    return over[order], g2[order]
+
+
+_NO_MASK = np.zeros(1, dtype=np.bool_)
+
+
+@numba.njit(cache=True, nogil=True)
+def _xlogy(x, y):
+    return 0.0 if x == 0 else x * math.log(y)
+
+
+@numba.njit(cache=True, nogil=True)
+def _g2_over(c, parent_p, total, threshold, or_less, markers, use_markers):
+    """The words (among markers, if use_markers) more (or_less: more or less) frequent in counts c of the given total
+    than parent_p expects, by G2 above threshold, in the order of their index, and their G2."""
+    n = len(c)
+    out = np.empty(n, dtype=np.int64)
+    g2 = np.empty(n, dtype=np.float64)
+    m = 0
+    for i in range(n):
+        if use_markers and not markers[i]:
+            continue
+        co = c[i]
+        eo = total * parent_p[i]
+        if not (co != eo if or_less else co > eo):
+            continue
+        g = 2.0 * (_xlogy(co, co / eo) + _xlogy(total - co, (total - co) / (total - eo)))
+        if g > threshold:
+            out[m] = i
+            g2[m] = g
+            m += 1
+    return out[:m], g2[:m]
+
+
+def describe(c, dist, parent_p, corpus_p):
+    """The words markedly more frequent in a sense than in its parent (local indices, most significant first), with their
+    count in the sense, the ratio of their probability in it to their parent's and to the corpus's, and G2."""
+    listed, g2 = markedly_more_frequent(c, parent_p)
+    if dist.markers is not None:
+        keep = dist.markers[listed]
+        listed, g2 = listed[keep], g2[keep]
+    if dist.weights is not None:  # the strongest evidence first, as the words weigh in telling senses apart
+        order = np.argsort(-g2 * dist.weights[listed], kind="stable")
+        listed, g2 = listed[order], g2[order]
+    return [
+        (int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(dist.p[i] / corpus_p[i]), float(g))
+        for i, g in zip(listed, g2)
+    ]
+
+
+def describe_rarer(c, dist, parent_p):
+    """The words markedly less frequent in a sense than in its parent, among those that may mark a sense: what a sense
+    that is the rest of its parent lacks. (local index, count in the sense, ratio of its probability in it to its
+    parent's, weighted G2), the strongest evidence first."""
+    listed, g2 = markedly_more_frequent(c, parent_p, or_less=True)
+    less = c[listed] < float(c.sum()) * parent_p[listed]
+    listed, g2 = listed[less], g2[less]
+    if dist.markers is not None:
+        keep = dist.markers[listed]
+        listed, g2 = listed[keep], g2[keep]
+    if dist.weights is not None:
+        g2 = g2 * dist.weights[listed]
+    order = np.argsort(-g2, kind="stable")
+    listed, g2 = listed[order], g2[order]
+    return [(int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(g)) for i, g in zip(listed, g2)]
+
+
+def _logsumexp2(ll):
+    """log(exp(ll[:, 0]) + exp(ll[:, 1])), computed as scipy.special.logsumexp does (the larger term apart, for
+    precision), without its generality."""
+    a, b = ll[:, 0], ll[:, 1]
+    hi = np.maximum(a, b)
+    tie = a == b
+    with np.errstate(invalid="ignore", over="ignore"):
+        s = np.exp(np.minimum(a, b) - hi)
+    s[tie] = 0.0
+    out = np.log1p(s) + hi
+    out[tie] = (0.0 + math.log(2.0)) + hi[tie]
+    bad = ~np.isfinite(out)
+    if bad.any():  # infinite or undefined: as exp and log make it
+        with np.errstate(divide="ignore", over="ignore", invalid="ignore"):
+            out[bad] = np.log(np.exp(a[bad]) + np.exp(b[bad]))
+    return out
+
+
+def _evidence(d):
+    """What each word of a group tells of a sense: its log-probability, weighted if the words are."""
+    return np.log(d.p) if d.weights is None else d.weights * np.log(d.p)
+
+
+def _loglik(Xs, dists):
+    """The (weighted) log-probability of each sentence's words under one sense."""
+    return sum(X @ _evidence(d) for X, d in zip(Xs, dists))
+
+
+def _mixture_loglik(Xs, pi, dists):
+    """The log-probability of each sentence's words under each sense of a split (with its share), n x 2."""
+    ll = np.tile(np.log(pi), (Xs[0].shape[0], 1))
+    for X, ds in zip(Xs, dists):
+        ll += X @ np.column_stack([_evidence(ds[0]), _evidence(ds[1])])
+    return ll
+
+
+def marked(c, parent):
+    """The words that mark a sense from its (soft) counts c: the parent's markers markedly more or less frequent in it
+    than in the parent."""
+    return _markedly(c, parent.p, True, parent.markers)[0]
+
+
+def fit_sparse(c, parent, own=None):
+    """A sense's probabilities for a group of words from its (soft) counts c, as a departure from its parent's: its own
+    rate for the words that mark it (own; by default those markedly more or less frequent in it), the parent's rate
+    for every other word, scaled alike to make room. A sense so differs from its parent only where it is marked:
+    splitting the sentences does not estimate again, from fewer of them, the rates of the many words that have nothing
+    to do with the sense, whose noise would otherwise outweigh the sense in thin data. Its own rates are discounted as
+    the counts of the group are, the discount of all its words shared among them as the parent's rates are (absolute
+    discounting, interpolated): a word that marks the other sense of a split, and is (nearly) absent from this one,
+    keeps a small rate, not its parent's."""
+    total = float(c.sum())
+    if total <= 0:
+        return parent
+    if own is None:
+        own = marked(c, parent)
+    if len(own) == 0:
+        return parent
+    kept = np.maximum(c[own] - parent.discount, 0.0) / total
+    freed = float(np.minimum(c, parent.discount).sum()) / total  # the discount of every word the sense has
+    p_own = kept + freed * parent.p[own]
+    others = 1.0 - float(parent.p[own].sum())  # the parent's probability of every other word, the rest included
+    scale = (1.0 - float(p_own.sum())) / others if others > 0 else 0.0
+    p = parent.p * scale
+    p[own] = p_own
+    return Dist(p, parent.rest * scale, parent.markers, parent.weights, parent.discount)
+
+
+def _split_words(c, parent, every_marker):
+    """The words both senses of a split have their own rates for, from their counts c (words x 2): those that mark
+    either, or every one of the parent's markers they have."""
+    if every_marker:
+        present = np.flatnonzero(c.sum(axis=1) > 0)
+        return present if parent.markers is None else present[parent.markers[present]]
+    return np.union1d(marked(c[:, 0], parent), marked(c[:, 1], parent))
+
+
+# The EM of a split, compiled: the words of all groups in one vocabulary (each group's words after the last group's),
+# the sentences' matrices in CSR. It computes what fit_sparse, _split_words and _mixture_loglik do, in the same order
+# (numpy's pairwise sums included), so that the results are the same to the last bit; logarithms and exponentials are
+# left to numpy, whose own implementations differ from the C library's in the last bit.
+
+
+class _Mats(list):
+    """The matrices of the groups of words of the same sentences, packed once for the compiled EM."""
+
+    def __init__(self, Xs):
+        super().__init__(csr_matrix(X) for X in Xs)
+        n = self[0].shape[0]
+        voc_off = np.zeros(len(self) + 1, dtype=np.int64)
+        nnz_off = np.zeros(len(self) + 1, dtype=np.int64)
+        for c, X in enumerate(self):
+            voc_off[c + 1] = voc_off[c] + X.shape[1]
+            nnz_off[c + 1] = nnz_off[c] + X.nnz
+        indptr = np.empty((len(self), n + 1), dtype=np.int64)
+        indices = np.empty(nnz_off[-1], dtype=np.int64)
+        data = np.empty(nnz_off[-1], dtype=np.float64)
+        for c, X in enumerate(self):
+            indptr[c] = X.indptr + nnz_off[c]
+            indices[nnz_off[c] : nnz_off[c + 1]] = X.indices[: X.nnz] + voc_off[c]
+            data[nnz_off[c] : nnz_off[c + 1]] = X.data[: X.nnz]
+        self.packed = (indptr, indices, data, voc_off)
+
+
+@numba.njit(cache=True, nogil=True)
+def _block_sum(a, lo, n):
+    """numpy's sum of a block of a[lo:lo + n], n <= 128: 8 accumulators."""
+    if n < 8:
+        res = 0.0
+        for i in range(lo, lo + n):
+            res += a[i]
+        return res
+    r0, r1, r2, r3 = a[lo], a[lo + 1], a[lo + 2], a[lo + 3]
+    r4, r5, r6, r7 = a[lo + 4], a[lo + 5], a[lo + 6], a[lo + 7]
+    i = 8
+    m = n - (n % 8)
+    while i < m:
+        r0 += a[lo + i]
+        r1 += a[lo + i + 1]
+        r2 += a[lo + i + 2]
+        r3 += a[lo + i + 3]
+        r4 += a[lo + i + 4]
+        r5 += a[lo + i + 5]
+        r6 += a[lo + i + 6]
+        r7 += a[lo + i + 7]
+        i += 8
+    res = ((r0 + r1) + (r2 + r3)) + ((r4 + r5) + (r6 + r7))
+    while i < n:
+        res += a[lo + i]
+        i += 1
+    return res
+
+
+@numba.njit(cache=True, nogil=True)
+def _pairwise_sum(a, lo, n):
+    """numpy's sum of a[lo:lo + n], the same to the last bit: halves summed apart (each a multiple of 8 long, but the
+    last) down to blocks of 128 at most. Without recursion, which numba's cache does not take."""
+    if n <= 128:
+        return 0.0 + _block_sum(a, lo, n)
+    st_lo = np.empty(64, dtype=np.int64)
+    st_n = np.empty(64, dtype=np.int64)
+    st_stage = np.zeros(64, dtype=np.int64)  # 0: halves to sum; 1: the first being summed; 2: the second
+    st_first = np.empty(64)
+    top = 0
+    st_lo[0] = lo
+    st_n[0] = n
+    while True:
+        if st_n[top] <= 128:
+            val = _block_sum(a, st_lo[top], st_n[top])
+            top -= 1
+            while top >= 0:  # hand the sum up
+                if st_stage[top] == 1:
+                    st_first[top] = val
+                    st_stage[top] = 2
+                    half = st_n[top] // 2
+                    half -= half % 8
+                    st_lo[top + 1] = st_lo[top] + half
+                    st_n[top + 1] = st_n[top] - half
+                    st_stage[top + 1] = 0
+                    top += 1
+                    break
+                val = st_first[top] + val
+                top -= 1
+            if top < 0:
+                return 0.0 + val
+        else:
+            st_stage[top] = 1
+            half = st_n[top] // 2
+            half -= half % 8
+            st_lo[top + 1] = st_lo[top]
+            st_n[top + 1] = half
+            st_stage[top + 1] = 0
+            top += 1
+
+
+@numba.njit(cache=True, nogil=True)
+def _em_counts(indptr, indices, data, n_words, r, voc_off):
+    """Each word's (soft) count in either sense (X.T @ r for each group), and each group's total in either."""
+    n_groups = indptr.shape[0]
+    n = indptr.shape[1] - 1
+    counts = np.zeros((n_words, 2))
+    for c in range(n_groups):
+        for i in range(n):
+            r0 = r[i, 0]
+            r1 = r[i, 1]
+            for jj in range(indptr[c, i], indptr[c, i + 1]):
+                j = indices[jj]
+                a = data[jj]
+                counts[j, 0] += a * r0
+                counts[j, 1] += a * r1
+    totals = np.empty((n_groups, 2))
+    for c in range(n_groups):
+        for k in range(2):
+            totals[c, k] = _pairwise_sum(counts[voc_off[c] : voc_off[c + 1], k], 0, voc_off[c + 1] - voc_off[c])
+    return counts, totals
+
+
+@numba.njit(cache=True, nogil=True)
+def _em_fit(counts, totals, thresholds, parent_p, parent_rest, markers, discount, voc_off, every_marker):
+    """Both senses' probabilities for each group (fit_sparse with the words of _split_words): p (2 x words), rest
+    (groups x 2), whether each is its parent's, and whether any word tells the senses apart."""
+    n_groups = len(voc_off) - 1
+    n_words = len(parent_p)
+    own = np.zeros(n_words, dtype=np.bool_)
+    any_own = False
+    for c in range(n_groups):
+        for j in range(voc_off[c], voc_off[c + 1]):
+            if not markers[j]:
+                continue
+            if every_marker:
+                own[j] = counts[j, 0] + counts[j, 1] > 0
+            else:
+                for k in range(2):
+                    t = totals[c, k]
+                    if t <= 0:
+                        continue
+                    co = counts[j, k]
+                    eo = t * parent_p[j]
+                    if co != eo:
+                        g = 2.0 * (_xlogy(co, co / eo) + _xlogy(t - co, (t - co) / (t - eo)))
+                        if g > thresholds[c, k]:
+                            own[j] = True
+                            break
+            any_own = any_own or own[j]
+    p = np.empty((2, n_words))
+    rest = np.empty((n_groups, 2))
+    is_parent = np.zeros((n_groups, 2), dtype=np.bool_)
+    for c in range(n_groups):
+        lo = voc_off[c]
+        hi = voc_off[c + 1]
+        own_c = np.flatnonzero(own[lo:hi]) + lo
+        d = discount[c]
+        for k in range(2):
+            t = totals[c, k]
+            if t <= 0 or len(own_c) == 0:
+                is_parent[c, k] = True
+                p[k, lo:hi] = parent_p[lo:hi]
+                rest[c, k] = parent_rest[c]
+                continue
+            least = np.empty(hi - lo)
+            for j in range(lo, hi):
+                least[j - lo] = min(counts[j, k], d)
+            freed = _pairwise_sum(least, 0, hi - lo) / t
+            p_own = np.empty(len(own_c))
+            parent_own = np.empty(len(own_c))
+            for m in range(len(own_c)):
+                j = own_c[m]
+                p_own[m] = max(counts[j, k] - d, 0.0) / t + freed * parent_p[j]
+                parent_own[m] = parent_p[j]
+            others = 1.0 - _pairwise_sum(parent_own, 0, len(own_c))
+            scale = (1.0 - _pairwise_sum(p_own, 0, len(own_c))) / others if others > 0 else 0.0
+            for j in range(lo, hi):
+                p[k, j] = parent_p[j] * scale
+            for m in range(len(own_c)):
+                p[k, own_c[m]] = p_own[m]
+            rest[c, k] = parent_rest[c] * scale
+    return p, rest, is_parent, any_own
+
+
+@numba.njit(cache=True, nogil=True)
+def _em_loglik(indptr, indices, data, evidence, log_pi):
+    """Each sentence's (weighted) log-probability under either sense of a split, with its share: n x 2."""
+    n_groups = indptr.shape[0]
+    n = indptr.shape[1] - 1
+    ll = np.empty((n, 2))
+    for i in range(n):
+        ll[i, 0] = log_pi[0]
+        ll[i, 1] = log_pi[1]
+    for c in range(n_groups):
+        for i in range(n):
+            s0 = 0.0
+            s1 = 0.0
+            for jj in range(indptr[c, i], indptr[c, i + 1]):
+                j = indices[jj]
+                a = data[jj]
+                s0 += a * evidence[0, j]
+                s1 += a * evidence[1, j]
+            ll[i, 0] += s0
+            ll[i, 1] += s1
+    return ll
+
+
+def _em(Xs, parent, r, every_marker):
+    if not isinstance(Xs, _Mats):
+        Xs = _Mats(Xs)
+    indptr, indices, data, voc_off = Xs.packed
+    n = Xs[0].shape[0]
+    n_words = int(voc_off[-1])
+    parent_p = np.concatenate([d.p for d in parent]).astype(np.float64)
+    parent_rest = np.array([d.rest for d in parent], dtype=np.float64)
+    markers = np.concatenate([np.ones(len(d.p), np.bool_) if d.markers is None else d.markers for d in parent])
+    weights = np.concatenate([np.ones(len(d.p)) if d.weights is None else d.weights for d in parent])
+    discount = np.array([d.discount for d in parent], dtype=np.float64)
+    previous = None
+    for _ in range(_MAX_ITER):
+        weight = r.sum(axis=0)
+        if weight.min() < 1.0:
+            return None
+        pi = weight / n
+        counts, totals = _em_counts(indptr, indices, data, n_words, r, voc_off)
+        with np.errstate(divide="ignore"):
+            thresholds = np.log(totals)
+        p, rest, is_parent, any_own = _em_fit(
+            counts, totals, thresholds, parent_p, parent_rest, markers, discount, voc_off, every_marker
+        )
+        if not any_own:  # no word tells the senses apart: both are the parent, no split
+            return None
+        ll = _em_loglik(indptr, indices, data, weights * np.log(p), np.log(pi))
+        total = _logsumexp2(ll)[:, None]
+        r = np.exp(ll - total)
+        total = float(total.sum())
+        if previous is not None and abs(total - previous) <= _TOL * abs(total):
+            break
+        previous = total
+    if r.sum(axis=0).min() < 1.0:
+        return None
+    dists = [
+        [
+            (
+                parent[c]
+                if is_parent[c, k]
+                else Dist(
+                    p[k, voc_off[c] : voc_off[c + 1]].copy(),
+                    float(rest[c, k]),
+                    parent[c].markers,
+                    parent[c].weights,
+                    parent[c].discount,
+                )
+            )
+            for k in range(2)
+        ]
+        for c in range(len(parent))
+    ]
+    return pi, dists, r, [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
+
+
+def fit_split(Xs, parent, r, search=False):
+    """Fit a split of the sentences Xs (one matrix for each group of words) into two senses by expectation-maximization,
+    from the probabilities r (n x 2) of each sentence being in either, each sense a sparse departure from the parent:
+    both have their own rates for the words that mark either, and share the parent's for all others. A search (from a
+    seed) first lets every one of the parent's markers tell the senses apart: few of the words of the seed's sense are
+    marked yet on its side, and the sense would not grow. Returns (pi, dists, r, counts), or None when a sense ends up
+    with less than a sentence or none of the words tells them apart."""
+    if search:
+        first = _em(Xs, parent, r, every_marker=True)
+        if first is None:
+            return None
+        r = first[2]
+    return _em(Xs, parent, r, every_marker=False)
+
+
+@numba.njit(cache=True)
+def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_counts, total_tokens, col_weights):
+    """For each candidate word f, how much better its sentences and the others predict their other candidate words
+    with rates of their own than at the sense's rates: for each word more frequent on a side, its count there times
+    the log of its rate there, left out of each sentence (count less one: a word in a single one of a side's sentences
+    predicts none of them), over its rate in the sense, less half the log of the side's total (the price of one more
+    rate, by the Bayesian information criterion). Leaving each sentence out keeps a few sentences that share their words
+    from looking like a sense of their own. The cost of saying which side each sentence is on is left to the test:
+    expectation-maximization moves the sentences from the seed's side to their sense's core, which changes it. Sentences
+    x candidates in CSR (indptr, indices, data); the sentences of each candidate in col_ptr, col_rows."""
+    m = len(node_counts)
+    n = len(indptr) - 1
+    scores = np.full(m, -np.inf)
+    side_a = np.zeros(m)
+    touched = np.empty(m, dtype=np.int64)
+    for f in range(m):
+        n_a = col_ptr[f + 1] - col_ptr[f]
+        if n_a == 0 or n_a == n:
+            continue
+        n_touched = 0
+        tokens_a = 0.0
+        for k in range(col_ptr[f], col_ptr[f + 1]):
+            i = col_rows[k]
+            tokens_a += row_tokens[i]
+            for j in range(indptr[i], indptr[i + 1]):
+                w = indices[j]
+                if side_a[w] == 0.0:
+                    touched[n_touched] = w
+                    n_touched += 1
+                side_a[w] += data[j]
+        tokens_b = total_tokens - tokens_a
+        gain = 0.0
+        for w in range(m):
+            if w == f:
+                continue
+            rate = node_counts[w] / total_tokens
+            for side in range(2):
+                c = side_a[w] if side == 0 else node_counts[w] - side_a[w]
+                big = tokens_a if side == 0 else tokens_b
+                if c <= 1.0 or big <= 0:
+                    continue
+                g = c * np.log((c - 1.0) / (big * rate)) - 0.5 * np.log(big)
+                if g > 0:
+                    gain += g * col_weights[w]
+        scores[f] = gain
+        for t in range(n_touched):
+            side_a[touched[t]] = 0.0
+    return scores
+
+
+def seed_splits(Xs, collocates, k=_SEEDS_TRIED, weights=None):
+    """The halves splits may start from: the sentences with a seed word and the others. Seeds are among the query's
+    collocates (words markedly more frequent around it than in the corpus, in any group of words) that the sense's
+    sentences have, those whose sentences differ most from the others in their other collocates first: senses are
+    anchored by words, as in HyperLex. (A sense's own marker words, against its parent, would not do: those of the
+    larger side of a split are only the words the smaller one lacks.) Returns up to k (r, (group, local index)), the
+    most promising first."""
+    candidates = [cols[np.asarray(X[:, cols].getnnz(axis=0)) > 0] for X, cols in zip(Xs, collocates)]
+    if sum(len(c) for c in candidates) < 2:
+        return []
+    A = csr_matrix(hstack([X[:, cand] for X, cand in zip(Xs, candidates)]))
+    A.sum_duplicates()
+    columns = A.tocsc()
+    row_tokens = sum(np.asarray(X.sum(axis=1)).ravel() for X in Xs)
+    node_counts = np.asarray(A.sum(axis=0)).ravel()
+    weights = weights or [None] * len(Xs)
+    col_weights = np.concatenate(
+        [np.ones(len(cand)) if w is None else w[cand] for cand, w in zip(candidates, weights)]
+    ).astype(np.float64)
+    scores = _seed_scores(
+        A.indptr,
+        A.indices,
+        A.data.astype(np.float64),
+        columns.indptr,
+        columns.indices,
+        row_tokens.astype(np.float64),
+        node_counts,
+        float(row_tokens.sum()),
+        col_weights,
+    )
+    offsets = np.cumsum([0] + [len(c) for c in candidates])
+    seeds = []
+    for best in np.argsort(-scores, kind="stable")[:k]:
+        if not np.isfinite(scores[best]) or scores[best] <= 0:
+            break
+        has = np.zeros(A.shape[0], dtype=bool)
+        has[columns.indices[columns.indptr[best] : columns.indptr[best + 1]]] = True
+        group = int(np.searchsorted(offsets, best, side="right") - 1)
+        seeds.append(
+            (np.column_stack([has, ~has]).astype(np.float64), (group, int(candidates[group][best - offsets[group]])))
+        )
+    return seeds
+
+
+def work_folds(groups):
+    """The fold of each sentence: the group of works it is from, works going to the fold with the fewest sentences so
+    far, the largest first. (folds, n_folds), or (None, 0) for sentences all from one work."""
+    groups = np.asarray(groups)
+    _, inverse, counts = np.unique(groups, axis=0, return_inverse=True, return_counts=True)
+    inverse = np.ravel(inverse)
+    n_groups = len(counts)
+    if n_groups < 2:
+        return None, 0
+    n_folds = min(N_FOLDS, n_groups)
+    load = np.zeros(n_folds, dtype=np.int64)
+    fold_of = np.empty(n_groups, dtype=np.int64)
+    for g in np.lexsort((np.arange(n_groups), -counts)):
+        f = int(np.argmin(load))
+        fold_of[g] = f
+        load[f] += counts[g]
+    return fold_of[inverse], n_folds
+
+
+def _fold_data(Xs, unsplit_fit, groups, pool_map=map):
+    """The folds a split is tested on, the same for every split of a sense: for each, its training and held-out
+    sentences (masks and matrices), the unsplit sense fitted on the training ones and the held-out sentences'
+    log-probability under it. Whole works are held out; a single work's sentences, in turn."""
+    n = Xs[0].shape[0]
+    folds, n_folds = work_folds(groups)
+    if folds is None:  # a single work: its sentences then
+        folds, n_folds = np.arange(n) % N_FOLDS, min(N_FOLDS, n)
+
+    def fold(f):
+        train = folds != f
+        test = ~train
+        Xtrain = _Mats([X[train] for X in Xs])
+        Xtest = [X[test] for X in Xs]
+        unsplit = unsplit_fit([np.asarray(X.sum(axis=0)).ravel() for X in Xtrain])
+        return train, test, Xtrain, Xtest, unsplit, _loglik(Xtest, unsplit)
+
+    return list(pool_map(fold, range(n_folds)))
+
+
+def _fold_gain(fold, r):
+    """The split started from the probabilities r, fitted on a fold's training sentences: each held-out sentence's
+    gain over the unsplit sense, and the gains of those more likely in either sense; None for no evidence."""
+    train, _, Xtrain, Xtest, unsplit, unsplit_ll = fold
+    fitted = fit_split(Xtrain, unsplit, r[train])
+    if fitted is None:  # without these sentences, nothing can be told apart: no better
+        return None
+    pi, dists, _, _ = fitted
+    ll = _mixture_loglik(Xtest, pi, dists)
+    gain = _logsumexp2(ll) - unsplit_ll
+    if not np.all(np.isfinite(gain)):  # a sentence impossible under either: no evidence for the split
+        return None
+    return gain, np.bincount(np.argmax(ll, axis=1), weights=gain, minlength=2)
+
+
+def _test_result(folds, results, n):
+    sentence_gains = np.zeros(n)
+    sides = np.zeros(2)
+    for fold, result in zip(folds, results):
+        if result is None:
+            continue
+        gain, side_gains = result
+        sentence_gains[fold[1]] = gain
+        sides += side_gains
+    mean = float(sentence_gains.mean())
+    se = float(sentence_gains.std(ddof=1) / np.sqrt(n)) if n > 1 else float("inf")
+    return {
+        "tested": True,
+        "gain": float(sentence_gains.sum()),
+        "gains": [float(g) for g in sides],
+        "bits_per_sentence": float(mean / np.log(2)),
+        "z": float(mean / se) if se > 0 else 0.0,
+        "sentences_won": int((sentence_gains > 0).sum()),
+        "sentences": int(n),
+    }
+
+
+def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map):
+    """Whether the split predicts the sentences of the works it was not fitted on better than its unsplit sense: in
+    each of N_FOLDS folds of the works, both are fitted on the other folds and scored on its sentences, the split paying
+    for saying which sense each is in. Holding out whole works keeps the sentences of a passage, which share their
+    words, from predicting one another. Sentences are the units of evidence: each gains or loses, and the mean of their
+    gains, in nats, is compared with its standard error."""
+    if folds is None:
+        folds = _fold_data(Xs, unsplit_fit, groups, pool_map)
+    return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
+
+
+def induce_senses(channels, groups, finest=FINEST):
+    """Grow the tree of senses of the sentences: channels are (X, corpus probabilities, corpus rest[, weights]) for each
+    group of words, X a sentences x words matrix of counts, weights how much each word's evidence counts; groups is
+    the work of each sentence. Returns the root Node; split senses have children, the others are the senses found.
+    Each split has its importance: how much it improves the prediction of the words around the query, per use of the
+    word (its sense's share of the sentences times its gain per sentence there). Splits less important than finest
+    times the first one are not looked for."""
+    Xall = [csr_matrix(c[0]) for c in channels]
+    n = Xall[0].shape[0]
+    corpus = [Dist(np.asarray(c[1], dtype=np.float64), float(c[2])) for c in channels]
+    counts = [np.asarray(X.sum(axis=0)).ravel() for X in Xall]
+    discounts = [discount(c) for c in counts]
+    collocates = [markedly_more_frequent(c, dist.p)[0] for c, dist in zip(counts, corpus)]
+    # Only the query's collocates (words markedly more frequent around it than in the corpus) may mark a sense: words
+    # used around it at no particular rate (je, vous, les) tell no sense of it from another, whatever else they tell
+    masks = [np.isin(np.arange(len(c)), cols) for c, cols in zip(counts, collocates)]
+    weights = [c[3] if len(c) > 3 else None for c in channels]
+
+    def root_fit(train_counts):  # the whole query's sentences: calibrated, from the corpus
+        dists = [fit_dist(c, dist, d) for c, dist, d in zip(train_counts, corpus, discounts)]
+        for dist, mask, w, d in zip(dists, masks, weights, discounts):
+            dist.markers = mask
+            dist.weights = w
+            dist.discount = d
+        return dists
+
+    root = Node(np.arange(n), root_fit(counts), counts, corpus)
+
+    floor = {"importance": 0.0}
+
+    def grow(node):
+        if node is root:
+            unsplit_fit = root_fit
+        else:
+            parents = node.parent_dists
+            unsplit_fit = lambda train_counts, parents=parents: [
+                fit_sparse(c, d) for c, d in zip(train_counts, parents)
+            ]
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, collocates, fits.map)
+        return node
+
+    # The seeds of a split and the folds of each are fitted at once, and the senses below the first split grow at once
+    # too (they are independent of one another once the first sets the floor): the compiled EM and numpy release the GIL
+    workers = os.cpu_count() or 1
+    with ThreadPoolExecutor(max_workers=workers) as fits, ThreadPoolExecutor(max_workers=workers) as senses:
+        grow(root)
+        if root.children:
+            floor["importance"] = finest * root.test["importance"]
+        pending = {senses.submit(grow, child) for child in root.children}
+        while pending:
+            done, pending = wait(pending, return_when=FIRST_COMPLETED)
+            for future in done:
+                pending |= {senses.submit(grow, child) for child in future.result().children}
+    return root
+
+
+def natural_break(relative, finest=FINEST):
+    """How many distinctions to show at first, of their importances relative to the main one: down to the largest drop
+    from one to the next, as a ratio (the natural break, as the largest gap between eigenvalues tells a number of
+    clusters), the floor of the search counting as the next after the last, so that distinctions all alike in
+    importance are all shown."""
+    if len(relative) == 0:
+        return 0
+    values = np.maximum(np.r_[np.sort(np.asarray(relative, dtype=float))[::-1], finest], 1e-12)
+    return int(np.argmax(np.log(values[:-1] / values[1:]))) + 1
+
+
+def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map):
+    units = node.units
+    if len(units) < 2:
+        node.reason = "inseparable"
+        return
+    Xs = _Mats([X[units] for X in Xall])
+    seeds = seed_splits(Xs, collocates, weights=[d.weights for d in node.dists])
+    candidates = []
+    for (_, seed), fitted in zip(seeds, pool_map(lambda s: fit_split(Xs, node.dists, s[0], search=True), seeds)):
+        if fitted is None:
+            continue
+        side = fitted[2][:, 0] >= fitted[2][:, 1]
+        if side.all() or not side.any():  # one sense is in every sentence, more or less: no halves
+            continue
+        candidates.append((seed, fitted, side))
+    if candidates:
+        folds = _fold_data(Xs, unsplit_fit, groups[units], pool_map)
+        tasks = [(fitted[2], fold) for _, fitted, _ in candidates for fold in folds]
+        results = list(pool_map(lambda task: _fold_gain(task[1], task[0]), tasks))
+    best = None
+    for c, (seed, fitted, side) in enumerate(candidates):
+        pi, dists, r, counts = fitted
+        test = _test_result(folds, results[c * len(folds) : (c + 1) * len(folds)], len(units))
+        test["seed"] = seed
+        test["importance"] = float(len(units) / n_all * max(0.0, test["bits_per_sentence"]))
+        passes = test["z"] > EVIDENCE and test["importance"] >= floor["importance"]
+        if best is None or (passes, test["importance"]) > (best[0], best[1]["importance"]):
+            best = (passes, test, pi, dists, side, counts)
+    if best is None:
+        node.reason = "inseparable"
+        return
+    passes, node.test, pi, dists, side, counts = best
+    if not passes:
+        node.reason = "no_gain" if node.test["z"] <= EVIDENCE else "faint"
+        return
+    node.model = (pi, dists)
+    for k, members in ((0, side), (1, ~side)):
+        child = Node(units[members], [d[k] for d in dists], [c[:, k] for c in counts], node.dists)
+        child.k = k
+        node.children.append(child)
+    node.children.sort(key=lambda c: (-len(c.units), c.k))
+
+
+def node_posteriors(root, Xall):
+    """Every sense of the tree, in order (each before those it splits into), given its id and parent; and for every
+    sentence the log-probability of each sense (n x senses), and its margin: the smallest log-likelihood ratio, along
+    the way to the sense, of the sense's side over the other (positive when the sentence is on its side of every
+    split, infinite for the whole query)."""
+    n = Xall[0].shape[0]
+    nodes, logp, margin = [], [], []
+
+    def walk(node, lp, mg, parent):
+        node.id = len(nodes)
+        node.parent = parent
+        nodes.append(node)
+        logp.append(lp)
+        margin.append(mg)
+        if not node.children:
+            return
+        pi, dists = node.model
+        ll = _mixture_loglik(Xall, pi, dists)
+        cond = ll - _logsumexp2(ll)[:, None]
+        for child in node.children:
+            walk(child, lp + cond[:, child.k], np.minimum(mg, ll[:, child.k] - ll[:, 1 - child.k]), node)
+
+    walk(root, np.zeros(n), np.full(n, np.inf), None)
+    return nodes, np.column_stack(logp), np.column_stack(margin)
+
+
+def _path(root, leaf):
+    """The (node, component) splits on the way from the root to a leaf."""
+    found = []
+
+    def walk(node, trail):
+        if node is leaf:
+            found.extend(trail)
+            return True
+        return any(walk(child, trail + [(node, child.k)]) for child in node.children)
+
+    walk(root, [])
+    return found
+
+
+# ----------------------------- Smoothing over time ------------------------------
+
+
+@numba.njit(cache=True)
+def _ldl(w, lam):
+    """LDL' factors of W + lam D'D, D the second differences, as its diagonal d and the two subdiagonals of L."""
+    n = len(w)
+    a0 = np.empty(n)
+    a1 = np.zeros(n)
+    a2 = np.zeros(n)
+    for i in range(n):
+        s = 0.0
+        if i <= n - 3:
+            s += 1.0
+        if 1 <= i <= n - 2:
+            s += 4.0
+        if 2 <= i <= n - 1:
+            s += 1.0
+        a0[i] = w[i] + lam * s
+        if i <= n - 2:
+            t = 0.0
+            if i <= n - 3:
+                t -= 2.0
+            if 1 <= i <= n - 2:
+                t -= 2.0
+            a1[i] = lam * t
+        if i <= n - 3:
+            a2[i] = lam
+    d = np.empty(n)
+    l1 = np.zeros(n)
+    l2 = np.zeros(n)
+    for i in range(n):
+        di = a0[i]
+        if i >= 1:
+            di -= l1[i - 1] * l1[i - 1] * d[i - 1]
+        if i >= 2:
+            di -= l2[i - 2] * l2[i - 2] * d[i - 2]
+        d[i] = di
+        if i <= n - 2:
+            v = a1[i]
+            if i >= 1:
+                v -= l2[i - 1] * d[i - 1] * l1[i - 1]
+            l1[i] = v / di
+        if i <= n - 3:
+            l2[i] = a2[i] / di
+    return d, l1, l2
+
+
+@numba.njit(cache=True)
+def _ldl_solve(d, l1, l2, b):
+    n = len(d)
+    y = np.empty(n)
+    for i in range(n):
+        v = b[i]
+        if i >= 1:
+            v -= l1[i - 1] * y[i - 1]
+        if i >= 2:
+            v -= l2[i - 2] * y[i - 2]
+        y[i] = v
+    f = np.empty(n)
+    for i in range(n - 1, -1, -1):
+        v = y[i] / d[i]
+        if i <= n - 2:
+            v -= l1[i] * f[i + 1]
+        if i <= n - 3:
+            v -= l2[i] * f[i + 2]
+        f[i] = v
+    return f
+
+
+@numba.njit(cache=True)
+def _inverse_diagonal(d, l1, l2):
+    """The diagonal of the inverse of LDL', by Takahashi's recursion over its band."""
+    n = len(d)
+    z0 = np.zeros(n + 2)
+    z1 = np.zeros(n + 2)
+    z2 = np.zeros(n + 2)
+    for i in range(n - 1, -1, -1):
+        a = l1[i] if i <= n - 2 else 0.0
+        b = l2[i] if i <= n - 3 else 0.0
+        z2[i] = -(a * z1[i + 1] + b * z0[i + 2])
+        z1[i] = -(a * z0[i + 1] + b * z1[i + 1])
+        z0[i] = 1.0 / d[i] - (a * z1[i] + b * z2[i])
+    return z0[:n]
+
+
+@numba.njit(cache=True)
+def _smooth_resamples(w, z, lam):
+    """Smooth each resampling b of each series k: z is resamples x series x years, w resamples x years."""
+    n_b, n_k, n = z.shape
+    out = np.full(z.shape, np.nan)
+    for b in range(n_b):
+        if np.sum(w[b] > 0) < 2:  # all its works from one year: no course over time to draw
+            continue
+        d, l1, l2 = _ldl(w[b], lam)
+        for k in range(n_k):
+            out[b, k] = _ldl_solve(d, l1, l2, w[b] * z[b, k])
+    return out
+
+
+def whittaker(w, z, lam):
+    """Whittaker-Henderson smoothing of the series z (series x years) with weights w (years): the curves minimizing
+    sum w (z - f)^2 + lam sum (second differences of f)^2. Linear functions are left as they are, so shares that sum to
+    one still do."""
+    d, l1, l2 = _ldl(w, lam)
+    return np.array([_ldl_solve(d, l1, l2, w * series) for series in z])
+
+
+def choose_smoothness(w, z):
+    """The smoothness generalized cross-validation prefers for the series z together (they share the weights w)."""
+    observed = w > 0
+    m = int(observed.sum())
+    best, best_score = _LAMBDAS[0], np.inf
+    for lam in _LAMBDAS:
+        d, l1, l2 = _ldl(w, lam)
+        trace = float(np.sum(w * _inverse_diagonal(d, l1, l2)))
+        if trace >= m:
+            continue
+        rss = 0.0
+        for series in z:
+            f = _ldl_solve(d, l1, l2, w * series)
+            rss += float(np.sum(w[observed] * (series[observed] - f[observed]) ** 2))
+        score = rss / m / (1.0 - trace / m) ** 2
+        if score < best_score:
+            best, best_score = lam, score
+    return float(best)
+
+
+def sense_curves(posteriors, years, works, year_words=None):
+    """The course over time of each sense: its share of the year's sentences and, with the words of each year
+    (year_words), its uses per million words, smoothed, with bands from resampling the works. Years weigh by their
+    number of works, the units of evidence: the sentences of a work are not independent of one another, so weighing
+    by sentences would take the swings of a few works for a course to follow. None without at least two years with
+    sentences and three years in all."""
+    dated = years > 0
+    if len(np.unique(years[dated])) < 2:
+        return None
+    start, end = int(years[dated].min()), int(years[dated].max())
+    n_years = end - start + 1
+    if n_years < 3:
+        return None
+    P = posteriors[dated]
+    year_index = years[dated] - start
+    work_ids, work_of = np.unique(works[dated], return_inverse=True)
+    n_works = len(work_ids)
+    # Each work has one year: its sentences, and their probabilities of each sense, summed by work
+    work_year = np.zeros(n_works, dtype=np.int64)
+    work_year[work_of] = year_index
+    work_n = np.bincount(work_of, minlength=n_works).astype(np.float64)
+    work_s = np.zeros((n_works, P.shape[1]))
+    np.add.at(work_s, work_of, P)
+
+    def totals(m):
+        n = np.bincount(work_year, weights=m * work_n, minlength=n_years)
+        y = np.array([np.bincount(work_year, weights=m * work_s[:, k], minlength=n_years) for k in range(P.shape[1])])
+        return n, y, np.bincount(work_year, weights=m, minlength=n_years)
+
+    n, y, works_in = totals(np.ones(n_works))
+    rng = np.random.default_rng(0)  # fixed: the same bands every time
+    resamples = rng.multinomial(n_works, np.full(n_works, 1.0 / n_works), size=N_RESAMPLES).astype(np.float64)
+    boot = [totals(m) for m in resamples]
+    boot_n = np.array([b[0] for b in boot])
+    boot_y = np.array([b[1] for b in boot])
+    boot_works = np.array([b[2] for b in boot])
+
+    def curves(z, boot_z, weight, boot_weight, digits):
+        scale = weight[weight > 0].mean()
+        w = weight / scale
+        lam = choose_smoothness(w, z)
+        value = whittaker(w, z, lam)
+        smoothed = _smooth_resamples(boot_weight / scale, boot_z, lam)
+        low, high = np.nanpercentile(smoothed, BAND, axis=0)
+        return {"smoothness": lam, "value": digits(value), "low": digits(low), "high": digits(high)}
+
+    def decimals(a):  # shares: to a hundredth of a percent, more than a chart shows
+        return np.round(np.nan_to_num(a), 4).tolist()
+
+    def significant(a):  # rates per million: four significant digits
+        return [[float(f"{v:.4g}") for v in row] for row in np.nan_to_num(a)]
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        share = np.where(n > 0, y / n, 0.0)
+        boot_share = np.where(boot_n[:, None, :] > 0, boot_y / boot_n[:, None, :], 0.0)
+    result = {
+        "start": start,
+        "end": end,
+        "sentences": n.astype(np.int64).tolist(),
+        "works": works_in.astype(np.int64).tolist(),
+        "share": curves(share, boot_share, works_in, boot_works, decimals),
+        "rate": None,
+    }
+    if year_words:
+        words = np.array([float(year_words.get(start + t, 0)) for t in range(n_years)])
+        if (words > 0).sum() >= 2:
+            per_million = np.where(words > 0, 1e6 / np.where(words > 0, words, 1.0), 0.0)
+            rate = y * per_million
+            boot_rate = boot_y * per_million  # the words of each year are the corpus's, not resampled
+            has_words = words > 0
+            result["rate"] = curves(rate, boot_rate, works_in * has_words, boot_works * has_words, significant)
+    return result
+
+
+# ----------------------------- The sentences of a query ------------------------------
+
+
+_TOKEN_FREQUENCY_CACHE: dict = {}
+
+
+@numba.njit(cache=True, nogil=True)
+def _count_tokens(count_ids, n_vocab):
+    counts = np.zeros(n_vocab, dtype=np.int64)
+    for i in range(len(count_ids)):
+        counts[count_ids[i]] += 1
+    return counts
+
+
+def _token_frequency(data_path, count_lemmas):
+    """How many times each word (or lemma) is in the corpus, cached per worker."""
+    key = (data_path, bool(count_lemmas))
+    if key not in _TOKEN_FREQUENCY_CACHE:
+        colloc_dir = os.path.join(data_path, "collocations")
+        ids = "attr_lemma_ids.npy" if count_lemmas else "token_ids.npy"
+        offsets = "attr_lemma_vocab_offsets.npy" if count_lemmas else "vocab_offsets.npy"
+        n_vocab = len(np.load(os.path.join(colloc_dir, offsets), mmap_mode="r")) - 1
+        count_ids = np.load(os.path.join(colloc_dir, ids), mmap_mode="r")
+        _TOKEN_FREQUENCY_CACHE[key] = _count_tokens(count_ids, n_vocab)
+    return _TOKEN_FREQUENCY_CACHE[key]
+
+
+@numba.njit(cache=True, nogil=True)
+def _sentence_words(
+    unit_bounds,
+    hit_sent,
+    hit_start,
+    hit_end,
+    sent_offsets,
+    count_ids,
+    excluded,
+    filtered,
+    attr_ids,
+    target_attr,
+    use_attr,
+    max_dist,
+    n_vocab,
+):
+    """The words of each sentence (once each; within max_dist of a hit when max_dist >= 0), and the words just before
+    and just after each hit, as flat arrays and their bounds by sentence. The query's own words are left out, and the
+    filtered ones."""
+    n_units = len(unit_bounds) - 1
+    total = 0
+    for u in range(n_units):
+        si = hit_sent[unit_bounds[u]]
+        total += sent_offsets[si + 1] - sent_offsets[si]
+    n_hits = len(hit_sent)
+    bag = np.empty(total, dtype=np.int64)
+    left = np.empty(n_hits, dtype=np.int64)
+    right = np.empty(n_hits, dtype=np.int64)
+    bag_ptr = np.zeros(n_units + 1, dtype=np.int64)
+    left_ptr = np.zeros(n_units + 1, dtype=np.int64)
+    right_ptr = np.zeros(n_units + 1, dtype=np.int64)
+    seen = np.zeros(n_vocab, dtype=np.bool_)
+    hashes = np.empty(n_units, dtype=np.uint64)
+    nb = 0
+    nl = 0
+    nr = 0
+    for u in range(n_units):
+        h0 = unit_bounds[u]
+        h1 = unit_bounds[u + 1]
+        si = hit_sent[h0]
+        s = sent_offsets[si]
+        e = sent_offsets[si + 1]
+        h = np.uint64(14695981039346656037)  # FNV-1a over the sentence's words, all of them
+        for k in range(s, e):
+            h = (h ^ np.uint64(count_ids[k])) * np.uint64(1099511628211)
+        hashes[u] = h
+        first = nb
+        for k in range(s, e):
+            t = count_ids[k]
+            if excluded[t] or filtered[t] or seen[t]:
+                continue
+            if use_attr and attr_ids[k] != target_attr:
+                continue
+            if max_dist >= 0:
+                near = False
+                for h in range(h0, h1):
+                    if _nb_span_with(np.uint32(k - s + 1), hit_start[h], hit_end[h]) <= max_dist:
+                        near = True
+                        break
+                if not near:
+                    continue
+            seen[t] = True
+            bag[nb] = t
+            nb += 1
+        for k in range(first, nb):
+            seen[bag[k]] = False
+        bag_ptr[u + 1] = nb
+        for h in range(h0, h1):
+            if hit_start[h] > 1:
+                t = count_ids[s + hit_start[h] - 2]
+                if not excluded[t] and not filtered[t]:
+                    left[nl] = t
+                    nl += 1
+            if hit_end[h] < e - s:
+                t = count_ids[s + hit_end[h]]
+                if not excluded[t] and not filtered[t]:
+                    right[nr] = t
+                    nr += 1
+        left_ptr[u + 1] = nl
+        right_ptr[u + 1] = nr
+    return bag[:nb], bag_ptr, left[:nl], left_ptr, right[:nr], right_ptr, hashes
+
+
+def _channel(flat, ptr, n_units):
+    """A sentences x words count matrix of local word indices, and the vocabulary ids of its words."""
+    ids, cols = np.unique(flat, return_inverse=True)
+    X = csr_matrix((np.ones(len(flat)), np.ravel(cols), ptr), shape=(n_units, len(ids)))
+    X.sum_duplicates()
+    return X, ids
+
+
+def _filter_mask(colloc_dir, prefix, filter_words, n_vocab):
+    """The words of filter_words (as the collocation report's filter list has them), as a mask of the vocabulary."""
+    if not filter_words:
+        return np.zeros(n_vocab, dtype=np.bool_)
+    hashes = np.load(os.path.join(colloc_dir, f"{prefix}vocab_hashes.npy"), mmap_mode="r")
+    wanted = np.array(
+        sorted(struct.unpack("<Q", hashlib.md5(w.encode("utf-8")).digest()[:8])[0] for w in filter_words),
+        dtype=np.uint64,
+    )
+    return _nb_build_filter(hashes, wanted)
+
+
+def query_sentences(
+    db, q, count_lemmas, attribute=None, attribute_value=None, metadata=None, distance=None, filter_words=None
+):
+    """The sentences the query is in, one for each sentence, with their words: a dict, or None without any. The words
+    of filter_words (as the collocation report's filter list has them) are left out, of the words of the sentence and
+    of those next to the query alike."""
+    metadata = metadata or {}
+    data_path = os.path.normpath(db.path)
+    method, method_arg = collocation_search_method(q, db.locals.query_patterns, distance)
+    hits = db.query(q, method, method_arg, raw_results=True, raw_bytes=True, **metadata)
+    hits.finish()
+    n_hits = len(hits)
+    if n_hits == 0:
+        return None
+    with hits.open_raw() as f:
+        rows = np.frombuffer(f.read(), dtype=np.uint32).reshape(-1, hits.length)
+
+    colloc_dir = os.path.join(data_path, "collocations")
+    sent_keys = np.load(os.path.join(colloc_dir, "sent_keys_s24.npy"), mmap_mode="r")
+    sent_offsets = np.asarray(np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r"))
+    prefix = "attr_lemma_" if count_lemmas else ""
+    count_ids = np.load(
+        os.path.join(colloc_dir, "attr_lemma_ids.npy" if count_lemmas else "token_ids.npy"), mmap_mode="r"
+    )
+    v_offsets = np.asarray(np.load(os.path.join(colloc_dir, f"{prefix}vocab_offsets.npy"), mmap_mode="r"))
+    with open(os.path.join(colloc_dir, f"{prefix}vocab_strings.bin"), "rb") as f:
+        v_blob = f.read()
+    n_vocab = len(v_offsets) - 1
+
+    keys = np.ascontiguousarray(rows[:, :6].astype(">u4")).view("S24").ravel()
+    si = np.searchsorted(sent_keys, keys)
+    n_sents = len(sent_keys)
+    matched = (si < n_sents) & (sent_keys[np.clip(si, 0, n_sents - 1)] == keys)
+    hit_index = np.flatnonzero(matched)
+    if len(hit_index) == 0:
+        return None
+    si = si[hit_index].astype(np.int64)
+    positions = rows[hit_index][:, 7::2].astype(np.int64)  # the word position of each of the hit's query words
+    # The query's own words: whatever form or lemma is at its hits' positions, wherever it is in the sentence
+    at = (sent_offsets[si].astype(np.int64)[:, None] + positions - 1)[positions > 0]
+    excluded = np.zeros(n_vocab, dtype=np.bool_)
+    excluded[np.unique(np.asarray(count_ids[at]))] = True
+    filtered = _filter_mask(colloc_dir, prefix, filter_words, n_vocab)
+
+    order = np.argsort(si, kind="stable")
+    hit_index, si, positions = hit_index[order], si[order], positions[order]
+    unit_bounds = np.append(np.flatnonzero(np.r_[True, si[1:] != si[:-1]]), len(si))
+    if attribute:
+        attr_ids = np.load(os.path.join(colloc_dir, f"attr_{attribute}_ids.npy"), mmap_mode="r")
+        attr_vocab = np.load(os.path.join(colloc_dir, f"attr_{attribute}_vocab.npy"), allow_pickle=True)
+        target = next((i for i, v in enumerate(attr_vocab) if v == attribute_value), len(attr_vocab))
+        use_attr = True
+    else:
+        attr_ids, target, use_attr = np.zeros(1, dtype=np.uint32), 0, False
+    max_dist = distance + phrase_words(q, db.locals.query_patterns) if distance is not None else -1
+    bag, bag_ptr, left, left_ptr, right, right_ptr, hashes = _sentence_words(
+        unit_bounds,
+        si,
+        positions.min(axis=1).astype(np.uint32),
+        positions.max(axis=1).astype(np.uint32),
+        sent_offsets,
+        count_ids,
+        excluded,
+        filtered,
+        attr_ids,
+        np.uint32(target),
+        use_attr,
+        np.int32(max_dist),
+        n_vocab,
+    )
+    n_units = len(unit_bounds) - 1
+    first = hit_index[unit_bounds[:-1]]  # the first hit of each sentence, in the hitlist
+    # Identical sentences count once (repeated titles, running heads, reprints): they are one use, not many
+    keep = np.sort(np.unique(hashes, return_index=True)[1])
+    channels = []
+    for flat, ptr in ((bag, bag_ptr), (left, left_ptr), (right, right_ptr)):
+        X, ids = _channel(flat, ptr, n_units)
+        X = X[keep]
+        used = np.flatnonzero(X.getnnz(axis=0))  # the words the kept sentences still have
+        channels.append((X[:, used], ids[used]))
+    first = first[keep]
+    return {
+        "n_hits": n_hits,
+        "n_units": len(keep),
+        "duplicates": n_units - len(keep),
+        "first_hit": first,
+        "docs": rows[first, 0].astype(np.int64),
+        "divisions": rows[first, :3].astype(np.int64),
+        "channels": channels,
+        "v_blob": v_blob,
+        "v_offsets": v_offsets,
+        "count_lemmas": count_lemmas,
+        "filtered": filtered,  # the words of filter_words, by vocabulary id
+        "data_path": data_path,
+    }
+
+
+# ----------------------------- The report ------------------------------
+
+
+def _cache_path(db, *parts):
+    h = hashlib.sha1(_CACHE_TAG)
+    for part in parts:
+        h.update(json.dumps(part, sort_keys=True, default=str).encode("utf-8"))
+        h.update(b"\0")
+    return os.path.join(db.hitlist_dir, f"{h.hexdigest()}.senses.json")
+
+
+def word_senses(
+    db,
+    q,
+    count_lemmas,
+    attribute=None,
+    attribute_value=None,
+    metadata=None,
+    distance=None,
+    year_field=None,
+    filter_words=None,
+):
+    """The senses of the query and their course over time, as JSON-ready data (cached in the hitlist directory). The
+    words of filter_words (the collocation report's filter) are not shown; the analysis reads them, as every word."""
+    metadata = {k: v for k, v in (metadata or {}).items() if v}
+    filter_words = sorted(set(filter_words or []))
+    path = _cache_path(
+        db, q, bool(count_lemmas), attribute, attribute_value, metadata, distance, year_field, filter_words
+    )
+    if os.path.exists(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            pass
+    began = time.perf_counter()
+    result = _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words)
+    result["seconds"] = round(time.perf_counter() - began, 2)
+    result["filter_list"] = filter_words
+    fd, tmp = tempfile.mkstemp(dir=db.hitlist_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(result, f)
+        os.replace(tmp, path)
+    except OSError:  # a cache that can't be written is no cache
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return result
+
+
+def _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words=None):
+    # The analysis reads every word, rare ones weighing more; the filter's words are only not shown: left out of it,
+    # the words that tell a rare sense (dieu for prière) would be too (see the pseudoword test)
+    sentences = query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
+    if sentences is None:
+        return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
+    prefix = "attr_lemma_" if count_lemmas else ""
+    unshown = _filter_mask(
+        os.path.join(sentences["data_path"], "collocations"), prefix, filter_words, len(sentences["v_offsets"]) - 1
+    )
+    n = sentences["n_units"]
+    data_path = sentences["data_path"]
+    df, n_corpus_sentences = _load_sentence_df(data_path, count_lemmas)
+    tf = _token_frequency(data_path, count_lemmas)
+    channels = []
+    names = []
+    # Each word's evidence weighs by its inverse document frequency: of the corpus's sentences for the words of the
+    # sentence, of its running words for those just before and after
+    for (X, ids), background, units in zip(sentences["channels"], (df, tf, tf), (n_corpus_sentences, None, None)):
+        total = float(background.sum())
+        # The corpus's rates among the words left in (filtered words are in no sentence, so none is expected)
+        p = background[ids] / (total - float(background[sentences["filtered"]].sum()))
+        weights = np.log((units if units else total) / background[ids])
+        channels.append((X, p, max(0.0, 1.0 - float(p.sum())), weights))
+        names.append(ids)
+    docs = sentences["docs"]
+    root = induce_senses(channels, docs)
+    Xall = [csr_matrix(c[0]) for c in channels]
+    nodes, logp, margin = node_posteriors(root, Xall)
+    posteriors = np.exp(logp)
+    weights = [c[3] for c in channels]
+    corpus_p = [c[1] for c in channels]
+
+    v_blob, v_offsets = sentences["v_blob"], sentences["v_offsets"]
+
+    def shown(ci, local):
+        return not unshown[int(names[ci][local])]
+
+    def word(ci, local):
+        tid = int(names[ci][local])
+        s = v_blob[int(v_offsets[tid]) : int(v_offsets[tid + 1])].decode("utf-8", errors="replace")
+        return s[6:] if s.startswith("lemma:") else s
+
+    top_importance = max((nd.test["importance"] for nd in nodes if nd.children), default=0.0)
+    first_hit = sentences["first_hit"]
+    listed_words = {}
+    out = []
+    for node in nodes:
+        groups_of_words = []
+        for ci in range(len(channels)):
+            listed = describe(node.counts[ci], node.dists[ci], node.parent_dists[ci].p, corpus_p[ci])
+            listed = [item for item in listed if shown(ci, item[0])]
+            if ci == 0:
+                listed_words[node.id] = np.array([i for i, *_ in listed[:_MAX_WORDS]], dtype=np.int64)
+            groups_of_words.append(
+                [
+                    {"word": word(ci, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(lift, 3)}
+                    for i, c, r, lift, _ in listed[:_MAX_WORDS]
+                ]
+            )
+        # Its words that go together in its sentences, across the works, around hub words (as in HyperLex)
+        groups = _word_groups(node, groups_of_words[0], margin, Xall[0], docs, listed_words.get(node.id))
+        # What it lacks, against the sense it was split from, in any group of words (the strongest evidence first)
+        rarer = []
+        if node.parent is not None:
+            rarer = sorted(
+                (
+                    (g, {"word": word(ci, i), "group": ci, "n": round(c, 2), "ratio": round(r, 4)})
+                    for ci in range(len(channels))
+                    for i, c, r, g in describe_rarer(node.counts[ci], node.dists[ci], node.parent_dists[ci].p)
+                    if shown(ci, i)
+                ),
+                key=lambda item: -item[0],
+            )
+            rarer = [item for _, item in rarer[:_MAX_WORDS]]
+        split = None
+        if node.test is not None:
+            split = {k: v for k, v in node.test.items() if k != "gains"}
+            seed = split.pop("seed", None)
+            split["seed"] = None if seed is None else {"word": word(seed[0], seed[1]), "group": seed[0]}
+            split["relative"] = round(float(split["importance"] / top_importance), 4) if top_importance > 0 else 0.0
+        # Its sentences: those on its side of every split on the way to it
+        mine = np.flatnonzero(margin[:, node.id] > 0)
+        works_of = docs[mine]
+        work_counts = np.unique(works_of, return_counts=True)[1] if len(mine) else np.zeros(1)
+        out.append(
+            {
+                "id": node.id,
+                "parent": None if node.parent is None else node.parent.id,
+                "children": [child.id for child in node.children],
+                "share": round(float(posteriors[:, node.id].mean()), 6),
+                "sentences": int(len(mine)),
+                "words": groups_of_words[0],
+                "before": groups_of_words[1],
+                "after": groups_of_words[2],
+                "groups": groups,
+                "rarer": rarer,
+                "split": split,
+                "reason": node.reason,
+                "works": int(len(work_counts)) if len(mine) else 0,
+                "top_work_share": round(float(work_counts.max() / max(1, len(mine))), 4),
+                "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, shown),
+            }
+        )
+
+    timeline = None
+    if year_field:
+        try:
+            year_array, year_words, _, _, _ = _get_doc_year_data(db, year_field)
+            docs_ok = np.clip(docs, 0, len(year_array) - 1)
+            years = np.where(docs < len(year_array), year_array[docs_ok], 0).astype(np.int64)
+            if metadata:
+                year_words, _ = _corpus_year_counts(db, year_array, metadata)
+            timeline = sense_curves(posteriors, years, docs, year_words)
+        except Exception:  # no year field the database can read: senses without their course over time
+            timeline = None
+
+    # At first, the distinctions down to the largest drop in importance
+    relative = sorted((nd["split"]["relative"] for nd in out if nd["children"]), reverse=True)
+    shown = natural_break(relative)
+    detail = relative[shown - 1] if shown else 1.0
+    return {
+        "n_hits": int(sentences["n_hits"]),
+        "n_sentences": int(n),
+        "n_works": int(len(np.unique(docs))),
+        "duplicates": int(sentences["duplicates"]),
+        "folds": N_FOLDS,
+        "evidence": EVIDENCE,
+        "resamples": N_RESAMPLES,
+        "band": list(BAND),
+        "detail": detail,
+        "finest": FINEST,
+        "nodes": out,
+        "time": timeline,
+    }
+
+
+# ----------------------------- Word groups: HyperLex inside a sense ------------------------------
+
+
+def _works_of(works, n):
+    """The work of each sentence numbered from 0, the sentences in order of their works, where each work's begin, and
+    the number of works (None when the sentences are all from one work: nothing can be replicated across works)."""
+    if works is None:
+        return None
+    _, work, sizes = np.unique(np.asarray(works), return_inverse=True, return_counts=True)
+    work = np.ravel(work).astype(np.int64)
+    if len(sizes) < 2:
+        return None
+    order = np.argsort(work, kind="stable")
+    bounds = np.r_[0, np.cumsum(sizes)].astype(np.int64)
+    return work, order, bounds, len(sizes)
+
+
+def _by_works(X, by_works):
+    """Each work's count of sentences with each word (works x words), and its number of sentences."""
+    work, _, bounds, n_works = by_works
+    W = csr_matrix((np.ones(X.shape[0]), (work, np.arange(X.shape[0]))), shape=(n_works, X.shape[0]))
+    return (W @ X).tocsr(), np.diff(bounds).astype(np.float64)
+
+
+def _replicated(excess_sum, excess_squares, n_works):
+    """Whether a mean excess over chance per work is more than EVIDENCE standard errors over the works."""
+    mean = excess_sum / n_works
+    variance = np.maximum(excess_squares - n_works * mean**2, 0.0) / (n_works - 1)
+    se = np.sqrt(variance / n_works)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        return np.where(se > 0, mean / se, 0.0) > EVIDENCE
+
+
+@numba.njit(cache=True, nogil=True)
+def _pair_moments(indptr, indices, order, bounds, pair_id, pair_a, pair_b, n_words):
+    """For each pair of words (pair_id: words x words, -1 for none), the sums over works of its count of sentences
+    with both squared, and of that count times its expected count (the product of the work's counts of sentences with
+    either, over its sentences)."""
+    n_pairs = len(pair_a)
+    squares = np.zeros(n_pairs)
+    cross = np.zeros(n_pairs)
+    count = np.zeros(n_words)
+    both = np.zeros(n_pairs)
+    touched = np.empty(n_pairs, dtype=np.int64)
+    for d in range(len(bounds) - 1):
+        n_touched = 0
+        for t in range(bounds[d], bounds[d + 1]):
+            s = order[t]
+            for x in range(indptr[s], indptr[s + 1]):
+                a = indices[x]
+                count[a] += 1.0
+                for y in range(x + 1, indptr[s + 1]):
+                    b = indices[y]
+                    p = pair_id[a, b] if a < b else pair_id[b, a]
+                    if p >= 0:
+                        if both[p] == 0.0:
+                            touched[n_touched] = p
+                            n_touched += 1
+                        both[p] += 1.0
+        n_d = bounds[d + 1] - bounds[d]
+        for t in range(n_touched):
+            p = touched[t]
+            expected = count[pair_a[p]] * count[pair_b[p]] / n_d
+            squares[p] += both[p] * both[p]
+            cross[p] += both[p] * expected
+            both[p] = 0.0
+        for t in range(bounds[d], bounds[d + 1]):
+            s = order[t]
+            for x in range(indptr[s], indptr[s + 1]):
+                count[indices[x]] = 0.0
+    return squares, cross
+
+
+def links_of(X, works=None):
+    """The links between the words of X (sentences x words, 1 where a sentence has a word): pairs (i < j) whose
+    pointwise mutual information is above zero even at the lower end of its uncertainty, and, given the work of each
+    sentence (works), whose excess of sentences with both over chance holds across the works: its mean over the works
+    is more than EVIDENCE standard errors, so that a passage repeating its words in one work is no link. Returns i, j,
+    their weight (the lower end of the PMI, normalized by -log of the share of sentences with both: NPMI) and their
+    count of sentences."""
+    X = csr_matrix(X, dtype=np.float64)
+    X.data[:] = 1.0
+    X.sort_indices()
+    n = X.shape[0]
+    n_words = X.shape[1]
+    counts = np.asarray(X.sum(axis=0)).ravel()
+    both = (X.T @ X).tocoo()
+    upper = both.row < both.col
+    i, j, c = both.row[upper].astype(np.int64), both.col[upper].astype(np.int64), both.data[upper]
+    # The exact (Garwood) lower bound of a Poisson count, EVIDENCE standard errors' worth below
+    low = gammaincinv(c, ndtr(-EVIDENCE))
+    expected = counts[i] * counts[j] / n
+    with np.errstate(divide="ignore"):
+        pmi_low = np.log(low / expected)
+    linked = pmi_low > 0
+    by_works = _works_of(works, n)
+    if by_works is not None and linked.any():
+        i, j, c, pmi_low = i[linked], j[linked], c[linked], pmi_low[linked]
+        work, order, bounds, n_works = by_works
+        per_work, sizes = _by_works(X, by_works)
+        inverse = csr_matrix((1.0 / sizes, (np.arange(n_works), np.arange(n_works))), shape=(n_works, n_works))
+        expected_sum = (per_work.T @ inverse @ per_work).toarray()[i, j]
+        squared = per_work.multiply(per_work).tocsr()
+        expected_squares = (squared.T @ (inverse @ inverse) @ squared).toarray()[i, j]
+        pair_id = np.full((n_words, n_words), -1, dtype=np.int64)
+        pair_id[i, j] = np.arange(len(i))
+        squares, cross = _pair_moments(
+            X.indptr.astype(np.int64), X.indices.astype(np.int64), order, bounds, pair_id, i, j, n_words
+        )
+        linked = _replicated(c - expected_sum, squares - 2.0 * cross + expected_squares, n_works)
+    i, j, c, pmi_low = i[linked], j[linked], c[linked], pmi_low[linked]
+    share = c / n
+    with np.errstate(divide="ignore", invalid="ignore"):
+        weight = np.where(share < 1.0, pmi_low / -np.log(share), 1.0)
+    return i, j, np.minimum(weight, 1.0), c
+
+
+def hub_groups(X, works=None):
+    """Group the words of X (sentences x words, 1 where a sentence has a word) as HyperLex does, without its
+    thresholds: words are linked as links_of links them; the word with the most weight of links is a hub, and takes the
+    words it is linked to; the next among the others, and so on, a word going to the hub it is linked to most. Returns
+    a list of (hub, its words, strongest first), the most linked hub first; words linked to none are in none."""
+    n_words = X.shape[1]
+    li, lj, w, _ = links_of(X, works)
+    if len(li) == 0:
+        return []
+    weight = np.zeros((n_words, n_words))
+    weight[li, lj] = weight[lj, li] = w
+    group_of = np.full(n_words, -1, dtype=np.int64)
+    hubs = []
+    while True:
+        free = group_of < 0
+        strength = (weight[:, free] * free[:, None]).sum(axis=1) * free
+        if strength.max() <= 0:
+            break
+        hub = int(np.argmax(strength))
+        group_of[hub] = len(hubs)
+        group_of[np.flatnonzero(free & (weight[hub] > 0))] = len(hubs)  # the free words it is linked to
+        hubs.append(hub)
+    # Each grouped word goes to the hub it is linked to most
+    for word in np.flatnonzero(group_of >= 0):
+        if word in hubs:
+            continue
+        to_hubs = weight[word, hubs]
+        group_of[word] = int(np.argmax(to_hubs))
+    out = []
+    for g, hub in enumerate(hubs):
+        members = [int(x) for x in np.flatnonzero(group_of == g) if x != hub]
+        members.sort(key=lambda x: -weight[hub, x])
+        out.append((hub, members))
+    return out
+
+
+def _word_groups(node, words, margin, X, docs, listed):
+    """The groups of a sense's listed words (positions in words) around hub words: [{"hub": position, "members":
+    [positions]}], words linked in its sentences across the works (hub_groups)."""
+    mine = np.flatnonzero(margin[:, node.id] > 0)
+    if listed is None or len(listed) < 2 or len(mine) < 2:
+        return []
+    sub = csr_matrix(X)[mine][:, listed]
+    return [{"hub": int(hub), "members": [int(m) for m in members]} for hub, members in hub_groups(sub, docs[mine])]
+
+
+def _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, shown=lambda ci, i: True):
+    """The sentences most clearly in a sense, with the words that decided it: for a split sense, those with the
+    largest margin, and for each the words whose (weighted) evidence most favoured its side along the way; for the
+    whole query, those with the most evidence of its collocates."""
+    path = _path(root, node)
+    if path:
+        top = mine[np.lexsort((mine, -margin[mine, node.id]))][:_MAX_EXAMPLES]
+    else:  # the whole query: the sentences with the most evidence of its collocates against the corpus
+        score = sum(
+            X @ ((1.0 if d.weights is None else d.weights) * np.log(d.p / parent.p))
+            for X, d, parent in zip(Xall, node.dists, node.parent_dists)
+        )
+        top = np.argsort(-score, kind="stable")[:_MAX_EXAMPLES]
+    examples = []
+    for u in top:
+        evidence = {}
+        for ci, X in enumerate(Xall):
+            row = X.getrow(u)
+            if row.nnz == 0:
+                continue
+            w = 1.0 if weights[ci] is None else weights[ci][row.indices]
+            contribution = np.zeros(row.nnz)
+            if path:
+                for split_node, k in path:
+                    dists = split_node.model[1][ci]
+                    contribution += (
+                        row.data * w * (np.log(dists[k].p[row.indices]) - np.log(dists[1 - k].p[row.indices]))
+                    )
+            else:
+                contribution = (
+                    row.data * w * np.log(node.dists[ci].p[row.indices] / node.parent_dists[ci].p[row.indices])
+                )
+            for i, c in zip(row.indices, contribution):
+                if c > 0 and shown(ci, int(i)):
+                    evidence[(ci, int(i))] = evidence.get((ci, int(i)), 0.0) + float(c)
+        strongest = sorted(evidence.items(), key=lambda kv: -kv[1])[:8]
+        examples.append(
+            {
+                "hit": int(first_hit[u]),
+                "p": round(float(posteriors[u, node.id]), 4),
+                "evidence": [{"word": word(ci, i), "group": ci} for (ci, i), _ in strongest],
+            }
+        )
+    return examples
