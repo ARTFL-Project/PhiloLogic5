@@ -57,6 +57,20 @@ class TestSenses:
         assert root.test["z"] > ws.EVIDENCE
         assert root.test["sentences_won"] > 0.9 * root.test["sentences"]
 
+    def test_the_same_senses_on_one_thread_or_more(self, monkeypatch):
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
+        channels, works = sentences(specs, seed=3)
+
+        def tree(threads):
+            monkeypatch.setattr(ws.numba.config, "NUMBA_NUM_THREADS", threads)
+            root = ws.induce_senses(channels, works)
+            nodes = [root]
+            for node in nodes:
+                nodes.extend(node.children)
+            return [(node.units.tolist(), node.reason, node.test) for node in nodes]
+
+        assert tree(1) == tree(2) == tree(4)
+
     def test_sentences_go_to_their_sense(self):
         specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
         channels, works = sentences(specs)

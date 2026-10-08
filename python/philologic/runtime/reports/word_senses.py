@@ -1324,7 +1324,7 @@ def induce_senses(channels, groups, finest=FINEST):
 
     floor = {"importance": 0.0}
 
-    def grow(node):
+    def grow(node, pool_map):
         if node is root:
             unsplit_fit = root_fit
         else:
@@ -1332,21 +1332,34 @@ def induce_senses(channels, groups, finest=FINEST):
             unsplit_fit = lambda train_counts, parents=parents: [
                 fit_sparse(c, d) for c, d in zip(train_counts, parents)
             ]
-        _try_split(node, Xall, n, unsplit_fit, floor, groups, collocates, fits.map)
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, collocates, pool_map)
         return node
 
-    # The seeds of a split and the folds of each are fitted at once, and the senses below the first split grow at once
-    # too (they are independent of one another once the first sets the floor): the compiled EM and numpy release the GIL
-    workers = os.cpu_count() or 1
-    with ThreadPoolExecutor(max_workers=workers) as fits, ThreadPoolExecutor(max_workers=workers) as senses:
-        grow(root)
+    def grow_with(pool_map, senses=None):
+        grow(root, pool_map)
         if root.children:
             floor["importance"] = finest * root.test["importance"]
-        pending = {senses.submit(grow, child) for child in root.children}
+        if senses is None:
+            queue = list(root.children)
+            while queue:
+                queue.extend(grow(queue.pop(0), pool_map).children)
+            return
+        pending = {senses.submit(grow, child, pool_map) for child in root.children}
         while pending:
             done, pending = wait(pending, return_when=FIRST_COMPLETED)
             for future in done:
-                pending |= {senses.submit(grow, child) for child in future.result().children}
+                pending |= {senses.submit(grow, child, pool_map) for child in future.result().children}
+
+    # The seeds of a split and the folds of each are fitted at once, and the senses below the first split grow at once
+    # too (they are independent of one another once the first sets the floor): the compiled EM and numpy release the
+    # GIL. As many threads work as numba may use (NUMBA_NUM_THREADS, which the web server caps for each of its workers,
+    # as for the rest of the app): those that grow the senses only hand their work to them.
+    workers = numba.config.NUMBA_NUM_THREADS
+    if workers < 2:
+        grow_with(map)
+        return root
+    with ThreadPoolExecutor(max_workers=workers) as fits, ThreadPoolExecutor(max_workers=workers) as senses:
+        grow_with(fits.map, senses)
     return root
 
 
@@ -1366,8 +1379,12 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
     if len(units) < 2:
         node.reason = "inseparable"
         return
-    Xs = _Mats([X[units] for X in Xall])
-    seeds = seed_splits(Xs, collocates, weights=[d.weights for d in node.dists])
+
+    def prepare(_):
+        Xs = _Mats([X[units] for X in Xall])
+        return Xs, seed_splits(Xs, collocates, weights=[d.weights for d in node.dists])
+
+    ((Xs, seeds),) = pool_map(prepare, (None,))  # on the pool's threads too, which alone do the work
     candidates = []
     for (_, seed), fitted in zip(seeds, pool_map(lambda s: fit_split(Xs, node.dists, s[0], search=True), seeds)):
         if fitted is None:

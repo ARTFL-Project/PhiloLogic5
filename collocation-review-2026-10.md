@@ -527,16 +527,18 @@ unoptimised code's.
   sense, not once per seed.
 - **Tests.** Unit tests check the compiled EM against plain numpy, and the sums against `np.sum`, bit for bit.
 
-**Single-threaded speed** (Oct 8, for a busy server). The output is still the same to the last bit, on 10 reference
-queries: the 7 above, Shakespeare `"my lord"`, frantext `lemma:grâce` within 5 words, and Balzac `amour` without a
-filter. Warm, on one thread, the total went from 77.6 s to 38.9 s:
+**Single-threaded speed** (Oct 8, for a busy server). The output is still the same to the last bit on 10 reference
+queries and on eebo_ecco_combo *liberty* and *reason*. The 10 are the 7 above, Shakespeare `"my lord"`, frantext
+`lemma:grâce` within 5 words, and Balzac `amour` without a filter. Warm, on one thread, their total went from
+77.6 s to 31.7 s:
 
 | Query | Before | After |
 |---|---|---|
-| frantext `lemma:raison` | 38.2 s | 18.2 s |
-| frantext `lemma:grâce`, within 5 | 18.2 s | 7.9 s |
-| frantext `lemma:révolution` | 10.7 s | 5.7 s |
-| the 7 small queries | 0.7–2.5 s | 1.3–1.6× faster |
+| frantext `lemma:raison` | 38.2 s | 15.2 s |
+| frantext `lemma:grâce`, within 5 | 18.2 s | 6.5 s |
+| frantext `lemma:révolution` | 10.7 s | 4.4 s |
+| eebo_ecco_combo *liberty* | 121 s | 48 s |
+| the 7 small queries | 0.7–2.5 s | 1.4–2.0× faster |
 
 - **Only the words the sentences have.** A sense's EM iterations follow only the words its sentences have. Below the
   root that is about a third of the query's words. Sums over a group's words still run over all of them, with the
@@ -552,11 +554,28 @@ filter. Warm, on one thread, the total went from 77.6 s to 38.9 s:
   - `np.nanpercentile` loops over places in Python when any value is NaN. The undrawn resamples are NaN as a whole,
     so `np.percentile` over the drawn ones gives the same result.
   - `np.unique(axis=0)` on the 1-D works sorted them as records.
-- **Seed scores** skip terms that cannot be positive: log x ≤ x − 1, with a margin for rounding.
-- **Threads** leave the output identical. With 64 threads, *raison* takes 6.3 s, but small queries get slower
-  (0.55 s to 1.0 s), because their Python-heavy tasks contend for the GIL.
-- **What is left.** The two kernels are half the time, at about 2 cycles per entry. The rest is numpy glue between
-  kernels, building the fold matrices, and the seeds.
+- **Seed scores** skip terms that cannot be positive: log x ≤ x − 1, with a margin for rounding. A word none of a
+  seed's sentences have is skipped on its count alone. Co-occurrence counts add up as integers, exact in any order.
+- **The marker test** skips its two logarithms where a bound on G² is under the threshold: G² ≤ 2t(c − e)²/(e(t − e)),
+  since KL ≤ χ².
+- **The kernels' loops** use unsigned counters and flat arrays: no sign check and no multiply by a stride per entry.
+- **Vocabulary of the sentences:** `np.unique` over all the words' entries became marking the ids. On eebo *reason*,
+  reading the sentences went from 10.6 s to 2.8 s.
+- **Threads** leave the output identical. They are capped at numba's thread count, `NUMBA_NUM_THREADS`, as for the
+  rest of the app. The web server sets it to 2 per worker. All the work runs on that pool, and the threads that grow
+  senses only hand work to it. One thread runs without any pool.
+  - With 2 threads, *raison* takes 9.6 s (15.2 s on one thread). eebo_ecco_combo *liberty* (191k sentences) takes
+    32 s (48 s), and *reason* (785k sentences) 169 s (301 s), under the server's 300 s timeout.
+  - Tiny queries lose a little: Shakespeare `"my lord"` takes 0.59 s against 0.43 s on one thread.
+  - Uncapped (64 threads), small queries were slower still (0.55 s to 1.0 s), their Python-heavy tasks contending
+    for the GIL.
+- **What is left.** The two kernels are half the time, at about 2 cycles per entry. With all their data in L1 they
+  are only 20% faster, so the processor itself is the limit. Tried, no real gain: both senses as one complex number,
+  and 5 EM runs in one pass (at most 1.4× on that part; numba's LLVM does not vectorize either). Exact output fixes the
+  rest: up to 35 EM runs per sense, up to 200 iterations each. On *raison*, the candidates' fold fits are 63% of the EM
+  time, and half of all iterations are in the 37 runs that reach the cap.
+- **Bad dates.** eebo_ecco_combo has years 1 and 16461, so its curves span 16,461 years: 2.4 s and a 12.5 MB report
+  for *liberty*. That is unchanged.
 
 On made-up sentences it finds two balanced senses, a single work's two senses, unequal shares (1/3 and 2/3) and a
 three-sense tree. It finds nothing in sentences alike. The previous version missed the balanced cases.
