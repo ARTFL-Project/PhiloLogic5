@@ -527,6 +527,37 @@ unoptimised code's.
   sense, not once per seed.
 - **Tests.** Unit tests check the compiled EM against plain numpy, and the sums against `np.sum`, bit for bit.
 
+**Single-threaded speed** (Oct 8, for a busy server). The output is still the same to the last bit, on 10 reference
+queries: the 7 above, Shakespeare `"my lord"`, frantext `lemma:grâce` within 5 words, and Balzac `amour` without a
+filter. Warm, on one thread, the total went from 77.6 s to 38.9 s:
+
+| Query | Before | After |
+|---|---|---|
+| frantext `lemma:raison` | 38.2 s | 18.2 s |
+| frantext `lemma:grâce`, within 5 | 18.2 s | 7.9 s |
+| frantext `lemma:révolution` | 10.7 s | 5.7 s |
+| the 7 small queries | 0.7–2.5 s | 1.3–1.6× faster |
+
+- **Only the words the sentences have.** A sense's EM iterations follow only the words its sentences have. Below the
+  root that is about a third of the query's words. Sums over a group's words still run over all of them, with the
+  missing ones as zero. They use a pairwise sum that skips the parts with no entry, which is exact because adding
+  zero changes no sum.
+- **Sliced ELLPACK.** Sentence sums take 4 sentences of about the same length at a time. Each is padded with an entry
+  of zero evidence. Word counts take 4 words at a time, each word's sentences in order. Every sum keeps its order,
+  and the four independent sums keep the processor busy.
+- **Unsigned indices.** numba checks every signed index for being negative. `uint32` indices made both kernels
+  1.5× faster.
+- **numpy's slow paths.**
+  - `r.sum(axis=0)` on an n × 2 array: numpy sums it down each column in order, now compiled.
+  - `np.nanpercentile` loops over places in Python when any value is NaN. The undrawn resamples are NaN as a whole,
+    so `np.percentile` over the drawn ones gives the same result.
+  - `np.unique(axis=0)` on the 1-D works sorted them as records.
+- **Seed scores** skip terms that cannot be positive: log x ≤ x − 1, with a margin for rounding.
+- **Threads** leave the output identical. With 64 threads, *raison* takes 6.3 s, but small queries get slower
+  (0.55 s to 1.0 s), because their Python-heavy tasks contend for the GIL.
+- **What is left.** The two kernels are half the time, at about 2 cycles per entry. The rest is numpy glue between
+  kernels, building the fold matrices, and the seeds.
+
 On made-up sentences it finds two balanced senses, a single work's two senses, unequal shares (1/3 and 2/3) and a
 three-sense tree. It finds nothing in sentences alike. The previous version missed the balanced cases.
 

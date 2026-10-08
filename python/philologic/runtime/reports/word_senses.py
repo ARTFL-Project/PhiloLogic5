@@ -368,6 +368,26 @@ class _Mats(list):
         self.rows = _row_slices(indptr, indices, data, ones, len(cols))
         self.columns = _column_slices(indptr, indices, data, ones, cmp_off)
         self.words = (pos, cols, cmp_off, voc_off)
+        self._marking = []
+
+    def marking(self, parent):
+        """The markers of the groups of words (all of them; their indices; each group's first; their places among the
+        words the sentences have, -1 for none) and the weights of the words the sentences have (and the padding's): the
+        same for every sense of a tree, its root's, so made once."""
+        key = [(d.markers, d.weights) for d in parent]
+        for known, made in self._marking:
+            if all(a[0] is b[0] and a[1] is b[1] for a, b in zip(known, key)):
+                return made
+        pos, cols, cmp_off, voc_off = self.words
+        markers = np.concatenate([np.ones(len(d.p), np.bool_) if d.markers is None else d.markers for d in parent])
+        weights = np.concatenate([np.ones(len(d.p)) if d.weights is None else d.weights for d in parent])
+        mk = np.flatnonzero(markers)
+        had = np.full(int(voc_off[-1]), -1, dtype=np.int64)
+        had[cols] = np.arange(len(cols))
+        weights_had = np.repeat(np.append(weights[cols], 1.0), 2).reshape(-1, 2)  # both senses', for numpy's fast loop
+        made = (markers, mk, np.searchsorted(mk, voc_off), had[mk], weights_had)
+        self._marking.append((key, made))
+        return made
 
 
 # The sums of the EM run over slices of the entries of the sentences' matrices (sliced ELLPACK): _WIDTH sentences
@@ -658,8 +678,9 @@ def _sums_at(counts, d, pos, n, out):
 def _em_counts(order, start, idx, cdata, g_off, ones, r, n_cols):
     """Each word's (soft) count in either sense (X.T @ r for each group), for the n_cols words the sentences have (and
     one more, for the slices' empty places), from the slices of the words' entries: each word's sentences in order,
-    from 0. r: n + 1 x 2, the padding's last (0)."""
-    counts = np.zeros((n_cols + 1, 2))
+    from 0. r: n + 1 x 2, flat (the padding's last, 0). Returns n_cols + 1 x 2."""
+    counts = np.zeros(2 * (n_cols + 1))
+    one, two, three, four = np.uint64(1), np.uint64(2), np.uint64(3), np.uint64(4)
     for c in range(len(ones)):
         for sl in range(g_off[c], g_off[c + 1]):
             a0 = 0.0
@@ -670,44 +691,52 @@ def _em_counts(order, start, idx, cdata, g_off, ones, r, n_cols):
             b2 = 0.0
             a3 = 0.0
             b3 = 0.0
+            e = start[sl]
+            end = start[sl + 1]
             if ones[c]:
-                for e in range(start[sl], start[sl + 1], _WIDTH):
-                    i = idx[e]
-                    a0 += r[i, 0]
-                    b0 += r[i, 1]
-                    i = idx[e + 1]
-                    a1 += r[i, 0]
-                    b1 += r[i, 1]
-                    i = idx[e + 2]
-                    a2 += r[i, 0]
-                    b2 += r[i, 1]
-                    i = idx[e + 3]
-                    a3 += r[i, 0]
-                    b3 += r[i, 1]
+                while e < end:
+                    i = np.uint64(idx[e]) * two
+                    a0 += r[i]
+                    b0 += r[i + one]
+                    i = np.uint64(idx[e + one]) * two
+                    a1 += r[i]
+                    b1 += r[i + one]
+                    i = np.uint64(idx[e + two]) * two
+                    a2 += r[i]
+                    b2 += r[i + one]
+                    i = np.uint64(idx[e + three]) * two
+                    a3 += r[i]
+                    b3 += r[i + one]
+                    e += four
             else:
-                for e in range(start[sl], start[sl + 1], _WIDTH):
-                    i = idx[e]
-                    a0 += cdata[e] * r[i, 0]
-                    b0 += cdata[e] * r[i, 1]
-                    i = idx[e + 1]
-                    a1 += cdata[e + 1] * r[i, 0]
-                    b1 += cdata[e + 1] * r[i, 1]
-                    i = idx[e + 2]
-                    a2 += cdata[e + 2] * r[i, 0]
-                    b2 += cdata[e + 2] * r[i, 1]
-                    i = idx[e + 3]
-                    a3 += cdata[e + 3] * r[i, 0]
-                    b3 += cdata[e + 3] * r[i, 1]
+                while e < end:
+                    i = np.uint64(idx[e]) * two
+                    a0 += cdata[e] * r[i]
+                    b0 += cdata[e] * r[i + one]
+                    i = np.uint64(idx[e + one]) * two
+                    a1 += cdata[e + one] * r[i]
+                    b1 += cdata[e + one] * r[i + one]
+                    i = np.uint64(idx[e + two]) * two
+                    a2 += cdata[e + two] * r[i]
+                    b2 += cdata[e + two] * r[i + one]
+                    i = np.uint64(idx[e + three]) * two
+                    a3 += cdata[e + three] * r[i]
+                    b3 += cdata[e + three] * r[i + one]
+                    e += four
             q = _WIDTH * sl
-            counts[order[q], 0] = a0
-            counts[order[q], 1] = b0
-            counts[order[q + 1], 0] = a1
-            counts[order[q + 1], 1] = b1
-            counts[order[q + 2], 0] = a2
-            counts[order[q + 2], 1] = b2
-            counts[order[q + 3], 0] = a3
-            counts[order[q + 3], 1] = b3
-    return counts
+            j = order[q] * two
+            counts[j] = a0
+            counts[j + one] = b0
+            j = order[q + 1] * two
+            counts[j] = a1
+            counts[j + one] = b1
+            j = order[q + 2] * two
+            counts[j] = a2
+            counts[j + one] = b2
+            j = order[q + 3] * two
+            counts[j] = a3
+            counts[j + one] = b3
+    return counts.reshape(n_cols + 1, 2)
 
 
 @numba.njit(cache=True, nogil=True)
@@ -822,6 +851,10 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
                     co = c0 if k == 0 else c1
                     eo = t * parent_p[j]
                     if co != eo:
+                        if eo > 0 and t > eo:  # G2 <= 2 t (co - eo)^2 / (eo (t - eo)), as KL <= chi-square
+                            bound = 2.0 * (co - eo) * (co - eo) * t / (eo * (t - eo))
+                            if bound * (1.0 + 1e-9) + 1e-9 * (co + eo) < thresholds[c, k]:  # margins over rounding's
+                                continue
                         g = 2.0 * (_xlogy(co, co / eo) + _xlogy(t - co, (t - co) / (t - eo)))
                         if g > thresholds[c, k]:
                             is_own = True
@@ -860,13 +893,14 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
 @numba.njit(cache=True, nogil=True)
 def _em_loglik(order, start, idx, sdata, ones, evidence, log_pi):
     """Each sentence's (weighted) log-probability under either sense of a split, with its share: n x 2, from the slices
-    of the sentences' entries. evidence: words x 2, the padding's last (0). Each sentence's sum of each group still
-    adds its entries in order, from 0, and the groups' sums in order: _WIDTH sentences' at once."""
+    of the sentences' entries. evidence: words x 2, flat, the padding's last (0). Each sentence's sum of each group
+    still adds its entries in order, from 0, and the groups' sums in order: _WIDTH sentences' at once."""
     n_groups, n = order.shape
-    ll = np.empty((n, 2))
+    ll = np.empty(2 * n)
     for i in range(n):
-        ll[i, 0] = log_pi[0]
-        ll[i, 1] = log_pi[1]
+        ll[2 * i] = log_pi[0]
+        ll[2 * i + 1] = log_pi[1]
+    one, two, three, four = np.uint64(1), np.uint64(2), np.uint64(3), np.uint64(4)
     for c in range(n_groups):
         for sl in range(start.shape[1] - 1):
             a0 = 0.0
@@ -877,51 +911,71 @@ def _em_loglik(order, start, idx, sdata, ones, evidence, log_pi):
             b2 = 0.0
             a3 = 0.0
             b3 = 0.0
+            e = start[c, sl]
+            end = start[c, sl + 1]
             if ones[c]:
-                for e in range(start[c, sl], start[c, sl + 1], _WIDTH):
-                    j = idx[e]
-                    a0 += evidence[j, 0]
-                    b0 += evidence[j, 1]
-                    j = idx[e + 1]
-                    a1 += evidence[j, 0]
-                    b1 += evidence[j, 1]
-                    j = idx[e + 2]
-                    a2 += evidence[j, 0]
-                    b2 += evidence[j, 1]
-                    j = idx[e + 3]
-                    a3 += evidence[j, 0]
-                    b3 += evidence[j, 1]
+                while e < end:
+                    j = np.uint64(idx[e]) * two
+                    a0 += evidence[j]
+                    b0 += evidence[j + one]
+                    j = np.uint64(idx[e + one]) * two
+                    a1 += evidence[j]
+                    b1 += evidence[j + one]
+                    j = np.uint64(idx[e + two]) * two
+                    a2 += evidence[j]
+                    b2 += evidence[j + one]
+                    j = np.uint64(idx[e + three]) * two
+                    a3 += evidence[j]
+                    b3 += evidence[j + one]
+                    e += four
             else:
-                for e in range(start[c, sl], start[c, sl + 1], _WIDTH):
-                    j = idx[e]
-                    a0 += sdata[e] * evidence[j, 0]
-                    b0 += sdata[e] * evidence[j, 1]
-                    j = idx[e + 1]
-                    a1 += sdata[e + 1] * evidence[j, 0]
-                    b1 += sdata[e + 1] * evidence[j, 1]
-                    j = idx[e + 2]
-                    a2 += sdata[e + 2] * evidence[j, 0]
-                    b2 += sdata[e + 2] * evidence[j, 1]
-                    j = idx[e + 3]
-                    a3 += sdata[e + 3] * evidence[j, 0]
-                    b3 += sdata[e + 3] * evidence[j, 1]
+                while e < end:
+                    j = np.uint64(idx[e]) * two
+                    a0 += sdata[e] * evidence[j]
+                    b0 += sdata[e] * evidence[j + one]
+                    j = np.uint64(idx[e + one]) * two
+                    a1 += sdata[e + one] * evidence[j]
+                    b1 += sdata[e + one] * evidence[j + one]
+                    j = np.uint64(idx[e + two]) * two
+                    a2 += sdata[e + two] * evidence[j]
+                    b2 += sdata[e + two] * evidence[j + one]
+                    j = np.uint64(idx[e + three]) * two
+                    a3 += sdata[e + three] * evidence[j]
+                    b3 += sdata[e + three] * evidence[j + one]
+                    e += four
             q = sl * _WIDTH
-            i = order[c, q]
-            ll[i, 0] += a0
-            ll[i, 1] += b0
+            i = order[c, q] * two
+            ll[i] += a0
+            ll[i + one] += b0
             if q + 1 < n:
-                i = order[c, q + 1]
-                ll[i, 0] += a1
-                ll[i, 1] += b1
+                i = order[c, q + 1] * two
+                ll[i] += a1
+                ll[i + one] += b1
             if q + 2 < n:
-                i = order[c, q + 2]
-                ll[i, 0] += a2
-                ll[i, 1] += b2
+                i = order[c, q + 2] * two
+                ll[i] += a2
+                ll[i + one] += b2
             if q + 3 < n:
-                i = order[c, q + 3]
-                ll[i, 0] += a3
-                ll[i, 1] += b3
-    return ll
+                i = order[c, q + 3] * two
+                ll[i] += a3
+                ll[i + one] += b3
+    return ll.reshape(n, 2)
+
+
+@numba.njit(cache=True, nogil=True)
+def _lse_join_less(ll, s, hi, log2, r):
+    """_lse_join, and r = ll - s[:, None] and the total of s (as numpy sums it), in one pass: (whether any of s is not
+    finite, the total; r and the total then to be made again)."""
+    bad = False
+    for i in range(ll.shape[0]):
+        if ll[i, 0] == ll[i, 1]:
+            s[i] = log2 + hi[i]
+        else:
+            s[i] = s[i] + hi[i]
+        bad = bad or not np.isfinite(s[i])
+        r[i, 0] = ll[i, 0] - s[i]
+        r[i, 1] = ll[i, 1] - s[i]
+    return bad, (0.0 if bad else _pairwise_sum(s, 0, len(s)))
 
 
 @numba.njit(cache=True, nogil=True)
@@ -961,26 +1015,20 @@ def _em(Xs, parent, r, every_marker):
     n_words = int(voc_off[-1])
     parent_p = np.concatenate([d.p for d in parent]).astype(np.float64)
     parent_rest = np.array([d.rest for d in parent], dtype=np.float64)
-    markers = np.concatenate([np.ones(len(d.p), np.bool_) if d.markers is None else d.markers for d in parent])
-    weights = np.concatenate([np.ones(len(d.p)) if d.weights is None else d.weights for d in parent])
     discount = np.array([d.discount for d in parent], dtype=np.float64)
-    mk = np.flatnonzero(markers)
-    mk_off = np.searchsorted(mk, voc_off)
-    had = np.full(n_words, -1, dtype=np.int64)
-    had[cols] = np.arange(len(cols))
-    mk_cmp = had[mk]
-    weights_had = np.append(weights[cols], 1.0)[:, None]  # and the padding's
+    markers, mk, mk_off, mk_cmp, weights_had = Xs.marking(parent)
     parent_had = parent_p[cols]
     weight = _weights(r)
     padded = np.zeros((n + 1, 2))  # r, and the padding's (0)
     padded[:n] = r
     r = padded[:n]
+    lse, hi, log2 = np.empty(n), np.empty(n), 0.0 + math.log(2.0)
     previous = None
     for _ in range(_MAX_ITER):
         if weight.min() < 1.0:
             return None
         pi = weight / n
-        counts = _em_counts(c_order, c_start, c_idx, cdata, g_off, ones, padded, len(cols))
+        counts = _em_counts(c_order, c_start, c_idx, cdata, g_off, ones, padded.reshape(-1), len(cols))
         totals, least = _em_sums(counts, pos, cmp_off, voc_off, discount)
         with np.errstate(divide="ignore"):
             thresholds = np.log(totals)
@@ -991,11 +1039,18 @@ def _em(Xs, parent, r, every_marker):
             return None
         evidence = np.log(p, out=p)
         np.multiply(evidence, weights_had, out=evidence)
-        ll = _em_loglik(order, start, idx, sdata, ones, evidence, np.log(pi))
-        total = _logsumexp2(ll)
-        _less(ll, total, r)
+        ll = _em_loglik(order, start, idx, sdata, ones, evidence.reshape(-1), np.log(pi))
+        # r = exp(ll - logsumexp(ll)): _logsumexp2's arithmetic, its passes joined
+        _lse_apart(ll, lse, hi)
+        with np.errstate(invalid="ignore", over="ignore"):
+            np.exp(lse, out=lse)
+        np.log1p(lse, out=lse)
+        bad, total = _lse_join_less(ll, lse, hi, log2, r)
+        if bad:
+            lse = _logsumexp2(ll)
+            _less(ll, lse, r)
+            total = _pairwise_sum(lse, 0, n)
         np.exp(r, out=r)
-        total = _pairwise_sum(total, 0, len(total))
         if previous is not None and abs(total - previous) <= _TOL * abs(total):
             break
         previous = total
@@ -1056,8 +1111,8 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
     m = len(node_counts)
     n = len(indptr) - 1
     scores = np.full(m, -np.inf)
-    side_a = np.zeros(m)
-    touched = np.empty(m, dtype=np.int64)
+    side_a = np.zeros(m, dtype=data.dtype)
+    touched = np.empty(m, dtype=np.uint32)
     rates = node_counts / total_tokens
     for f in range(m):
         n_a = col_ptr[f + 1] - col_ptr[f]
@@ -1077,9 +1132,12 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
         tokens_b = total_tokens - tokens_a
         price_a = 0.5 * np.log(tokens_a) if tokens_a > 0 else 0.0
         price_b = 0.5 * np.log(tokens_b) if tokens_b > 0 else 0.0
+        # A word none of f's sentences have (count c = n_w on the other side) gains at most c (x - 1), which is
+        # (n_w tokens_a - total) / tokens_b (log x <= x - 1): nothing below this count (margins far above rounding's)
+        least = (total_tokens + price_b * tokens_b) / (tokens_a + 1e-12 * total_tokens) * (1.0 - 1e-9)
         gain = 0.0
         for w in range(m):
-            if w == f:
+            if w == f or (side_a[w] == 0.0 and node_counts[w] < least):
                 continue
             rate = rates[w]
             for side in range(2):
@@ -1096,7 +1154,7 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
                     gain += g * col_weights[w]
         scores[f] = gain
         for t in range(n_touched):
-            side_a[touched[t]] = 0.0
+            side_a[touched[t]] = 0
     return scores
 
 
@@ -1119,12 +1177,14 @@ def seed_splits(Xs, collocates, k=_SEEDS_TRIED, weights=None):
     col_weights = np.concatenate(
         [np.ones(len(cand)) if w is None else w[cand] for cand, w in zip(candidates, weights)]
     ).astype(np.float64)
+    # Counts that are whole numbers add up the same in integers, faster (and indices unsigned: see _WIDTH)
+    whole = bool(np.all(A.data == np.rint(A.data))) and A.nnz and float(np.abs(A.data).sum()) < 2.0**53
     scores = _seed_scores(
-        A.indptr,
-        A.indices,
-        A.data.astype(np.float64),
-        columns.indptr,
-        columns.indices,
+        A.indptr.astype(np.uint64),
+        A.indices.astype(np.uint32),
+        A.data.astype(np.int64) if whole else A.data.astype(np.float64),
+        columns.indptr.astype(np.uint64),
+        columns.indices.astype(np.uint32),
         row_tokens.astype(np.float64),
         node_counts,
         float(row_tokens.sum()),
@@ -1708,8 +1768,14 @@ def _sentence_words(
 
 def _channel(flat, ptr, n_units):
     """A sentences x words count matrix of local word indices, and the vocabulary ids of its words."""
-    ids, cols = np.unique(flat, return_inverse=True)
-    X = csr_matrix((np.ones(len(flat)), np.ravel(cols), ptr), shape=(n_units, len(ids)))
+    # np.unique(flat, return_inverse=True), by marking the ids rather than sorting the entries
+    had = np.zeros(int(flat.max()) + 1 if len(flat) else 0, dtype=np.bool_)
+    had[flat] = True
+    ids = np.flatnonzero(had).astype(flat.dtype)
+    local = np.zeros(len(had), dtype=np.int64)
+    local[ids] = np.arange(len(ids))
+    cols = local[flat]
+    X = csr_matrix((np.ones(len(flat)), cols, ptr), shape=(n_units, len(ids)))
     X.sum_duplicates()
     return X, ids
 
