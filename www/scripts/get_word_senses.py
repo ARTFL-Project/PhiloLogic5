@@ -42,6 +42,7 @@ def get_word_senses(request, config):
         year_field=year_field,
         filter_words=filter_words,
         version=2 if (request.senses_version or "").strip() == "2" else 1,
+        finer=(request.senses_finer or "").strip() == "1",  # Senses 2: the whole tree, not its first view only
     )
     if stopwords_missing:
         result = {**result, "stopwords_missing": True}

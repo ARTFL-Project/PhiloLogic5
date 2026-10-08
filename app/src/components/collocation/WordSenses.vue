@@ -37,6 +37,17 @@
                         <span class="small text-muted" aria-hidden="true">{{ $t("wordSenses.finer") }}</span>
                     </div>
                     <p id="word-senses-detail-text" class="small mb-0" aria-live="polite">{{ detailText }}</p>
+                    <!-- Senses 2: only the senses this view needs were tried; the others on request -->
+                    <div v-if="result.complete === false" class="d-flex align-items-center flex-wrap gap-2 mt-2">
+                        <button id="word-senses-finer" type="button" class="btn btn-sm btn-outline-secondary"
+                            :disabled="loadingFiner" @click="fetchFiner">
+                            <span v-if="loadingFiner" class="spinner-border spinner-border-sm me-1" role="status"
+                                aria-hidden="true"></span>
+                            {{ $t("wordSenses.finerDistinctions") }}
+                        </button>
+                        <span class="small text-muted">{{ failedFiner ? $t("wordSenses.finerFailed")
+                            : $t("wordSenses.finerExplained") }}</span>
+                    </div>
                 </div>
 
                 <template v-if="time && shown.length > 1">
@@ -193,6 +204,8 @@ const { t } = useI18n();
 
 const loading = ref(false);
 const failed = ref(false);
+const loadingFiner = ref(false);
+const failedFiner = ref(false);
 const result = ref(null);
 const view = ref("share"); // "share" of the year's sentences, or uses per million words ("rate")
 const hoverIndex = ref(null); // the year (from time.start) the pointer is on, in every chart at once
@@ -215,24 +228,31 @@ const splits = computed(() =>
     nodes.value.filter((n) => n.children.length).sort((a, b) => b.split.relative - a.split.relative || a.id - b.id)
 );
 
+function requestParams(extra = {}) {
+    return { ...paramsFilter(formData.value), ...(props.version > 1 ? { senses_version: props.version } : {}), ...extra };
+}
+
+// At first, the distinctions at least as important as the default detail
+function showDefaultDetail() {
+    const detail = result.value?.detail ?? 1;
+    position.value = splits.value.filter((n) => n.split.relative >= detail).length;
+}
+
 function runDetection() {
     const myToken = ++fetchToken;
     loading.value = true;
     failed.value = false;
+    failedFiner.value = false;
     result.value = null;
     view.value = "share";
     $http
-        .get(`${$dbUrl}/scripts/get_word_senses.py`, {
-            params: { ...paramsFilter(formData.value), ...(props.version > 1 ? { senses_version: props.version } : {}) },
-        })
+        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: requestParams() })
         .then((response) => {
             if (myToken !== fetchToken) return;
             result.value = response.data;
             emit("filterList", response.data?.filter_list || []); // the collocation filter's words, left out here too
             emit("stopwordsMissing", Boolean(response.data?.stopwords_missing));
-            // At first, the distinctions at least as important as the default detail
-            const detail = response.data?.detail ?? 1;
-            position.value = splits.value.filter((n) => n.split.relative >= detail).length;
+            showDefaultDetail();
         })
         .catch((error) => {
             if (myToken !== fetchToken) return;
@@ -241,6 +261,28 @@ function runDetection() {
         })
         .finally(() => {
             if (myToken === fetchToken) loading.value = false;
+        });
+}
+
+// Senses 2: the whole tree, the senses its first view left tried too (the first view stays shown meanwhile)
+function fetchFiner() {
+    const myToken = ++fetchToken;
+    loadingFiner.value = true;
+    failedFiner.value = false;
+    $http
+        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: requestParams({ senses_finer: 1 }) })
+        .then((response) => {
+            if (myToken !== fetchToken) return;
+            result.value = response.data;
+            showDefaultDetail();
+        })
+        .catch((error) => {
+            if (myToken !== fetchToken) return;
+            failedFiner.value = true;
+            debug({ $options: { name: "word-senses" } }, error);
+        })
+        .finally(() => {
+            if (myToken === fetchToken) loadingFiner.value = false;
         });
 }
 
@@ -336,6 +378,7 @@ function notSplitReason(node) {
     }
     if (node.reason === "no_gain" && node.split) return t("wordSenses.notSplitWorse", { z: node.split.z.toFixed(1) });
     if (node.reason === "faint") return t("wordSenses.notSplitFaint", { finest: percent(result.value.finest) });
+    if (node.reason === "unexplored") return t("wordSenses.notSplitUnexplored");
     return t("wordSenses.notSplitInseparable");
 }
 

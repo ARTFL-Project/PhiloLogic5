@@ -783,6 +783,7 @@ fold's fit chooses its words from its own training sentences. The fold fits of *
 | frantext `lemma:raison` | 9.0 s | 6.7 s |
 | frantext `lemma:grâce`, within 5 | 4.2 s | 2.5 s |
 | eebo_ecco_combo *liberty* | 31.7 s | 19.7 s |
+| eebo_ecco_combo *reason* | 168.5 s | 64.1 s |
 | the small queries | about the same | about the same |
 
 **Quality.**
@@ -794,6 +795,36 @@ fold's fit chooses its words from its own training sentences. The fold fits of *
   *raison* abstract reason against *avoir raison*, *révolution* political against astronomical, *grâce* and *my lord*
   as before. Balzac *amour* shows 7 senses at its default detail instead of 2: the top splits are alike, but the
   natural break falls lower.
+
+**First view, then finer distinctions on request.** Senses 2 grows only the senses its first view needs, then
+stops. That view is the splits down to the largest drop in importance (the natural break). A split found later
+changes it only if it is at least as important as the split just below that drop: one landing in a smaller drop
+makes no drop larger.
+- The senses are tried largest first, in turn. Growth stops once none left could produce a split that important.
+  An untried sense is taken to gain at most 1.5 times the most bits per sentence any split found so far gained
+  (`_MARGIN`).
+  - 1.5 is the least margin under which the first view was the whole tree's in all 35 trees: the reference
+    queries, the pseudoword pairs, and eebo *liberty* and *reason*. With 1, 2 of the 35 differed.
+- The tree so far and its sentences are kept in the hitlist directory (`.senses-state.npz` and `.json`, no pickle),
+  with the cache's lifetime: the cleanup removes them after 10 minutes.
+  - The button "Finer distinctions" (`senses_finer=1`) takes the tree up again and tries the rest.
+  - Untried senses show as "not tried yet".
+  - Without the kept state, the whole tree is grown from the start.
+- Checked on the 35 trees: the tree taken up again is the whole tree grown at once, the same JSON to the byte, and
+  the first view's default view is the whole tree's every time.
+
+| | First view | Whole tree at once | The rest, on request |
+|---|---|---|---|
+| frantext *raison* | 5.1 s | 6.6 s | 2.5 s |
+| eebo *liberty* | 17.0 s | 19.5 s | 7.4 s |
+| eebo *reason* | 46.8 s | 62.7 s | 25.5 s |
+| all 35 trees | 99.5 s | 126.2 s | 57.0 s |
+
+- The first request is 20 to 25% faster. Asking for the rest costs about a quarter more than the whole tree at once.
+- The state takes 44 MB for *raison* and about 350 MB for eebo *reason*: the sentence matrices (counts as bytes),
+  and each sense's rates and counts. Floats are kept exact, so the rest is the same.
+- The first view grows its senses one at a time (each sense's fits still use both threads), for the same view
+  whatever the number of threads.
 
 **Tried, dropped:**
 - **Testing the candidates in turn**, in order of their gain on their own sentences, and keeping the first that
@@ -807,6 +838,10 @@ fold's fit chooses its words from its own training sentences. The fold fits of *
   - Each step cost a third less, but the refreshes took 40% more steps: no gain. Fits of held words take only 6 to 9
     steps, too few to pay for making their entries apart.
   - With a stale share, a sense's probabilities summed past 1; it was then held as a share of the others' counts.
+- **Skipping the test of candidates that fall short on their own sentences** (in-sample importance below the floor,
+  or z within 2), taking in-sample gain as optimistic. It gained only 1 to 7%: the in-sample measure costs about what
+  it saves. Once, on ELTeC *violin | plough*, the held-out z beat the in-sample z, and the skip dropped the root's best
+  candidate, changing the main distinction.
 - **Leaving out candidates alike to an earlier one.** A fifth of later candidates are identical on small queries,
   none on *raison*, *révolution* or *light*. Not done.
 
