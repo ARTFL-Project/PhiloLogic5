@@ -31,6 +31,7 @@ For step-by-step guides tailored to your platform, see:
 sudo apt-get update
 sudo apt-get install -y \
     libxml2-dev libxslt-dev zlib1g-dev \
+    libicu-dev pkg-config g++ \
     liblz4-tool ripgrep curl
 ```
 
@@ -39,23 +40,31 @@ sudo apt-get install -y \
 ```bash
 sudo dnf install -y \
     libxml2-devel libxslt-devel zlib-devel \
+    libicu-devel pkgconf-pkg-config gcc-c++ \
     lz4 ripgrep curl
 ```
 
 ### macOS
 
 ```bash
-brew install lz4 ripgrep
+brew install lz4 ripgrep pkg-config icu4c
 ```
 
-Xcode Command Line Tools are also required (for C compiler headers used by `lxml`):
+Xcode Command Line Tools are also required (for the C and C++ compilers used to build `lxml` and `PyICU`):
 
 ```bash
 xcode-select --install
 ```
 
+Homebrew doesn't link `icu4c` into its standard paths, so tell `pkg-config` where it is, in the shell you run `install.sh` from (with `sudo`, use `sudo -E` so that it is kept):
+
+```bash
+export PKG_CONFIG_PATH="$(brew --prefix)/opt/icu4c/lib/pkgconfig:$PKG_CONFIG_PATH"
+```
+
 **Notes:**
 - `libxml2-dev`/`libxslt-dev`/`zlib1g-dev`: required for building `lxml` (XML parsing). On macOS these are provided by Xcode Command Line Tools.
+- `libicu-dev`/`pkg-config`/`g++`: required for building `PyICU`, which PyPI only distributes as source.
 - `liblz4-tool`/`lz4`: used at database load time for compressing word indexes
 - `ripgrep`: used at database load time for filtering parser output
 - `curl`: used by the installer to download [uv](https://docs.astral.sh/uv/) and [nvm](https://github.com/nvm-sh/nvm). Pre-installed on macOS.

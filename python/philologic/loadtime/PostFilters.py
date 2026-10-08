@@ -22,6 +22,34 @@ from unidecode import unidecode
 
 from philologic.utils import count_lines
 
+try:
+    import icu
+except ImportError:  # KWICs then sort words in the byte order of their UTF-8
+    icu = None
+
+
+def vocab_sort_ranks(vocab, accents=True):
+    """The rank of each word of vocab in alphabetical order, for sorting KWICs: words sorting alike share one.
+
+    The order is Unicode's collation (CLDR root, through ICU): words of the same letters sort by their accents, then
+    case, or with accents=False, alike. Without PyICU, it is the byte order of their UTF-8, unidecoded without accents.
+    """
+    if icu is None:
+        keys = [(word if accents else unidecode(word)).encode("utf-8")[:48] for word in vocab]
+    else:
+        collator = icu.Collator.createInstance(icu.Locale.getRoot())
+        collator.setAttribute(icu.UCollAttribute.NORMALIZATION_MODE, icu.UCollAttributeValue.ON)
+        collator.setStrength(icu.Collator.TERTIARY if accents else icu.Collator.PRIMARY)
+        keys = [collator.getSortKey(word) for word in vocab]
+    keys = np.array(keys, dtype=object)
+    order = np.argsort(keys, kind="stable")
+    sorted_keys = keys[order]
+    differs = np.ones(len(keys), dtype=np.bool_)
+    differs[1:] = sorted_keys[1:] != sorted_keys[:-1]
+    ranks = np.empty(len(keys), dtype=np.uint32)
+    ranks[order] = np.cumsum(differs) - 1
+    return ranks
+
 
 def make_sql_table(table, file_in, db_file="toms.db", indices=None, depth=7, verbose=True):
     """SQL Loader function"""
@@ -259,23 +287,7 @@ def make_collocation_database(loader_obj, db_destination):
     np.save(os.path.join(db_destination, "vocab_has_number.npy"), vocab_has_number)
 
     # Save alphabetical sort rank per vocab entry (for fast numpy KWIC sorting)
-    max_word_len = 48
-    n_v = len(vocab_reverse)
-    padded = np.zeros((n_v, max_word_len), dtype=np.uint8)
-    for i in range(n_v):
-        b = vocab_reverse[i].encode("utf-8")[:max_word_len]
-        padded[i, : len(b)] = list(b)
-    keys = padded.view(f"S{max_word_len}").ravel()
-    order = np.argsort(keys, kind="stable")
-    # Assign equal ranks to tied entries (identical padded strings)
-    sorted_keys = keys[order]
-    differs = np.ones(n_v, dtype=np.bool_)
-    if n_v > 1:
-        differs[1:] = sorted_keys[1:] != sorted_keys[:-1]
-    ranks_sorted = np.cumsum(differs).astype(np.uint32) - 1
-    vocab_sort_rank = np.empty(n_v, dtype=np.uint32)
-    vocab_sort_rank[order] = ranks_sorted
-    np.save(os.path.join(db_destination, "vocab_sort_rank.npy"), vocab_sort_rank)
+    np.save(os.path.join(db_destination, "vocab_sort_rank.npy"), vocab_sort_ranks(vocab_reverse))
 
     # Save pre-unidecoded vocab strings (replaces per-word unidecode() at query time)
     if getattr(loader_obj, "ascii_conversion", True):
@@ -293,21 +305,10 @@ def make_collocation_database(loader_obj, db_destination):
         with open(os.path.join(db_destination, "vocab_ascii_strings.bin"), "wb") as f:
             f.write(ascii_flat)
 
-        # Also compute sort rank for ascii-converted vocab
-        padded_a = np.zeros((n_v, max_word_len), dtype=np.uint8)
-        for i, b in enumerate(ascii_encoded):
-            L = min(len(b), max_word_len)
-            padded_a[i, :L] = list(b[:L])
-        keys_a = padded_a.view(f"S{max_word_len}").ravel()
-        order_a = np.argsort(keys_a, kind="stable")
-        sorted_keys_a = keys_a[order_a]
-        differs_a = np.ones(n_v, dtype=np.bool_)
-        if n_v > 1:
-            differs_a[1:] = sorted_keys_a[1:] != sorted_keys_a[:-1]
-        ranks_sorted_a = np.cumsum(differs_a).astype(np.uint32) - 1
-        vocab_sort_rank_ascii = np.empty(n_v, dtype=np.uint32)
-        vocab_sort_rank_ascii[order_a] = ranks_sorted_a
-        np.save(os.path.join(db_destination, "vocab_sort_rank_ascii.npy"), vocab_sort_rank_ascii)
+        # Also the sort rank of words regardless of accents, as ascii_conversion searches them
+        np.save(
+            os.path.join(db_destination, "vocab_sort_rank_ascii.npy"), vocab_sort_ranks(vocab_reverse, accents=False)
+        )
 
     # Save per-attribute arrays
     for attr_name in loader_obj.word_attributes:

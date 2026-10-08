@@ -5,8 +5,14 @@ Tested on macOS Ventura and later (Apple Silicon and Intel).
 Install [Homebrew](https://brew.sh/) if you don't already have it, then:
 
 ```bash
-brew install lz4 ripgrep
+brew install lz4 ripgrep pkg-config icu4c
 xcode-select --install   # if not already installed
+```
+
+Homebrew doesn't link `icu4c` into its standard paths, so tell `pkg-config` where it is before running the installer (with `sudo`, use `sudo -E` so that it is kept):
+
+```bash
+export PKG_CONFIG_PATH="$(brew --prefix)/opt/icu4c/lib/pkgconfig:$PKG_CONFIG_PATH"
 ```
 
 ### 2. Run the Installer

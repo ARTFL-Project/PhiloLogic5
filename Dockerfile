@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libxml2-dev libxslt-dev zlib1g-dev \
+        libicu-dev pkg-config g++ \
         liblz4-tool ripgrep curl ca-certificates sudo && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
