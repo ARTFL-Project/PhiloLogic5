@@ -183,6 +183,7 @@ import { debug, paramsFilter } from "../../utils.js";
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 
+const props = defineProps({ version: { type: Number, default: 1 } }); // 2: Senses 2, to compare with the first
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
@@ -221,7 +222,9 @@ function runDetection() {
     result.value = null;
     view.value = "share";
     $http
-        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: paramsFilter(formData.value) })
+        .get(`${$dbUrl}/scripts/get_word_senses.py`, {
+            params: { ...paramsFilter(formData.value), ...(props.version > 1 ? { senses_version: props.version } : {}) },
+        })
         .then((response) => {
             if (myToken !== fetchToken) return;
             result.value = response.data;

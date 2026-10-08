@@ -14,6 +14,7 @@
                 <option value="timeSeries">{{ $t("collocation.timeSeries") }}</option>
                 <option value="wordMap">{{ $t("collocation.wordMap") }}</option>
                 <option value="senses">{{ $t("collocation.wordSenses") }}</option>
+                <option value="senses2">{{ $t("collocation.wordSenses2") }}</option>
             </select>
         </div>
 
@@ -69,12 +70,20 @@
                         {{ $t("collocation.wordSenses") }}
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="word-senses-2-tab" data-bs-toggle="tab"
+                        :class="{ active: mode === 'senses2' }" data-bs-target="#word-senses-2-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'senses2'"
+                        @click="setMode('senses2')">
+                        {{ $t("collocation.wordSenses2") }}
+                    </button>
+                </li>
             </ul>
         </div>
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
-            v-if="['frequency', 'timeSeries', 'wordMap', 'senses'].includes(mode)"
+            v-if="['frequency', 'timeSeries', 'wordMap', 'senses', 'senses2'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -110,6 +119,10 @@
                 @filter-list="filterList = $event" />
 
             <WordSenses v-if="mode === 'senses'" ref="wordSensesRef"
+                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+
+            <!-- Senses 2, to compare with the first -->
+            <WordSenses v-if="mode === 'senses2'" ref="wordSenses2Ref" :version="2"
                 @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
         </div>
     </div>
@@ -160,6 +173,7 @@ const similarRef = useTemplateRef("similarRef");
 const usagePatternsTimelineRef = useTemplateRef("usagePatternsTimelineRef");
 const wordMapRef = useTemplateRef("wordMapRef");
 const wordSensesRef = useTemplateRef("wordSensesRef");
+const wordSenses2Ref = useTemplateRef("wordSenses2Ref");
 
 //  Shared state
 const mode = ref("frequency");
@@ -260,7 +274,7 @@ function updateCollocationUrl() {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
-    if (mode.value === "wordMap" || mode.value === "senses") {
+    if (mode.value === "wordMap" || mode.value === "senses" || mode.value === "senses2") {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -400,6 +414,11 @@ watch(
                 wordSensesRef.value?.runDetection();
                 return;
             }
+            if (newMode === "senses2") {
+                await nextTick();
+                wordSenses2Ref.value?.runDetection();
+                return;
+            }
             // Switching to frequency/similar/compare, but the primary fetch
             // never ran (page was loaded directly on a detection tab) — run it
             // now so the view isn't empty.
@@ -427,6 +446,9 @@ watch(
         } else if (newMode === "senses") {
             await nextTick();
             wordSensesRef.value?.runDetection();
+        } else if (newMode === "senses2") {
+            await nextTick();
+            wordSenses2Ref.value?.runDetection();
         } else {
             fetchResults();  // .then() runs runPostFetchModeAction for similar/compare/frequency
         }
@@ -465,6 +487,10 @@ onMounted(async () => {
         case "senses":
             await nextTick();
             wordSensesRef.value?.runDetection();
+            break;
+        case "senses2":
+            await nextTick();
+            wordSenses2Ref.value?.runDetection();
             break;
         case "compare":
             fetchResults();  // primary fetch then runPostFetchModeAction → compareRef.runFromMetadata

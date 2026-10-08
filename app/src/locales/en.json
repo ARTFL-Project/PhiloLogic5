@@ -205,6 +205,7 @@
         "timeSeries": "Usage patterns over time",
         "wordMap": "Word map",
         "wordSenses": "Word senses (beta)",
+        "wordSenses2": "Word senses 2 (beta)",
         "searchEvolution": "Search evolution",
         "collocateBetweenPeriods": "Distinctive Collocations Over Time: {start} vs. {end}",
         "similarUsage": "Similar Usage",

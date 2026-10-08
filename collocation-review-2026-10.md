@@ -763,6 +763,53 @@ hubs, because a network has no weighting, whereas the senses tab gains from them
 many communities (8 to 38 per pair), each fairly pure, and leaves 4–56% of sentences unplaced. A sentence can join a
 community through a single word linked to it by chance (a weakness usage patterns shares).
 
+## 12. Senses 2: the "Word senses 2 (beta)" tab (Oct 8, under test)
+
+The same method, made cheaper where that keeps its quality. It is a tab of its own, next to the first, for comparison
+(`get_word_senses.py?senses_version=2`, its own cache tag). The code is `fit_split_screened` and the `version`
+argument of `induce_senses`.
+
+**What changed.** The words with rates of their own in a split are chosen once, then held. The first method chooses
+them again at every step of EM. That switch kept fits from settling: on *raison*, half of all EM steps were in 37 fits
+that stopped at the 200-step cap. Senses 2 does the same search first, letting every collocate tell the senses
+apart. It then chooses the words that mark either sense, by the same BIC test, and fits the split with them held. A
+fold's fit chooses its words from its own training sentences. The fold fits of *raison* took 2,991 steps instead of
+9,692, and none reached the cap.
+
+**Speed** (2 threads):
+
+| Query | Senses 1 | Senses 2 |
+|---|---|---|
+| frantext `lemma:raison` | 9.0 s | 6.7 s |
+| frantext `lemma:grâce`, within 5 | 4.2 s | 2.5 s |
+| eebo_ecco_combo *liberty* | 31.7 s | 19.7 s |
+| the small queries | about the same | about the same |
+
+**Quality.**
+- Pseudoword test, scored as the report analyses: every word read, the filter only hiding. The mean ARI is 0.162
+  for Senses 2 against 0.148, purity 0.79 against 0.78, and both show 2.9 senses. 5 pairs gain, 2 lose a little.
+  - The test script had been left filtering the analysis, as before the filter became display-only. It now reads
+    every word, as the report does. Filtered, Senses 2 had looked worse, by showing more senses.
+- Reference queries: the same main distinctions. *light* is sky against lighting, *bank* money against river,
+  *raison* abstract reason against *avoir raison*, *révolution* political against astronomical, *grâce* and *my lord*
+  as before. Balzac *amour* shows 7 senses at its default detail instead of 2: the top splits are alike, but the
+  natural break falls lower.
+
+**Tried, dropped:**
+- **Testing the candidates in turn**, in order of their gain on their own sentences, and keeping the first that
+  passes. The in-sample gain picked the candidate the test picks only half the time, at nodes that split. The first
+  that passes is not always the most important, so *bank* and *my lord* came out in more, smaller senses. Combined
+  with held words, *révolution* lost its astronomical sense at the top. Every candidate is tested, as in Senses 1.
+- **EM over the entries of the held words alone.** The other words differ between the senses only by a scale, so a
+  sentence's sum of them is two numbers, made once. The E-step is the same, and the first step matched to 1e-14.
+  - The discount freed by all the words needs every word's count, so the others' share was held and made again when
+    EM settled.
+  - Each step cost a third less, but the refreshes took 40% more steps: no gain. Fits of held words take only 6 to 9
+    steps, too few to pay for making their entries apart.
+  - With a stale share, a sense's probabilities summed past 1; it was then held as a share of the others' counts.
+- **Leaving out candidates alike to an earlier one.** A fifth of later candidates are identical on small queries,
+  none on *raison*, *révolution* or *light*. Not done.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

@@ -41,6 +41,7 @@ def get_word_senses(request, config):
         distance=collocate_distance(request),
         year_field=year_field,
         filter_words=filter_words,
+        version=2 if (request.senses_version or "").strip() == "2" else 1,
     )
     if stopwords_missing:
         result = {**result, "stopwords_missing": True}

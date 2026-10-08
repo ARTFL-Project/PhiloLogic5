@@ -205,6 +205,7 @@
         "timeSeries": "Schémas d'usage au fil du temps",
         "wordMap": "Carte des mots",
         "wordSenses": "Sens du mot (bêta)",
+        "wordSenses2": "Sens du mot 2 (bêta)",
         "searchEvolution": "Rechercher l'évolution",
         "collocateBetweenPeriods": "Collocations distinctives à travers le temps: {start} vs. {end}",
         "similarUsage": "Usage similaire",

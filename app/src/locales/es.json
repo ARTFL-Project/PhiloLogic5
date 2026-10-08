@@ -205,6 +205,7 @@
         "timeSeries": "Patrones de uso a lo largo del tiempo",
         "wordMap": "Mapa de palabras",
         "wordSenses": "Sentidos de la palabra (beta)",
+        "wordSenses2": "Sentidos de la palabra 2 (beta)",
         "searchEvolution": "Evolución de la búsqueda",
         "collocateBetweenPeriods": "Colocaciones distintivas desde {start} hasta {end}",
         "similarUsage": "Uso Similar",

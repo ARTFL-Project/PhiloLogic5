@@ -73,6 +73,7 @@ _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized 
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _CACHE_TAG = b"senses12\0"  # bump when the result changes
+_CACHE_TAG_2 = b"senses2-1\0"  # the same, for Senses 2
 
 
 class Dist:
@@ -1098,6 +1099,37 @@ def fit_split(Xs, parent, r, search=False):
     return _em(Xs, parent, r, every_marker=False)
 
 
+def fit_split_screened(Xs, parent, r, search=False):
+    """Senses 2: fit_split with the words that mark either sense chosen once, then held. A search first lets every one
+    of the parent's markers tell the senses apart, as fit_split's does; the words that mark either sense in its fit
+    (without a search, in the sentences' counts at r) are then the only ones with rates of their own, and EM fits the
+    split with them. Choosing them again at every step, as fit_split does, can keep EM from settling: half of its
+    steps were in fits that never did. Returns as fit_split."""
+    if not isinstance(Xs, _Mats):
+        Xs = _Mats(Xs)
+    if search:
+        first = _em(Xs, parent, r, every_marker=True)
+        if first is None:
+            return None
+        r, counts = first[2], first[3]
+    else:
+        counts = [np.asarray(X.T @ r) for X in Xs]
+    own = [_split_words(c, d, every_marker=False) for c, d in zip(counts, parent)]
+    if not any(len(o) for o in own):
+        return None
+    held = [Dist(d.p, d.rest, np.isin(np.arange(len(d.p)), o), d.weights, d.discount) for d, o in zip(parent, own)]
+    fitted = _em(Xs, held, r, every_marker=True)
+    if fitted is None:
+        return None
+    pi, dists, r, counts = fitted
+    # The senses' markers are their parent's again, for the splits below them
+    dists = [
+        [parent[c] if d is held[c] else Dist(d.p, d.rest, parent[c].markers, d.weights, d.discount) for d in ds]
+        for c, ds in enumerate(dists)
+    ]
+    return pi, dists, r, counts
+
+
 @numba.njit(cache=True)
 def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_counts, total_tokens, col_weights):
     """For each candidate word f, how much better its sentences and the others predict their other candidate words
@@ -1246,11 +1278,11 @@ def _fold_data(Xs, unsplit_fit, groups, pool_map=map):
     return list(pool_map(fold, range(n_folds)))
 
 
-def _fold_gain(fold, r):
+def _fold_gain(fold, r, version=1):
     """The split started from the probabilities r, fitted on a fold's training sentences: each held-out sentence's
     gain over the unsplit sense, and the gains of those more likely in either sense; None for no evidence."""
     train, _, Xtrain, Xtest, unsplit, unsplit_ll = fold
-    fitted = fit_split(Xtrain, unsplit, r[train])
+    fitted = (fit_split if version == 1 else fit_split_screened)(Xtrain, unsplit, r[train])
     if fitted is None:  # without these sentences, nothing can be told apart: no better
         return None
     pi, dists, _, _ = fitted
@@ -1294,7 +1326,7 @@ def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map):
     return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
 
 
-def induce_senses(channels, groups, finest=FINEST):
+def induce_senses(channels, groups, finest=FINEST, version=1):
     """Grow the tree of senses of the sentences: channels are (X, corpus probabilities, corpus rest[, weights]) for each
     group of words, X a sentences x words matrix of counts, weights how much each word's evidence counts; groups is
     the work of each sentence. Returns the root Node; split senses have children, the others are the senses found.
@@ -1332,7 +1364,7 @@ def induce_senses(channels, groups, finest=FINEST):
             unsplit_fit = lambda train_counts, parents=parents: [
                 fit_sparse(c, d) for c, d in zip(train_counts, parents)
             ]
-        _try_split(node, Xall, n, unsplit_fit, floor, groups, collocates, pool_map)
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, collocates, pool_map, version)
         return node
 
     def grow_with(pool_map, senses=None):
@@ -1374,7 +1406,7 @@ def natural_break(relative, finest=FINEST):
     return int(np.argmax(np.log(values[:-1] / values[1:]))) + 1
 
 
-def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map):
+def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map, version=1):
     units = node.units
     if len(units) < 2:
         node.reason = "inseparable"
@@ -1385,8 +1417,9 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
         return Xs, seed_splits(Xs, collocates, weights=[d.weights for d in node.dists])
 
     ((Xs, seeds),) = pool_map(prepare, (None,))  # on the pool's threads too, which alone do the work
+    fit = fit_split if version == 1 else fit_split_screened
     candidates = []
-    for (_, seed), fitted in zip(seeds, pool_map(lambda s: fit_split(Xs, node.dists, s[0], search=True), seeds)):
+    for (_, seed), fitted in zip(seeds, pool_map(lambda s: fit(Xs, node.dists, s[0], search=True), seeds)):
         if fitted is None:
             continue
         side = fitted[2][:, 0] >= fitted[2][:, 1]
@@ -1396,7 +1429,7 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
     if candidates:
         folds = _fold_data(Xs, unsplit_fit, groups[units], pool_map)
         tasks = [(fitted[2], fold) for _, fitted, _ in candidates for fold in folds]
-        results = list(pool_map(lambda task: _fold_gain(task[1], task[0]), tasks))
+        results = list(pool_map(lambda task: _fold_gain(task[1], task[0], version), tasks))
     best = None
     for c, (seed, fitted, side) in enumerate(candidates):
         pi, dists, r, counts = fitted
@@ -1909,8 +1942,8 @@ def query_sentences(
 # ----------------------------- The report ------------------------------
 
 
-def _cache_path(db, *parts):
-    h = hashlib.sha1(_CACHE_TAG)
+def _cache_path(db, *parts, tag=_CACHE_TAG):
+    h = hashlib.sha1(tag)
     for part in parts:
         h.update(json.dumps(part, sort_keys=True, default=str).encode("utf-8"))
         h.update(b"\0")
@@ -1927,13 +1960,24 @@ def word_senses(
     distance=None,
     year_field=None,
     filter_words=None,
+    version=1,
 ):
     """The senses of the query and their course over time, as JSON-ready data (cached in the hitlist directory). The
-    words of filter_words (the collocation report's filter) are not shown; the analysis reads them, as every word."""
+    words of filter_words (the collocation report's filter) are not shown; the analysis reads them, as every word.
+    version 2: Senses 2 (fit_split_screened)."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
     path = _cache_path(
-        db, q, bool(count_lemmas), attribute, attribute_value, metadata, distance, year_field, filter_words
+        db,
+        q,
+        bool(count_lemmas),
+        attribute,
+        attribute_value,
+        metadata,
+        distance,
+        year_field,
+        filter_words,
+        tag=_CACHE_TAG if version == 1 else _CACHE_TAG_2,
     )
     if os.path.exists(path):
         try:
@@ -1942,7 +1986,9 @@ def word_senses(
         except (OSError, ValueError):
             pass
     began = time.perf_counter()
-    result = _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words)
+    result = _word_senses(
+        db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words, version
+    )
     result["seconds"] = round(time.perf_counter() - began, 2)
     result["filter_list"] = filter_words
     fd, tmp = tempfile.mkstemp(dir=db.hitlist_dir, suffix=".tmp")
@@ -1956,7 +2002,9 @@ def word_senses(
     return result
 
 
-def _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words=None):
+def _word_senses(
+    db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words=None, version=1
+):
     # The analysis reads every word, rare ones weighing more; the filter's words are only not shown: left out of it,
     # the words that tell a rare sense (dieu for prière) would be too (see the pseudoword test)
     sentences = query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
@@ -1982,7 +2030,7 @@ def _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, dist
         channels.append((X, p, max(0.0, 1.0 - float(p.sum())), weights))
         names.append(ids)
     docs = sentences["docs"]
-    root = induce_senses(channels, docs)
+    root = induce_senses(channels, docs, version=version)
     Xall = [csr_matrix(c[0]) for c in channels]
     nodes, logp, margin = node_posteriors(root, Xall)
     posteriors = np.exp(logp)

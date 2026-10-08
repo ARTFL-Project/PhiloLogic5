@@ -57,6 +57,16 @@ class TestSenses:
         assert root.test["z"] > ws.EVIDENCE
         assert root.test["sentences_won"] > 0.9 * root.test["sentences"]
 
+    def test_senses_2_finds_the_two_senses_too(self):
+        specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
+        channels, works = sentences(specs)
+        root = ws.induce_senses(channels, works, version=2)
+        described = [words_of(leaf) for leaf in leaves(root)]
+        assert len(described) == 2
+        assert any(d and d <= set(SENSES["a"]) for d in described)
+        assert any(d and d <= set(SENSES["b"]) for d in described)
+        assert root.test["z"] > ws.EVIDENCE
+
     def test_the_same_senses_on_one_thread_or_more(self, monkeypatch):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
         channels, works = sentences(specs, seed=3)

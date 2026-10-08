@@ -54,6 +54,7 @@ describe("Collocation", () => {
         expect(wrapper.find("#similar-tab").exists()).toBe(true);
         expect(wrapper.find("#time-series-tab").exists()).toBe(true);
         expect(wrapper.find("#word-senses-tab").exists()).toBe(true);
+        expect(wrapper.find("#word-senses-2-tab").exists()).toBe(true);
     });
 
     it("fetches and displays collocates table", async () => {
