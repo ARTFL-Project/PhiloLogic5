@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
+from scipy.special import logsumexp
 
 from philologic.runtime.reports import word_senses as ws
 
@@ -212,6 +213,12 @@ class TestModel:
         assert n_folds == 2
         assert ws.work_folds(np.array([3, 3]))[0] is None
 
+    def test_works_as_numbers_or_rows_make_the_same_folds(self):
+        works = np.random.default_rng(4).integers(0, 30, 500)
+        folds, n_folds = ws.work_folds(works)
+        by_rows, n_by_rows = ws.work_folds(works[:, None])
+        assert n_folds == n_by_rows and np.array_equal(folds, by_rows)
+
 
 def plain_em(Xs, parent, r, every_marker):
     """The EM of a split in plain numpy, as the compiled one must compute it."""
@@ -263,6 +270,58 @@ class TestCompiled:
                 for a, b in zip(ds, dp):
                     assert np.array_equal(a.p, b.p) and a.rest == b.rest
             assert all(np.array_equal(a, b) for a, b in zip(mine[3], plain[3]))
+
+    def test_the_compiled_em_is_numpy_to_the_last_bit_on_a_sense_s_sentences(self):
+        # Some of the sentences: words they lack, sentences with none of a group's words, a group's counts above one
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
+        channels, works = sentences(specs, seed=7)
+        X = csr_matrix(channels[0][0])
+        rng = np.random.default_rng(8)
+        rows = np.sort(rng.choice([i for i, (_, sense) in enumerate(specs) if sense != "c"], 121, replace=False))
+        sense_a = csr_matrix(X[rows][:, 40:52])  # sense a's words: none in the sentences of b
+        sense_a.data = rng.integers(1, 4, sense_a.nnz).astype(np.float64)
+        Xs = [csr_matrix(X[rows]), sense_a]
+        assert np.any(np.asarray(Xs[0].getnnz(axis=0)) == 0) and np.any(np.asarray(sense_a.getnnz(axis=1)) == 0)
+        weights = rng.uniform(0.5, 6.0, X.shape[1])
+        parent = [
+            ws.Dist(rng.dirichlet(np.ones(X.shape[1])) * 0.8, 0.2, rng.uniform(size=X.shape[1]) > 0.2, weights, 0.6),
+            ws.Dist(np.full(12, 0.9 / 12), 0.1, None, None, 0.3),
+        ]
+        r = rng.dirichlet([1.0, 1.0], len(rows))
+        for every_marker in (True, False):
+            mine, plain = ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker)
+            assert np.array_equal(mine[0], plain[0]) and np.array_equal(mine[2], plain[2])
+            for ds, dp in zip(mine[1], plain[1]):
+                for a, b in zip(ds, dp):
+                    assert np.array_equal(a.p, b.p) and a.rest == b.rest
+            assert all(np.array_equal(a, b) for a, b in zip(mine[3], plain[3]))
+
+    def test_sums_of_the_words_the_sentences_have_are_numpys(self):
+        # Over all the words of a group, those the sentences lack zero
+        rng = np.random.default_rng(9)
+        for n in list(range(0, 300, 7)) + [1000, 8193, 100003]:
+            for density in (0.0, 0.05, 0.5, 1.0):
+                pos = np.flatnonzero(rng.uniform(size=n) < density)
+                counts = rng.lognormal(-1, 2, (len(pos), 2))
+                every = np.zeros((n, 2))
+                every[pos] = counts
+                out = np.empty(4)
+                ws._sums_at(counts, 0.6, pos, n, out)
+                least = np.minimum(every, 0.6)
+                assert list(out) == [float(every[:, 0].sum()), float(every[:, 1].sum())] + [
+                    float(least[:, 0].sum()),
+                    float(least[:, 1].sum()),
+                ]
+
+    def test_logsumexp_is_scipys(self):
+        rng = np.random.default_rng(10)
+        ll = -rng.exponential(50, (10007, 2))
+        ll[rng.uniform(size=len(ll)) < 0.05, 0] = -np.inf
+        ll[rng.uniform(size=len(ll)) < 0.05, 1] = -np.inf
+        tie = rng.uniform(size=len(ll)) < 0.05
+        ll[tie, 1] = ll[tie, 0]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            assert np.array_equal(ws._logsumexp2(ll), logsumexp(ll, axis=1))
 
     def test_sums_are_numpys_to_the_last_bit(self):
         rng = np.random.default_rng(6)
@@ -319,6 +378,14 @@ class TestSmoothing:
         low, high = np.array(curves["share"]["low"]), np.array(curves["share"]["high"])
         assert np.all(low <= value + 1e-9) and np.all(value <= high + 1e-9)
         assert curves["rate"] is not None
+
+    def test_bands_are_numpys_percentiles(self):
+        rng = np.random.default_rng(3)
+        smoothed = rng.normal(size=(200, 3, 12))
+        smoothed[rng.uniform(size=200) < 0.2] = np.nan  # resamples not drawn
+        assert np.array_equal(ws._nanpercentile(smoothed, ws.BAND), np.nanpercentile(smoothed, ws.BAND, axis=0))
+        smoothed[5, 1, 3] = np.nan  # not a whole resample
+        assert np.array_equal(ws._nanpercentile(smoothed, ws.BAND), np.nanpercentile(smoothed, ws.BAND, axis=0))
 
     def test_no_course_without_years(self):
         P = np.ones((10, 1))
