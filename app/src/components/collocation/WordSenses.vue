@@ -21,10 +21,7 @@
                         }) }}
                 </p>
                 <p class="text-muted small mb-2">
-                    {{ $t("wordSenses.rule", {
-                        folds: result.folds, word: queryWord, finest: percent(result.finest),
-                        shown: $t(version === 2 ? "wordSenses.ruleShown2" : "wordSenses.ruleShown"),
-                    }) }}
+                    {{ $t("wordSenses.rule", { folds: result.folds, word: queryWord, finest: percent(result.finest) }) }}
                     <span v-if="result.seconds !== undefined">{{ $t("wordSenses.seconds", { s: result.seconds }) }}</span>
                 </p>
 
@@ -186,7 +183,6 @@ import { debug, paramsFilter } from "../../utils.js";
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 
-const props = defineProps({ version: { type: Number, default: 1 } }); // 2: Senses 2; 3: Senses 1b (to compare)
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
@@ -218,10 +214,6 @@ const splits = computed(() =>
     nodes.value.filter((n) => n.children.length).sort((a, b) => b.split.relative - a.split.relative || a.id - b.id)
 );
 
-function requestParams(extra = {}) {
-    return { ...paramsFilter(formData.value), ...(props.version > 1 ? { senses_version: props.version } : {}), ...extra };
-}
-
 // At first, the distinctions at least as important as the default detail
 function showDefaultDetail() {
     const detail = result.value?.detail ?? 1;
@@ -235,7 +227,7 @@ function runDetection() {
     result.value = null;
     view.value = "share";
     $http
-        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: requestParams() })
+        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: paramsFilter(formData.value) })
         .then((response) => {
             if (myToken !== fetchToken) return;
             result.value = response.data;

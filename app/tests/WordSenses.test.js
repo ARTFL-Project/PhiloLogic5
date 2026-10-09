@@ -57,7 +57,7 @@ const oneSense = {
     time: null,
 };
 
-function mountSenses(response, extra = {}, props = {}) {
+function mountSenses(response, extra = {}) {
     const http = createMockHttp({
         "get_word_senses.py": response,
         "get_sense_passages.py": { passages: [{ hit: 7, philo_id: [1, 0, 0, 0, 0, 0, 0], citation: [], context: "<p>x</p>" }] },
@@ -76,7 +76,7 @@ function mountSenses(response, extra = {}, props = {}) {
     });
     const store = useMainStore();
     store.formData = { ...store.formData, q: "lemma:raison", report: "collocation" };
-    return { wrapper: mount(WordSenses, { global, props }), http };
+    return { wrapper: mount(WordSenses, { global }), http };
 }
 
 async function loaded(response = senses) {
@@ -187,17 +187,6 @@ describe("WordSenses", () => {
         expect(wrapper.findAll(".sense-card")).toHaveLength(0);
         expect(wrapper.find("#word-senses-detail").exists()).toBe(false);
         expect(wrapper.text()).toContain("No dates");
-    });
-
-    it("asks for Senses 2 in its tab, and for the first otherwise", async () => {
-        for (const [props, version] of [[{}, undefined], [{ version: 2 }, 2]]) {
-            const { wrapper, http } = mountSenses(senses, {}, props);
-            wrapper.vm.runDetection();
-            await flushPromises();
-            const call = http.get.mock.calls.find(([url]) => url.includes("get_word_senses.py"));
-            expect(call[1].params.senses_version).toBe(version);
-            expect(call[1].params.q).toBe("lemma:raison");
-        }
     });
 
     it("passes up the words the collocation filter left out", async () => {

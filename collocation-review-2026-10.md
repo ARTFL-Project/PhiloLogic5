@@ -763,7 +763,7 @@ hubs, because a network has no weighting, whereas the senses tab gains from them
 many communities (8 to 38 per pair), each fairly pure, and leaves 4–56% of sentences unplaced. A sentence can join a
 community through a single word linked to it by chance (a weakness usage patterns shares).
 
-## 12. Senses 2: the "Word senses 2 (beta)" tab (Oct 8, under test)
+## 12. Senses 2: the "Word senses 2 (beta)" tab (Oct 8; dropped Oct 9)
 
 The same method, made cheaper where that keeps its quality. It is a tab of its own, next to the first, for comparison
 (`get_word_senses.py?senses_version=2`, its own cache tag). The code is `fit_split_screened` and the `version`
@@ -852,7 +852,11 @@ senses.
 - **Leaving out candidates alike to an earlier one.** A fifth of later candidates are identical on small queries,
   none on *raison*, *révolution* or *light*. Not done.
 
-## 13. Senses 1b: Senses 1, its cycling fits held (Oct 9, under test)
+**Dropped (Oct 9).** Senses 1b came out as fast as Senses 2 on all but the largest query (§13), with Senses 1's
+default views. Senses 2's code is gone: `fit_split_screened`, `first_bump`, and the version switch. The findings
+above stand, notably that importance mostly measures sense size.
+
+## 13. Senses 1b: Senses 1, its cycling fits held (Oct 9; now the "Word senses (beta)" tab)
 
 Senses 1 chooses the words with rates of their own at every step of EM. Its extra time over Senses 2 is the fits
 whose choice never settles. They go on to `_MAX_ITER` (200 steps), and their state never repeats exactly, so no step
@@ -865,8 +869,11 @@ another (A, B, …, A).
 
 Senses 1b is Senses 1 with, from that moment, the set that came back held, as Senses 2 holds its own
 (`fit_split_switching`, `_em(..., switch=True)`). Every other fit is Senses 1's to the last bit: on made-up sentences,
-where no fit cycles, the tree is the same. It keeps Senses 1's default view (the natural break). It is a tab of its
-own (`senses_version=3`, cache tag `senses1b-1`).
+where no fit cycles, the tree is the same. It keeps Senses 1's default view (the natural break).
+
+**Merged (Oct 9).** It replaces Senses 1 in the "Word senses (beta)" tab: `fit_split` chooses its words at every
+step, and holds them once the choice cycles (cache tag `senses13`). The merged code gives the same reports as Senses 1b
+to the byte, on the 10 reference queries.
 
 **Results**, 17 queries at 2 threads:
 

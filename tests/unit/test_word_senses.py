@@ -57,28 +57,6 @@ class TestSenses:
         assert root.test["z"] > ws.EVIDENCE
         assert root.test["sentences_won"] > 0.9 * root.test["sentences"]
 
-    def test_senses_2_finds_the_two_senses_too(self):
-        specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
-        channels, works = sentences(specs)
-        root = ws.induce_senses(channels, works, version=2)
-        described = [words_of(leaf) for leaf in leaves(root)]
-        assert len(described) == 2
-        assert any(d and d <= set(SENSES["a"]) for d in described)
-        assert any(d and d <= set(SENSES["b"]) for d in described)
-        assert root.test["z"] > ws.EVIDENCE
-
-    def test_senses_1b_is_senses_1_when_no_fit_cycles(self):
-        specs = [(work, "abc"[i % 3] if i % 4 else None) for work in range(16) for i in range(40)]
-        channels, works = sentences(specs, seed=6)
-
-        def tree(root):
-            nodes = [root]
-            for node in nodes:
-                nodes.extend(node.children)
-            return [(node.units.tolist(), node.reason, node.test) for node in nodes]
-
-        assert tree(ws.induce_senses(channels, works, version=3)) == tree(ws.induce_senses(channels, works, version=1))
-
     def test_the_same_senses_on_one_thread_or_more(self, monkeypatch):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
         channels, works = sentences(specs, seed=3)
@@ -181,22 +159,6 @@ class TestBreak:
 
 
 @pytest.mark.unit
-class TestFirstBump:
-    def test_stops_before_the_first_distinction_followed_by_a_larger_drop(self):
-        # lemma:sentiment in Frantext: drops x2.26, x1.33, x1.46: the third distinction is followed by the larger drop
-        importance = [8.49, 3.75, 2.82, 1.93, 1.78, 1.56, 1.07, 0.96]
-        assert ws.first_bump([v / importance[0] for v in importance]) == 2
-
-    def test_all_shown_when_the_drops_only_shrink(self):
-        assert ws.first_bump([1.0, 0.4, 0.2, 0.12]) == 4  # x2.5, x2, x1.67, then x1.2 to the floor
-        assert ws.first_bump([1.0, 0.5, 0.3, 0.2]) == 3  # x2, x1.67, x1.5, then x2 to the floor: not the last
-
-    def test_the_main_distinction_alone_when_the_next_drop_grows_at_once(self):
-        assert ws.first_bump([1.0, 0.8, 0.3]) == 1
-        assert ws.first_bump([1.0]) == 1 and ws.first_bump([]) == 0
-
-
-@pytest.mark.unit
 class TestModel:
     def test_discount_from_words_seen_once_and_twice(self):
         assert ws.discount(np.array([1, 1, 1, 2, 5, 0])) == pytest.approx(3 / (3 + 2))
@@ -273,18 +235,32 @@ class TestModel:
 
 
 def plain_em(Xs, parent, r, every_marker):
-    """The EM of a split in plain numpy, as the compiled one must compute it."""
+    """The EM of a split in plain numpy, as the compiled one must compute it: the words chosen at every step held once
+    their choice comes back to a set chosen before, after another."""
     n = Xs[0].shape[0]
     previous = None
+    seen, last, held = set(), None, None
     for _ in range(ws._MAX_ITER):
         weight = r.sum(axis=0)
         if weight.min() < 1.0:
             return None
         pi = weight / n
         counts = [X.T @ r for X in Xs]
-        owns = [ws._split_words(c, parent[ci], every_marker) for ci, c in enumerate(counts)]
+        if held is None:
+            owns = [ws._split_words(c, parent[ci], every_marker) for ci, c in enumerate(counts)]
+        else:
+            owns = [ws._split_words(c, h, True) for c, h in zip(counts, held)]
         if not any(len(own) for own in owns):
             return None
+        if not every_marker and held is None:
+            key = tuple(tuple(own) for own in owns)
+            if key in seen and key != last:
+                held = [
+                    ws.Dist(d.p, d.rest, np.isin(np.arange(len(d.p)), own), d.weights, d.discount)
+                    for d, own in zip(parent, owns)
+                ]
+            seen.add(key)
+            last = key
         dists = [
             [ws.fit_sparse(c[:, k], parent[ci], own) for k in range(2)] for ci, (c, own) in enumerate(zip(counts, owns))
         ]
