@@ -12,6 +12,34 @@ from philologic.runtime.get_text import get_text
 from philologic.runtime.ObjectFormatter import adjust_bytes, format_strip
 from philologic.runtime.pages import page_interval
 
+SPAN = re.compile(r'<span class="(highlight|xml-w)"[^>]*>|</span>')
+TAGS = re.compile(r"<[^>]+>")
+
+
+def hit_bounds(conc_text):
+    """Where the hit starts and ends: from the first highlight to the last, with the <w> spans they are in, so that
+    the text before, the hit and the text after are each well-formed"""
+    open_spans = []
+    start = end = None
+    after_highlight = False
+    for m in SPAN.finditer(conc_text):
+        if m.group(0) == "</span>":
+            if not open_spans:  # none that clean_tags writes
+                continue
+            kind = open_spans.pop()[1]
+            if kind == "highlight":
+                after_highlight = True
+            if after_highlight and not open_spans:
+                end = m.end()
+                after_highlight = False
+        else:
+            if m.group(1) == "highlight" and start is None:
+                start = open_spans[0][0] if open_spans else m.start()
+            open_spans.append((m.start(), m.group(1)))
+    if start is None:
+        raise ValueError("no highlight")
+    return start, end if end is not None else len(conc_text)
+
 
 def kwic_results(request, config):
     """Fetch KWIC results"""
@@ -65,12 +93,11 @@ def kwic_hit_object(hit, config, db):
     conc_text = conc_text.replace("\t", " ")
     highlighted_text = ""
     try:
-        start_hit = conc_text.index('<span class="highlight">')
+        start_hit, end_hit = hit_bounds(conc_text)
         start_output = (
             '<span class="kwic-before"><span class="inner-before">' + conc_text[:start_hit] + "</span></span>"
         )
-        end_hit = conc_text.rindex("</span>") + 7
-        highlighted_text = conc_text[start_hit + 23 : end_hit - 7].lower()  # for use in KWIC sorting
+        highlighted_text = TAGS.sub("", conc_text[start_hit:end_hit]).lower()  # for use in KWIC sorting
         end_output = '<span class="kwic-after">' + conc_text[end_hit:] + "</span>"
         conc_text = (
             '<span class="kwic-text">'

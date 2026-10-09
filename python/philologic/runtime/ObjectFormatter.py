@@ -16,9 +16,13 @@ from philologic.utils import convert_entities
 BEGIN_MATCH = re.compile(rb"^[^<]*?>")
 START_CUTOFF_MATCH = re.compile(rb"^[^ |\n<]+")
 END_MATCH = re.compile(rb"<[^>]*?\Z")
-SPACE_MATCH = re.compile(r" ?([-'])+ ")
+# Spaces around hyphens and apostrophes, outside tags: tags match as a whole, and stay as they are
+SPACE_MATCH = re.compile(r"(<[^>]*>)| ?([-'])+ ")
 TERM_MATCH = re.compile(r"\w+")
 STRIP_START_PUNCTUATION = re.compile(r"^[,?;.:!']")
+# Attribute values are escaped already, as in the source, but for the double quotes a single-quoted value may have, and
+# the ">" that would end a tag for the patterns that skip them
+ATTRIBUTE_ESCAPES = str.maketrans({'"': "&quot;", ">": "&gt;"})
 
 
 # Source: https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/HTML5/HTML5_element_list
@@ -291,7 +295,7 @@ def format_strip(text, word_regex, byte_offsets=None):
     xml = FragmentParserParse(text.decode("utf8", "ignore"))
     output = clean_tags(xml, word_regex)
     ## remove spaces around hyphens and apostrophes
-    output = SPACE_MATCH.sub("\\1", output)
+    output = SPACE_MATCH.sub(r"\1\2", output)
     return output
 
 
@@ -831,7 +835,7 @@ def get_all_graphics(philo_id, config):
 
 
 def clean_tags(element, word_regex):
-    """Remove all tags"""
+    """Remove all tags but <w>, which stays a span.xml-w with its attributes, as in concordances"""
     text = ""
     for child in element:
         text += clean_tags(child, word_regex)
@@ -848,6 +852,9 @@ def clean_tags(element, word_regex):
             )
         text = element.text + text + element.tail
         return '<span class="highlight">' + element.text + text + "</span>" + element.tail
+    if element.tag == "w":
+        attributes = "".join(f' {k}="{v.translate(ATTRIBUTE_ESCAPES)}"' for k, v in element.items() if k != "lang")
+        return f'<span class="xml-w"{attributes}>{element.text}{text}</span>{element.tail}'
     return element.text + text + element.tail
 
 
