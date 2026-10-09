@@ -37,6 +37,7 @@ cross-validation chooses, with a band from resampling the works.
 """
 
 import hashlib
+import html
 import json
 import math
 import os
@@ -47,6 +48,7 @@ from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 import numba
 import numpy as np
+import regex
 from scipy.sparse import csr_matrix, hstack
 from scipy.special import gammaincinv, ndtr
 
@@ -57,6 +59,7 @@ from philologic.runtime.reports.collocation import (
     collocation_search_method,
     phrase_words,
 )
+from philologic.runtime.get_text import _get_mmap
 from philologic.runtime.reports.time_series import _corpus_year_counts, _get_doc_year_data
 
 # The conventions the method rests on: none is fitted to any corpus.
@@ -74,7 +77,8 @@ _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the sea
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
-_CACHE_TAG = b"senses21\0"  # bump when the result changes
+_TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
+_CACHE_TAG = b"senses22\0"  # bump when the result changes
 
 
 class Dist:
@@ -2019,6 +2023,33 @@ def query_sentences(
         used = np.flatnonzero(X.getnnz(axis=0))  # the words the kept sentences still have
         channels.append((X[:, used], ids[used]))
     first = first[keep]
+    # The words just before and after each hit as the text has them: their forms, and where the hit is in its text
+    forms = np.load(os.path.join(colloc_dir, "token_ids.npy"), mmap_mode="r") if count_lemmas else count_ids
+    s0 = sent_offsets[si].astype(np.int64)
+    length = sent_offsets[si + 1].astype(np.int64) - s0
+    lo, hi = positions.min(axis=1), positions.max(axis=1)
+    kept_of = np.full(n_units, -1, dtype=np.int64)
+    kept_of[keep] = np.arange(len(keep))
+    unit_of = kept_of[np.searchsorted(unit_bounds, np.arange(len(si)), side="right") - 1]
+    hit_bytes = rows[hit_index][:, 8::2].astype(np.int64)
+    query_form = np.asarray(forms[s0 + positions[:, 0] - 1]).astype(np.int64)
+    neighbors = [None]
+    for at, ok in ((s0 + lo - 2, lo > 1), (s0 + hi, hi < length)):  # as _sentence_words takes them
+        at = np.where(ok, at, 0)
+        near = np.asarray(count_ids[at]).astype(np.int64)
+        ok = ok & (unit_of >= 0) & ~excluded[near] & ~filtered[near]
+        neighbors.append(
+            {
+                "unit": unit_of[ok],
+                "word": near[ok],
+                "form": np.asarray(forms[at[ok]]).astype(np.int64),
+                "query_form": query_form[ok],
+                "hit": hit_index[ok],
+                "doc": rows[hit_index[ok], 0].astype(np.int64),
+                "first_byte": hit_bytes[ok].min(axis=1),
+                "last_byte": hit_bytes[ok].max(axis=1),
+            }
+        )
     return {
         "n_hits": n_hits,
         "n_units": len(keep),
@@ -2032,6 +2063,8 @@ def query_sentences(
         "count_lemmas": count_lemmas,
         "filtered": filtered,  # the words of filter_words, by vocabulary id
         "data_path": data_path,
+        "neighbors": neighbors,  # for each group of words next to the query (1, before; 2, after), as above
+        "query_words": int(positions.shape[1]),
     }
 
 
@@ -2117,6 +2150,106 @@ def _senses_channels(sentences, count_lemmas):
     return channels, names
 
 
+_TAGS = regex.compile(rb"<[^>]*>|<[^>]*$|^[^<]*>")
+_SPACES = regex.compile(r"\s+")
+_JOINING = regex.compile(r"[^\s\p{L}\p{M}\p{N}]+(?=[\p{L}\p{M}\p{N}])")  # a mark joining two words (d'un)
+
+
+class _Phrases:
+    """The words next to the query as the text has them: "sa volonté" for the lemma son before volonté, "l'esprit"
+    for le (the words of the index lose their apostrophes and capitals). For a sense, a word's most common forms next
+    to the query (and the query's), read from the first hit that has them; None when the text does not read so."""
+
+    def __init__(self, db, sentences):
+        self.db = db
+        self.neighbors = sentences.get("neighbors")
+        self.n_words = sentences.get("query_words", 1)
+        self.n_units = sentences["n_units"]
+        self.text_dir = os.path.join(sentences["data_path"], "TEXT")
+        self.word_re = regex.compile(db.locals["token_regex"])
+        if sentences["count_lemmas"]:
+            self.f_blob, self.f_offsets = _vocabulary(sentences["data_path"], False)
+        else:
+            self.f_blob, self.f_offsets = sentences["v_blob"], sentences["v_offsets"]
+        self.filenames = {}
+        self.cache = {}
+
+    def near(self, units):
+        """For the sentences units: {group: {vocabulary id of a word next to the query: the row of its first hit with
+        its most common forms}}."""
+        out = {}
+        if self.neighbors is None:
+            return out
+        inside = np.zeros(self.n_units, dtype=np.bool_)
+        inside[units] = True
+        for side in (1, 2):
+            nb = self.neighbors[side]
+            sel = np.flatnonzero(inside[nb["unit"]])
+            w, f, q, h = nb["word"][sel], nb["form"][sel], nb["query_form"][sel], nb["hit"][sel]
+            order = np.lexsort((h, q, f, w))
+            w, f, q, sel = w[order], f[order], q[order], sel[order]
+            starts = np.flatnonzero(np.r_[True, (w[1:] != w[:-1]) | (f[1:] != f[:-1]) | (q[1:] != q[:-1])])
+            counts = np.diff(np.r_[starts, len(w)])
+            pick = np.lexsort((starts, -counts, w[starts]))  # for each word, its most common forms first
+            words = w[starts][pick]
+            first = np.r_[True, words[1:] != words[:-1]] if len(words) else np.zeros(0, dtype=np.bool_)
+            out[side] = dict(zip(words[first].tolist(), sel[starts[pick][first]].tolist()))
+        return out
+
+    def _form(self, i):
+        return self.f_blob[int(self.f_offsets[i]) : int(self.f_offsets[i + 1])].decode("utf-8", errors="replace")
+
+    def _text(self, raw):
+        return html.unescape(_TAGS.sub(b"", raw).decode("utf-8", errors="ignore"))
+
+    def text(self, side, row):
+        """The phrase of a word next to the query, at a row of the hits next to it (None: as the words read)."""
+        if row is None or self.neighbors is None:
+            return None
+        nb = self.neighbors[side]
+        key = (side, int(nb["form"][row]), int(nb["query_form"][row]))
+        if key not in self.cache:
+            try:
+                self.cache[key] = self._read(side, row)
+            except (OSError, ValueError, KeyError, IndexError, TypeError):  # no text to read: as the words read
+                self.cache[key] = None
+        return self.cache[key]
+
+    def _read(self, side, row):
+        nb = self.neighbors[side]
+        doc = int(nb["doc"][row])
+        if doc not in self.filenames:
+            self.filenames[doc] = self.db[(doc,)].filename
+        mm = _get_mmap(os.path.join(self.text_dir, self.filenames[doc]))
+        b0, b1 = int(nb["first_byte"][row]), int(nb["last_byte"][row])
+        span = self._text(mm[b0 : b1 + _TEXT_WINDOW])
+        words = list(self.word_re.finditer(span))
+        k = self.n_words
+        if len(words) < k or words[0].group().lower() != self._form(int(nb["query_form"][row])):
+            return None
+        query = span[: words[k - 1].end()]
+        if side == 1:
+            before = self._text(mm[max(0, b0 - _TEXT_WINDOW) : b0])
+            last = None
+            for last in self.word_re.finditer(before):
+                pass
+            if last is None:
+                return None
+            word, phrase = last.group(), last.group() + before[last.end() :] + query
+        else:
+            if len(words) <= k:
+                return None
+            nxt = words[k]
+            word = nxt.group()
+            phrase = query + span[words[k - 1].end() : nxt.start()] + word
+            joined = _JOINING.match(span, nxt.end())  # a word joined to the next reads with it: d'un, cardinal's
+            if joined and len(words) > k + 1 and words[k + 1].start() == joined.end():
+                phrase += joined.group() + words[k + 1].group()
+        if word.lower() != self._form(int(nb["form"][row])):
+            return None
+        return _SPACES.sub(" ", phrase).strip().lower()
+
+
 def _filtered(sentences, filter_words):
     """The words of filter_words (as the collocation report's filter list has them), as a mask of the vocabulary of
     the sentences."""
@@ -2149,6 +2282,20 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     top_importance = max((nd.test["importance"] for nd in nodes if nd.children), default=0.0)
     first_hit = sentences["first_hit"]
     listed_words = {}
+    phrases = _Phrases(db, sentences)
+    near_by_node = {}
+
+    def near(node):  # the words next to the query in a sense's sentences, as the text has them (see _Phrases)
+        if node.id not in near_by_node:
+            near_by_node[node.id] = phrases.near(np.flatnonzero(margin[:, node.id] > 0))
+        return near_by_node[node.id]
+
+    def with_phrase(item, node, ci, i):
+        if ci > 0:
+            phrase = phrases.text(ci, near(node).get(ci, {}).get(int(names[ci][i])))
+            if phrase:
+                item["phrase"] = phrase
+        return item
 
     def described(node, against):
         """A sense's words, against the dists of the sense it is told from (as a rule, its parent): those markedly more
@@ -2164,8 +2311,9 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 listed_words[node.id] = np.array([i for i, *_ in listed[:_MAX_WORDS]], dtype=np.int64)
             groups_of_words.append(
                 [
-                    {"word": word(ci, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(lift, 3)}
-                    for i, c, r, lift, _ in listed[:_MAX_WORDS]
+                    with_phrase({"word": word(ci, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(f, 3)}, *at)
+                    for i, c, r, f, _ in listed[:_MAX_WORDS]
+                    for at in [(node, ci, i)]
                 ]
             )
         # A sense with nothing else to show: the words of the filter that mark it
@@ -2183,14 +2331,14 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         if node.parent is not None:
             rarer = sorted(
                 (
-                    (g, {"word": word(ci, i), "group": ci, "n": round(c, 2), "ratio": round(r, 4)})
+                    (g, {"word": word(ci, i), "group": ci, "n": round(c, 2), "ratio": round(r, 4), "at": (ci, i)})
                     for ci in range(len(channels))
                     for i, c, r, g in describe_rarer(node.counts[ci], node.dists[ci], against[ci].p)
                     if shown(ci, i)
                 ),
                 key=lambda item: -item[0],
             )
-            rarer = [item for _, item in rarer[:_MAX_WORDS]]
+            rarer = [with_phrase(item, node.parent, *item.pop("at")) for _, item in rarer[:_MAX_WORDS]]
         return {
             "words": groups_of_words[0],
             "hidden": hidden,
@@ -2211,7 +2359,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         if node.test is not None:
             split = {k: v for k, v in node.test.items() if k != "gains"}
             seed = split.pop("seed", None)
-            split["seed"] = None if seed is None else {"word": word(seed[0], seed[1]), "group": seed[0]}
+            split["seed"] = None if seed is None else with_phrase({"word": word(*seed), "group": seed[0]}, node, *seed)
             split["relative"] = round(float(split["importance"] / top_importance), 4) if top_importance > 0 else 0.0
         # Its sentences: those on its side of every split on the way to it
         mine = np.flatnonzero(margin[:, node.id] > 0)

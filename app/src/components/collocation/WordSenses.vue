@@ -333,6 +333,7 @@ function seedText(seed) {
 
 // A word of a group as it reads: those next to the query with it
 function wordText(w, group = w.group) {
+    if (w.phrase) return w.phrase; // as the text has it ("sa volonté", "l'esprit"), when the report could read it
     if (group === 1) return `${w.word} ${queryWord.value}`;
     if (group === 2) return `${queryWord.value} ${w.word}`;
     return w.word;
@@ -493,12 +494,16 @@ function tickShift(pct) {
 }
 
 // ---- Examples: the sentences most clearly in a sense ----
-const modal = ref({ groupName: "", signature: [], passages: [], loading: false, hasMore: false, examples: [], offset: 0 });
+const modal = ref({
+    groupName: "", signature: [], passages: [], loading: false, hasMore: false, examples: [], offset: 0, node: null,
+});
 let modalInstance = null;
 let examplesToken = 0;
 
-function evidenceText(e) {
-    return wordText(e);
+// A word that decided an example, next to the query as the sense's words read there
+function evidenceText(e, node) {
+    const near = e.group === 1 ? node?.before : e.group === 2 ? node?.after : null;
+    return wordText(near?.find((w) => w.word === e.word) || e);
 }
 
 function openExamples(node) {
@@ -513,6 +518,7 @@ function openExamples(node) {
         hasMore: false,
         examples: node.examples,
         offset: 0,
+        node,
     };
     const el = document.getElementById("distinctive-passages-modal");
     if (el) {
@@ -535,7 +541,7 @@ async function fetchExamples(append) {
         const passages = (response.data?.passages || []).map((p) => {
             const e = byHit[p.hit];
             const note = e
-                ? `${t("wordSenses.inThisSense", { p: percent(e.p) })} · ${t("wordSenses.decidedBy")}: ${e.evidence.map(evidenceText).join(", ")}`
+                ? `${t("wordSenses.inThisSense", { p: percent(e.p) })} · ${t("wordSenses.decidedBy")}: ${e.evidence.map((x) => evidenceText(x, modal.value.node)).join(", ")}`
                 : "";
             return { ...p, note };
         });
@@ -612,11 +618,11 @@ const WordList = defineComponent({
             const near = [];
             if (props.node.before.length) {
                 near.push(h("span", { class: "small text-muted me-1" }, `${t("wordSenses.before")}:`));
-                near.push(...props.node.before.slice(0, 6).map((w) => chip(w, `${w.word} ${props.queryWord}`)));
+                near.push(...props.node.before.slice(0, 6).map((w) => chip(w, w.phrase || `${w.word} ${props.queryWord}`)));
             }
             if (props.node.after.length) {
                 near.push(h("span", { class: "small text-muted ms-2 me-1" }, `${t("wordSenses.after")}:`));
-                near.push(...props.node.after.slice(0, 6).map((w) => chip(w, `${props.queryWord} ${w.word}`)));
+                near.push(...props.node.after.slice(0, 6).map((w) => chip(w, w.phrase || `${props.queryWord} ${w.word}`)));
             }
             if (near.length) lines.push(h("div", {}, near));
             const rarer = props.againstCorpus ? [] : props.node.rarer || [];
@@ -625,7 +631,7 @@ const WordList = defineComponent({
                     const r = 1 / Math.max(w.ratio, 1e-9);
                     return r >= 10 ? r.toFixed(0) : r.toFixed(1);
                 };
-                const text = (w) => (w.group === 1 ? `${w.word} ${props.queryWord}` : w.group === 2 ? `${props.queryWord} ${w.word}` : w.word);
+                const text = (w) => w.phrase || (w.group === 1 ? `${w.word} ${props.queryWord}` : w.group === 2 ? `${props.queryWord} ${w.word}` : w.word);
                 lines.push(h("div", { class: "mt-1" }, [
                     h("span", { class: "small text-muted me-1" }, `${t("wordSenses.rarer")}:`),
                     ...rarer.slice(0, 8).map((w) => h("span", {

@@ -988,6 +988,35 @@ long as a split holds), at no cost in time (large queries leave no rest; rests c
 - Kept: the rest's line says why it is split no further, as the cards do ("its distinctions were less than 10% as
   important as the main one").
 
+## 16. The words next to the query as the text has them (Oct 9, cache tag `senses22`)
+
+**The problem.** The words just before and after the query were shown joined to it as the index has them: lemmas
+without apostrophes or capitals. On *volonté*/Rousseau, sense 2 read "son volonté", "mon volonté", "volonté mouvoir".
+On *esprit* it read "l esprit", "d esprit", "saint esprit".
+
+**The phrases (`_Phrases`).**
+- `query_sentences` keeps each hit's neighbor: its lemma (or form), its form (`token_ids.npy`, position for position
+  with `attr_lemma_ids.npy`), the query's form, and where the hit is in its text (the hit rows' byte offsets).
+- For a sense, each word next to the query takes its most common forms in the sense's sentences, the query's
+  included. One hit with them is read from the text (`get_text`'s cached mmap; tags stripped, entities unescaped,
+  words found with the database's `token_regex`).
+- The phrase is the two words and what is between them, in lower case with spaces collapsed. A word after the query
+  that is joined to the next word reads with it (*d'un*, *cardinal's*).
+- Checks: the words read must be the forms expected, else no phrase, and the page shows the word and the query as
+  before. One phrase is read for each distinct pair of forms.
+- The page uses them for the chips, the headings, the seeds, the words a sense lacks and the evidence of examples.
+
+**Results.**
+- *volonté*/Rousseau: *sa volonté*, *ma volonté*, *volonté meut*, *volonté générale*, *mauvaise volonté*.
+- *esprit*: *l'esprit*, *d'esprit*, *saint-esprit*, *bel esprit*, *esprits corrompus*, *esprit cultivé*.
+- Balzac *amour*: *amour-propre*, *amour d'un*, *amour n'est*.
+- Phrases are missing for 0 of 61, 0 of 147 and 1 of 355 words. On the English test corpora: *lit up*, *the light*,
+  *good my lord*.
+- Apart from the phrases, the reports are identical on the 12 reference queries.
+- **Time:** +1–2% on large queries (frantext *esprit* 10.9 to 11.0 s; eebo *reason* 68.2 to 68.6 s), a few
+  hundredths of a second on small ones. The text files' first read from disk is what costs (0.7 to 2.3 s once on
+  Rousseau's works).
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

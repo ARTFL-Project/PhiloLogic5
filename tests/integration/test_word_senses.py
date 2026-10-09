@@ -115,6 +115,18 @@ class TestWordSenses:
         covered = sum(n["share"] for n in leaves_at(nodes, report["detail"]) if n["sense"] is not None)
         assert covered > MOST or report["detail"] == levels[0]
 
+    def test_words_next_to_the_query_read_as_the_text_has_them(self, eltec_db, shakespeare_db):
+        light = call(eltec_db, get_word_senses, q="lemma:light")["nodes"][0]
+        assert {w["word"]: w.get("phrase") for w in light["before"]}["the"] == "the light"
+        assert {w["word"]: w.get("phrase") for w in light["after"]}["up"] == "lit up"  # the forms, not the lemmas
+        lord = call(shakespeare_db, get_word_senses, q='"my lord"')
+        assert {w["word"]: w.get("phrase") for w in lord["nodes"][0]["before"]}["good"] == "good my lord"
+        for node in lord["nodes"]:
+            for w in node["before"] + node["after"]:
+                if "phrase" in w:  # one space between words, lower case, the query in it
+                    assert w["phrase"] == " ".join(w["phrase"].split()) == w["phrase"].lower()
+                    assert "my lord" in w["phrase"]
+
     def test_the_query_words_are_never_their_own_context(self, shakespeare_db):
         report = call(shakespeare_db, get_word_senses, q='"my lord"')
         for node in report["nodes"]:

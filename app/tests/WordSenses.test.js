@@ -238,6 +238,21 @@ describe("WordSenses", () => {
         expect(chips[1]).toContain("Sense 2: without mer");
     });
 
+    it("words next to the query read as the text has them, when the report could read it", async () => {
+        const asRead = {
+            ...senses,
+            nodes: senses.nodes.map((n) => (n.id === 6 ? {
+                ...n, rarer: [], before: [{ ...word("son"), phrase: "sa raison" }], after: [{ ...word("de"), phrase: "raison d'" }],
+            } : n)),
+        };
+        const { wrapper } = await loaded(asRead);
+        const card = wrapper.find("#sense-card-6");
+        expect(card.text()).toContain("sa raison");
+        expect(card.text()).toContain("raison d'");
+        expect(card.text()).not.toContain("son raison");
+        expect(wrapper.findAll(".legend-chip").map((c) => c.text())[1]).toContain("Sense 2: sa raison, raison d'");
+    });
+
     it("words next to the query read with the query word", async () => {
         const { wrapper } = await loaded();
         expect(wrapper.text()).toContain("la raison");
