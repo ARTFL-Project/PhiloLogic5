@@ -69,12 +69,12 @@ MOST = 0.5  # at first, the senses shown cover more than this share of the sente
 # Numerical settings, not choices about the data
 _TOL = 1e-6
 _MAX_ITER = 200
-FINEST = 0.10  # the finest detail that can be shown: distinctions less important are not looked for
+FINEST = 0.10  # the finest detail shown: distinctions less important are not looked for (but in the rest)
 _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the search, not the test)
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
-_CACHE_TAG = b"senses18\0"  # bump when the result changes
+_CACHE_TAG = b"senses19\0"  # bump when the result changes
 
 
 class Dist:
@@ -109,6 +109,7 @@ class Node:
         self.reason = None
         self.id = None  # its place in the tree, each sense before those it splits into
         self.parent = None
+        self.rest = False  # whether it is of the rest of the sentences, which no sense takes
 
 
 # ----------------------------- The sense model ------------------------------
@@ -1315,14 +1316,17 @@ def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map):
     return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
 
 
-def induce_senses(channels, groups, finest=FINEST, unseeded=None):
+def induce_senses(channels, groups, finest=FINEST, unseeded=None, common=None):
     """Grow the tree of senses of the sentences: channels are (X, corpus probabilities, corpus rest[, weights]) for each
     group of words, X a sentences x words matrix of counts, weights how much each word's evidence counts; groups is
     the work of each sentence; unseeded, for each group of words, None or a mask of its words that seed no split
-    (they still mark senses). Returns the root Node; split senses have children, the others are the senses found.
+    (they still mark senses); common, likewise, the words that alone make no sense (the collocation filter's). Returns
+    the root Node; split senses have children, the others are the senses found.
     Each split has its importance: how much it improves the prediction of the words around the query, per use of the
     word (its sense's share of the sentences times its gain per sentence there). Splits less important than finest
-    times the first one are not looked for."""
+    times the first one are not looked for, but in the rest of the sentences, which no sense takes (the root, and its
+    halves that no word outside common marks): it is split as long as a split holds on unseen works, so that what no
+    sense takes is told apart as far as it can be."""
     Xall = [csr_matrix(c[0]) for c in channels]
     n = Xall[0].shape[0]
     corpus = [Dist(np.asarray(c[1], dtype=np.float64), float(c[2])) for c in channels]
@@ -1344,6 +1348,7 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
         return dists
 
     root = Node(np.arange(n), root_fit(counts), counts, corpus)
+    root.rest = True
 
     floor = {"importance": 0.0}
 
@@ -1355,7 +1360,7 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
             unsplit_fit = lambda train_counts, parents=parents: [
                 fit_sparse(c, d) for c, d in zip(train_counts, parents)
             ]
-        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, pool_map)
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, pool_map, common)
         return node
 
     def grow_with(pool_map, senses=None):
@@ -1484,7 +1489,19 @@ def default_detail(nodes, number):
     return relative[k - 1]
 
 
-def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map):
+def marks(node, against, common=None):
+    """Whether a sense has something of its own to show: a word markedly more frequent in it than against (the dists
+    of the sense it is told from) in any group of words, outside common (for each group, None or a mask of the words
+    that alone make no sense)."""
+    for ci, (c, dist) in enumerate(zip(node.counts, node.dists)):
+        mask = None if common is None else common[ci]
+        for i, *_ in describe(c, dist, against[ci].p, against[ci].p):
+            if mask is None or not mask[i]:
+                return True
+    return False
+
+
+def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map, common=None):
     units = node.units
     if len(units) < 2:
         node.reason = "inseparable"
@@ -1513,7 +1530,7 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
         test = _test_result(folds, results[c * len(folds) : (c + 1) * len(folds)], len(units))
         test["seed"] = seed
         test["importance"] = float(len(units) / n_all * max(0.0, test["bits_per_sentence"]))
-        passes = test["z"] > EVIDENCE and test["importance"] >= floor["importance"]
+        passes = test["z"] > EVIDENCE and (node.rest or test["importance"] >= floor["importance"])
         if best is None or (passes, test["importance"]) > (best[0], best[1]["importance"]):
             best = (passes, test, pi, dists, side, counts)
     if best is None:
@@ -1529,6 +1546,9 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
         child.k = k
         node.children.append(child)
     node.children.sort(key=lambda c: (-len(c.units), c.k))
+    if node.rest:  # the rest goes on in its halves with nothing of their own to show
+        for child in node.children:
+            child.rest = not marks(child, node.dists, common)
 
 
 def node_posteriors(root, Xall):
@@ -2082,7 +2102,8 @@ def _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, dist
         return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
     channels, names = _senses_channels(sentences, count_lemmas)
     common = _filtered(sentences, filter_words)
-    root = induce_senses(channels, sentences["docs"], unseeded=[common[ids] for ids in names])
+    masks = [common[ids] for ids in names]
+    root = induce_senses(channels, sentences["docs"], unseeded=masks, common=masks)
     return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field)
 
 
@@ -2191,14 +2212,8 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     # Something of its own to show, for a sense: a word markedly more frequent in it, in any group, outside the
     # collocation filter (whose words, mostly function words, tell the style of works more than a sense: alone, they
     # make none)
-    marked = {
-        node.id: any(
-            not unshown[int(names[ci][i])]
-            for ci in range(len(channels))
-            for i, *_ in describe(node.counts[ci], node.dists[ci], node.parent_dists[ci].p, corpus_p[ci])
-        )
-        for node in nodes
-    }
+    common = [unshown[ids] for ids in names]
+    marked = {node.id: marks(node, node.parent_dists, common) for node in nodes}
     out = []
     for node in nodes:
         split = None

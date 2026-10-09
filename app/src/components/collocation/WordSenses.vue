@@ -112,7 +112,7 @@
                         }) }}</span>
                     </p>
                     <p v-else-if="row.kind === 'rest'" :id="`sense-rest-${row.node.id}`" class="rest-row small text-muted mb-3">
-                        {{ $t("wordSenses.rest", { share: percent(row.node.share) }) }}
+                        {{ $t("wordSenses.rest", { share: percent(row.node.share) }) }} {{ notSplitReason(row.node) }}
                     </p>
                     <section v-else :id="`sense-card-${row.node.id}`" class="card shadow-sm mb-3 sense-card"
                         :style="{ borderLeft: `4px solid ${senseColor(row.node.rank, 1)}` }"

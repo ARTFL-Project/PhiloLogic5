@@ -145,7 +145,9 @@ describe("WordSenses", () => {
             detail: 1,
             nodes: [
                 node(0, null, [1, 2], 1, { words: [word("loi")], split: split(1, 3.4) }),
-                node(1, 0, [], 0.6, { rarer: [{ word: "ciel", group: 0, n: 1, ratio: 0.05 }], reason: "faint" }),
+                node(1, 0, [], 0.6, {
+                    rarer: [{ word: "ciel", group: 0, n: 1, ratio: 0.05 }], split: split(0, 1.2), reason: "no_gain",
+                }),
                 node(2, 0, [], 0.4, { sense: "1", rank: 1, words: [word("ciel")], reason: "no_gain" }),
             ],
             time: { ...senses.time, share: { smoothness: 10, value: rows([1, 0.6, 0.4]), low: rows([1, 0.5, 0.3]), high: rows([1, 0.7, 0.5]) } },
@@ -153,6 +155,7 @@ describe("WordSenses", () => {
         const { wrapper } = await loaded(withRest);
         expect(cards(wrapper)).toEqual(["sense-card-2"]);
         expect(wrapper.find("#sense-rest-1").text()).toContain("The rest of the sentences (60%): no clear sense emerges in them");
+        expect(wrapper.find("#sense-rest-1").text()).toContain("best split's gain on unseen works was 1.2 times its standard error");
         expect(wrapper.text()).toContain("1 sense in 100 sentences from 12 works · 60% of them in no clear sense");
         expect(wrapper.find(".split-row").text()).toContain("Senses 1, the rest (100% of the sentences)");
         expect(wrapper.findAll(".legend-chip").map((c) => c.text())).toEqual(["Sense 1: ciel"]);
