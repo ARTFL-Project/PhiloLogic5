@@ -1041,6 +1041,30 @@ break between distinctions. `default_detail` still goes finer until the senses c
   but ARI falls from 0.167 to 0.105 and inverse purity from 0.606 to 0.506: more of the same tree's splits are
   shown, so each word spreads over more senses (*navire | prière*: 2 senses, ARI 0.61, now 5, ARI 0.19).
 
+**Then the elbow (cache tag `senses24`).** Asked for a rule that holds on its own and shows more senses, rules for
+choosing a number of components were compared on the same 60 trees, each with the MOST extension:
+
+| Rule | Mean senses | Median | With 2 | 8 or more | Number changed by redrawing importances |
+|---|---|---|---|---|---|
+| Largest drop (before §17) | 3.7 | 3 | 17 | 3 | 20% |
+| Largest drop after the main | 4.5 | 4 | 1 | 6 | 22% |
+| Above the average (Kaiser) | 4.8 | 4 | 1 | 5 | 19% |
+| Broken stick | 3.1 | 3 | 28 | 2 | – |
+| **Elbow** | **5.1** | **5** | **0** | **3** | **18%** |
+| Elbow, log scale | 6.2 | 6 | 0 | 15 | – |
+
+- The redrawing draws each importance within its error (importance / z), 200 times per tree.
+- **Taken: the elbow** (`elbow`). The first view goes down to the distinction farthest from the straight line from
+  the main one to the faintest found: the knee of a scree plot (Thorndike 1953; Satopää and others 2011). It needs no
+  constant, and it reads the whole curve, where a single drop decides by chance on smoothly declining importances. It
+  depends on where the search stops (FINEST), a convention the method has.
+- Pseudowords (2 true senses): 4.0 senses at first against 4.3 for the largest drop after the main, ARI 0.131
+  against 0.105, purity 0.807 against 0.809. It shows more senses on real words and fewer on pseudowords.
+- Examples: frantext *sentiment* opens on 3 (religious and national; inner sensation; tender feelings). *esprit*
+  opens on 4 (political and national; the human mind; the Holy Spirit and the evil spirit; wit). ELTeC *present* goes
+  from 10 to 3, *bank* from 3 to 6.
+- Only `detail` changes: the 10 reference reports are otherwise identical.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

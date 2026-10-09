@@ -28,9 +28,9 @@ sense each is in, by more than EVIDENCE standard errors over the sentences. Hold
 sentences of a passage, which share their words, from predicting one another.
 
 Each split has its importance: how much it improves the prediction of the words around the query, per use of the
-word. The distinctions are shown from the most important down, to the detail asked for: at first, the main one and
-down to the largest drop in importance from one distinction to the next after it (natural_break), and further until
-the senses cover most of the sentences (default_detail); down to FINEST, under which none are looked for.
+word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the elbow
+of their importances (elbow), and further until the senses cover most of the sentences (default_detail); down to
+FINEST, under which none are looked for.
 
 Over time, the sentences of each year are shared out among the senses by their probabilities. The share of each sense
 and its uses per million words are smoothed by a Whittaker-Henderson smoother whose smoothness generalized
@@ -79,7 +79,7 @@ _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized 
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses23\0"  # bump when the result changes
+_CACHE_TAG = b"senses24\0"  # bump when the result changes
 
 
 class Dist:
@@ -1391,19 +1391,18 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
     return root
 
 
-def natural_break(relative, finest=FINEST):
-    """How many distinctions to show at first, of their importances relative to the main one: the main one, and down
-    to the largest drop from one to the next after it, as a ratio (the natural break, as the largest gap between
-    eigenvalues tells a number of clusters), the floor of the search counting as the next after the last, so that
-    distinctions all alike in importance are all shown. The drop from the main one is left out: it splits every
-    sentence, the next only a sense, so that drop mostly measures the size of that sense (importance follows the size
-    of the sense split, rank correlation 0.88 on 60 queries), not a break between distinctions."""
-    if len(relative) == 0:
-        return 0
-    values = np.maximum(np.r_[np.sort(np.asarray(relative, dtype=float))[::-1], finest], 1e-12)
-    if len(values) < 3:
-        return 1
-    return int(np.argmax(np.log(values[1:-1] / values[2:]))) + 2
+def elbow(relative):
+    """How many distinctions to show at first, of their importances relative to the main one: down to the elbow of
+    their curve, from the most important down, the distinction farthest from the straight line from the main one to
+    the faintest found (the knee of a scree plot, as it tells a number of clusters: Thorndike 1953, Satopää and others
+    2011). It reads the shape of the whole curve, where a single drop from one to the next would decide by chance:
+    importances mostly decline smoothly, as they follow the size of the senses split."""
+    y = np.sort(np.asarray(relative, dtype=float))[::-1]
+    if len(y) <= 2:
+        return len(y)
+    x = np.arange(len(y), dtype=float)
+    dx, dy = x[-1] - x[0], y[-1] - y[0]
+    return int(np.argmax(np.abs(dy * x - dx * y + x[-1] * y[0] - y[-1] * x[0]))) + 1
 
 
 def revealed_by(nodes, detail):
@@ -1480,11 +1479,11 @@ def sense_numbers(nodes, marked=_has_own):
 
 
 def default_detail(nodes, number):
-    """The detail shown at first, of a report's nodes and their sense numbers: down to the natural break, and finer,
-    a split at a time from the most important down, until the senses shown cover MOST of the sentences, the rest no
-    longer most; when no detail does, the natural break."""
+    """The detail shown at first, of a report's nodes and their sense numbers: down to the elbow, and finer, a split at
+    a time from the most important down, until the senses shown cover MOST of the sentences, the rest no longer most;
+    when no detail does, the elbow."""
     relative = sorted((n["split"]["relative"] for n in nodes if n["children"]), reverse=True)
-    k = natural_break(relative)
+    k = elbow(relative)
     if not k:
         return 1.0
     for detail in relative[k - 1 :]:

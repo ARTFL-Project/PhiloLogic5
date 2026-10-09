@@ -159,15 +159,13 @@ class TestSenses:
 
 @pytest.mark.unit
 class TestBreak:
-    def test_the_largest_drop_after_the_main_distinction_decides_what_is_shown_at_first(self):
-        révolution = [1.0, 0.75, 0.43, 0.32, 0.25, 0.23, 0.22, 0.16, 0.14, 0.13, 0.11]
-        assert ws.natural_break(révolution) == 2  # 75% to 43%
-        assert ws.natural_break([1.0, 0.45, 0.4, 0.2, 0.19, 0.17]) == 3  # not the halving from 100% to 45%
-        assert ws.natural_break([1.0, 0.3]) == 2 and ws.natural_break([1.0]) == 1
+    def test_the_elbow_of_the_importances_decides_what_is_shown_at_first(self):
+        assert ws.elbow([1.0, 0.5, 0.3, 0.25, 0.22, 0.2]) == 3  # a curve that flattens: where it bends most
+        assert ws.elbow([1.0, 0.95, 0.9, 0.2]) == 3  # a curve that falls late: before the fall
+        assert ws.elbow([0.3, 1.0, 0.5]) == 2  # in order of importance, whatever the order given
 
-    def test_distinctions_all_alike_are_all_shown(self):
-        assert ws.natural_break([1.0, 0.9, 0.85]) == 3  # the drop is to the floor of the search
-        assert ws.natural_break([]) == 0
+    def test_one_or_two_distinctions_are_all_shown(self):
+        assert ws.elbow([1.0, 0.3]) == 2 and ws.elbow([1.0]) == 1 and ws.elbow([]) == 0
 
 
 def report_node(id, parent, children, share, own=True, relative=None):
@@ -239,8 +237,8 @@ class TestNumbers:
 
     @staticmethod
     def peeled(shares):
-        """A tree whose rest gives a sense at each split, of importances 1, 0.6, 0.25 and 0.22: the break is at the
-        second, after the drop from 0.6 to 0.25."""
+        """A tree whose rest gives a sense at each split, of importances 1, 0.6, 0.25 and 0.22: the elbow is at the
+        third."""
         a, b, c, d = shares
         return [
             report_node(0, None, [1, 2], 1.0, relative=1.0),
@@ -255,15 +253,15 @@ class TestNumbers:
         ]
 
     def test_at_first_finer_than_the_break_until_the_senses_cover_most_sentences(self):
-        nodes = self.peeled((0.3, 0.1, 0.2, 0.1))
-        assert ws.natural_break([1.0, 0.6, 0.25, 0.22]) == 2
+        nodes = self.peeled((0.2, 0.1, 0.1, 0.2))
+        assert ws.elbow([1.0, 0.6, 0.25, 0.22]) == 3
         number, _ = ws.sense_numbers(nodes)
-        assert ws.default_detail(nodes, number) == 0.25  # 1 and 2 cover 40%, with 3, 60%
+        assert ws.default_detail(nodes, number) == 0.22  # 1 to 3 cover 40%, with 4, 60%
 
     def test_at_first_the_break_when_no_detail_covers_most_sentences(self):
         nodes = self.peeled((0.2, 0.1, 0.1, 0.05))
         number, _ = ws.sense_numbers(nodes)
-        assert ws.default_detail(nodes, number) == 0.6
+        assert ws.default_detail(nodes, number) == 0.25
 
 
 @pytest.mark.unit
