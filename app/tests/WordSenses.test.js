@@ -152,8 +152,8 @@ describe("WordSenses", () => {
         };
         const { wrapper } = await loaded(withRest);
         expect(cards(wrapper)).toEqual(["sense-card-2"]);
-        expect(wrapper.find("#sense-rest-1").text()).toContain("The rest of the sentences (60%), in no sense");
-        expect(wrapper.text()).toContain("1 sense in 100 sentences from 12 works · 60% of them in no sense");
+        expect(wrapper.find("#sense-rest-1").text()).toContain("The rest of the sentences (60%): no clear sense emerges in them");
+        expect(wrapper.text()).toContain("1 sense in 100 sentences from 12 works · 60% of them in no clear sense");
         expect(wrapper.find(".split-row").text()).toContain("Senses 1, the rest (100% of the sentences)");
         expect(wrapper.findAll(".legend-chip").map((c) => c.text())).toEqual(["Sense 1: ciel"]);
         const fills = wrapper.findAll("svg.overview-chart path").map((p) => p.attributes("fill"));

@@ -98,6 +98,7 @@ class TestWordSenses:
         from philologic.runtime.reports.word_senses import MOST, leaves_at
 
         report = call(shakespeare_db, get_word_senses, q='"my lord"')
+        common = {w.removeprefix("lemma:") for w in report["filter_list"]}
         nodes = report["nodes"]
         levels = sorted({n["split"]["relative"] for n in nodes if n["children"]}, reverse=True)
         before = set()
@@ -107,9 +108,9 @@ class TestWordSenses:
             assert len(numbers) == len(set(numbers)) and before <= set(numbers)
             top = sorted(int(x.split(".")[0]) for x in numbers if "." not in x)
             assert top == list(range(1, len(top) + 1))
-            for n in leaves:  # the rest of the sentences has nothing of its own to show
+            for n in leaves:  # the rest of the sentences has nothing of its own to show but the filter's words
                 if n["sense"] is None:
-                    assert not (n["words"] or n["before"] or n["after"] or n["hidden"])
+                    assert not n["words"] and {w["word"] for w in n["before"] + n["after"]} <= common
             before = set(numbers)
         covered = sum(n["share"] for n in leaves_at(nodes, report["detail"]) if n["sense"] is not None)
         assert covered > MOST or report["detail"] == levels[0]

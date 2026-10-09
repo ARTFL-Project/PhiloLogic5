@@ -74,7 +74,7 @@ _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the sea
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
-_CACHE_TAG = b"senses17\0"  # bump when the result changes
+_CACHE_TAG = b"senses18\0"  # bump when the result changes
 
 
 class Dist:
@@ -1432,10 +1432,12 @@ def _has_own(node):
     return bool(node["words"] or node["before"] or node["after"] or node["hidden"])
 
 
-def sense_numbers(nodes):
+def sense_numbers(nodes, marked=_has_own):
     """The number of each sense of a report's nodes (as their ids), None for the rest of the sentences, which no sense
-    takes; and the node each number starts at. Each split carves one of its halves out of the other, which goes on as
-    their parent: the half with nothing of its own to show, if only one has, else the larger. The carved half takes
+    takes; and the node each number starts at. marked tells whether a node has something of its own to show (the
+    report: a word outside the collocation filter, which alone makes no sense). Each split carves one of its halves out
+    of the other, which goes on as their parent: the half with nothing of its own to show, if only one has, else the
+    larger. The carved half takes
     the next number: at the top (1, 2, …) out of the rest, else its parent's followed by the next of its own (2.1,
     2.2, …). Out of the rest, a half with something to show is a sense either way, and one with nothing stays the rest.
     The splits give their numbers as the detail reveals them, from the most important down (those they are within
@@ -1455,11 +1457,11 @@ def sense_numbers(nodes):
         for parent in reversed(chain):
             done.add(parent["id"])
             halves = [nodes[c] for c in parent["children"]]  # the larger first
-            bare = [h for h in halves if not _has_own(h)]
+            bare = [h for h in halves if not marked(h)]
             going_on = bare[0] if len(bare) == 1 else halves[0]
             mine = number[parent["id"]]
             for half in halves:
-                if (half is going_on) if mine is not None else not _has_own(half):
+                if (half is going_on) if mine is not None else not marked(half):
                     number[half["id"]] = mine
                     continue
                 counts[mine] = counts.get(mine, 0) + 1
@@ -2186,6 +2188,17 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
             "rarer": rarer,
         }
 
+    # Something of its own to show, for a sense: a word markedly more frequent in it, in any group, outside the
+    # collocation filter (whose words, mostly function words, tell the style of works more than a sense: alone, they
+    # make none)
+    marked = {
+        node.id: any(
+            not unshown[int(names[ci][i])]
+            for ci in range(len(channels))
+            for i, *_ in describe(node.counts[ci], node.dists[ci], node.parent_dists[ci].p, corpus_p[ci])
+        )
+        for node in nodes
+    }
     out = []
     for node in nodes:
         split = None
@@ -2228,7 +2241,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
 
     # The senses' numbers; a sense that goes on as its parent is told from the sense its number started in (the
     # rest of a sense, after one is carved out of it, has the words of that sense, not those of none)
-    number, start = sense_numbers(out)
+    number, start = sense_numbers(out, lambda item: marked[item["id"]])
     rank = {n: k + 1 for k, n in enumerate(sorted(start, key=lambda n: [int(x) for x in n.split(".")]))}
     for node in nodes:
         sense = number[node.id]

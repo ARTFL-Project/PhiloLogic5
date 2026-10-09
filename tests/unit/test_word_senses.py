@@ -212,6 +212,16 @@ class TestNumbers:
         assert number == {0: None, 1: "1", 2: "2", 3: "1", 4: "1.1", 5: "2", 6: "2.1"}
         assert start == {"1": 1, "2": 2, "1.1": 4, "2.1": 6}
 
+    def test_a_half_marked_by_common_words_alone_is_the_rest(self):
+        nodes = [
+            report_node(0, None, [1, 2], 1.0, relative=1.0),
+            report_node(1, 0, [], 0.6),
+            report_node(2, 0, [], 0.4),
+        ]
+        nodes[1]["words"], nodes[1]["before"] = [], [{"word": "mon"}]
+        number, _ = ws.sense_numbers(nodes, marked=lambda n: any(w["word"] != "mon" for w in n["words"] + n["before"]))
+        assert number == {0: None, 1: None, 2: "1"}
+
     def test_numbers_follow_the_detail_the_splits_within_first(self):
         # The split of 3 is more important than that of 1, which it is within: showing it shows 1's first
         nodes = [

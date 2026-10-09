@@ -964,6 +964,16 @@ natural break.
 - *my lord*: 2 senses covering 30% become 8 covering just over half.
 - The other 8 reference queries are unchanged: their first views already cover every sentence.
 
+**The filter's words alone make no sense (cache tag `senses18`).** On *volonté*/Rousseau, sense 1 (66%) was the rest
+of the split that found the general will, marked only by *ma volonté*, *sa volonté* (1.8 and 1.6 times as frequent).
+These are filter words, shown next to the query since §14. A half now needs a word outside the filter markedly more
+frequent in it, in any group, to be a sense (`marked`). With no filter, nothing changes.
+- On 12 reports, 3 change: *volonté* (66% *ma/sa volonté*), *nature* in Rousseau's complete works (34% *la nature*)
+  and *esprit*/Rousseau (30% *bel esprit*, *Saint-Esprit*) go from a sense to the rest.
+- *volonté*/Rousseau now reads: 1, the general will (34%: particulier, souverain, gouvernement, *volonté générale*);
+  2, *ma/sa volonté*, the will that moves the body (21%: *mouvoir*); the rest 44%.
+- The rest reads "no clear sense emerges in them": the user wants it said plainly when only one sense emerges.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter
