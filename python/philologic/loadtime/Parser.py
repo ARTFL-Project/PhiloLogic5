@@ -1184,6 +1184,9 @@ class XMLParser:
                         if self.lowercase_index is True:
                             word = word.lower()
 
+                        # The long s is an s, as its entity &s; already is
+                        word = word.replace("ſ", "s")
+
                         # Check to see if the word is longer than we want.  More than 235
                         # characters appear to cause problems in the indexer.
                         if len(word_in_utf8) > self.long_word_limit:

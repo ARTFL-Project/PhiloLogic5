@@ -120,6 +120,8 @@ class PlainTextParser:
                     # Switch everything to lower case
                     word = word.lower()
                     last_word = word
+                    # The long s is an s, as the XML parser has it
+                    word = word.replace("ſ", "s")
                     # Check to see if the word is longer than we want. More than 235 characters appear to cause problems in the indexer.
                     if len(word_in_utf8) > 200:
                         print(f"Long word in {input_file.name}: {word}", file=sys.stderr)

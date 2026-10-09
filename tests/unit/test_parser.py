@@ -18,6 +18,7 @@ from philologic.loadtime.Parser import (
     DEFAULT_DOC_XPATHS,
     TOKEN_REGEX,
 )
+from philologic.loadtime.PlainTextParser import PlainTextParser
 
 
 @pytest.mark.unit
@@ -203,3 +204,29 @@ class TestDivHead:
     def test_head(self, head, expected):
         """Test that tags break words in heads as in the index, and that heads are kept apart."""
         assert parse_div_head(head) == expected
+
+
+@pytest.mark.unit
+def test_long_s_is_indexed_as_s():
+    """Test that words with a long s are indexed with an s, at the bytes of the long s form."""
+    text = "<TEI><text><body><div><p>Ils ſont Chriſtiens.</p></div></body></text></TEI>\n"
+    output = io.StringIO()
+    parser = XMLParser(output, 1, len(text.encode()), known_metadata={"filename": "t.xml"}, metadata_sql_types={})
+    parser.parse(io.StringIO(text))
+    words = [line.split("\t") for line in output.getvalue().splitlines() if line.startswith("word")]
+    assert [word[1] for word in words] == ["ils", "sont", "christiens"]
+    sont = json.loads(words[1][3])
+    assert text.encode()[sont["start_byte"] : sont["end_byte"]].decode() == "ſont"
+
+
+@pytest.mark.unit
+def test_long_s_is_indexed_as_s_in_plain_text():
+    """Test that the plain text parser indexes words with a long s with an s too, at the bytes of the long s form."""
+    text = "Ils ſont Chriſtiens.\n"
+    output = io.StringIO()
+    parser = PlainTextParser(output, 1, len(text.encode()), known_metadata={"filename": "t.txt"})
+    parser.parse(io.StringIO(text))
+    words = [line.split("\t") for line in output.getvalue().splitlines() if line.startswith("word")]
+    assert [word[1] for word in words] == ["ils", "sont", "christiens"]
+    sont = json.loads(words[1][3])
+    assert text.encode()[sont["start_byte"] : sont["end_byte"]].decode() == "ſont"

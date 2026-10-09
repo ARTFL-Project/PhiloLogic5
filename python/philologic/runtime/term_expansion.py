@@ -39,6 +39,11 @@ def _norm_key(token: str, lowercase: bool = True) -> bytes:
     return _norm(token, lowercase).encode("utf-8")
 
 
+def _with_round_s(word: str) -> list[str]:
+    """word, and if it has a long s, the same word with an s: loads index ſ as s, those made before as it is."""
+    return [word, word.replace("ſ", "s")] if "ſ" in word else [word]
+
+
 def _lmdb_lookup(txn, key: bytes) -> list[str]:
     """Return list of original forms for a normalized key, or []. A term normalized to nothing, as an emoji, is no
     key: LMDB fails on an empty one."""
@@ -338,13 +343,13 @@ def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowerca
                 return _lmdb_expand_term(txn, norm_prefix, pattern_str)
             return _lmdb_lookup(txn, _norm_key(token, lowercase))
         else:
-            return [token]
+            return _with_round_s(token)
     elif kind == "QUOTE":
         inner = quoted_text(token)
         if _is_regex_pattern(inner):  # accent-sensitive, as quoted words: matched against the forms as they are
             norm_prefix, _ = _normalize_pattern(inner, lowercase)
             return _lmdb_expand_term(txn, norm_prefix, form_pattern=inner)
-        return [inner] if inner else []
+        return _with_round_s(inner) if inner else []
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
             prefix_bytes, pattern_str = _forms_pattern(token)
@@ -368,13 +373,13 @@ def _expand_exclude(kind: str, token: str, txn, ascii_conversion: bool, lowercas
                 return set(_lmdb_expand_term(txn, norm_prefix, pattern_str))
             return set(_lmdb_lookup(txn, _norm_key(token, lowercase)))
         else:
-            return {token}
+            return set(_with_round_s(token))
     elif kind == "QUOTE":
         inner = quoted_text(token)
         if _is_regex_pattern(inner):
             norm_prefix, _ = _normalize_pattern(inner, lowercase)
             return set(_lmdb_expand_term(txn, norm_prefix, form_pattern=inner))
-        return {inner}
+        return set(_with_round_s(inner))
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
             prefix_bytes, pattern_str = _forms_pattern(token)
