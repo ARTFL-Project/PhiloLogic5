@@ -21,7 +21,10 @@
                         }) }}
                 </p>
                 <p class="text-muted small mb-2">
-                    {{ $t("wordSenses.rule", { folds: result.folds, word: queryWord, finest: percent(result.finest) }) }}
+                    {{ $t("wordSenses.rule", {
+                        folds: result.folds, word: queryWord, finest: percent(result.finest),
+                        shown: $t(version > 1 ? "wordSenses.ruleShown2" : "wordSenses.ruleShown"),
+                    }) }}
                     <span v-if="result.seconds !== undefined">{{ $t("wordSenses.seconds", { s: result.seconds }) }}</span>
                 </p>
 
@@ -37,17 +40,6 @@
                         <span class="small text-muted" aria-hidden="true">{{ $t("wordSenses.finer") }}</span>
                     </div>
                     <p id="word-senses-detail-text" class="small mb-0" aria-live="polite">{{ detailText }}</p>
-                    <!-- Senses 2: only the senses this view needs were tried; the others on request -->
-                    <div v-if="result.complete === false" class="d-flex align-items-center flex-wrap gap-2 mt-2">
-                        <button id="word-senses-finer" type="button" class="btn btn-sm btn-outline-secondary"
-                            :disabled="loadingFiner" @click="fetchFiner">
-                            <span v-if="loadingFiner" class="spinner-border spinner-border-sm me-1" role="status"
-                                aria-hidden="true"></span>
-                            {{ $t("wordSenses.finerDistinctions") }}
-                        </button>
-                        <span class="small text-muted">{{ failedFiner ? $t("wordSenses.finerFailed")
-                            : $t("wordSenses.finerExplained") }}</span>
-                    </div>
                 </div>
 
                 <template v-if="time && shown.length > 1">
@@ -204,8 +196,6 @@ const { t } = useI18n();
 
 const loading = ref(false);
 const failed = ref(false);
-const loadingFiner = ref(false);
-const failedFiner = ref(false);
 const result = ref(null);
 const view = ref("share"); // "share" of the year's sentences, or uses per million words ("rate")
 const hoverIndex = ref(null); // the year (from time.start) the pointer is on, in every chart at once
@@ -242,7 +232,6 @@ function runDetection() {
     const myToken = ++fetchToken;
     loading.value = true;
     failed.value = false;
-    failedFiner.value = false;
     result.value = null;
     view.value = "share";
     $http
@@ -261,28 +250,6 @@ function runDetection() {
         })
         .finally(() => {
             if (myToken === fetchToken) loading.value = false;
-        });
-}
-
-// Senses 2: the whole tree, the senses its first view left tried too (the first view stays shown meanwhile)
-function fetchFiner() {
-    const myToken = ++fetchToken;
-    loadingFiner.value = true;
-    failedFiner.value = false;
-    $http
-        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: requestParams({ senses_finer: 1 }) })
-        .then((response) => {
-            if (myToken !== fetchToken) return;
-            result.value = response.data;
-            showDefaultDetail();
-        })
-        .catch((error) => {
-            if (myToken !== fetchToken) return;
-            failedFiner.value = true;
-            debug({ $options: { name: "word-senses" } }, error);
-        })
-        .finally(() => {
-            if (myToken === fetchToken) loadingFiner.value = false;
         });
 }
 
@@ -378,7 +345,6 @@ function notSplitReason(node) {
     }
     if (node.reason === "no_gain" && node.split) return t("wordSenses.notSplitWorse", { z: node.split.z.toFixed(1) });
     if (node.reason === "faint") return t("wordSenses.notSplitFaint", { finest: percent(result.value.finest) });
-    if (node.reason === "unexplored") return t("wordSenses.notSplitUnexplored");
     return t("wordSenses.notSplitInseparable");
 }
 

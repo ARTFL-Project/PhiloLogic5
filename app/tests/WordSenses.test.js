@@ -200,32 +200,6 @@ describe("WordSenses", () => {
         }
     });
 
-    it("offers finer distinctions when only the first view's senses were tried, and shows the whole tree then", async () => {
-        const first = { ...senses, complete: false };
-        const { wrapper, http } = mountSenses(first, {}, { version: 2 });
-        wrapper.vm.runDetection();
-        await flushPromises();
-        expect(wrapper.find("#word-senses-finer").exists()).toBe(true);
-        http.get.mockImplementationOnce(() => Promise.resolve({ data: { ...senses, complete: true } }));
-        await wrapper.find("#word-senses-finer").trigger("click");
-        await flushPromises();
-        const call = http.get.mock.calls.at(-1);
-        expect(call[1].params.senses_finer).toBe(1);
-        expect(call[1].params.senses_version).toBe(2);
-        expect(wrapper.find("#word-senses-finer").exists()).toBe(false);
-        expect(wrapper.findAll(".sense-card").length).toBeGreaterThan(0);
-    });
-
-    it("says a sense not tried yet may split at finer detail", async () => {
-        const untried = JSON.parse(JSON.stringify(senses));
-        const leaf = untried.nodes.find((n) => !n.children.length && n.reason === "no_gain");
-        leaf.reason = "unexplored";
-        leaf.split = null;
-        const { wrapper } = await loaded({ ...untried, complete: false });
-        await wrapper.find("#word-senses-detail").setValue("99"); // the finest detail: every sense tried or not
-        expect(wrapper.text()).toContain("Not tried yet");
-    });
-
     it("passes up the words the collocation filter left out", async () => {
         const { wrapper } = await loaded();
         expect(wrapper.emitted("filterList")[0][0]).toEqual(["de", "la"]);

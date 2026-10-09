@@ -67,41 +67,6 @@ class TestSenses:
         assert any(d and d <= set(SENSES["b"]) for d in described)
         assert root.test["z"] > ws.EVIDENCE
 
-    def test_senses_2_first_view_then_the_rest_is_the_whole_tree(self, tmp_path, monkeypatch):
-        specs = [(work, "abc"[i % 3] if i % 4 else None) for work in range(16) for i in range(40)]
-        channels, works = sentences(specs, seed=6)
-
-        def tree(root):
-            nodes = [root]
-            for node in nodes:
-                nodes.extend(node.children)
-            return [(node.units.tolist(), node.reason, node.test) for node in nodes]
-
-        whole = tree(ws.induce_senses(channels, works, version=2))
-        first = ws.induce_senses(channels, works, version=2, first_view=True)
-        assert all(node.reason == "unexplored" for node in first.unexplored)
-        # kept and taken up again, as between the requests
-        sentences_kept = {
-            "first_hit": np.arange(len(works)),
-            "docs": works,
-            "divisions": np.zeros((len(works), 3), dtype=np.int64),
-            "filtered": np.zeros(0, dtype=np.int64),
-            "n_hits": len(works),
-            "n_units": len(works),
-            "duplicates": 0,
-            "data_path": str(tmp_path),
-            "count_lemmas": False,
-            "channels": [(c[0], np.arange(c[0].shape[1])) for c in channels],
-        }
-        names = [np.arange(c[0].shape[1]) for c in channels]
-        ws._save_state(str(tmp_path / "state"), sentences_kept, channels, names, first)
-        monkeypatch.setattr(ws, "_vocabulary", lambda data_path, count_lemmas: (b"", np.zeros(1, dtype=np.int64)))
-        _, kept_channels, _, root = ws._load_state(str(tmp_path / "state"))
-        assert len(root.unexplored) == len(first.unexplored)
-        ws.induce_senses(kept_channels, works, version=2, root=root)
-        assert not root.unexplored
-        assert tree(root) == whole
-
     def test_the_same_senses_on_one_thread_or_more(self, monkeypatch):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
         channels, works = sentences(specs, seed=3)
@@ -201,6 +166,22 @@ class TestBreak:
     def test_distinctions_all_alike_are_all_shown(self):
         assert ws.natural_break([1.0, 0.9, 0.85]) == 3  # the drop is to the floor of the search
         assert ws.natural_break([]) == 0
+
+
+@pytest.mark.unit
+class TestFirstBump:
+    def test_stops_before_the_first_distinction_followed_by_a_larger_drop(self):
+        # lemma:sentiment in Frantext: drops x2.26, x1.33, x1.46: the third distinction is followed by the larger drop
+        importance = [8.49, 3.75, 2.82, 1.93, 1.78, 1.56, 1.07, 0.96]
+        assert ws.first_bump([v / importance[0] for v in importance]) == 2
+
+    def test_all_shown_when_the_drops_only_shrink(self):
+        assert ws.first_bump([1.0, 0.4, 0.2, 0.12]) == 4  # x2.5, x2, x1.67, then x1.2 to the floor
+        assert ws.first_bump([1.0, 0.5, 0.3, 0.2]) == 3  # x2, x1.67, x1.5, then x2 to the floor: not the last
+
+    def test_the_main_distinction_alone_when_the_next_drop_grows_at_once(self):
+        assert ws.first_bump([1.0, 0.8, 0.3]) == 1
+        assert ws.first_bump([1.0]) == 1 and ws.first_bump([]) == 0
 
 
 @pytest.mark.unit

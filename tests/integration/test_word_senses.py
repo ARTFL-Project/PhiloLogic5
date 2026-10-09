@@ -71,20 +71,6 @@ class TestWordSenses:
         assert any({"pipe", "candle", "match"} & w for w in words)
         assert report != call(eltec_db, get_word_senses, q="lemma:light")  # its own, not the first's from the cache
 
-    def test_senses_2_first_view_then_finer_distinctions(self, eltec_db):
-        first = call(eltec_db, get_word_senses, q="lemma:light", senses_version="2")
-        whole = call(eltec_db, get_word_senses, q="lemma:light", senses_version="2", senses_finer="1")
-        assert whole["complete"] is True
-        if first["complete"] is False:
-            assert any(node["reason"] == "unexplored" for node in first["nodes"])
-            assert len(whole["nodes"]) > len(first["nodes"])
-
-        def senses(report):
-            return [(node["share"], [w["word"] for w in node["words"][:5]]) for node in shown(report)]
-
-        assert senses(first) == senses(whole)  # the same view at first
-        assert first["detail"] == whole["detail"]
-
     def test_the_report_holds_together(self, eltec_db):
         report = call(eltec_db, get_word_senses, q="lemma:light")
         orjson.dumps(report)  # what the web server sends

@@ -27,8 +27,8 @@ one another.
 
 Each split has its importance: how much it improves the prediction of the words around the query, per use of the
 word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the largest
-drop in importance from one distinction to the next (natural_break),
-down to FINEST, under which none are looked for.
+drop in importance from one distinction to the next (natural_break; Senses 2: down to the first whose drop to the next
+is larger than the drop to it, first_bump), down to FINEST, under which none are looked for.
 
 Over time, the sentences of each year are shared out among the senses by their probabilities. The share of each sense
 and its uses per million words are smoothed by a Whittaker-Henderson smoother whose smoothness generalized
@@ -73,7 +73,7 @@ _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized 
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _CACHE_TAG = b"senses12\0"  # bump when the result changes
-_CACHE_TAG_2 = b"senses2-1\0"  # the same, for Senses 2
+_CACHE_TAG_2 = b"senses2-4\0"  # the same, for Senses 2
 
 
 class Dist:
@@ -1326,7 +1326,7 @@ def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map):
     return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
 
 
-def induce_senses(channels, groups, finest=FINEST, version=1, first_view=False, root=None):
+def induce_senses(channels, groups, finest=FINEST, version=1):
     """Grow the tree of senses of the sentences: channels are (X, corpus probabilities, corpus rest[, weights]) for each
     group of words, X a sentences x words matrix of counts, weights how much each word's evidence counts; groups is
     the work of each sentence. Returns the root Node; split senses have children, the others are the senses found.
@@ -1352,10 +1352,7 @@ def induce_senses(channels, groups, finest=FINEST, version=1, first_view=False, 
             dist.discount = d
         return dists
 
-    rest_of = root  # a tree whose first view is grown, to grow the rest of
-    if root is None:
-        root = Node(np.arange(n), root_fit(counts), counts, corpus)
-        root.unexplored = []
+    root = Node(np.arange(n), root_fit(counts), counts, corpus)
 
     floor = {"importance": 0.0}
 
@@ -1390,43 +1387,6 @@ def induce_senses(channels, groups, finest=FINEST, version=1, first_view=False, 
     # GIL. As many threads work as numba may use (NUMBA_NUM_THREADS, which the web server caps for each of its workers,
     # as for the rest of the app): those that grow the senses only hand their work to them.
     workers = numba.config.NUMBA_NUM_THREADS
-    if first_view:  # the senses largest first, in turn, while one could still change the first view
-        with ThreadPoolExecutor(max_workers=workers) if workers > 1 else _Inline() as fits:
-            grow(root, fits.map)
-            if not root.children:
-                return root
-            floor["importance"] = finest * root.test["importance"]
-            found, frontier = [root], list(root.children)
-            most = root.test["bits_per_sentence"]
-            while frontier:
-                frontier.sort(key=lambda nd: -len(nd.units))
-                if _MARGIN * len(frontier[0].units) / n * most < _first_view_cut(found, finest):
-                    break
-                node = grow(frontier.pop(0), fits.map)
-                if node.children:
-                    found.append(node)
-                    most = max(most, node.test["bits_per_sentence"])
-                    frontier.extend(node.children)
-        for node in frontier:
-            node.reason = "unexplored"
-        root.unexplored = frontier
-        return root
-    if rest_of is not None:  # the senses the first view left, and those they split into
-        floor["importance"] = finest * root.test["importance"]
-        pending, root.unexplored = root.unexplored, []
-        for node in pending:
-            node.reason = None
-        if workers < 2:
-            while pending:
-                pending.extend(grow(pending.pop(0), map).children)
-            return root
-        with ThreadPoolExecutor(max_workers=workers) as fits, ThreadPoolExecutor(max_workers=workers) as senses:
-            futures = {senses.submit(grow, node, fits.map) for node in pending}
-            while futures:
-                done, futures = wait(futures, return_when=FIRST_COMPLETED)
-                for future in done:
-                    futures |= {senses.submit(grow, child, fits.map) for child in future.result().children}
-        return root
     if workers < 2:
         grow_with(map)
         return root
@@ -1435,32 +1395,22 @@ def induce_senses(channels, groups, finest=FINEST, version=1, first_view=False, 
     return root
 
 
-# Senses 2's first view: the senses are tried largest first, and the rest left for when finer distinctions are asked
-# for, once none left could change the first view. That view is the splits down to the largest drop in importance
-# (natural_break): a split found later changes it only if it is at least as important as the one just below the drop
-# (any other, in a smaller drop, makes no drop larger). A sense not tried is taken to gain at most _MARGIN times the
-# most a split found so far did, per sentence: the least margin under which the first view was the whole tree's in all
-# 35 trees it was checked on (reference queries, pseudowords, eebo_ecco_combo).
-_MARGIN = 1.5
-
-
-def _first_view_cut(found, finest):
-    """The importance a split found later must reach to change the first view of the splits found."""
-    importance = sorted((nd.test["importance"] for nd in found), reverse=True)
-    k = natural_break([v / importance[0] for v in importance], finest)
-    return (importance + [finest * importance[0]])[k]
-
-
-class _Inline:
-    """A pool of no threads: its map is map."""
-
-    map = staticmethod(map)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        return False
+def first_bump(relative, finest=FINEST):
+    """Senses 2's first view: how many distinctions to show, of their importances relative to the main one, the most
+    important first: down to the first whose drop to the next (a ratio) is larger than the drop to it, not that one;
+    all of them when the drops only shrink, the floor of the search counting as the next after the last. The
+    importance of a distinction mostly follows the size of the sense it splits (its gain per sentence varies little),
+    so the drop after the main distinction, which splits every sentence, is mostly the halving of its sense: the
+    largest drop of all (natural_break) stopped there for most words."""
+    values = sorted(relative, reverse=True)
+    if not values:
+        return 0
+    values.append(finest)
+    drops = [values[i] / values[i + 1] for i in range(len(values) - 1)]
+    for i in range(1, len(drops)):
+        if drops[i] > drops[i - 1]:
+            return i
+    return len(drops)
 
 
 def natural_break(relative, finest=FINEST):
@@ -2017,151 +1967,6 @@ def query_sentences(
 # ----------------------------- The report ------------------------------
 
 
-# The tree of a first view and its sentences, kept for the rest (Senses 2): arrays in an .npz (no pickle: nothing in
-# the hitlist directory is run), the rest in a .json written last, so that a state is there whole or not at all.
-_SENTENCE_ARRAYS = ("first_hit", "docs", "divisions", "filtered")
-_SENTENCE_VALUES = ("n_hits", "n_units", "duplicates", "data_path", "count_lemmas")
-
-
-def _save_state(prefix, sentences, channels, names, root):
-    arrays = {name: np.asarray(sentences[name]) for name in _SENTENCE_ARRAYS}
-    meta = {name: sentences[name] for name in _SENTENCE_VALUES}
-    meta["n_hits"], meta["n_units"], meta["duplicates"] = (
-        int(sentences[k]) for k in ("n_hits", "n_units", "duplicates")
-    )
-    meta["channels"] = []
-    for c, (X, p, rest, *weights) in enumerate(channels):
-        X = csr_matrix(X)
-        data = X.data
-        if len(data) and np.all(data == np.rint(data)) and data.min() >= 0 and data.max() < 256:
-            data = data.astype(np.uint8)  # counts: whole numbers, the same again as floats
-        arrays.update({f"x{c}_indptr": X.indptr, f"x{c}_indices": X.indices, f"x{c}_data": data})
-        arrays.update({f"x{c}_ids": names[c], f"x{c}_p": p})
-        if weights and weights[0] is not None:
-            arrays[f"x{c}_weights"] = weights[0]
-        meta["channels"].append({"shape": list(X.shape), "rest": float(rest)})
-    dists, shared, nodes = {}, {}, []
-
-    def array(a):  # an array the dists share (markers, weights): kept once
-        if a is None:
-            return None
-        if id(a) not in shared:
-            shared[id(a)] = len(shared)
-            arrays[f"s{shared[id(a)]}"] = a
-        return shared[id(a)]
-
-    def dist(d):
-        if id(d) not in dists:
-            dists[id(d)] = i = len(dists)
-            arrays[f"d{i}"] = d.p
-            meta.setdefault("dists", []).append(
-                {
-                    "rest": float(d.rest),
-                    "discount": float(d.discount),
-                    "markers": array(d.markers),
-                    "weights": array(d.weights),
-                }
-            )
-        return dists[id(d)]
-
-    def walk(node):
-        j = len(nodes)
-        nodes.append(None)
-        arrays[f"u{j}"] = node.units.astype(np.int32)  # (the sentences of a query are fewer than 2**31)
-        for c, counts in enumerate(node.counts):
-            arrays[f"n{j}_{c}"] = counts
-        entry = {
-            "dists": [dist(d) for d in node.dists],
-            "parent_dists": [dist(d) for d in node.parent_dists],
-            "k": node.k,
-            "test": node.test,
-            "reason": node.reason,
-            "pi": None if node.model is None else [float(v) for v in node.model[0]],
-            "children": [walk(child) for child in node.children],
-        }
-        nodes[j] = entry
-        node._saved = j
-        return j
-
-    walk(root)
-    meta["nodes"] = nodes
-    meta["unexplored"] = [node._saved for node in root.unexplored]
-    try:
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(prefix), suffix=".npz.tmp")
-        with os.fdopen(fd, "wb") as f:
-            np.savez(f, **arrays)
-        os.replace(tmp, prefix + ".npz")
-        fd, tmp = tempfile.mkstemp(dir=os.path.dirname(prefix), suffix=".json.tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(meta, f, default=_json_default)
-        os.replace(tmp, prefix + ".json")
-    except OSError:  # a state that can't be written: the rest will be grown from the start
-        for path in (tmp, prefix + ".json"):
-            if os.path.exists(path):
-                os.unlink(path)
-
-
-def _json_default(value):
-    if isinstance(value, np.generic):
-        return value.item()
-    if isinstance(value, tuple):
-        return list(value)
-    raise TypeError(type(value))
-
-
-def _load_state(prefix):
-    """(sentences, channels, names, root) as _save_state kept them, or None."""
-    try:
-        with open(prefix + ".json", encoding="utf-8") as f:
-            meta = json.load(f)
-        arrays = np.load(prefix + ".npz", allow_pickle=False)
-        arrays = {name: arrays[name] for name in arrays.files}
-    except (OSError, ValueError, KeyError):
-        return None
-    sentences = {name: arrays[name] for name in _SENTENCE_ARRAYS}
-    sentences.update({name: meta[name] for name in _SENTENCE_VALUES})
-    sentences["v_blob"], sentences["v_offsets"] = _vocabulary(sentences["data_path"], sentences["count_lemmas"])
-    channels, names = [], []
-    for c, info in enumerate(meta["channels"]):
-        data = arrays[f"x{c}_data"].astype(np.float64)
-        X = csr_matrix((data, arrays[f"x{c}_indices"], arrays[f"x{c}_indptr"]), shape=info["shape"])
-        names.append(arrays[f"x{c}_ids"])
-        channels.append((X, arrays[f"x{c}_p"], info["rest"], arrays.get(f"x{c}_weights")))
-    sentences["channels"] = [(X, ids) for (X, *_), ids in zip(channels, names)]
-    dists = [
-        Dist(
-            arrays[f"d{i}"],
-            d["rest"],
-            None if d["markers"] is None else arrays[f"s{d['markers']}"],
-            None if d["weights"] is None else arrays[f"s{d['weights']}"],
-            d["discount"],
-        )
-        for i, d in enumerate(meta["dists"])
-    ]
-    nodes = []
-    for j, entry in enumerate(meta["nodes"]):
-        counts = [arrays[f"n{j}_{c}"] for c in range(len(channels))]
-        node = Node(
-            arrays[f"u{j}"].astype(np.int64),
-            [dists[i] for i in entry["dists"]],
-            counts,
-            [dists[i] for i in entry["parent_dists"]],
-        )
-        node.k, node.reason = entry["k"], entry["reason"]
-        node.test = entry["test"]
-        if node.test is not None and node.test.get("seed") is not None:
-            node.test["seed"] = tuple(node.test["seed"])
-        nodes.append(node)
-    for node, entry in zip(nodes, meta["nodes"]):
-        node.children = [nodes[j] for j in entry["children"]]
-        if entry["pi"] is not None:
-            by_k = sorted(node.children, key=lambda child: child.k)
-            node.model = (np.array(entry["pi"]), [[by_k[0].dists[c], by_k[1].dists[c]] for c in range(len(channels))])
-    root = nodes[0]
-    root.unexplored = [nodes[j] for j in meta["unexplored"]]
-    return sentences, channels, names, root
-
-
 def _cache_path(db, *parts, tag=_CACHE_TAG):
     h = hashlib.sha1(tag)
     for part in parts:
@@ -2181,12 +1986,10 @@ def word_senses(
     year_field=None,
     filter_words=None,
     version=1,
-    finer=False,
 ):
     """The senses of the query and their course over time, as JSON-ready data (cached in the hitlist directory). The
     words of filter_words (the collocation report's filter) are not shown; the analysis reads them, as every word.
-    version 2: Senses 2 (fit_split_screened), its first view only ("complete" false when senses are left untried),
-    or with finer, the whole tree (from the first view's, kept for it, when it still is)."""
+    version 2: Senses 2 (fit_split_screened, first_bump)."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
     path = _cache_path(
@@ -2201,9 +2004,6 @@ def word_senses(
         filter_words,
         tag=_CACHE_TAG if version == 1 else _CACHE_TAG_2,
     )
-    state = path[: -len(".senses.json")] + ".senses-state" if version == 2 else None
-    if version == 2 and finer:
-        path = path[: -len(".senses.json")] + ".senses-all.json"
     if os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as f:
@@ -2212,70 +2012,32 @@ def word_senses(
             pass
     began = time.perf_counter()
     result = _word_senses(
-        db,
-        q,
-        count_lemmas,
-        attribute,
-        attribute_value,
-        metadata,
-        distance,
-        year_field,
-        filter_words,
-        version,
-        first_view=version == 2 and not finer,
-        state=state,
+        db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words, version
     )
     result["seconds"] = round(time.perf_counter() - began, 2)
     result["filter_list"] = filter_words
-    paths = [path]
-    if version == 2 and not finer and result.get("complete", True):  # the first view is the whole tree
-        paths.append(path[: -len(".senses.json")] + ".senses-all.json")
-    for target in paths:
-        fd, tmp = tempfile.mkstemp(dir=db.hitlist_dir, suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(result, f)
-            os.replace(tmp, target)
-        except OSError:  # a cache that can't be written is no cache
-            if os.path.exists(tmp):
-                os.unlink(tmp)
+    fd, tmp = tempfile.mkstemp(dir=db.hitlist_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(result, f)
+        os.replace(tmp, path)
+    except OSError:  # a cache that can't be written is no cache
+        if os.path.exists(tmp):
+            os.unlink(tmp)
     return result
 
 
 def _word_senses(
-    db,
-    q,
-    count_lemmas,
-    attribute,
-    attribute_value,
-    metadata,
-    distance,
-    year_field,
-    filter_words=None,
-    version=1,
-    first_view=False,
-    state=None,
+    db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words=None, version=1
 ):
-    """The report of word_senses. Senses 2 may grow its first view only (first_view), keeping the tree and the
-    sentences in the files state (+ .json, .npz) for the rest; or grow the rest of the tree kept there."""
-    kept = _load_state(state) if state and not first_view else None
-    if kept is not None:
-        sentences, channels, names, root = kept
-        induce_senses(channels, sentences["docs"], version=version, root=root)
-    else:
-        # The analysis reads every word, rare ones weighing more; the filter's words are only not shown: left out of
-        # it, the words that tell a rare sense (dieu for prière) would be too (see the pseudoword test)
-        sentences = query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
-        if sentences is None:
-            return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
-        channels, names = _senses_channels(sentences, count_lemmas)
-        root = induce_senses(channels, sentences["docs"], version=version, first_view=first_view)
-        if root.unexplored and state:
-            _save_state(state, sentences, channels, names, root)
-    result = _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field)
-    if version == 2:
-        result["complete"] = not root.unexplored
-    return result
+    # The analysis reads every word, rare ones weighing more; the filter's words are only not shown: left out of it,
+    # the words that tell a rare sense (dieu for prière) would be too (see the pseudoword test)
+    sentences = query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
+    if sentences is None:
+        return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
+    channels, names = _senses_channels(sentences, count_lemmas)
+    root = induce_senses(channels, sentences["docs"], version=version)
+    return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, version)
 
 
 def _senses_channels(sentences, count_lemmas):
@@ -2297,7 +2059,7 @@ def _senses_channels(sentences, count_lemmas):
     return channels, names
 
 
-def _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field):
+def _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, version=1):
     """The report of the tree of senses root, as JSON-ready data."""
     prefix = "attr_lemma_" if sentences["count_lemmas"] else ""
     unshown = _filter_mask(
@@ -2395,9 +2157,9 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         except Exception:  # no year field the database can read: senses without their course over time
             timeline = None
 
-    # At first, the distinctions down to the largest drop in importance
+    # At first, the distinctions down to the largest drop in importance (Senses 2: down to the first bump)
     relative = sorted((nd["split"]["relative"] for nd in out if nd["children"]), reverse=True)
-    shown = natural_break(relative)
+    shown = (first_bump if version == 2 else natural_break)(relative)
     detail = relative[shown - 1] if shown else 1.0
     return {
         "n_hits": int(sentences["n_hits"]),
