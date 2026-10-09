@@ -115,20 +115,6 @@ class TestWordSenses:
         covered = sum(n["share"] for n in leaves_at(nodes, report["detail"]) if n["sense"] is not None)
         assert covered > MOST or report["detail"] == levels[0]
 
-    def test_the_rest_is_split_as_long_as_a_split_holds(self, shakespeare_db):
-        # Below the finest detail too: what stops the rest of the sentences is the test on unseen works, not the floor
-        report = call(shakespeare_db, get_word_senses, q='"my lord"')
-        nodes = report["nodes"]
-        assert all(n["reason"] != "faint" for n in nodes if n["sense"] is None and not n["children"])
-        faint = [n for n in nodes if n["children"] and n["sense"] is None and n["split"]["relative"] < report["finest"]]
-        assert faint
-        # What they carve out is tentative, the other senses are not; and none is shown at first
-        for n in nodes:
-            parent = None if n["parent"] is None else nodes[n["parent"]]
-            if n["sense"] is not None and (parent is None or parent["sense"] != n["sense"]):
-                assert n["tentative"] == (parent["split"]["relative"] < report["finest"])
-        assert report["detail"] >= report["finest"]
-
     def test_the_query_words_are_never_their_own_context(self, shakespeare_db):
         report = call(shakespeare_db, get_word_senses, q='"my lord"')
         for node in report["nodes"]:

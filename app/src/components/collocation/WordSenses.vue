@@ -11,7 +11,7 @@
                 <p class="mb-1 fw-semibold">
                     {{ shown.length > 1
                         ? $t("wordSenses.summary", {
-                            senses: sensesCount,
+                            senses: sensesText(senses.length),
                             sentences: result.n_sentences.toLocaleString(),
                             works: result.n_works.toLocaleString(),
                         }) + (restShare ? ` · ${$t("wordSenses.inNoSense", { share: percent(restShare) })}` : "")
@@ -83,7 +83,6 @@
 
                 <div v-if="shown.length > 1" class="d-flex flex-wrap gap-1 mt-2">
                     <button v-for="node in senses" :key="`chip-${node.id}`" type="button" class="btn btn-sm legend-chip"
-                        :class="{ 'tentative-chip': node.tentative }"
                         :style="{ borderColor: senseColor(node.rank, 1), color: senseColor(node.rank, 1) }"
                         @click="scrollToSense(node)">
                         <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.rank, 1) }"></span>
@@ -116,14 +115,12 @@
                         {{ $t("wordSenses.rest", { share: percent(row.node.share) }) }} {{ notSplitReason(row.node) }}
                     </p>
                     <section v-else :id="`sense-card-${row.node.id}`" class="card shadow-sm mb-3 sense-card"
-                        :class="{ tentative: row.node.tentative }"
-                        :style="{ borderLeft: `4px ${row.node.tentative ? 'dashed' : 'solid'} ${senseColor(row.node.rank, 1)}` }"
+                        :style="{ borderLeft: `4px solid ${senseColor(row.node.rank, 1)}` }"
                         :aria-labelledby="`sense-title-${row.node.id}`">
                         <div class="sense-header px-3 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h3 class="h6 mb-0" :id="`sense-title-${row.node.id}`">
                                 <span class="legend-swatch" :style="{ backgroundColor: senseColor(row.node.rank, 1) }"></span>
                                 {{ $t("wordSenses.senseN", { n: row.node.sense }) }}
-                                <span v-if="row.node.tentative" class="badge tentative-badge ms-1">{{ $t("wordSenses.tentativeBadge") }}</span>
                                 <span class="fw-normal text-muted">&middot; {{ $t("wordSenses.shareOfSentences",
                                     { share: percent(row.node.share) }) }}
                                     &middot; {{ $t("wordSenses.fromWorks", { n: row.node.works }) }}</span>
@@ -135,7 +132,6 @@
                                 @click="openExamples(row.node)">{{ $t("wordSenses.examples") }} &rarr;</button>
                         </div>
                         <div class="card-body py-2">
-                            <p v-if="row.node.tentative" class="small text-muted mb-1">{{ tentativeText(row.node) }}</p>
                             <WordList :node="row.node" :query-word="queryWord" :against-corpus="false"
                                 :others="othersOf(row.node)" />
                             <template v-if="time">
@@ -299,23 +295,6 @@ function sensesText(n) {
     return n === 1 ? t("wordSenses.oneSense") : t("wordSenses.nSenses", { n });
 }
 
-// How many senses are shown, and how many of them are tentative (the rest's, under the finest detail)
-const sensesCount = computed(() => {
-    const tentative = senses.value.filter((node) => node.tentative).length;
-    const count = sensesText(senses.value.length);
-    return tentative ? `${count} (${t("wordSenses.nTentative", { n: tentative })})` : count;
-});
-
-// Why a sense is tentative: the split of the rest that carved it out, under the finest detail the others reach
-function tentativeText(node) {
-    let start = node;
-    while (start.parent !== null && nodes.value[start.parent].sense === node.sense) start = nodes.value[start.parent];
-    const split = nodes.value[start.parent].split;
-    return t("wordSenses.tentative", {
-        z: split.z.toFixed(1), importance: percent(split.relative), finest: percent(result.value.finest),
-    });
-}
-
 // The tree as rows: a shown split above the senses it splits into, indented by depth
 const rows = computed(() => {
     const out = [];
@@ -333,7 +312,7 @@ const rows = computed(() => {
 
 const detailText = computed(() => {
     if (!position.value) return t("wordSenses.detailNone");
-    const count = sensesCount.value;
+    const count = sensesText(senses.value.length);
     if (position.value === 1) return t("wordSenses.detailMain", { senses: count });
     const faintest = splits.value[position.value - 1];
     return t("wordSenses.detailText", { senses: count, importance: percent(faintest.split.relative) });
@@ -687,18 +666,6 @@ const WordList = defineComponent({
 :deep(.word-group) {
     border-left: 2px solid rgba(theme.$link-color, 0.25);
     padding-left: 0.4rem;
-}
-
-.tentative-badge {
-    background: transparent;
-    border: 1px dashed #6c757d;
-    color: #495057;
-    font-weight: normal;
-}
-
-.tentative-chip {
-    border-style: dashed;
-    font-style: italic;
 }
 
 .rest-row {

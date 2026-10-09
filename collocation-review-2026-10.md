@@ -977,30 +977,16 @@ frequent in it, in any group, to be a sense (`marked`). With no filter, nothing 
   2, *ma/sa volonté*, the will that moves the body (21%: *mouvoir*); the rest 44%.
 - The rest reads "no clear sense emerges in them": the user wants it said plainly when only one sense emerges.
 
-**The rest is split as long as a split holds (cache tag `senses19`).** On *volonté*/Rousseau, nothing more came off
-the rest at finer detail. Its best split held on unseen works (z 5.9) but was 5% as important as the main
-distinction, under the FINEST floor (10%): the general will gains 12 bits per sentence, the rest's split 1.3. Now the
-rest (the root and its halves that no word outside the filter marks, `Node.rest`, `marks`) is exempt from the floor.
-It is split as long as a split passes the test on unseen works; senses carved out of it keep the floor.
-- *volonté*/Rousseau: 3 splits become 9. The first view is the same; at the finest, 9 senses and a 15% rest instead of
-  3 senses and 44%. The new senses are 3–10% as important as the main one: *ta volonté* (11%), négatif/appartenir,
-  crime/expresse, mien/corrompre, autrui/public, acte/puissance.
-- *esprit*/Rousseau: 17 splits become 18; the finest view's rest goes from 17% to 0%. *my lord*: 15 become 17.
-- **Time:** the same on the 12 reference queries (104.3 s in all; *my lord* 0.52 s to 0.60 s) and on large corpora
-  (frantext *volonté*, *esprit*, *âme*, *chose*, *moment*; ELTeC *thing*, *time*; eebo *thing*, 85 s). Large
-  queries leave no rest: both halves of their splits have words of their own. Rests come from thin subsets, which are
-  small and fast.
-- The rest's line also says why it is split no further, as the cards do.
-
-**Tentative senses (cache tag `senses20`).** The senses the rest gave below the floor are less reliable: on
-*volonté*/Rousseau, 5 of the 6 are 2–5% pieces marked by rare words and old spellings, the last near z 2. On
-*esprit*, one rare name (*andiol*) made 13% of the rest a sense. They are kept but no longer shown as the others are:
-- A sense carved out by a split of the rest under FINEST is `tentative`.
-- The page shows it with a dashed, muted card and a "tentative" badge, and says why: it holds on unseen works (its z),
-  but it is only so much as important as the main distinction, under the 10% the other senses reach.
-- The counts say how many are tentative ("9 senses (tentative: 6)").
-- `default_detail` never goes under FINEST, so the first view has none, and they do not count towards MOST.
-- They come up only in thin subsets (439 to 1,622 sentences here). Large queries leave no rest at the finest view.
+**Splitting the rest further: tried and dropped (cache tags `senses19`, `senses20`; now `senses21`).** On
+*volonté*/Rousseau nothing more came off the rest at finer detail: its best split held on unseen works (z 5.9) but was
+5% as important as the main distinction, under the FINEST floor. We tried exempting the rest from the floor (split as
+long as a split holds), at no cost in time (large queries leave no rest; rests come from thin subsets).
+- *volonté* gained 6 senses: *ta volonté* (11%) and five 2–5% pieces marked by rare words and old spellings, the last
+  near z 2. On *esprit*, one rare name made 13% of the rest a sense.
+- Marking them tentative (dashed card, badge, the reason) did not save them: the user found no example where they
+  were useful. Both are gone; the reports are byte-identical to `senses18`'s on the 12 reference queries.
+- Kept: the rest's line says why it is split no further, as the cards do ("its distinctions were less than 10% as
+  important as the main one").
 
 ## What's solid
 

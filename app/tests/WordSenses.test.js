@@ -164,32 +164,6 @@ describe("WordSenses", () => {
         expect(fills[1]).toContain("hsla(0, 0%, 62%");
     });
 
-    it("marks the senses carved out of the rest under the finest detail as tentative, and says why", async () => {
-        const withTentative = {
-            ...senses,
-            detail: 1,
-            nodes: [
-                node(0, null, [1, 2], 1, { words: [word("loi")], split: split(1, 3.4) }),
-                node(1, 0, [3, 4], 0.7, { split: split(0.05, 2.9, { word: "ciel", group: 0 }) }),
-                node(2, 0, [], 0.3, { sense: "1", rank: 1, words: [word("droit")], reason: "no_gain" }),
-                node(3, 1, [], 0.6, { split: split(0, 1.2), reason: "no_gain" }),
-                node(4, 1, [], 0.1, { sense: "2", rank: 2, tentative: true, words: [word("ciel")], reason: "inseparable" }),
-            ],
-            time: null,
-        };
-        const { wrapper } = await loaded(withTentative);
-        expect(cards(wrapper)).toEqual(["sense-card-2"]);
-        await wrapper.find("#word-senses-detail").setValue(2);
-        expect(cards(wrapper)).toEqual(["sense-card-2", "sense-card-4"]);
-        const card = wrapper.find("#sense-card-4");
-        expect(card.classes()).toContain("tentative");
-        expect(card.find(".tentative-badge").text()).toBe("tentative");
-        expect(card.text()).toContain("gain 2.9 times its standard error) but is only 5% as important as the main");
-        expect(wrapper.find("#sense-card-2 .tentative-badge").exists()).toBe(false);
-        expect(wrapper.text()).toContain("2 senses (tentative: 1): the distinctions at least 5% as important");
-        expect(wrapper.findAll(".legend-chip.tentative-chip").map((c) => c.text())).toEqual(["Sense 2: ciel"]);
-    });
-
     it("says why a sense was not split further", async () => {
         const { wrapper } = await loaded();
         expect(wrapper.find("#sense-card-1").text()).toContain("best split's gain on unseen works was -0.7 times its standard error");
