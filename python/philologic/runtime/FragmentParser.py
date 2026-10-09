@@ -1,7 +1,6 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 
 
-import regex as re
 from lxml import etree
 from philologic import shlaxtree as st
 
@@ -18,15 +17,26 @@ class FragmentParser:
         self.in_tag = True
         self.stack = []
 
+    def feed(self, kind, content, offset, name, attributes):
+        """Take the events of the ShlaxIngestor"""
+        if kind == "start":
+            # Double-quoted empty values once came up as None: lxml takes an empty string
+            self.start(name, {k: "" if v is None else v for k, v in attributes.items()})
+        elif kind == "end":
+            self.end(name)
+        elif kind == "text":
+            self.data(content)
+
     def start(self, tag, attrib):
         self.stack.append(tag)
-        for k, v in list(attrib.items()):
-            no_ns_k = re.sub(r"^.*?:", "", k)
-            if no_ns_k != k:
-                del attrib[k]
-                attrib[no_ns_k] = v
+        # Without their namespace prefix, up to the first ":", with the values they had before any was renamed
+        for k, v in [(k, v) for k, v in attrib.items() if ":" in k]:
+            del attrib[k]
+            attrib[k[k.index(":") + 1 :]] = v
         # Without its namespace prefix, as attribute names: lxml takes no "jx:cl" for a tag name
-        new_el = etree.SubElement(self.current_el, re.sub(r"^.*?:", "", tag), attrib)
+        if ":" in tag:
+            tag = tag[tag.index(":") + 1 :]
+        new_el = etree.SubElement(self.current_el, tag, attrib)
         new_el.text = ""
         new_el.tail = ""
         self.current_el = new_el
@@ -61,29 +71,6 @@ class FragmentParser:
         return r
 
 
-class LXMLTreeDriver:
-    def __init__(self, target):
-        self.target = target
-
-    def feed(self, *event):
-        (kind, content, offset, name, attributes) = event
-        if kind == "start":
-            uni_attrib = {}
-            for k, v in list(attributes.items()):
-                # hack to handle double quoted empty string values coming up None.  Fixed in rwhaling branch of PhiloLogic5
-                if v is None:
-                    v = ""
-                uni_attrib[k] = v
-            self.target.start(name, uni_attrib)
-        if kind == "end":
-            self.target.end(name)
-        if kind == "text":
-            self.target.data(content)
-
-    def close(self):
-        return self.target.close()
-
-
 class FragmentStripper:
     def __init__(self):
         self.buffer = ""
@@ -100,8 +87,7 @@ class FragmentStripper:
 def parse(text) -> etree.Element:
     try:
         parser = FragmentParser()
-        driver = LXMLTreeDriver(target=parser)
-        feeder = st.ShlaxIngestor(target=driver)
+        feeder = st.ShlaxIngestor(target=parser)
         feeder.feed(text)
         return feeder.close()
     except ValueError:
@@ -117,8 +103,7 @@ def parse(text) -> etree.Element:
             .replace("philohighlight", "philoHighlight")
         )
         parser = FragmentParser()
-        driver = LXMLTreeDriver(target=parser)
-        feeder = st.ShlaxIngestor(target=driver)
+        feeder = st.ShlaxIngestor(target=parser)
         feeder.feed(new_text)
         return feeder.close()
 
