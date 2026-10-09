@@ -129,7 +129,8 @@
                                 @click="openExamples(row.node)">{{ $t("wordSenses.examples") }} &rarr;</button>
                         </div>
                         <div class="card-body py-2">
-                            <WordList :node="row.node" :query-word="queryWord" :against-corpus="false" />
+                            <WordList :node="row.node" :query-word="queryWord" :against-corpus="false"
+                                :others="othersOf(row.node)" />
                             <template v-if="time">
                                 <div class="chart-frame mt-2">
                                     <span class="y-max small text-muted">{{ formatValue(cardMax(row.node)) }}</span>
@@ -319,15 +320,32 @@ function wordText(w, group = w.group) {
     return w.word;
 }
 
-// A sense's label: its strongest marker words, else the words next to the query, else what it lacks
-function label(node) {
+// The words that mark a sense: its strongest marker words, else the words next to the query, else the words the
+// collocation filter hides
+function markers(node) {
     const words = node.words.slice(0, 4).map((w) => w.word);
     if (words.length < 2) {
         words.push(...node.before.slice(0, 1).map((w) => wordText(w, 1)));
         words.push(...node.after.slice(0, 1).map((w) => wordText(w, 2)));
     }
+    if (!words.length) words.push(...(node.hidden || []).slice(0, 3).map((w) => w.word));
+    return words;
+}
+
+// The words that mark the other half of the split a sense came from
+function othersOf(node) {
+    if (node.parent === null) return [];
+    const other = nodes.value[node.parent].children.find((c) => c !== node.id);
+    return other === undefined ? [] : markers(nodes.value[other]).slice(0, 3);
+}
+
+// A sense's label: the words that mark it, else what it lacks, else what was split off from it
+function label(node) {
+    const words = markers(node);
     if (words.length) return words.join(", ");
     if (node.rarer?.length) return t("wordSenses.without", { words: node.rarer.slice(0, 3).map((w) => wordText(w)).join(", ") });
+    const others = othersOf(node);
+    if (others.length) return t("wordSenses.without", { words: others.join(", ") });
     return queryWord.value;
 }
 
@@ -519,7 +537,7 @@ function loadMoreExamples() {
 // ---- A sense's words: its marker words, those markedly more frequent in it than in the sense it was split from ----
 const SHOWN = 12;
 const WordList = defineComponent({
-    props: { node: Object, queryWord: String, againstCorpus: Boolean },
+    props: { node: Object, queryWord: String, againstCorpus: Boolean, others: Array },
     setup(props) {
         const open = ref(false);
         const ratio = (w) => {
@@ -557,8 +575,20 @@ const WordList = defineComponent({
                     }, open.value ? t("wordSenses.fewerWords") : t("wordSenses.moreWords", { n: words.length - SHOWN })));
                 }
                 lines.push(h("div", { class: "mb-1" }, items));
-            } else if (!groups.length) {
-                lines.push(h("div", { class: "small text-muted mb-1" }, t("wordSenses.noWords")));
+            } else if (!groups.length && props.node.hidden?.length) {
+                // Nothing else marks it: the common words the collocation filter hides, greyed
+                lines.push(h("div", { class: "mb-1" }, [
+                    h("span", { class: "small text-muted me-1" }, `${t("wordSenses.hiddenWords")}:`),
+                    ...props.node.hidden.slice(0, SHOWN).map((w) => chip(w, w.word, "hidden-chip")),
+                ]));
+            } else if (!groups.length && !props.node.before.length && !props.node.after.length) {
+                // Nothing marks it: the rest of the sense it was split from, by what it lacks or what was split off
+                const rest = !props.againstCorpus && props.node.rarer?.length;
+                const others = props.againstCorpus ? [] : props.others || [];
+                const text = rest
+                    ? t("wordSenses.noWordsRest")
+                    : others.length ? t("wordSenses.noWordsOthers", { words: others.join(", ") }) : t("wordSenses.noWords");
+                lines.push(h("div", { class: "small text-muted mb-1" }, text));
             }
             const near = [];
             if (props.node.before.length) {
@@ -617,6 +647,11 @@ const WordList = defineComponent({
 :deep(.word-group) {
     border-left: 2px solid rgba(theme.$link-color, 0.25);
     padding-left: 0.4rem;
+}
+
+:deep(.hidden-chip) {
+    opacity: 0.6;
+    border-style: dashed;
 }
 
 :deep(.rarer-chip) {

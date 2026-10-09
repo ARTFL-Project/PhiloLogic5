@@ -162,11 +162,39 @@ describe("WordSenses", () => {
     it("tells what a sense lacks, and names a sense by it when nothing marks it", async () => {
         const { wrapper } = await loaded();
         const card = wrapper.find("#sense-card-6");
+        expect(card.text()).toContain("The rest of the sense it was split from");
+        expect(card.text()).not.toContain("No word is markedly more frequent");
         expect(card.text()).toContain("Rarer here:");
         expect(card.text()).toContain(`ciel ${String.fromCharCode(247)}20`);
         expect(card.text()).toContain(`la raison ${String.fromCharCode(247)}4.0`);
         const chips = wrapper.findAll(".legend-chip").map((c) => c.text());
         expect(chips[2]).toContain("Sense 3: without ciel, la raison");
+    });
+
+    it("shows the common words that alone mark a sense, greyed, and names the sense by them", async () => {
+        const marked = {
+            ...senses,
+            nodes: senses.nodes.map((n) => (n.id === 6 ? { ...n, rarer: [], hidden: [word("de", 4), word("que", 2.5)] } : n)),
+        };
+        const { wrapper } = await loaded(marked);
+        const card = wrapper.find("#sense-card-6");
+        expect(card.text()).toContain("Marked only by common words, which the collocation filter otherwise hides:");
+        expect(card.findAll(".hidden-chip").map((c) => c.text())).toEqual([
+            `de ${String.fromCharCode(215)}4.0`, `que ${String.fromCharCode(215)}2.5`,
+        ]);
+        expect(card.text()).not.toContain("No word is markedly more frequent");
+        const chips = wrapper.findAll(".legend-chip").map((c) => c.text());
+        expect(chips[2]).toContain("Sense 3: de, que");
+    });
+
+    it("tells what was split off from a sense nothing marks, and names the sense by it", async () => {
+        const unmarked = { ...senses, nodes: senses.nodes.map((n) => (n.id === 6 ? { ...n, rarer: [] } : n)) };
+        const { wrapper } = await loaded(unmarked);
+        expect(wrapper.find("#sense-card-6").text()).toContain(
+            "The rest of the sense it was split from, once the sentences marked by mer are split off",
+        );
+        const chips = wrapper.findAll(".legend-chip").map((c) => c.text());
+        expect(chips[2]).toContain("Sense 3: without mer");
     });
 
     it("words next to the query read with the query word", async () => {

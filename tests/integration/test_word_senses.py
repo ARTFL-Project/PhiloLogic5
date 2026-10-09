@@ -100,6 +100,23 @@ class TestWordSenses:
             for group in ("words", "before", "after"):
                 assert not {"my", "lord"} & {w["word"] for w in node[group]}
 
+    def test_the_filter_hides_its_words_among_a_senses_words_but_not_next_to_the_word(self, eltec_db):
+        report = call(eltec_db, get_word_senses, q="lemma:light")
+        common = {w.removeprefix("lemma:") for w in report["filter_list"]}
+        nodes = report["nodes"]
+        assert not any(common & {w["word"] for w in node["words"]} for node in nodes)
+        assert any(common & {w["word"] for w in node["before"] + node["after"]} for node in nodes)
+        for node in nodes:  # the filter's words a sense has, only when nothing else marks it
+            if node["hidden"]:
+                assert not (node["words"] or node["before"] or node["after"])
+                assert {w["word"] for w in node["hidden"]} <= common
+
+    def test_the_filters_words_seed_splits_only_next_to_the_word(self, eltec_db):
+        report = call(eltec_db, get_word_senses, q="lemma:light")
+        common = {w.removeprefix("lemma:") for w in report["filter_list"]}
+        seeds = [node["split"]["seed"] for node in report["nodes"] if node["children"]]
+        assert seeds and not any(s["group"] == 0 and s["word"] in common for s in seeds)
+
     def test_examples_render_as_passages(self, eltec_db):
         report = call(eltec_db, get_word_senses, q="lemma:light")
         examples = shown(report)[0]["examples"][:3]

@@ -17,7 +17,9 @@ sentence is in, each word's evidence weighs by its inverse document frequency, s
 de) count for less than rarer ones.
 
 A split starts from the sentences with one of the query's collocates, the seed: of those whose sentences differ most
-from the others in their other collocates, the most promising are tried, and expectation-maximization moves the
+from the others in their other collocates, the most promising are tried (in the sentence, none of the collocation
+filter's words: common words there tell the register of works, par, leur, mon, more than a sense; next to the query,
+they make its phrases, d'esprit, Saint-Esprit), and expectation-maximization moves the
 sentences to the sense they fit, each with a probability of being in either (first letting every collocate tell the
 senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark either,
 chosen at every step, and held if that choice cycles). A split is kept if, fitted without each of N_FOLDS groups of
@@ -71,7 +73,7 @@ _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the sea
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
-_CACHE_TAG = b"senses13\0"  # bump when the result changes
+_CACHE_TAG = b"senses15\0"  # bump when the result changes
 
 
 class Dist:
@@ -1312,10 +1314,11 @@ def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map):
     return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
 
 
-def induce_senses(channels, groups, finest=FINEST):
+def induce_senses(channels, groups, finest=FINEST, unseeded=None):
     """Grow the tree of senses of the sentences: channels are (X, corpus probabilities, corpus rest[, weights]) for each
     group of words, X a sentences x words matrix of counts, weights how much each word's evidence counts; groups is
-    the work of each sentence. Returns the root Node; split senses have children, the others are the senses found.
+    the work of each sentence; unseeded, for each group of words, None or a mask of its words that seed no split
+    (they still mark senses). Returns the root Node; split senses have children, the others are the senses found.
     Each split has its importance: how much it improves the prediction of the words around the query, per use of the
     word (its sense's share of the sentences times its gain per sentence there). Splits less important than finest
     times the first one are not looked for."""
@@ -1328,6 +1331,7 @@ def induce_senses(channels, groups, finest=FINEST):
     # Only the query's collocates (words markedly more frequent around it than in the corpus) may mark a sense: words
     # used around it at no particular rate (je, vous, les) tell no sense of it from another, whatever else they tell
     masks = [np.isin(np.arange(len(c)), cols) for c, cols in zip(counts, collocates)]
+    seeds = [cols if u is None else cols[~u[cols]] for cols, u in zip(collocates, unseeded or [None] * len(counts))]
     weights = [c[3] if len(c) > 3 else None for c in channels]
 
     def root_fit(train_counts):  # the whole query's sentences: calibrated, from the corpus
@@ -1350,7 +1354,7 @@ def induce_senses(channels, groups, finest=FINEST):
             unsplit_fit = lambda train_counts, parents=parents: [
                 fit_sparse(c, d) for c, d in zip(train_counts, parents)
             ]
-        _try_split(node, Xall, n, unsplit_fit, floor, groups, collocates, pool_map)
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, pool_map)
         return node
 
     def grow_with(pool_map, senses=None):
@@ -1954,7 +1958,8 @@ def word_senses(
     filter_words=None,
 ):
     """The senses of the query and their course over time, as JSON-ready data (cached in the hitlist directory). The
-    words of filter_words (the collocation report's filter) are not shown; the analysis reads them, as every word."""
+    words of filter_words (the collocation report's filter) are not shown but next to the query, and seed no split in
+    the sentence; the analysis reads them, as every word."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
     path = _cache_path(
@@ -1982,13 +1987,14 @@ def word_senses(
 
 
 def _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words=None):
-    # The analysis reads every word, rare ones weighing more; the filter's words are only not shown: left out of it,
-    # the words that tell a rare sense (dieu for prière) would be too (see the pseudoword test)
+    # The analysis reads every word, rare ones weighing more: left out of it, the filter's words that tell a rare sense
+    # (dieu for prière) would be too (see the pseudoword test). In the sentence, they only seed no split
     sentences = query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
     if sentences is None:
         return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
     channels, names = _senses_channels(sentences, count_lemmas)
-    root = induce_senses(channels, sentences["docs"])
+    common = _filtered(sentences, filter_words)
+    root = induce_senses(channels, sentences["docs"], unseeded=[common[names[0]]] + [None] * (len(channels) - 1))
     return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field)
 
 
@@ -2011,12 +2017,17 @@ def _senses_channels(sentences, count_lemmas):
     return channels, names
 
 
+def _filtered(sentences, filter_words):
+    """The words of filter_words (as the collocation report's filter list has them), as a mask of the vocabulary of
+    the sentences."""
+    prefix = "attr_lemma_" if sentences["count_lemmas"] else ""
+    colloc_dir = os.path.join(sentences["data_path"], "collocations")
+    return _filter_mask(colloc_dir, prefix, filter_words, len(sentences["v_offsets"]) - 1)
+
+
 def _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field):
     """The report of the tree of senses root, as JSON-ready data."""
-    prefix = "attr_lemma_" if sentences["count_lemmas"] else ""
-    unshown = _filter_mask(
-        os.path.join(sentences["data_path"], "collocations"), prefix, filter_words, len(sentences["v_offsets"]) - 1
-    )
+    unshown = _filtered(sentences, filter_words)
     n = sentences["n_units"]
     docs = sentences["docs"]
     Xall = [csr_matrix(c[0]) for c in channels]
@@ -2027,8 +2038,8 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
 
     v_blob, v_offsets = sentences["v_blob"], sentences["v_offsets"]
 
-    def shown(ci, local):
-        return not unshown[int(names[ci][local])]
+    def shown(ci, local):  # the filter's words: not among a sense's words, but next to the query, where common words
+        return ci > 0 or not unshown[int(names[ci][local])]  # make the construction (homme d'esprit, mon esprit)
 
     def word(ci, local):
         tid = int(names[ci][local])
@@ -2041,8 +2052,11 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     out = []
     for node in nodes:
         groups_of_words = []
+        hidden = []
         for ci in range(len(channels)):
             listed = describe(node.counts[ci], node.dists[ci], node.parent_dists[ci].p, corpus_p[ci])
+            if ci == 0:
+                hidden = [item for item in listed if not shown(ci, item[0])]
             listed = [item for item in listed if shown(ci, item[0])]
             if ci == 0:
                 listed_words[node.id] = np.array([i for i, *_ in listed[:_MAX_WORDS]], dtype=np.int64)
@@ -2052,6 +2066,14 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                     for i, c, r, lift, _ in listed[:_MAX_WORDS]
                 ]
             )
+        # A sense with nothing else to show: the words of the filter that mark it
+        if not any(groups_of_words):
+            hidden = [
+                {"word": word(0, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(lift, 3)}
+                for i, c, r, lift, _ in hidden[:_MAX_WORDS]
+            ]
+        else:
+            hidden = []
         # Its words that go together in its sentences, across the works, around hub words (as in HyperLex)
         groups = _word_groups(node, groups_of_words[0], margin, Xall[0], docs, listed_words.get(node.id))
         # What it lacks, against the sense it was split from, in any group of words (the strongest evidence first)
@@ -2085,6 +2107,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 "share": round(float(posteriors[:, node.id].mean()), 6),
                 "sentences": int(len(mine)),
                 "words": groups_of_words[0],
+                "hidden": hidden,
                 "before": groups_of_words[1],
                 "after": groups_of_words[2],
                 "groups": groups,

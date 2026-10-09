@@ -134,6 +134,17 @@ class TestSenses:
         second = ws.node_posteriors(ws.induce_senses(channels, works), Xall)[1]
         assert np.array_equal(first, second)
 
+    def test_words_that_seed_no_split_still_mark_senses(self):
+        specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
+        channels, works = sentences(specs)
+        unseeded = np.isin(np.arange(len(VOCAB)), [INDEX[w] for w in SENSES["a"]])
+        root = ws.induce_senses(channels, works, unseeded=[unseeded, None, None])
+        group, word = root.test["seed"]
+        assert group == 0 and not unseeded[word]
+        described = [words_of(leaf) for leaf in leaves(root)]
+        assert len(described) == 2
+        assert any(d and d <= set(SENSES["a"]) for d in described)
+
     def test_splits_start_from_a_word_of_a_sense(self):
         specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
         channels, works = sentences(specs)

@@ -891,6 +891,49 @@ to the byte, on the 10 reference queries.
 - The whole report differs from Senses 1's in 15 of 17, in the splits below and in the figures.
 - Pseudowords: ARI 0.146 against 0.148 for Senses 1 (0.162 for Senses 2), purity 0.780 for both.
 
+## 14. Senses with no words, and the filter's words as seeds (Oct 9)
+
+**The problem.** At finer detail, some cards showed no word at all: "No word is markedly more frequent here than in
+the sense it was split from". On frantext *esprit* restricted to Rousseau (1,050 sentences, 18 works), 12 senses did.
+Without the filter, 11 of the 12 were marked only by the filter's words:
+- d'esprit, l'esprit, un esprit, son esprit, même esprit, Saint-Esprit, just before the word;
+- corps and homme in the sentence. That filter has 361 words, content words among them.
+
+The twelfth is the rest of a split, with nothing of its own even unfiltered.
+
+**The display (cache tag `senses14`).**
+- The words just before and after the query are no longer filtered: common words there make the phrase.
+- A sense with no words, before or after to show gets its filter words, greyed (`hidden`).
+- A sense marked only by what it lacks reads as the rest of the sense it was split from. If it lacks no word
+  markedly either, it is named by the words of the other half of its split.
+
+**The cause.** In that tree, 14 of the 19 splits started from a filter word:
+- in the sentence: d', leur, par, mon, dans;
+- just before or after the word: de, le, son, même.
+
+Common words are in nearly every sentence, so even a small difference in their rate passes the held-out test
+easily (z 23 for *par*). On 1,050 sentences, content words are too sparse to do the same. Splits on *par* or *leur* in
+the sentence tell the style of works (the first-person works against the treatises) more than a sense, much as LDA's
+stopword topics do. The held-out test cannot rule them out: they hold in every fold that has works of both kinds.
+
+**The rule (cache tag `senses15`).** The filter's words seed no split in the sentence (`induce_senses(...,
+unseeded=)`). They still seed one just before or after the word, and the fit reads every word as before. With no
+filter, the report is unchanged.
+
+**Results.**
+- On the 8 filtered reference queries, the in-sentence filter seeds go from 5–10 splits each (on 7 of them) to none.
+- The main split's gain moves by at most 4%, 1% or less on all but *nature* in Rousseau: EM reaches the same main
+  distinction from another seed (*raison*: from *nature* instead of *le* before the word, 7.98 bits per sentence).
+- Many splits now start next to the word: *une révolution* against *la Révolution*, *grâce à*, *en raison de*.
+  All 12 of *grâce* within 5 do.
+- *esprit*/Rousseau: the seeds are now superficiel, borné, comparer, ouvrage, génie, institution and *Saint* before
+  the word. 22 senses have words of their own (19 before), 9 are marked only next to the word (15 before).
+- Pseudowords: ARI 0.145 against 0.146 and purity 0.780 at the default view; over the whole tree, purity 0.844
+  against 0.837. Pairs move both ways; the time is the same.
+
+**Left open.** The greyed words show only when a sense has nothing else. On *esprit*/Rousseau, the mind/body sense
+shows *l'esprit* and not *corps*, its real marker.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter
