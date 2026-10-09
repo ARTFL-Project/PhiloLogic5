@@ -934,6 +934,36 @@ filter, the report is unchanged.
 **Left open.** The greyed words show only when a sense has nothing else. On *esprit*/Rousseau, the mind/body sense
 shows *l'esprit* and not *corps*, its real marker.
 
+## 15. Sense numbers, the rest of the sentences, and the first view (Oct 9)
+
+**The problem.** On *esprit*/Rousseau the first card, "Sense 1", was the 61% left once two small senses had been
+carved out. Senses were numbered in the order of the tree, so the numbers changed with the detail, and the leftover
+took one like any sense. Traced split by split (each seed tried, and what EM grew it into), 13 of the tree's 17 splits
+carve a small group with words of its own out of a large rest with none. The seeds sit in 2 to 27 sentences: EM does
+the rest, and every seed tried at the top ends in nearly the same split.
+
+**The numbers (`sense_numbers`, cache tag `senses17`).** Each split carves one half out of the other, which goes on
+as their parent: the half with nothing of its own to show, if only one has, else the larger.
+- Out of the rest of the sentences (the root's line), a half with something to show takes the next top number (1, 2,
+  …); one with nothing stays the rest.
+- Out of a sense, the carved half takes its parent's number and the next of its own (2.1, 2.2, …).
+- Numbers go to the splits as the detail reveals them, from the most important down, those they are within first.
+  A sense keeps its number at any detail.
+- A sense that goes on is described against the sense its number started in, not against its parent. Otherwise sense
+  1 would read as what sets it apart from its own carved half.
+
+**The rest** is no sense. It shows as one muted line in its place in the tree ("The rest of the sentences (61%), in no
+sense…"), grey in the overview so the shares still fill each year, and in the summary ("· 61% of them in no sense").
+It has no number, card or chart.
+
+**The first view (`default_detail`).** Down to the natural break; then finer, a split at a time from the most important
+down, until the senses cover more than half the sentences (`MOST = 0.5`: most of them). If no detail does, the
+natural break.
+- *esprit*/Rousseau: 2 senses and a 61% rest become 5 senses covering every sentence: institutions (22%); the mind's
+  progress (17%); bel esprit, Saint-Esprit (30%); wit and talent (3.1, 13%); christianisme (18%).
+- *my lord*: 2 senses covering 30% become 8 covering just over half.
+- The other 8 reference queries are unchanged: their first views already cover every sentence.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

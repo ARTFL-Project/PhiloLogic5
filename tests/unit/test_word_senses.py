@@ -169,6 +169,87 @@ class TestBreak:
         assert ws.natural_break([]) == 0
 
 
+def report_node(id, parent, children, share, own=True, relative=None):
+    """A node as the report has it: own, whether it has a word to show; relative, its split's importance."""
+    return {
+        "id": id,
+        "parent": parent,
+        "children": children,
+        "share": share,
+        "words": [{"word": "w"}] if own else [],
+        "before": [],
+        "after": [],
+        "hidden": [],
+        "split": None if relative is None else {"relative": relative},
+    }
+
+
+@pytest.mark.unit
+class TestNumbers:
+    def test_a_split_numbers_the_sense_it_carves_out_of_the_rest(self):
+        nodes = [
+            report_node(0, None, [1, 2], 1.0, relative=1.0),
+            report_node(1, 0, [3, 4], 0.7, own=False, relative=0.8),
+            report_node(2, 0, [], 0.3),
+            report_node(3, 1, [], 0.5, own=False),
+            report_node(4, 1, [], 0.2),
+        ]
+        number, start = ws.sense_numbers(nodes)
+        assert number == {0: None, 1: None, 2: "1", 3: None, 4: "2"}
+        assert start == {"1": 2, "2": 4}
+
+    def test_a_sense_goes_on_as_its_half_with_nothing_of_its_own_else_its_larger(self):
+        nodes = [
+            report_node(0, None, [1, 2], 1.0, relative=1.0),
+            report_node(1, 0, [3, 4], 0.6, relative=0.5),
+            report_node(2, 0, [5, 6], 0.4, relative=0.3),
+            report_node(3, 1, [], 0.4, own=False),
+            report_node(4, 1, [], 0.2),
+            report_node(5, 2, [], 0.3),
+            report_node(6, 2, [], 0.1),
+        ]
+        number, start = ws.sense_numbers(nodes)
+        assert number == {0: None, 1: "1", 2: "2", 3: "1", 4: "1.1", 5: "2", 6: "2.1"}
+        assert start == {"1": 1, "2": 2, "1.1": 4, "2.1": 6}
+
+    def test_numbers_follow_the_detail_the_splits_within_first(self):
+        # The split of 3 is more important than that of 1, which it is within: showing it shows 1's first
+        nodes = [
+            report_node(0, None, [1, 2], 1.0, relative=1.0),
+            report_node(1, 0, [3, 4], 0.7, own=False, relative=0.3),
+            report_node(2, 0, [], 0.3),
+            report_node(3, 1, [5, 6], 0.5, own=False, relative=0.6),
+            report_node(4, 1, [], 0.2),
+            report_node(5, 3, [], 0.3),
+            report_node(6, 3, [], 0.2, own=False),
+        ]
+        number, _ = ws.sense_numbers(nodes)
+        assert (number[2], number[4], number[5], number[6]) == ("1", "2", "3", None)
+
+    def test_at_first_finer_than_the_break_until_the_senses_cover_most_sentences(self):
+        nodes = [
+            report_node(0, None, [1, 2], 1.0, relative=1.0),
+            report_node(1, 0, [3, 4], 0.7, own=False, relative=0.3),
+            report_node(2, 0, [], 0.3),
+            report_node(3, 1, [], 0.4, own=False),
+            report_node(4, 1, [], 0.3),
+        ]
+        assert ws.natural_break([1.0, 0.3]) == 1
+        number, _ = ws.sense_numbers(nodes)
+        assert ws.default_detail(nodes, number) == 0.3  # 1 alone covers 30%, with 2, 60%
+
+    def test_at_first_the_break_when_no_detail_covers_most_sentences(self):
+        nodes = [
+            report_node(0, None, [1, 2], 1.0, relative=1.0),
+            report_node(1, 0, [3, 4], 0.7, own=False, relative=0.3),
+            report_node(2, 0, [], 0.3),
+            report_node(3, 1, [], 0.6, own=False),
+            report_node(4, 1, [], 0.1),
+        ]
+        number, _ = ws.sense_numbers(nodes)
+        assert ws.default_detail(nodes, number) == 1.0
+
+
 @pytest.mark.unit
 class TestModel:
     def test_discount_from_words_seen_once_and_twice(self):

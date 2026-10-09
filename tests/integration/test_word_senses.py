@@ -94,6 +94,26 @@ class TestWordSenses:
                 assert not seen & set(positions)  # a word is in one group of a sense
                 seen |= set(positions)
 
+    def test_senses_keep_their_numbers_at_any_detail(self, shakespeare_db):
+        from philologic.runtime.reports.word_senses import MOST, leaves_at
+
+        report = call(shakespeare_db, get_word_senses, q='"my lord"')
+        nodes = report["nodes"]
+        levels = sorted({n["split"]["relative"] for n in nodes if n["children"]}, reverse=True)
+        before = set()
+        for detail in levels:
+            leaves = leaves_at(nodes, detail)
+            numbers = [n["sense"] for n in leaves if n["sense"] is not None]
+            assert len(numbers) == len(set(numbers)) and before <= set(numbers)
+            top = sorted(int(x.split(".")[0]) for x in numbers if "." not in x)
+            assert top == list(range(1, len(top) + 1))
+            for n in leaves:  # the rest of the sentences has nothing of its own to show
+                if n["sense"] is None:
+                    assert not (n["words"] or n["before"] or n["after"] or n["hidden"])
+            before = set(numbers)
+        covered = sum(n["share"] for n in leaves_at(nodes, report["detail"]) if n["sense"] is not None)
+        assert covered > MOST or report["detail"] == levels[0]
+
     def test_the_query_words_are_never_their_own_context(self, shakespeare_db):
         report = call(shakespeare_db, get_word_senses, q='"my lord"')
         for node in report["nodes"]:
@@ -111,11 +131,11 @@ class TestWordSenses:
                 assert not (node["words"] or node["before"] or node["after"])
                 assert {w["word"] for w in node["hidden"]} <= common
 
-    def test_the_filters_words_seed_splits_only_next_to_the_word(self, eltec_db):
+    def test_the_filters_words_seed_no_split(self, eltec_db):
         report = call(eltec_db, get_word_senses, q="lemma:light")
         common = {w.removeprefix("lemma:") for w in report["filter_list"]}
         seeds = [node["split"]["seed"] for node in report["nodes"] if node["children"]]
-        assert seeds and not any(s["group"] == 0 and s["word"] in common for s in seeds)
+        assert seeds and not any(s["word"] in common for s in seeds)
 
     def test_examples_render_as_passages(self, eltec_db):
         report = call(eltec_db, get_word_senses, q="lemma:light")

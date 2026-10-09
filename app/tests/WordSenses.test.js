@@ -12,30 +12,36 @@ const split = (relative, z, seed = { word: "loi", group: 0 }) => ({
 });
 const node = (id, parent, children, share, fields = {}) => ({
     id, parent, children, share, sentences: Math.round(share * 100), words: [], before: [], after: [],
-    split: null, reason: null, works: 10, top_work_share: 0.2, examples: [], ...fields,
+    split: null, reason: null, works: 10, top_work_share: 0.2, examples: [], sense: null, rank: null, ...fields,
 });
 const flat = (n, v) => new Array(n).fill(v);
 const rows = (values) => values.map((v) => flat(5, v));
 
-// Three distinctions: the main one (0), one 40% as important (2), and one 15% as important (3), below the 25% default
+// Three distinctions: the main one (0), one 40% as important (2), and one 15% as important (3), below the 25% default.
+// The numbers are those the report gives: sense 6, which nothing marks, goes on as 2 once 2.1 (3) is carved out of it
 const senses = {
     n_hits: 120, n_sentences: 100, n_works: 12, duplicates: 0, folds: 5, evidence: 2, resamples: 200,
     band: [2.5, 97.5], detail: 0.25, finest: 0.1, filter_list: ["de", "la"],
     nodes: [
         node(0, null, [1, 2], 1, { words: [word("loi"), word("droit")], before: [word("la")], split: split(1, 3.4) }),
         node(1, 0, [], 0.5, {
+            sense: "1", rank: 1,
             words: [word("dieu", 8.3), word("foi", 12.4)], split: split(0, -0.7), reason: "no_gain",
             examples: [{ hit: 7, p: 0.97, evidence: [{ word: "dieu", group: 0 }, { word: "avoir", group: 1 }] }],
         }),
-        node(2, 0, [3, 6], 0.5, { words: [word("ciel")], split: split(0.4, 2.6, { word: "la", group: 1 }) }),
-        node(3, 2, [4, 5], 0.3, { words: [word("mer")], split: split(0.15, 2.2, { word: "vent", group: 2 }) }),
+        node(2, 0, [3, 6], 0.5, {
+            sense: "2", rank: 2, words: [word("ciel")], split: split(0.4, 2.6, { word: "la", group: 1 }),
+        }),
+        node(3, 2, [4, 5], 0.3, {
+            sense: "2.1", rank: 3, words: [word("mer")], split: split(0.15, 2.2, { word: "vent", group: 2 }),
+        }),
         node(4, 3, [], 0.2, {
-            words: [word("port"), word("navire"), word("quai"), word("vent")], reason: "inseparable",
+            sense: "2.1", rank: 3, words: [word("port"), word("navire"), word("quai"), word("vent")], reason: "inseparable",
             groups: [{ hub: 0, members: [1, 2] }],
         }),
-        node(5, 3, [], 0.1, { words: [word("vague")], split: split(0, 0.5), reason: "no_gain" }),
+        node(5, 3, [], 0.1, { sense: "2.1.1", rank: 4, words: [word("vague")], split: split(0, 0.5), reason: "no_gain" }),
         node(6, 2, [], 0.2, {
-            split: split(0.05, 2.5), reason: "faint", works: 1, top_work_share: 1,
+            sense: "2", rank: 2, split: split(0.05, 2.5), reason: "faint", works: 1, top_work_share: 1,
             rarer: [{ word: "ciel", group: 0, n: 1, ratio: 0.05 }, { word: "la", group: 1, n: 2, ratio: 0.25 }],
         }),
     ],
@@ -92,7 +98,7 @@ describe("WordSenses", () => {
     it("shows the distinctions at least as important as the default detail", async () => {
         const { wrapper } = await loaded();
         expect(wrapper.text()).toContain("3 senses in 100 sentences from 12 works");
-        expect(cards(wrapper)).toEqual(["sense-card-1", "sense-card-3", "sense-card-6"]);
+        expect(cards(wrapper)).toEqual(["sense-card-1", "sense-card-6", "sense-card-3"]);
         expect(wrapper.find("#word-senses-detail").element.value).toBe("2");
         expect(wrapper.text()).toContain("3 senses: the distinctions at least 40% as important as the main one.");
     });
@@ -101,16 +107,16 @@ describe("WordSenses", () => {
         const { wrapper } = await loaded();
         const splits = wrapper.findAll(".split-row").map((r) => r.text());
         expect(splits).toHaveLength(2);
-        expect(splits[0]).toContain("Senses 1-3 (100% of the sentences)");
+        expect(splits[0]).toContain("Senses 1, 2, 2.1 (100% of the sentences)");
         expect(splits[0]).toContain("split starting from “loi”; 100% as important as the main distinction; gain on unseen works 3.4 times its standard error");
-        expect(splits[1]).toContain("Senses 2-3 (50% of the sentences)");
+        expect(splits[1]).toContain("Senses 2, 2.1 (50% of the sentences)");
         expect(splits[1]).toContain("starting from “la raison”; 40% as important");
     });
 
     it("shows finer distinctions as the slider moves, and fewer back", async () => {
         const { wrapper } = await loaded();
         await wrapper.find("#word-senses-detail").setValue(3);
-        expect(cards(wrapper)).toEqual(["sense-card-1", "sense-card-4", "sense-card-5", "sense-card-6"]);
+        expect(cards(wrapper)).toEqual(["sense-card-1", "sense-card-6", "sense-card-4", "sense-card-5"]);
         expect(wrapper.text()).toContain("4 senses: the distinctions at least 15% as important as the main one.");
         expect(wrapper.text()).toContain("starting from “raison vent”");
 
@@ -121,6 +127,38 @@ describe("WordSenses", () => {
         await wrapper.find("#word-senses-detail").setValue(0);
         expect(cards(wrapper)).toEqual([]);
         expect(wrapper.text()).toContain("100 sentences from 12 works, shown as one sense: move the slider");
+    });
+
+    it("numbers each sense by the split that made it, the same at any detail", async () => {
+        const { wrapper } = await loaded();
+        const titles = () => wrapper.findAll(".sense-card h3").map((h3) => h3.text().split(" ·")[0].trim());
+        expect(titles()).toEqual(["Sense 1", "Sense 2", "Sense 2.1"]);
+        await wrapper.find("#word-senses-detail").setValue(3);
+        expect(titles()).toEqual(["Sense 1", "Sense 2", "Sense 2.1", "Sense 2.1.1"]);
+        await wrapper.find("#word-senses-detail").setValue(1);
+        expect(titles()).toEqual(["Sense 1", "Sense 2"]);
+    });
+
+    it("shows the rest of the sentences, which no sense takes, as a line of its own, not a sense", async () => {
+        const withRest = {
+            ...senses,
+            detail: 1,
+            nodes: [
+                node(0, null, [1, 2], 1, { words: [word("loi")], split: split(1, 3.4) }),
+                node(1, 0, [], 0.6, { rarer: [{ word: "ciel", group: 0, n: 1, ratio: 0.05 }], reason: "faint" }),
+                node(2, 0, [], 0.4, { sense: "1", rank: 1, words: [word("ciel")], reason: "no_gain" }),
+            ],
+            time: { ...senses.time, share: { smoothness: 10, value: rows([1, 0.6, 0.4]), low: rows([1, 0.5, 0.3]), high: rows([1, 0.7, 0.5]) } },
+        };
+        const { wrapper } = await loaded(withRest);
+        expect(cards(wrapper)).toEqual(["sense-card-2"]);
+        expect(wrapper.find("#sense-rest-1").text()).toContain("The rest of the sentences (60%), in no sense");
+        expect(wrapper.text()).toContain("1 sense in 100 sentences from 12 works · 60% of them in no sense");
+        expect(wrapper.find(".split-row").text()).toContain("Senses 1, the rest (100% of the sentences)");
+        expect(wrapper.findAll(".legend-chip").map((c) => c.text())).toEqual(["Sense 1: ciel"]);
+        const fills = wrapper.findAll("svg.overview-chart path").map((p) => p.attributes("fill"));
+        expect(fills).toHaveLength(2);
+        expect(fills[1]).toContain("hsla(0, 0%, 62%");
     });
 
     it("says why a sense was not split further", async () => {
@@ -168,7 +206,7 @@ describe("WordSenses", () => {
         expect(card.text()).toContain(`ciel ${String.fromCharCode(247)}20`);
         expect(card.text()).toContain(`la raison ${String.fromCharCode(247)}4.0`);
         const chips = wrapper.findAll(".legend-chip").map((c) => c.text());
-        expect(chips[2]).toContain("Sense 3: without ciel, la raison");
+        expect(chips[1]).toContain("Sense 2: without ciel, la raison");
     });
 
     it("shows the common words that alone mark a sense, greyed, and names the sense by them", async () => {
@@ -184,7 +222,7 @@ describe("WordSenses", () => {
         ]);
         expect(card.text()).not.toContain("No word is markedly more frequent");
         const chips = wrapper.findAll(".legend-chip").map((c) => c.text());
-        expect(chips[2]).toContain("Sense 3: de, que");
+        expect(chips[1]).toContain("Sense 2: de, que");
     });
 
     it("tells what was split off from a sense nothing marks, and names the sense by it", async () => {
@@ -194,7 +232,7 @@ describe("WordSenses", () => {
             "The rest of the sense it was split from, once the sentences marked by mer are split off",
         );
         const chips = wrapper.findAll(".legend-chip").map((c) => c.text());
-        expect(chips[2]).toContain("Sense 3: without mer");
+        expect(chips[1]).toContain("Sense 2: without mer");
     });
 
     it("words next to the query read with the query word", async () => {

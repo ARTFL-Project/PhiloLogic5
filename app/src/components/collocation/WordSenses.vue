@@ -11,10 +11,10 @@
                 <p class="mb-1 fw-semibold">
                     {{ shown.length > 1
                         ? $t("wordSenses.summary", {
-                            senses: shown.length,
+                            senses: sensesText(senses.length),
                             sentences: result.n_sentences.toLocaleString(),
                             works: result.n_works.toLocaleString(),
-                        })
+                        }) + (restShare ? ` · ${$t("wordSenses.inNoSense", { share: percent(restShare) })}` : "")
                         : $t(splits.length ? "wordSenses.oneShown" : "wordSenses.noSplit", {
                             sentences: result.n_sentences.toLocaleString(),
                             works: result.n_works.toLocaleString(),
@@ -58,7 +58,7 @@
                             role="img" :aria-label="$t('wordSenses.overviewChart')"
                             @mousemove="onHover($event)" @mouseleave="hoverIndex = null">
                             <path v-for="layer in overviewLayers" :key="layer.id" :d="layer.path"
-                                :fill="senseColor(layer.number, 0.85)" stroke="#fff" stroke-width="0.3" />
+                                :fill="senseColor(layer.rank, 0.85)" stroke="#fff" stroke-width="0.3" />
                             <line v-if="hoverIndex !== null" :x1="xOf(hoverIndex)" :x2="xOf(hoverIndex)" y1="0"
                                 :y2="overviewHeight" stroke="#333" stroke-width="1" vector-effect="non-scaling-stroke" />
                         </svg>
@@ -72,7 +72,7 @@
                             <strong>{{ time.start + hoverIndex }}</strong>
                             ({{ $t("wordSenses.sentencesThatYear", { n: time.sentences[hoverIndex], works: time.works[hoverIndex] }) }}):
                             <span v-for="node in shown" :key="node.id" class="me-2">
-                                <span class="legend-swatch" :style="{ backgroundColor: senseColor(numberOf[node.id], 1) }"></span>
+                                <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.rank, 1) }"></span>
                                 {{ formatValue(curve(node).value[hoverIndex]) }}
                             </span>
                         </template>
@@ -82,11 +82,11 @@
                 <p v-else-if="!time" class="text-muted small mb-0">{{ $t("wordSenses.noTime") }}</p>
 
                 <div v-if="shown.length > 1" class="d-flex flex-wrap gap-1 mt-2">
-                    <button v-for="node in shown" :key="`chip-${node.id}`" type="button" class="btn btn-sm legend-chip"
-                        :style="{ borderColor: senseColor(numberOf[node.id], 1), color: senseColor(numberOf[node.id], 1) }"
+                    <button v-for="node in senses" :key="`chip-${node.id}`" type="button" class="btn btn-sm legend-chip"
+                        :style="{ borderColor: senseColor(node.rank, 1), color: senseColor(node.rank, 1) }"
                         @click="scrollToSense(node)">
-                        <span class="legend-swatch" :style="{ backgroundColor: senseColor(numberOf[node.id], 1) }"></span>
-                        {{ $t("wordSenses.senseN", { n: numberOf[node.id] }) }}: {{ label(node) }}
+                        <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.rank, 1) }"></span>
+                        {{ $t("wordSenses.senseN", { n: node.sense }) }}: {{ label(node) }}
                     </button>
                 </div>
             </div>
@@ -111,13 +111,16 @@
                             z: row.node.split.z.toFixed(1),
                         }) }}</span>
                     </p>
+                    <p v-else-if="row.kind === 'rest'" :id="`sense-rest-${row.node.id}`" class="rest-row small text-muted mb-3">
+                        {{ $t("wordSenses.rest", { share: percent(row.node.share) }) }}
+                    </p>
                     <section v-else :id="`sense-card-${row.node.id}`" class="card shadow-sm mb-3 sense-card"
-                        :style="{ borderLeft: `4px solid ${senseColor(numberOf[row.node.id], 1)}` }"
+                        :style="{ borderLeft: `4px solid ${senseColor(row.node.rank, 1)}` }"
                         :aria-labelledby="`sense-title-${row.node.id}`">
                         <div class="sense-header px-3 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h3 class="h6 mb-0" :id="`sense-title-${row.node.id}`">
-                                <span class="legend-swatch" :style="{ backgroundColor: senseColor(numberOf[row.node.id], 1) }"></span>
-                                {{ $t("wordSenses.senseN", { n: numberOf[row.node.id] }) }}
+                                <span class="legend-swatch" :style="{ backgroundColor: senseColor(row.node.rank, 1) }"></span>
+                                {{ $t("wordSenses.senseN", { n: row.node.sense }) }}
                                 <span class="fw-normal text-muted">&middot; {{ $t("wordSenses.shareOfSentences",
                                     { share: percent(row.node.share) }) }}
                                     &middot; {{ $t("wordSenses.fromWorks", { n: row.node.works }) }}</span>
@@ -136,10 +139,10 @@
                                     <span class="y-max small text-muted">{{ formatValue(cardMax(row.node)) }}</span>
                                     <svg :viewBox="`0 0 ${chartWidth} ${cardHeight}`" class="sense-chart"
                                         preserveAspectRatio="none" role="img"
-                                        :aria-label="$t('wordSenses.senseChart', { n: numberOf[row.node.id] })"
+                                        :aria-label="$t('wordSenses.senseChart', { n: row.node.sense })"
                                         @mousemove="onHover($event)" @mouseleave="hoverIndex = null">
-                                        <path :d="bandPath(row.node)" :fill="senseColor(numberOf[row.node.id], 0.18)" stroke="none" />
-                                        <path :d="linePath(row.node)" :stroke="senseColor(numberOf[row.node.id], 1)"
+                                        <path :d="bandPath(row.node)" :fill="senseColor(row.node.rank, 0.18)" stroke="none" />
+                                        <path :d="linePath(row.node)" :stroke="senseColor(row.node.rank, 1)"
                                             stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke" />
                                         <line v-if="hoverIndex !== null" :x1="xOf(hoverIndex)" :x2="xOf(hoverIndex)" y1="0"
                                             :y2="cardHeight" stroke="#333" stroke-width="1" vector-effect="non-scaling-stroke" />
@@ -263,18 +266,34 @@ const revealed = computed(() => {
     return ids;
 });
 
-// The senses shown, in order: the nodes the shown splits end in
+// A split's halves in the order of their senses' numbers (which the report gives, and keeps at any detail), the rest of
+// the sentences, which no sense takes, last
+function firstRank(node) {
+    if (revealed.value.has(node.id)) return Math.min(...node.children.map((c) => firstRank(nodes.value[c])));
+    return node.sense === null ? Infinity : node.rank;
+}
+
+function halves(node) {
+    return node.children.map((c) => nodes.value[c]).sort((a, b) => firstRank(a) - firstRank(b));
+}
+
+// What the shown splits end in, in order: the senses, and the rest of the sentences (no sense)
 const shown = computed(() => {
     const out = [];
     const walk = (node) => {
-        if (revealed.value.has(node.id)) node.children.forEach((c) => walk(nodes.value[c]));
+        if (revealed.value.has(node.id)) halves(node).forEach(walk);
         else out.push(node);
     };
     if (root.value) walk(root.value);
     return out;
 });
 
-const numberOf = computed(() => Object.fromEntries(shown.value.map((node, i) => [node.id, i + 1])));
+const senses = computed(() => shown.value.filter((node) => node.sense !== null));
+const restShare = computed(() => shown.value.filter((node) => node.sense === null).reduce((a, n) => a + n.share, 0));
+
+function sensesText(n) {
+    return n === 1 ? t("wordSenses.oneSense") : t("wordSenses.nSenses", { n });
+}
 
 // The tree as rows: a shown split above the senses it splits into, indented by depth
 const rows = computed(() => {
@@ -282,9 +301,9 @@ const rows = computed(() => {
     const walk = (node, depth) => {
         if (revealed.value.has(node.id)) {
             out.push({ kind: "split", node, depth });
-            node.children.forEach((c) => walk(nodes.value[c], depth + 1));
+            halves(node).forEach((c) => walk(c, depth + 1));
         } else {
-            out.push({ kind: "sense", node, depth });
+            out.push({ kind: node.sense === null ? "rest" : "sense", node, depth });
         }
     };
     if (root.value) walk(root.value, 0);
@@ -293,20 +312,19 @@ const rows = computed(() => {
 
 const detailText = computed(() => {
     if (!position.value) return t("wordSenses.detailNone");
-    if (position.value === 1) return t("wordSenses.detailMain");
+    const count = sensesText(senses.value.length);
+    if (position.value === 1) return t("wordSenses.detailMain", { senses: count });
     const faintest = splits.value[position.value - 1];
-    return t("wordSenses.detailText", { senses: shown.value.length, importance: percent(faintest.split.relative) });
+    return t("wordSenses.detailText", { senses: count, importance: percent(faintest.split.relative) });
 });
 
 function sensesUnder(node) {
-    return revealed.value.has(node.id) ? node.children.flatMap((c) => sensesUnder(nodes.value[c])) : [numberOf.value[node.id]];
+    if (revealed.value.has(node.id)) return halves(node).flatMap(sensesUnder);
+    return [node.sense === null ? t("wordSenses.otherUses") : node.sense];
 }
 
 function senseRange(node) {
-    const numbers = sensesUnder(node);
-    const first = Math.min(...numbers);
-    const last = Math.max(...numbers);
-    return first === last ? `${first}` : `${first}-${last}`;
+    return sensesUnder(node).join(", ");
 }
 
 function seedText(seed) {
@@ -362,10 +380,11 @@ function percent(share) {
     return `${Math.round(share * 100)}%`;
 }
 
-// Same hues as the usage patterns, so colors read alike across tabs
+// Same hues as the usage patterns, so colors read alike across tabs; by the rank of a sense's number, the rest grey
 const hues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
-function senseColor(number, alpha) {
-    return `hsla(${hues[((number || 1) - 1) % hues.length]}, 55%, 50%, ${alpha})`;
+function senseColor(rank, alpha) {
+    if (rank === null || rank === undefined) return `hsla(0, 0%, 62%, ${alpha})`;
+    return `hsla(${hues[(rank - 1) % hues.length]}, 55%, 50%, ${alpha})`;
 }
 
 function scrollToSense(node) {
@@ -419,7 +438,7 @@ const overviewLayers = computed(() => {
         let d = `M ${xOf(0)} ${bottom[0].toFixed(2)} `;
         for (let i = 0; i < n; i++) d += `L ${xOf(i).toFixed(2)} ${bottom[i].toFixed(2)} `;
         for (let i = n - 1; i >= 0; i--) d += `L ${xOf(i).toFixed(2)} ${top[i].toFixed(2)} `;
-        return { id: node.id, number: k + 1, path: `${d}Z` };
+        return { id: node.id, rank: node.rank, path: `${d}Z` };
     });
 });
 
@@ -485,8 +504,8 @@ function evidenceText(e) {
 function openExamples(node) {
     if (!node) return;
     modal.value = {
-        groupName: shown.value.length > 1
-            ? `${queryWord.value} · ${t("wordSenses.senseN", { n: numberOf.value[node.id] })}: ${label(node)}`
+        groupName: shown.value.length > 1 && node.sense
+            ? `${queryWord.value} · ${t("wordSenses.senseN", { n: node.sense })}: ${label(node)}`
             : queryWord.value,
         signature: node.words.slice(0, 12).map((w) => ({ word: w.word, z: null })),
         passages: [],
@@ -647,6 +666,11 @@ const WordList = defineComponent({
 :deep(.word-group) {
     border-left: 2px solid rgba(theme.$link-color, 0.25);
     padding-left: 0.4rem;
+}
+
+.rest-row {
+    border-left: 4px solid hsla(0, 0%, 62%, 1);
+    padding-left: 0.6rem;
 }
 
 :deep(.hidden-chip) {

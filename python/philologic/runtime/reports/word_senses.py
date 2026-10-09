@@ -17,9 +17,9 @@ sentence is in, each word's evidence weighs by its inverse document frequency, s
 de) count for less than rarer ones.
 
 A split starts from the sentences with one of the query's collocates, the seed: of those whose sentences differ most
-from the others in their other collocates, the most promising are tried (in the sentence, none of the collocation
-filter's words: common words there tell the register of works, par, leur, mon, more than a sense; next to the query,
-they make its phrases, d'esprit, Saint-Esprit), and expectation-maximization moves the
+from the others in their other collocates, the most promising are tried (none of the collocation filter's words,
+mostly function words: par, leur, mon tell the register of works more than a sense), and expectation-maximization
+moves the
 sentences to the sense they fit, each with a probability of being in either (first letting every collocate tell the
 senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark either,
 chosen at every step, and held if that choice cycles). A split is kept if, fitted without each of N_FOLDS groups of
@@ -64,6 +64,7 @@ N_FOLDS = 5  # folds of the sentences a split is tested on, the usual number for
 EVIDENCE = 2  # standard errors over the sentences a split's gain must exceed: the usual 95% or so
 N_RESAMPLES = 200  # resamplings of the works for the bands over time
 BAND = (2.5, 97.5)  # percentiles of the resamplings the band spans: 95% of them
+MOST = 0.5  # at first, the senses shown cover more than this share of the sentences: most of them
 
 # Numerical settings, not choices about the data
 _TOL = 1e-6
@@ -73,7 +74,7 @@ _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the sea
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
-_CACHE_TAG = b"senses15\0"  # bump when the result changes
+_CACHE_TAG = b"senses17\0"  # bump when the result changes
 
 
 class Dist:
@@ -1396,6 +1397,91 @@ def natural_break(relative, finest=FINEST):
     return int(np.argmax(np.log(values[:-1] / values[1:]))) + 1
 
 
+def revealed_by(nodes, detail):
+    """The splits shown at a detail, of a report's nodes: those at least that important relative to the main one, and
+    those they are within. Returns their ids."""
+    out = set()
+    for node in nodes:
+        if node["children"] and node["split"]["relative"] >= detail:
+            n = node
+            while n is not None and n["id"] not in out:
+                out.add(n["id"])
+                n = None if n["parent"] is None else nodes[n["parent"]]
+    return out
+
+
+def leaves_at(nodes, detail):
+    """The nodes the splits shown at a detail end in, of a report's nodes, as the tree has them."""
+    revealed = revealed_by(nodes, detail)
+    out = []
+
+    def walk(node):
+        if node["id"] in revealed:
+            for child in node["children"]:
+                walk(nodes[child])
+        else:
+            out.append(node)
+
+    if nodes:
+        walk(nodes[0])
+    return out
+
+
+def _has_own(node):
+    """Whether a sense has something to show: a word markedly more frequent in it, in any group of words."""
+    return bool(node["words"] or node["before"] or node["after"] or node["hidden"])
+
+
+def sense_numbers(nodes):
+    """The number of each sense of a report's nodes (as their ids), None for the rest of the sentences, which no sense
+    takes; and the node each number starts at. Each split carves one of its halves out of the other, which goes on as
+    their parent: the half with nothing of its own to show, if only one has, else the larger. The carved half takes
+    the next number: at the top (1, 2, …) out of the rest, else its parent's followed by the next of its own (2.1,
+    2.2, …). Out of the rest, a half with something to show is a sense either way, and one with nothing stays the rest.
+    The splits give their numbers as the detail reveals them, from the most important down (those they are within
+    first), so that a sense keeps its number at any detail."""
+    number, start, counts = {}, {}, {}
+    if not nodes:
+        return number, start
+    number[nodes[0]["id"]] = None
+    order = sorted((n for n in nodes if n["children"]), key=lambda n: (-n["split"]["relative"], n["id"]))
+    done = set()
+    for split in order:
+        chain = []
+        n = split
+        while n is not None and n["id"] not in done:
+            chain.append(n)
+            n = None if n["parent"] is None else nodes[n["parent"]]
+        for parent in reversed(chain):
+            done.add(parent["id"])
+            halves = [nodes[c] for c in parent["children"]]  # the larger first
+            bare = [h for h in halves if not _has_own(h)]
+            going_on = bare[0] if len(bare) == 1 else halves[0]
+            mine = number[parent["id"]]
+            for half in halves:
+                if (half is going_on) if mine is not None else not _has_own(half):
+                    number[half["id"]] = mine
+                    continue
+                counts[mine] = counts.get(mine, 0) + 1
+                number[half["id"]] = str(counts[mine]) if mine is None else f"{mine}.{counts[mine]}"
+                start[number[half["id"]]] = half["id"]
+    return number, start
+
+
+def default_detail(nodes, number):
+    """The detail shown at first, of a report's nodes and their sense numbers: down to the natural break, and finer,
+    a split at a time from the most important down, until the senses shown cover MOST of the sentences, the rest no
+    longer most; when no detail does, the natural break."""
+    relative = sorted((n["split"]["relative"] for n in nodes if n["children"]), reverse=True)
+    k = natural_break(relative)
+    if not k:
+        return 1.0
+    for detail in relative[k - 1 :]:
+        if sum(n["share"] for n in leaves_at(nodes, detail) if number[n["id"]] is not None) > MOST:
+            return detail
+    return relative[k - 1]
+
+
 def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map):
     units = node.units
     if len(units) < 2:
@@ -1958,8 +2044,8 @@ def word_senses(
     filter_words=None,
 ):
     """The senses of the query and their course over time, as JSON-ready data (cached in the hitlist directory). The
-    words of filter_words (the collocation report's filter) are not shown but next to the query, and seed no split in
-    the sentence; the analysis reads them, as every word."""
+    words of filter_words (the collocation report's filter) are not shown but next to the query, and seed no split; the
+    analysis reads them, as every word."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
     path = _cache_path(
@@ -1988,13 +2074,13 @@ def word_senses(
 
 def _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words=None):
     # The analysis reads every word, rare ones weighing more: left out of it, the filter's words that tell a rare sense
-    # (dieu for prière) would be too (see the pseudoword test). In the sentence, they only seed no split
+    # (dieu for prière) would be too (see the pseudoword test). They only seed no split
     sentences = query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
     if sentences is None:
         return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
     channels, names = _senses_channels(sentences, count_lemmas)
     common = _filtered(sentences, filter_words)
-    root = induce_senses(channels, sentences["docs"], unseeded=[common[names[0]]] + [None] * (len(channels) - 1))
+    root = induce_senses(channels, sentences["docs"], unseeded=[common[ids] for ids in names])
     return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field)
 
 
@@ -2049,12 +2135,14 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     top_importance = max((nd.test["importance"] for nd in nodes if nd.children), default=0.0)
     first_hit = sentences["first_hit"]
     listed_words = {}
-    out = []
-    for node in nodes:
+
+    def described(node, against):
+        """A sense's words, against the dists of the sense it is told from (as a rule, its parent): those markedly more
+        frequent in it, and what it lacks."""
         groups_of_words = []
         hidden = []
         for ci in range(len(channels)):
-            listed = describe(node.counts[ci], node.dists[ci], node.parent_dists[ci].p, corpus_p[ci])
+            listed = describe(node.counts[ci], node.dists[ci], against[ci].p, corpus_p[ci])
             if ci == 0:
                 hidden = [item for item in listed if not shown(ci, item[0])]
             listed = [item for item in listed if shown(ci, item[0])]
@@ -2083,12 +2171,23 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 (
                     (g, {"word": word(ci, i), "group": ci, "n": round(c, 2), "ratio": round(r, 4)})
                     for ci in range(len(channels))
-                    for i, c, r, g in describe_rarer(node.counts[ci], node.dists[ci], node.parent_dists[ci].p)
+                    for i, c, r, g in describe_rarer(node.counts[ci], node.dists[ci], against[ci].p)
                     if shown(ci, i)
                 ),
                 key=lambda item: -item[0],
             )
             rarer = [item for _, item in rarer[:_MAX_WORDS]]
+        return {
+            "words": groups_of_words[0],
+            "hidden": hidden,
+            "before": groups_of_words[1],
+            "after": groups_of_words[2],
+            "groups": groups,
+            "rarer": rarer,
+        }
+
+    out = []
+    for node in nodes:
         split = None
         if node.test is not None:
             split = {k: v for k, v in node.test.items() if k != "gains"}
@@ -2106,12 +2205,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 "children": [child.id for child in node.children],
                 "share": round(float(posteriors[:, node.id].mean()), 6),
                 "sentences": int(len(mine)),
-                "words": groups_of_words[0],
-                "hidden": hidden,
-                "before": groups_of_words[1],
-                "after": groups_of_words[2],
-                "groups": groups,
-                "rarer": rarer,
+                **described(node, node.parent_dists),
                 "split": split,
                 "reason": node.reason,
                 "works": int(len(work_counts)) if len(mine) else 0,
@@ -2132,10 +2226,17 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         except Exception:  # no year field the database can read: senses without their course over time
             timeline = None
 
-    # At first, the distinctions down to the largest drop in importance
-    relative = sorted((nd["split"]["relative"] for nd in out if nd["children"]), reverse=True)
-    shown = natural_break(relative)
-    detail = relative[shown - 1] if shown else 1.0
+    # The senses' numbers; a sense that goes on as its parent is told from the sense its number started in (the
+    # rest of a sense, after one is carved out of it, has the words of that sense, not those of none)
+    number, start = sense_numbers(out)
+    rank = {n: k + 1 for k, n in enumerate(sorted(start, key=lambda n: [int(x) for x in n.split(".")]))}
+    for node in nodes:
+        sense = number[node.id]
+        if sense is not None and start[sense] != node.id:
+            out[node.id].update(described(node, nodes[start[sense]].parent_dists))
+    for item in out:
+        item["sense"] = number[item["id"]]
+        item["rank"] = None if item["sense"] is None else rank[item["sense"]]
     return {
         "n_hits": int(sentences["n_hits"]),
         "n_sentences": int(n),
@@ -2145,7 +2246,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         "evidence": EVIDENCE,
         "resamples": N_RESAMPLES,
         "band": list(BAND),
-        "detail": detail,
+        "detail": default_detail(out, number),
         "finest": FINEST,
         "nodes": out,
         "time": timeline,
