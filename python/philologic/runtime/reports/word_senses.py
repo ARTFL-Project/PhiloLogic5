@@ -28,8 +28,9 @@ sense each is in, by more than EVIDENCE standard errors over the sentences. Hold
 sentences of a passage, which share their words, from predicting one another.
 
 Each split has its importance: how much it improves the prediction of the words around the query, per use of the
-word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the largest
-drop in importance from one distinction to the next (natural_break), down to FINEST, under which none are looked for.
+word. The distinctions are shown from the most important down, to the detail asked for: at first, the main one and
+down to the largest drop in importance from one distinction to the next after it (natural_break), and further until
+the senses cover most of the sentences (default_detail); down to FINEST, under which none are looked for.
 
 Over time, the sentences of each year are shared out among the senses by their probabilities. The share of each sense
 and its uses per million words are smoothed by a Whittaker-Henderson smoother whose smoothness generalized
@@ -78,7 +79,7 @@ _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized 
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses22\0"  # bump when the result changes
+_CACHE_TAG = b"senses23\0"  # bump when the result changes
 
 
 class Dist:
@@ -1391,14 +1392,18 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
 
 
 def natural_break(relative, finest=FINEST):
-    """How many distinctions to show at first, of their importances relative to the main one: down to the largest drop
-    from one to the next, as a ratio (the natural break, as the largest gap between eigenvalues tells a number of
-    clusters), the floor of the search counting as the next after the last, so that distinctions all alike in
-    importance are all shown."""
+    """How many distinctions to show at first, of their importances relative to the main one: the main one, and down
+    to the largest drop from one to the next after it, as a ratio (the natural break, as the largest gap between
+    eigenvalues tells a number of clusters), the floor of the search counting as the next after the last, so that
+    distinctions all alike in importance are all shown. The drop from the main one is left out: it splits every
+    sentence, the next only a sense, so that drop mostly measures the size of that sense (importance follows the size
+    of the sense split, rank correlation 0.88 on 60 queries), not a break between distinctions."""
     if len(relative) == 0:
         return 0
     values = np.maximum(np.r_[np.sort(np.asarray(relative, dtype=float))[::-1], finest], 1e-12)
-    return int(np.argmax(np.log(values[:-1] / values[1:]))) + 1
+    if len(values) < 3:
+        return 1
+    return int(np.argmax(np.log(values[1:-1] / values[2:]))) + 2
 
 
 def revealed_by(nodes, detail):

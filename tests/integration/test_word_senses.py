@@ -95,7 +95,7 @@ class TestWordSenses:
                 seen |= set(positions)
 
     def test_senses_keep_their_numbers_at_any_detail(self, shakespeare_db):
-        from philologic.runtime.reports.word_senses import MOST, leaves_at
+        from philologic.runtime.reports.word_senses import MOST, leaves_at, natural_break
 
         report = call(shakespeare_db, get_word_senses, q='"my lord"')
         common = {w.removeprefix("lemma:") for w in report["filter_list"]}
@@ -113,7 +113,8 @@ class TestWordSenses:
                     assert not n["words"] and {w["word"] for w in n["before"] + n["after"]} <= common
             before = set(numbers)
         covered = sum(n["share"] for n in leaves_at(nodes, report["detail"]) if n["sense"] is not None)
-        assert covered > MOST or report["detail"] == levels[0]
+        relative = sorted((n["split"]["relative"] for n in nodes if n["children"]), reverse=True)
+        assert covered > MOST or report["detail"] == relative[natural_break(relative) - 1]
 
     def test_words_next_to_the_query_read_as_the_text_has_them(self, eltec_db, shakespeare_db):
         light = call(eltec_db, get_word_senses, q="lemma:light")["nodes"][0]

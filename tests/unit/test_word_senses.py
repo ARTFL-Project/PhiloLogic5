@@ -159,10 +159,11 @@ class TestSenses:
 
 @pytest.mark.unit
 class TestBreak:
-    def test_the_largest_drop_decides_what_is_shown_at_first(self):
+    def test_the_largest_drop_after_the_main_distinction_decides_what_is_shown_at_first(self):
         révolution = [1.0, 0.75, 0.43, 0.32, 0.25, 0.23, 0.22, 0.16, 0.14, 0.13, 0.11]
         assert ws.natural_break(révolution) == 2  # 75% to 43%
-        assert ws.natural_break([1.0, 0.31, 0.30, 0.18]) == 1
+        assert ws.natural_break([1.0, 0.45, 0.4, 0.2, 0.19, 0.17]) == 3  # not the halving from 100% to 45%
+        assert ws.natural_break([1.0, 0.3]) == 2 and ws.natural_break([1.0]) == 1
 
     def test_distinctions_all_alike_are_all_shown(self):
         assert ws.natural_break([1.0, 0.9, 0.85]) == 3  # the drop is to the floor of the search
@@ -236,28 +237,33 @@ class TestNumbers:
         number, _ = ws.sense_numbers(nodes)
         assert (number[2], number[4], number[5], number[6]) == ("1", "2", "3", None)
 
-    def test_at_first_finer_than_the_break_until_the_senses_cover_most_sentences(self):
-        nodes = [
+    @staticmethod
+    def peeled(shares):
+        """A tree whose rest gives a sense at each split, of importances 1, 0.6, 0.25 and 0.22: the break is at the
+        second, after the drop from 0.6 to 0.25."""
+        a, b, c, d = shares
+        return [
             report_node(0, None, [1, 2], 1.0, relative=1.0),
-            report_node(1, 0, [3, 4], 0.7, own=False, relative=0.3),
-            report_node(2, 0, [], 0.3),
-            report_node(3, 1, [], 0.4, own=False),
-            report_node(4, 1, [], 0.3),
+            report_node(1, 0, [3, 4], 1 - a, own=False, relative=0.6),
+            report_node(2, 0, [], a),
+            report_node(3, 1, [5, 6], 1 - a - b, own=False, relative=0.25),
+            report_node(4, 1, [], b),
+            report_node(5, 3, [7, 8], 1 - a - b - c, own=False, relative=0.22),
+            report_node(6, 3, [], c),
+            report_node(7, 5, [], 1 - a - b - c - d, own=False),
+            report_node(8, 5, [], d),
         ]
-        assert ws.natural_break([1.0, 0.3]) == 1
+
+    def test_at_first_finer_than_the_break_until_the_senses_cover_most_sentences(self):
+        nodes = self.peeled((0.3, 0.1, 0.2, 0.1))
+        assert ws.natural_break([1.0, 0.6, 0.25, 0.22]) == 2
         number, _ = ws.sense_numbers(nodes)
-        assert ws.default_detail(nodes, number) == 0.3  # 1 alone covers 30%, with 2, 60%
+        assert ws.default_detail(nodes, number) == 0.25  # 1 and 2 cover 40%, with 3, 60%
 
     def test_at_first_the_break_when_no_detail_covers_most_sentences(self):
-        nodes = [
-            report_node(0, None, [1, 2], 1.0, relative=1.0),
-            report_node(1, 0, [3, 4], 0.7, own=False, relative=0.3),
-            report_node(2, 0, [], 0.3),
-            report_node(3, 1, [], 0.6, own=False),
-            report_node(4, 1, [], 0.1),
-        ]
+        nodes = self.peeled((0.2, 0.1, 0.1, 0.05))
         number, _ = ws.sense_numbers(nodes)
-        assert ws.default_detail(nodes, number) == 1.0
+        assert ws.default_detail(nodes, number) == 0.6
 
 
 @pytest.mark.unit

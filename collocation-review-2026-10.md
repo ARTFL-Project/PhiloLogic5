@@ -1017,6 +1017,30 @@ On *esprit* it read "l esprit", "d esprit", "saint esprit".
   hundredths of a second on small ones. The text files' first read from disk is what costs (0.7 to 2.3 s once on
   Rousseau's works).
 
+## 17. The first view: the largest drop after the main distinction (Oct 9, cache tag `senses23`)
+
+The user found the first view too conservative: 18 of 60 real queries opened on 2 senses. Only the choice of how many
+splits to show at first changed. The tree, the senses and their words are the same: on the 10 reference queries the
+reports differ only in `detail` (and in the phrases of §16, from a fix made after that baseline).
+
+**The rule.** `natural_break` now keeps the main distinction and looks for the largest drop in importance after it.
+The drop from the main one mostly measures the size of the next sense (§12: importance follows sense size), not a
+break between distinctions. `default_detail` still goes finer until the senses cover more than half the sentences.
+
+**60 real queries** (whole trees with the current code; senses in the first view):
+
+| Rule | 2 | 3 | 4 | 5 | 6 | 7 | 8+ | Mean |
+|---|---|---|---|---|---|---|---|---|
+| Before | 17 (+1 with 1) | 19 | 8 | 5 | 5 | 2 | 3 | 3.7 |
+| Now | 1 | 24 | 15 | 7 | 5 | 2 | 6 | 4.5 |
+| Cut at the bump (not taken) | 1 | 22 | 22 | 5 | 4 | 2 | 4 | 4.2 |
+
+- Examples: sentiment 2 to 4, nature 2 to 5, révolution 2 to 4, light and bank 2 to 3.
+- A few open on many: ELTeC *present* 10, frantext *esprit* 8 (with these filters), Balzac *passion* 9.
+- Pseudowords (2 true senses): the first view shows 4.3 senses instead of 3.3. Purity holds (0.809 against 0.800),
+  but ARI falls from 0.167 to 0.105 and inverse purity from 0.606 to 0.506: more of the same tree's splits are
+  shown, so each word spreads over more senses (*navire | prière*: 2 senses, ARI 0.61, now 5, ARI 0.19).
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter
