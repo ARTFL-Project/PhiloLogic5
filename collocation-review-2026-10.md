@@ -934,6 +934,9 @@ filter, the report is unchanged.
 **Left open.** The greyed words show only when a sense has nothing else. On *esprit*/Rousseau, the mind/body sense
 shows *l'esprit* and not *corps*, its real marker.
 
+**Seed rule kept everywhere (Oct 9).** The user keeps filter words from seeding any split, next to the query too
+(cache tag `senses16`), despite the cost on Balzac *tour* and the pseudowords.
+
 ## 15. Sense numbers, the rest of the sentences, and the first view (Oct 9)
 
 **The problem.** On *esprit*/Rousseau the first card, "Sense 1", was the 61% left once two small senses had been
@@ -988,6 +991,16 @@ It is split as long as a split passes the test on unseen works; senses carved ou
   queries leave no rest: both halves of their splits have words of their own. Rests come from thin subsets, which are
   small and fast.
 - The rest's line also says why it is split no further, as the cards do.
+
+**Tentative senses (cache tag `senses20`).** The senses the rest gave below the floor are less reliable: on
+*volonté*/Rousseau, 5 of the 6 are 2–5% pieces marked by rare words and old spellings, the last near z 2. On
+*esprit*, one rare name (*andiol*) made 13% of the rest a sense. They are kept but no longer shown as the others are:
+- A sense carved out by a split of the rest under FINEST is `tentative`.
+- The page shows it with a dashed, muted card and a "tentative" badge, and says why: it holds on unseen works (its z),
+  but it is only so much as important as the main distinction, under the 10% the other senses reach.
+- The counts say how many are tentative ("9 senses (tentative: 6)").
+- `default_detail` never goes under FINEST, so the first view has none, and they do not count towards MOST.
+- They come up only in thin subsets (439 to 1,622 sentences here). Large queries leave no rest at the finest view.
 
 ## What's solid
 

@@ -248,6 +248,18 @@ class TestNumbers:
         number, _ = ws.sense_numbers(nodes)
         assert ws.default_detail(nodes, number) == 0.3  # 1 alone covers 30%, with 2, 60%
 
+    def test_at_first_no_tentative_sense(self):
+        # The rest's split under the finest detail would cover most sentences: it is not shown at first
+        nodes = [
+            report_node(0, None, [1, 2], 1.0, relative=1.0),
+            report_node(1, 0, [3, 4], 0.7, own=False, relative=0.05),
+            report_node(2, 0, [], 0.3),
+            report_node(3, 1, [], 0.4, own=False),
+            report_node(4, 1, [], 0.3),
+        ]
+        number, _ = ws.sense_numbers(nodes)
+        assert ws.default_detail(nodes, number) == 1.0
+
     def test_at_first_the_break_when_no_detail_covers_most_sentences(self):
         nodes = [
             report_node(0, None, [1, 2], 1.0, relative=1.0),

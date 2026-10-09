@@ -74,7 +74,7 @@ _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the sea
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
-_CACHE_TAG = b"senses19\0"  # bump when the result changes
+_CACHE_TAG = b"senses20\0"  # bump when the result changes
 
 
 class Dist:
@@ -1475,11 +1475,13 @@ def sense_numbers(nodes, marked=_has_own):
     return number, start
 
 
-def default_detail(nodes, number):
+def default_detail(nodes, number, finest=FINEST):
     """The detail shown at first, of a report's nodes and their sense numbers: down to the natural break, and finer,
     a split at a time from the most important down, until the senses shown cover MOST of the sentences, the rest no
-    longer most; when no detail does, the natural break."""
+    longer most; when no detail does, the natural break. Never finer than finest: the tentative senses the rest of
+    the sentences splits into under it are not shown at first."""
     relative = sorted((n["split"]["relative"] for n in nodes if n["children"]), reverse=True)
+    relative = [r for r in relative if r >= finest]
     k = natural_break(relative)
     if not k:
         return 1.0
@@ -2262,9 +2264,12 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         sense = number[node.id]
         if sense is not None and start[sense] != node.id:
             out[node.id].update(described(node, nodes[start[sense]].parent_dists))
+    # Tentative: the senses the rest splits into below the finest detail, which the other senses must reach
+    tentative = {n for n, at in start.items() if out[out[at]["parent"]]["split"]["relative"] < FINEST}
     for item in out:
         item["sense"] = number[item["id"]]
         item["rank"] = None if item["sense"] is None else rank[item["sense"]]
+        item["tentative"] = item["sense"] in tentative
     return {
         "n_hits": int(sentences["n_hits"]),
         "n_sentences": int(n),
