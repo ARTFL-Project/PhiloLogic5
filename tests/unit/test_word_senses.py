@@ -67,6 +67,18 @@ class TestSenses:
         assert any(d and d <= set(SENSES["b"]) for d in described)
         assert root.test["z"] > ws.EVIDENCE
 
+    def test_senses_1b_is_senses_1_when_no_fit_cycles(self):
+        specs = [(work, "abc"[i % 3] if i % 4 else None) for work in range(16) for i in range(40)]
+        channels, works = sentences(specs, seed=6)
+
+        def tree(root):
+            nodes = [root]
+            for node in nodes:
+                nodes.extend(node.children)
+            return [(node.units.tolist(), node.reason, node.test) for node in nodes]
+
+        assert tree(ws.induce_senses(channels, works, version=3)) == tree(ws.induce_senses(channels, works, version=1))
+
     def test_the_same_senses_on_one_thread_or_more(self, monkeypatch):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
         channels, works = sentences(specs, seed=3)

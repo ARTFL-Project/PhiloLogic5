@@ -71,6 +71,13 @@ class TestWordSenses:
         assert any({"pipe", "candle", "match"} & w for w in words)
         assert report != call(eltec_db, get_word_senses, q="lemma:light")  # its own, not the first's from the cache
 
+    def test_senses_1b_finds_the_senses_of_light_too(self, eltec_db):
+        report = call(eltec_db, get_word_senses, q="lemma:light", senses_version="3")
+        assert len(shown(report)) >= 2
+        words = [{w["word"] for w in node["words"]} for node in report["nodes"]]
+        assert any({"sky", "moon", "sun"} & w for w in words)
+        assert any({"pipe", "candle", "match"} & w for w in words)
+
     def test_the_report_holds_together(self, eltec_db):
         report = call(eltec_db, get_word_senses, q="lemma:light")
         orjson.dumps(report)  # what the web server sends

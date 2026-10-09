@@ -206,6 +206,7 @@
         "wordMap": "Carte des mots",
         "wordSenses": "Sens du mot (bêta)",
         "wordSenses2": "Sens du mot 2 (bêta)",
+        "wordSenses1b": "Sens du mot 1b (bêta)",
         "searchEvolution": "Rechercher l'évolution",
         "collocateBetweenPeriods": "Collocations distinctives à travers le temps: {start} vs. {end}",
         "similarUsage": "Usage similaire",

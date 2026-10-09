@@ -23,7 +23,7 @@
                 <p class="text-muted small mb-2">
                     {{ $t("wordSenses.rule", {
                         folds: result.folds, word: queryWord, finest: percent(result.finest),
-                        shown: $t(version > 1 ? "wordSenses.ruleShown2" : "wordSenses.ruleShown"),
+                        shown: $t(version === 2 ? "wordSenses.ruleShown2" : "wordSenses.ruleShown"),
                     }) }}
                     <span v-if="result.seconds !== undefined">{{ $t("wordSenses.seconds", { s: result.seconds }) }}</span>
                 </p>
@@ -186,7 +186,7 @@ import { debug, paramsFilter } from "../../utils.js";
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 
-const props = defineProps({ version: { type: Number, default: 1 } }); // 2: Senses 2, to compare with the first
+const props = defineProps({ version: { type: Number, default: 1 } }); // 2: Senses 2; 3: Senses 1b (to compare)
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");

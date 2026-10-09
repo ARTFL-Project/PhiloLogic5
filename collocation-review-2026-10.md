@@ -852,6 +852,38 @@ senses.
 - **Leaving out candidates alike to an earlier one.** A fifth of later candidates are identical on small queries,
   none on *raison*, *révolution* or *light*. Not done.
 
+## 13. Senses 1b: Senses 1, its cycling fits held (Oct 9, under test)
+
+Senses 1 chooses the words with rates of their own at every step of EM. Its extra time over Senses 2 is the fits
+whose choice never settles. They go on to `_MAX_ITER` (200 steps), and their state never repeats exactly, so no step
+can be skipped without changing the output.
+
+**The switch.** Such a fit shows itself early: the set of words chosen comes back to a set chosen before, after
+another (A, B, …, A).
+- At the cap: in all 37 fits on *raison*, from step 5 to 12; in all 21 on eebo *liberty*, from step 6 to 32.
+- Among fits that settle, it happens in only 25 of 533 (*raison*) and 4 of 369 (*liberty*).
+
+Senses 1b is Senses 1 with, from that moment, the set that came back held, as Senses 2 holds its own
+(`fit_split_switching`, `_em(..., switch=True)`). Every other fit is Senses 1's to the last bit: on made-up sentences,
+where no fit cycles, the tree is the same. It keeps Senses 1's default view (the natural break). It is a tab of its
+own (`senses_version=3`, cache tag `senses1b-1`).
+
+**Results**, 17 queries at 2 threads:
+
+| Query | Senses 1 | Senses 1b | Senses 2 |
+|---|---|---|---|
+| frantext *raison* | 9.0 s | 6.5 s | 6.8 s |
+| frantext *grâce*, within 5 | 4.0 s | 2.2 s | 2.2 s |
+| frantext *esprit* | 16.2 s | 10.3 s | 10.2 s |
+| eebo *liberty* | 30.7 s | 18.8 s | 18.6 s |
+| eebo *reason* | 171.9 s | 79.0 s | 64.2 s |
+| all 17 | 267.9 s | 144.5 s | 131.0 s |
+
+- The default view is Senses 1's in 16 of 17. On *cœur* it is the same four senses: the shares move by a point, and
+  a few lower words differ.
+- The whole report differs from Senses 1's in 15 of 17, in the splits below and in the figures.
+- Pseudowords: ARI 0.146 against 0.148 for Senses 1 (0.162 for Senses 2), purity 0.780 for both.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

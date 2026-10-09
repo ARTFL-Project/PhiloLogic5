@@ -74,6 +74,7 @@ _MAX_WORDS = 40  # words sent for each sense and group of words (the response wo
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _CACHE_TAG = b"senses12\0"  # bump when the result changes
 _CACHE_TAG_2 = b"senses2-4\0"  # the same, for Senses 2
+_CACHE_TAG_3 = b"senses1b-1\0"  # and for Senses 1b
 
 
 class Dist:
@@ -824,7 +825,8 @@ def _em_fit(counts, totals, thresholds, parent_p, parent_rest, markers, discount
 def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off, mk, mk_cmp, mk_off, discount, every):
     """_em_fit for the words the sentences have, from their counts (counts), the groups' totals and sums of the counts'
     least with the discount over all their words (least), and their parent's probabilities (parent_had): their
-    probabilities (words x 2, and 1 for the padding of the slices), and whether any word tells the senses apart. mk
+    probabilities (words x 2, and 1 for the padding of the slices), whether any word tells the senses apart, and
+    which of the markers have rates of their own (chosen). mk
     are the markers of each group (from mk_off), mk_cmp their place among the words the sentences have (-1 for none:
     such a word may still mark a sense, as rarer in both than in the parent)."""
     n_groups = len(cmp_off) - 1
@@ -832,6 +834,7 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
     p = np.empty((n_had + 1, 2))
     p[n_had] = 1.0  # the padding of the slices of the sentences' entries: its evidence is 0
     any_own = False
+    chosen = np.zeros(len(mk), dtype=np.bool_)
     own = np.empty(len(mk), dtype=np.int64)
     own_cmp = np.empty(len(mk), dtype=np.int64)
     for c in range(n_groups):
@@ -861,6 +864,7 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
                             is_own = True
                             break
             if is_own:
+                chosen[m] = True
                 own[n_own] = j
                 own_cmp[n_own] = q
                 n_own += 1
@@ -888,7 +892,7 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
             for m in range(n_own):
                 if own_cmp[m] >= 0:
                     p[own_cmp[m], k] = p_own[m]
-    return p, any_own
+    return p, any_own, chosen
 
 
 @numba.njit(cache=True, nogil=True)
@@ -1005,7 +1009,10 @@ def _column_sums(r):
     return out
 
 
-def _em(Xs, parent, r, every_marker):
+def _em(Xs, parent, r, every_marker, switch=False):
+    """The EM of a split (see fit_split). switch (Senses 1b): the words chosen at every step, once the set chosen comes
+    back to one chosen before (after another), are held from then on: the choice cycles, and the fit would not settle.
+    """
     if not isinstance(Xs, _Mats):
         Xs = _Mats(Xs)
     ones = Xs.ones
@@ -1025,6 +1032,7 @@ def _em(Xs, parent, r, every_marker):
     r = padded[:n]
     lse, hi, log2 = np.empty(n), np.empty(n), 0.0 + math.log(2.0)
     previous = None
+    seen, last = set(), None  # the sets of words chosen (switch)
     for _ in range(_MAX_ITER):
         if weight.min() < 1.0:
             return None
@@ -1033,11 +1041,21 @@ def _em(Xs, parent, r, every_marker):
         totals, least = _em_sums(counts, pos, cmp_off, voc_off, discount)
         with np.errstate(divide="ignore"):
             thresholds = np.log(totals)
-        p, any_own = _em_fit_had(
+        p, any_own, chosen = _em_fit_had(
             counts, totals, least, thresholds, parent_p, parent_had, cmp_off, mk, mk_cmp, mk_off, discount, every_marker
         )
         if not any_own:  # no word tells the senses apart: both are the parent, no split
             return None
+        if switch and not every_marker:
+            key = chosen.tobytes()
+            if key in seen and key != last:  # the choice cycles: these words, held from now on
+                mk, mk_cmp = mk[chosen], mk_cmp[chosen]
+                mk_off = np.searchsorted(mk, voc_off)
+                markers = np.zeros(n_words, dtype=np.bool_)
+                markers[mk] = True
+                every_marker = True
+            seen.add(key)
+            last = key
         evidence = np.log(p, out=p)
         np.multiply(evidence, weights_had, out=evidence)
         ll = _em_loglik(order, start, idx, sdata, ones, evidence.reshape(-1), np.log(pi))
@@ -1084,7 +1102,7 @@ def _em(Xs, parent, r, every_marker):
     return pi, dists, r, [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
 
 
-def fit_split(Xs, parent, r, search=False):
+def fit_split(Xs, parent, r, search=False, switch=False):
     """Fit a split of the sentences Xs (one matrix for each group of words) into two senses by expectation-maximization,
     from the probabilities r (n x 2) of each sentence being in either, each sense a sparse departure from the parent:
     both have their own rates for the words that mark either, and share the parent's for all others. A search (from a
@@ -1096,7 +1114,14 @@ def fit_split(Xs, parent, r, search=False):
         if first is None:
             return None
         r = first[2]
-    return _em(Xs, parent, r, every_marker=False)
+    return _em(Xs, parent, r, every_marker=False, switch=switch)
+
+
+def fit_split_switching(Xs, parent, r, search=False):
+    """Senses 1b: fit_split, but a fit whose words chosen come back to a set it chose before holds that set from then
+    on (as fit_split_screened holds its own): the choice cycles, and such a fit never settled, stopped by _MAX_ITER.
+    Every other fit is fit_split's to the last bit."""
+    return fit_split(Xs, parent, r, search, switch=True)
 
 
 def fit_split_screened(Xs, parent, r, search=False):
@@ -1128,6 +1153,11 @@ def fit_split_screened(Xs, parent, r, search=False):
         for c, ds in enumerate(dists)
     ]
     return pi, dists, r, counts
+
+
+def _fit_of(version):
+    """The fit of a split of each version: 1, Senses 1; 2, Senses 2; 3, Senses 1b."""
+    return {1: fit_split, 2: fit_split_screened, 3: fit_split_switching}[version]
 
 
 @numba.njit(cache=True)
@@ -1282,7 +1312,7 @@ def _fold_gain(fold, r, version=1):
     """The split started from the probabilities r, fitted on a fold's training sentences: each held-out sentence's
     gain over the unsplit sense, and the gains of those more likely in either sense; None for no evidence."""
     train, _, Xtrain, Xtest, unsplit, unsplit_ll = fold
-    fitted = (fit_split if version == 1 else fit_split_screened)(Xtrain, unsplit, r[train])
+    fitted = _fit_of(version)(Xtrain, unsplit, r[train])
     if fitted is None:  # without these sentences, nothing can be told apart: no better
         return None
     pi, dists, _, _ = fitted
@@ -1435,7 +1465,7 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
         return Xs, seed_splits(Xs, collocates, weights=[d.weights for d in node.dists])
 
     ((Xs, seeds),) = pool_map(prepare, (None,))  # on the pool's threads too, which alone do the work
-    fit = fit_split if version == 1 else fit_split_screened
+    fit = _fit_of(version)
     candidates = []
     for (_, seed), fitted in zip(seeds, pool_map(lambda s: fit(Xs, node.dists, s[0], search=True), seeds)):
         if fitted is None:
@@ -1989,7 +2019,7 @@ def word_senses(
 ):
     """The senses of the query and their course over time, as JSON-ready data (cached in the hitlist directory). The
     words of filter_words (the collocation report's filter) are not shown; the analysis reads them, as every word.
-    version 2: Senses 2 (fit_split_screened, first_bump)."""
+    version 2: Senses 2 (fit_split_screened, first_bump); 3: Senses 1b (fit_split_switching)."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
     path = _cache_path(
@@ -2002,7 +2032,7 @@ def word_senses(
         distance,
         year_field,
         filter_words,
-        tag=_CACHE_TAG if version == 1 else _CACHE_TAG_2,
+        tag={1: _CACHE_TAG, 2: _CACHE_TAG_2, 3: _CACHE_TAG_3}[version],
     )
     if os.path.exists(path):
         try:
