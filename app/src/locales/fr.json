@@ -206,6 +206,7 @@
         "wordMap": "Carte des mots",
         "wordSenses": "Sens du mot (bêta)",
         "senseTree": "Arbre des sens (bêta)",
+        "senseMap": "Carte des sens (bêta)",
         "searchEvolution": "Rechercher l'évolution",
         "collocateBetweenPeriods": "Collocations distinctives à travers le temps: {start} vs. {end}",
         "similarUsage": "Usage similaire",
@@ -269,9 +270,22 @@
         "legendPopupHide": "Masquer ce schéma",
         "legendPopupShow": "Afficher ce schéma"
     },
+    "senseMap": {
+        "summary": "La distance entre les sens de « {word} », dans {sentences} phrases de {works} œuvres",
+        "explained": "Les sens proches emploient des mots plus semblables. La distance entre deux sens est la distance de Jensen-Shannon entre les fréquences des mots de leurs phrases, de 0 (les mêmes fréquences) à 1 (aucun mot en commun) ; les mots juste avant et après « {word} » sont laissés de côté, pour que des sens distingués par une seule tournure restent proches. Chaque cercle est un sens, aussi grand que sa part des phrases ; cliquez sur l'un pour voir sa distance aux autres.",
+        "kept": "La carte garde {kept} de la variation des distances (positionnement multidimensionnel classique) ; le tableau les donne exactement.",
+        "chart": "Les sens de « {word} », plus proches quand ils emploient des mots plus semblables",
+        "oneSense": "Un seul sens à ce détail : déplacez le curseur pour en voir davantage.",
+        "table": "Distances entre les sens",
+        "tableExplained": "Plus foncé, plus proche. Les distances sont petites parce que les sens partagent la plupart de leurs mots : ils diffèrent par les mots qui les marquent."
+    },
     "senseTree": {
         "summary": "Les sens de « {word} » dans {sentences} phrases de {works} œuvres, tels que l'analyse les divise",
         "explained": "Chaque bloc est un sens : sa largeur est sa part des phrases du sens dont il est issu ; sa hauteur, l'étendue du détail auquel il est montré. Un sens se divise à la hauteur de l'importance de sa division, rapportée à la distinction principale, de 100 % en haut jusqu'à {finest}, sous quoi aucune distinction n'est recherchée. La ligne noire est la coupe : les blocs qu'elle traverse sont les sens montrés à ce détail, comme dans l'onglet Sens du mot. Déplacez-la avec le curseur, ou cliquez sur le graphique.",
+        "viewLabel": "Comment l'arbre est dessiné",
+        "viewBranches": "Branches",
+        "viewBlocks": "Blocs",
+        "explainedBranches": "Chaque branche est un sens, aussi épaisse que sa part des phrases. Elle se divise là où l'analyse la divise, à l'importance de cette division, rapportée à la distinction principale : de 100 % à gauche jusqu'à {finest}, sous quoi aucune distinction n'est recherchée. L'arbre est dessiné jusqu'à la coupe, la ligne noire : ses branches sont les sens montrés à ce détail, comme dans l'onglet Sens du mot. Déplacez-la avec le curseur, ou cliquez sur le graphique.",
         "cut": "Coupe",
         "firstView": "Revenir à la première vue",
         "firstViewLine": "première vue",

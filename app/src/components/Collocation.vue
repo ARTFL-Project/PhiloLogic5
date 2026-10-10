@@ -15,6 +15,7 @@
                 <option value="wordMap">{{ $t("collocation.wordMap") }}</option>
                 <option value="senses">{{ $t("collocation.wordSenses") }}</option>
                 <option value="senseTree">{{ $t("collocation.senseTree") }}</option>
+                <option value="senseMap">{{ $t("collocation.senseMap") }}</option>
             </select>
         </div>
 
@@ -78,12 +79,20 @@
                         {{ $t("collocation.senseTree") }}
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="sense-map-tab" data-bs-toggle="tab"
+                        :class="{ active: mode === 'senseMap' }" data-bs-target="#sense-map-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'senseMap'"
+                        @click="setMode('senseMap')">
+                        {{ $t("collocation.senseMap") }}
+                    </button>
+                </li>
             </ul>
         </div>
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
-            v-if="['frequency', 'timeSeries', 'wordMap', 'senses', 'senseTree'].includes(mode)"
+            v-if="['frequency', 'timeSeries', 'wordMap', 'senses', 'senseTree', 'senseMap'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -123,6 +132,9 @@
 
             <SenseTree v-if="mode === 'senseTree'" ref="senseTreeRef"
                 @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+
+            <SenseMap v-if="mode === 'senseMap'" ref="senseMapRef"
+                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
         </div>
     </div>
 </template>
@@ -150,6 +162,7 @@ import WordSenses from "./collocation/WordSenses.vue";
 // the user actually opens the word-map tab, not on entry to Collocation.
 const WordMap = defineAsyncComponent(() => import("./collocation/WordMap.vue"));
 const SenseTree = defineAsyncComponent(() => import("./collocation/SenseTree.vue"));
+const SenseMap = defineAsyncComponent(() => import("./collocation/SenseMap.vue"));
 
 //  Injects, route, router, store
 const $http = inject("$http");
@@ -174,6 +187,7 @@ const usagePatternsTimelineRef = useTemplateRef("usagePatternsTimelineRef");
 const wordMapRef = useTemplateRef("wordMapRef");
 const wordSensesRef = useTemplateRef("wordSensesRef");
 const senseTreeRef = useTemplateRef("senseTreeRef");
+const senseMapRef = useTemplateRef("senseMapRef");
 
 //  Shared state
 const mode = ref("frequency");
@@ -274,7 +288,7 @@ function updateCollocationUrl() {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
-    if (mode.value === "wordMap" || mode.value === "senses" || mode.value === "senseTree") {
+    if (["wordMap", "senses", "senseTree", "senseMap"].includes(mode.value)) {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -419,6 +433,11 @@ watch(
                 senseTreeRef.value?.runDetection();
                 return;
             }
+            if (newMode === "senseMap") {
+                await nextTick();
+                senseMapRef.value?.runDetection();
+                return;
+            }
             // Switching to frequency/similar/compare, but the primary fetch
             // never ran (page was loaded directly on a detection tab) — run it
             // now so the view isn't empty.
@@ -449,6 +468,9 @@ watch(
         } else if (newMode === "senseTree") {
             await nextTick();
             senseTreeRef.value?.runDetection();
+        } else if (newMode === "senseMap") {
+            await nextTick();
+            senseMapRef.value?.runDetection();
         } else {
             fetchResults();  // .then() runs runPostFetchModeAction for similar/compare/frequency
         }
@@ -491,6 +513,10 @@ onMounted(async () => {
         case "senseTree":
             await nextTick();
             senseTreeRef.value?.runDetection();
+            break;
+        case "senseMap":
+            await nextTick();
+            senseMapRef.value?.runDetection();
             break;
         case "compare":
             fetchResults();  // primary fetch then runPostFetchModeAction → compareRef.runFromMetadata

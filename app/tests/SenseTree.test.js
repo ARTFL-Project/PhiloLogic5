@@ -47,10 +47,27 @@ async function loaded(response = report) {
 }
 
 const atCut = (wrapper) => wrapper.findAll(".at-cut").map((b) => b.text().replace(/\s+/g, " ").trim());
+const asBlocks = (wrapper) => wrapper.findAll(".btn-group button")[1].trigger("click");
 
 describe("SenseTree", () => {
+    it("draws the senses at the cut as branches, as thick as their shares, forking where they split", async () => {
+        const { wrapper } = await loaded();
+        const rows = () => wrapper.findAll("[id^='sense-row-']").map((t) => t.text().replace(/\s+/g, " ").trim());
+        expect(rows()).toEqual([
+            "Sense 1 · 50% · dieu, foi", "Sense 2 · 20% · sa raison", "Sense 2.1 · 30% · mer",
+        ]);
+        const width = (id) => Number(wrapper.find(`#sense-branch-${id}`).attributes("stroke-width"));
+        expect(width(1)).toBeGreaterThan(width(3));
+        expect(wrapper.find("#sense-branch-4").exists()).toBe(false); // finer than the cut: not drawn
+        await wrapper.find("#sense-tree-cut").setValue(3);
+        expect(rows().map((r) => r.split(" ·")[0])).toEqual(["Sense 1", "Sense 2", "Sense 2.1", "Sense 2.1.1"]);
+        await wrapper.find("#sense-row-6").trigger("click");
+        expect(wrapper.find(".selected-sense").text()).toContain("sa raison");
+    });
+
     it("draws a block for each sense, as wide as its share", async () => {
         const { wrapper } = await loaded();
+        await asBlocks(wrapper);
         expect(wrapper.findAll("rect[id^='sense-block-']")).toHaveLength(report.nodes.length - 1);
         const width = (id) => Number(wrapper.find(`#sense-block-${id}`).attributes("width"));
         expect(Math.abs(width(1) - width(2))).toBeLessThan(1); // half and half (each a pixel short, for the gap)
@@ -59,6 +76,7 @@ describe("SenseTree", () => {
 
     it("cuts the tree at the first view, and lists the senses the cut crosses", async () => {
         const { wrapper } = await loaded();
+        await asBlocks(wrapper);
         expect(wrapper.find("#sense-tree-cut").element.value).toBe("2");
         expect(atCut(wrapper)).toEqual([
             "Sense 1: dieu, foi · 50% of the sentences",
@@ -77,7 +95,8 @@ describe("SenseTree", () => {
         await wrapper.find("#sense-tree-cut").setValue(0);
         expect(atCut(wrapper)).toEqual([]);
         expect(wrapper.text()).toContain("All the sentences, not split.");
-        await wrapper.find("button.btn-link").trigger("click");
+        await wrapper.find("#sense-tree-cut").element.parentElement.querySelector("button.btn-link").click();
+        await flushPromises();
         expect(wrapper.find("#sense-tree-cut").element.value).toBe("2");
     });
 
@@ -100,6 +119,7 @@ describe("SenseTree", () => {
             ],
         };
         const { wrapper } = await loaded(withRest);
+        await asBlocks(wrapper);
         expect(atCut(wrapper)).toEqual(["Sense 1: ciel · 40% of the sentences", "the rest · 60% of the sentences"]);
         expect(wrapper.find("#sense-block-1").attributes("fill")).toContain("hsla(0, 0%, 62%");
     });

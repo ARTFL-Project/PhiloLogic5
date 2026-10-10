@@ -206,6 +206,7 @@
         "wordMap": "Mapa de palabras",
         "wordSenses": "Sentidos de la palabra (beta)",
         "senseTree": "Árbol de sentidos (beta)",
+        "senseMap": "Mapa de sentidos (beta)",
         "searchEvolution": "Evolución de la búsqueda",
         "collocateBetweenPeriods": "Colocaciones distintivas desde {start} hasta {end}",
         "similarUsage": "Uso Similar",
@@ -269,9 +270,22 @@
         "legendPopupHide": "Ocultar este patrón",
         "legendPopupShow": "Mostrar este patrón"
     },
+    "senseMap": {
+        "summary": "La distancia entre los sentidos de «{word}», en {sentences} oraciones de {works} obras",
+        "explained": "Los sentidos más cercanos usan palabras más parecidas. La distancia entre dos sentidos es la distancia de Jensen-Shannon entre las frecuencias de las palabras de sus oraciones, de 0 (las mismas frecuencias) a 1 (ninguna palabra en común); se dejan fuera las palabras justo antes y después de «{word}», para que los sentidos que solo distingue una construcción queden cerca. Cada círculo es un sentido, tan grande como su parte de las oraciones; haga clic en uno para ver su distancia a los demás.",
+        "kept": "El mapa conserva el {kept} de la variación de las distancias (escalamiento multidimensional clásico); la tabla las da exactamente.",
+        "chart": "Los sentidos de «{word}», más cercanos cuando usan palabras más parecidas",
+        "oneSense": "Un solo sentido a este detalle: mueva el control deslizante para ver más.",
+        "table": "Distancias entre los sentidos",
+        "tableExplained": "Más oscuro, más cercano. Las distancias son pequeñas porque los sentidos comparten la mayoría de sus palabras: difieren en las palabras que los marcan."
+    },
     "senseTree": {
         "summary": "Los sentidos de «{word}» en {sentences} oraciones de {works} obras, tal como el análisis los divide",
         "explained": "Cada bloque es un sentido: su anchura es su parte de las oraciones del sentido del que proviene; su altura, el intervalo de detalle en el que se muestra. Un sentido se divide a la altura de la importancia de su división, relativa a la distinción principal, desde el 100 % arriba hasta el {finest}, por debajo del cual no se busca ninguna distinción. La línea negra es el corte: los bloques que atraviesa son los sentidos mostrados a ese detalle, como en la pestaña Sentidos de la palabra. Muévala con el control deslizante o haga clic en el gráfico.",
+        "viewLabel": "Cómo se dibuja el árbol",
+        "viewBranches": "Ramas",
+        "viewBlocks": "Bloques",
+        "explainedBranches": "Cada rama es un sentido, tan gruesa como su parte de las oraciones. Se bifurca donde el análisis la divide, a la importancia de esa división, relativa a la distinción principal: desde el 100 % a la izquierda hasta el {finest}, por debajo del cual no se busca ninguna distinción. El árbol se dibuja hasta el corte, la línea negra: sus ramas son los sentidos mostrados a ese detalle, como en la pestaña Sentidos de la palabra. Muévala con el control deslizante o haga clic en el gráfico.",
         "cut": "Corte",
         "firstView": "Volver a la primera vista",
         "firstViewLine": "primera vista",

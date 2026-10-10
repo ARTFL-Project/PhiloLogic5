@@ -1082,6 +1082,32 @@ the same cache.
   share a sentence, so co-occurrence does not group them. The ego-network prototype (collocate graph and Leiden) did
   worse than the senses on pseudowords.
 
+**Branches (Oct 9).** The tab now opens on a sideways tree, with the blocks behind a switch. The root is on the left;
+each split forks at its importance (the same log scale, now horizontal). Each sense at the cut has a row, labeled in
+full, and its branch is as thick as its share. The tree is drawn down to the cut only, so it has as many rows as
+senses shown, and moving the cut makes branches fork. It made one thing about the numbers plain: when sense 1 of
+*esprit* is refined, the larger half keeps the number ("supérieur, goût, talent"), while "révolution, gouvernement",
+closer to what sense 1 was, becomes 1.2.
+
+## 19. The sense map tab (Oct 9, prototype)
+
+How far apart the senses are ("Sense map (beta)", `collocation_method=senseMap`,
+[SenseMap.vue](app/src/components/collocation/SenseMap.vue)).
+- **The distance** (`sense_distances`, report field `distances`, cache tag `senses25`): the Jensen-Shannon distance
+  between two senses' rates for the words of the sentence, in bits. It is a true distance, from 0 (alike) to 1
+  (nothing in common), with no constant.
+  - The words next to the query are left out, so that senses told apart by a construction alone are close.
+  - Only the query's collocates are counted one by one; every other word is one bin. Those keep their parent's rates
+    up to a scale in every sense, so the distance over them is the distance over their sum. This is exact, and it
+    adds no measurable time.
+- **On *esprit*:** the halves of the same split are the closest (1 and 1.1, 0.19; 2 and 2.1, 0.18); the mind and wit
+  are the farthest (0.28). All the distances fall within 0.18–0.28, because senses share most of their words.
+- **The map:** classical multidimensional scaling of the senses at the detail asked for.
+  - Each circle is as large as the sense's share. A click shows the distances from that sense to the others.
+  - The page says how much of the distances' variation the map keeps: 62% for the 7 senses of *esprit* one step
+    finer than the first view. A table gives the exact distances.
+  - Labels that would overlap are moved apart, with a leader line; the circles stay where the distances put them.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter
