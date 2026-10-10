@@ -128,19 +128,6 @@ class TestWordSenses:
                     assert w["phrase"] == " ".join(w["phrase"].split()) == w["phrase"].lower()
                     assert "my lord" in w["phrase"]
 
-    def test_senses_have_a_distance_from_one_another(self, eltec_db):
-        import numpy as np
-
-        report = call(eltec_db, get_word_senses, q="lemma:light")
-        D = np.array(report["distances"])
-        n = len(report["nodes"])
-        assert D.shape == (n, n) and np.allclose(D, D.T) and np.all(np.diag(D) == 0)
-        assert np.all((D >= 0) & (D <= 1))
-        i, j, k = np.meshgrid(range(n), range(n), range(n), indexing="ij")
-        assert np.all(D[i, k] <= D[i, j] + D[j, k] + 1e-3)  # a true distance (to the rounding)
-        a, b = report["nodes"][0]["children"]
-        assert D[a, b] > 0  # the halves of the main distinction use their words differently
-
     def test_the_query_words_are_never_their_own_context(self, shakespeare_db):
         report = call(shakespeare_db, get_word_senses, q='"my lord"')
         for node in report["nodes"]:

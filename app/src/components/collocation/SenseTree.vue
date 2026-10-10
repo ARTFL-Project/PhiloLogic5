@@ -24,7 +24,7 @@
                     : "senseTree.explained", { finest: percent(result.finest) }) }}</p>
 
                 <div v-if="splits.length" class="d-flex align-items-center gap-2 flex-wrap">
-                    <label for="sense-tree-cut" class="small fw-semibold mb-0">{{ $t("senseTree.cut") }}</label>
+                    <label for="sense-tree-cut" class="small fw-semibold mb-0">{{ $t("wordSenses.detail") }}</label>
                     <span class="small text-muted" aria-hidden="true">{{ $t("wordSenses.coarser") }}</span>
                     <input id="sense-tree-cut" v-model.number="position" type="range" class="form-range cut-range" min="0"
                         :max="splits.length" step="1" :aria-valuetext="cutText" aria-describedby="sense-tree-cut-text" />
@@ -35,7 +35,7 @@
                 <p id="sense-tree-cut-text" class="small mb-2" aria-live="polite">{{ cutText }}</p>
 
                 <svg v-if="view === 'branches'" :viewBox="`0 0 ${W} ${branches.height}`" class="sense-tree branches"
-                    role="img" :aria-label="$t('senseTree.chart', { word: queryWord })" @click="cutAtX($event)">
+                    role="img" :aria-label="$t('senseTree.chart', { word: queryWord })">
                     <!-- The importance axis, relative to the main distinction, from the left -->
                     <g class="axis">
                         <template v-for="tick in ticks" :key="tick">
@@ -49,23 +49,15 @@
                     <path :d="`M 4 ${branches.rootY} H ${branches.rootX}`" class="branch" :stroke-width="thickness(1)"
                         stroke="hsla(0, 0%, 62%, 1)" />
                     <path v-for="b in branches.segments" :key="`branch-${b.node.id}`" :id="`sense-branch-${b.node.id}`"
-                        class="branch" :d="`M ${b.x0} ${b.y0} V ${b.y1} H ${b.x1}`" :stroke="senseColor(b.node.rank, 1)"
+                        class="branch" :d="`M ${b.x0} ${b.y0} V ${b.y1} H ${b.x1}`" :stroke="senseColor(b.node.sense, 1)"
                         :stroke-width="thickness(b.node.share)" @click.stop="select(b.node)">
                         <title>{{ blockTitle(b.node) }}</title>
                     </path>
-                    <!-- The first view, and the cut -->
-                    <line v-if="splits.length && position !== defaultPosition" class="first-view" :x1="cutX(defaultPosition)"
-                        :x2="cutX(defaultPosition)" :y1="B_TOP - 6" :y2="branches.height - 18" />
-                    <text v-if="splits.length && position !== defaultPosition" class="line-label first-view-label"
-                        :x="cutX(defaultPosition)" :y="B_TOP - 10" text-anchor="middle">{{ $t("senseTree.firstViewLine") }}</text>
-                    <line class="cut" :x1="cutX(position)" :x2="cutX(position)" :y1="B_TOP - 6" :y2="branches.height - 18" />
-                    <text class="line-label" :x="cutX(position)" :y="B_TOP - 10" text-anchor="middle">{{
-                        position === defaultPosition && splits.length ? $t("senseTree.cutFirstView") : $t("senseTree.cutLine") }}</text>
                     <!-- The senses at the cut, each on its row -->
                     <g v-for="row in branches.rows" :key="`row-${row.node.id}`" class="row-label"
                         :class="{ picked: selected && selected.id === row.node.id }" @click.stop="select(row.node)">
                         <text :id="`sense-row-${row.node.id}`" :x="B_RIGHT + 10" :y="row.y + 4"
-                            :fill="row.node.sense ? senseColor(row.node.rank, 1) : '#6c757d'">
+                            :fill="senseTextColor(row.node.sense, shades)">
                             <tspan font-weight="600">{{ row.node.sense ? $t("wordSenses.senseN", { n: row.node.sense })
                                 : $t("senseTree.restShort") }}</tspan>
                             <tspan fill="#495057"> · {{ percent(row.node.share) }} · {{ label(row.node) }}</tspan>
@@ -74,7 +66,7 @@
                 </svg>
 
                 <svg v-else :viewBox="`0 0 ${W} ${H}`" class="sense-tree" role="img"
-                    :aria-label="$t('senseTree.chart', { word: queryWord })" @click="cutAt($event)">
+                    :aria-label="$t('senseTree.chart', { word: queryWord })">
                     <!-- The importance axis, relative to the main distinction -->
                     <g class="axis">
                         <template v-for="tick in ticks" :key="tick">
@@ -88,19 +80,11 @@
                         :height="TOP - 20" fill="hsla(0, 0%, 88%, 1)" />
                     <rect v-for="b in blocks" :id="`sense-block-${b.node.id}`" :key="b.node.id" class="block"
                         :class="{ shown: shownIds.has(b.node.id) }" :x="b.x + 0.5" :y="b.y" :width="Math.max(0, b.w - 1)"
-                        :height="b.h" :fill="senseColor(b.node.rank, shownIds.has(b.node.id) ? 0.8 : 0.2)"
+                        :height="b.h" :fill="senseColor(b.node.sense, shownIds.has(b.node.id) ? 0.8 : 0.2)"
                         :stroke="selected && selected.id === b.node.id ? '#000' : '#fff'"
                         :stroke-width="selected && selected.id === b.node.id ? 2 : 1" @click.stop="select(b.node)">
                         <title>{{ blockTitle(b.node) }}</title>
                     </rect>
-                    <!-- The first view, and the cut, under the labels; their names in the margin -->
-                    <line v-if="splits.length && position !== defaultPosition" class="first-view" :x1="LEFT" :x2="RIGHT"
-                        :y1="cutY(defaultPosition)" :y2="cutY(defaultPosition)" />
-                    <text v-if="splits.length && position !== defaultPosition" class="line-label first-view-label"
-                        :x="RIGHT + 6" :y="cutY(defaultPosition) + 4">{{ $t("senseTree.firstViewLine") }}</text>
-                    <line class="cut" :x1="LEFT" :x2="RIGHT" :y1="cutY(position)" :y2="cutY(position)" />
-                    <text class="line-label" :x="RIGHT + 6" :y="cutY(position) + 4">{{
-                        position === defaultPosition && splits.length ? $t("senseTree.cutFirstView") : $t("senseTree.cutLine") }}</text>
                     <text :x="LEFT + 6" :y="TOP - 20">{{ $t("senseTree.all", {
                         word: queryWord, sentences: result.n_sentences.toLocaleString() }) }}</text>
                     <template v-for="b in blocks" :key="`label-${b.node.id}`">
@@ -116,7 +100,7 @@
                 <ul class="list-unstyled mb-0">
                     <li v-for="node in atCut" :key="node.id" class="mb-1">
                         <button type="button" class="btn btn-sm btn-link p-0 text-start at-cut" @click="select(node)">
-                            <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.rank, 1) }"></span>
+                            <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.sense, 1) }"></span>
                             <template v-if="node.sense">{{ $t("wordSenses.senseN", { n: node.sense }) }}:</template>
                             {{ label(node) }}
                             <span class="text-muted">&middot; {{ $t("wordSenses.shareOfSentences",
@@ -129,7 +113,7 @@
             <!-- A sense picked on the chart or in the list -->
             <div v-if="selected" class="card shadow-sm p-3 mb-3 selected-sense">
                 <h3 class="h6 mb-2">
-                    <span class="legend-swatch" :style="{ backgroundColor: senseColor(selected.rank, 1) }"></span>
+                    <span class="legend-swatch" :style="{ backgroundColor: senseColor(selected.sense, 1) }"></span>
                     {{ selected.sense ? $t("wordSenses.senseN", { n: selected.sense }) : $t("senseTree.restShort") }}
                     <span class="fw-normal text-muted">&middot; {{ $t("wordSenses.shareOfSentences",
                         { share: percent(selected.share) }) }} &middot; {{ $t("wordSenses.fromWorks",
@@ -159,6 +143,7 @@ import { useI18n } from "vue-i18n";
 import { useMainStore } from "../../stores/main";
 import { debug, paramsFilter } from "../../utils.js";
 import ProgressSpinner from "../ProgressSpinner";
+import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
@@ -180,7 +165,7 @@ const H = 440;
 const TOP = 40;
 const BOTTOM = H - 16;
 const LEFT = 46;
-const RIGHT = 900; // the plot's right edge: the margin beyond names the lines
+const RIGHT = W;
 // The branches: importance from the left; the senses at the cut on rows, named in the column on the right
 const B_LEFT = 60;
 const B_RIGHT = 560;
@@ -259,14 +244,6 @@ function yOf(r) {
 
 const ticks = computed(() => [1, 0.5, 0.25, result.value?.finest ?? 0.1].filter((r) => r >= lowest.value));
 
-// The cut: between the last distinction it reveals and the next, so that it crosses the senses shown
-function cutY(p) {
-    if (!p) return TOP - 6;
-    const above = yOf(splits.value[p - 1].split.relative);
-    const below = p < splits.value.length ? yOf(splits.value[p].split.relative) : BOTTOM;
-    return (above + below) / 2;
-}
-
 // In the order of their senses' numbers, the rest of the sentences last
 function firstRank(node) {
     if (node.children.length) return Math.min(...node.children.map((c) => firstRank(nodes.value[c])));
@@ -322,9 +299,9 @@ const atCut = computed(() => {
 const shownIds = computed(() => new Set(atCut.value.map((n) => n.id)));
 
 const cutText = computed(() => {
-    if (!position.value) return t("senseTree.cutNone");
+    if (!position.value) return t("wordSenses.detailNone");
     const senses = atCut.value.filter((n) => n.sense !== null).length;
-    return t("senseTree.cutText", {
+    return t("wordSenses.detailText", {
         senses: senses === 1 ? t("wordSenses.oneSense") : t("wordSenses.nSenses", { n: senses }),
         importance: percent(splits.value[position.value - 1].split.relative),
     });
@@ -334,13 +311,6 @@ const cutText = computed(() => {
 function xOf(r) {
     const span = Math.log(1 / lowest.value) || 1;
     return B_LEFT + (Math.log(1 / Math.max(r, lowest.value)) / span) * (B_RIGHT - B_LEFT - 30);
-}
-
-function cutX(p) {
-    if (!p) return B_LEFT - 6;
-    const left = xOf(splits.value[p - 1].split.relative);
-    const right = p < splits.value.length ? xOf(splits.value[p].split.relative) : B_RIGHT;
-    return (left + right) / 2;
 }
 
 function thickness(share) {
@@ -373,26 +343,6 @@ const branches = computed(() => {
     const rootX = revealed.value.has(root.value.id) ? xOf(heightOf.value[root.value.id]) : B_RIGHT;
     return { rows, segments, rootX, rootY, height: B_TOP + rows.length * ROW + 24 };
 });
-
-// A click on the branches moves the cut to the importance there
-function cutAtX(event) {
-    if (!splits.value.length) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - rect.left) / Math.max(1, rect.width)) * W;
-    const span = Math.log(1 / lowest.value) || 1;
-    const r = Math.exp(-((x - B_LEFT) / (B_RIGHT - B_LEFT - 30)) * span);
-    position.value = splits.value.filter((n) => n.split.relative >= r).length;
-}
-
-// A click on the chart moves the cut to the importance there
-function cutAt(event) {
-    if (!splits.value.length) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const y = ((event.clientY - rect.top) / Math.max(1, rect.height)) * H;
-    const span = Math.log(1 / lowest.value) || 1;
-    const r = Math.exp(-((y - TOP) / (BOTTOM - TOP - 20)) * span);
-    position.value = splits.value.filter((n) => n.split.relative >= r).length;
-}
 
 function select(node) {
     selected.value = node;
@@ -428,11 +378,10 @@ function percent(share) {
     return `${Math.round(share * 100)}%`;
 }
 
-// The senses tab's colors, by the rank of a sense's number, the rest grey
-const hues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
-function senseColor(rank, alpha) {
-    if (rank === null || rank === undefined) return `hsla(0, 0%, 62%, ${alpha})`;
-    return `hsla(${hues[(rank - 1) % hues.length]}, 55%, 50%, ${alpha})`;
+// The senses tab's colors: a hue for each sense at the top, shades of it for those carved out of it (senseColors.js)
+const shades = computed(() => senseShades(nodes.value));
+function senseColor(sense, alpha) {
+    return colorOf(sense, alpha, shades.value);
 }
 </script>
 
@@ -440,7 +389,6 @@ function senseColor(rank, alpha) {
 .sense-tree {
     width: 100%;
     height: auto;
-    cursor: crosshair;
 }
 
 .sense-tree text {
@@ -459,25 +407,6 @@ function senseColor(rank, alpha) {
 
 .block {
     cursor: pointer;
-}
-
-.cut {
-    stroke: #212529;
-    stroke-width: 2;
-}
-
-.first-view {
-    stroke: #6c757d;
-    stroke-width: 1.5;
-    stroke-dasharray: 2 4;
-}
-
-.first-view-label {
-    fill: #6c757d;
-}
-
-.line-label {
-    font-weight: 600;
 }
 
 .branch {

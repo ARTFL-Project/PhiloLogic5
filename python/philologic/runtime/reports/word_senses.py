@@ -79,7 +79,7 @@ _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized 
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses25\0"  # bump when the result changes
+_CACHE_TAG = b"senses26\0"  # bump when the result changes
 
 
 class Dist:
@@ -1504,27 +1504,6 @@ def marks(node, against, common=None):
     return False
 
 
-def sense_distances(nodes):
-    """How far apart the words of the senses are, for every pair of nodes of the tree: the Jensen-Shannon distance
-    between their rates for the words of the sentence (in bits, a true distance: 0, alike; 1, nothing in common). The
-    words next to the query are left out: senses told apart by a construction alone (l'esprit, un esprit) are close in
-    meaning. The query's collocates count one by one and every other word as one: those keep their parent's rates up
-    to a scale in every sense (only collocates mark senses), so that the distance over them is that over their sum."""
-    mask = nodes[0].dists[0].markers
-    if mask is None:
-        mask = np.ones(len(nodes[0].dists[0].p), dtype=np.bool_)
-    P = np.array([np.r_[n.dists[0].p[mask], max(0.0, 1.0 - float(n.dists[0].p[mask].sum()))] for n in nodes])
-    logP = np.log2(np.where(P > 0, P, 1.0))
-    out = np.zeros((len(nodes), len(nodes)))
-    for a in range(len(nodes)):
-        M = 0.5 * (P[a] + P[a:])
-        logM = np.log2(np.where(M > 0, M, 1.0))
-        js = 0.5 * ((P[a] * (logP[a] - logM)).sum(axis=1) + (P[a:] * (logP[a:] - logM)).sum(axis=1))
-        out[a, a:] = out[a:, a] = np.sqrt(np.clip(js, 0.0, 1.0))
-    out[np.diag_indices_from(out)] = 0.0
-    return out
-
-
 def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map):
     units = node.units
     if len(units) < 2:
@@ -2440,7 +2419,6 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         "band": list(BAND),
         "detail": default_detail(out, number),
         "finest": FINEST,
-        "distances": np.round(sense_distances(nodes), 4).tolist(),
         "nodes": out,
         "time": timeline,
     }

@@ -58,7 +58,7 @@
                             role="img" :aria-label="$t('wordSenses.overviewChart')"
                             @mousemove="onHover($event)" @mouseleave="hoverIndex = null">
                             <path v-for="layer in overviewLayers" :key="layer.id" :d="layer.path"
-                                :fill="senseColor(layer.rank, 0.85)" stroke="#fff" stroke-width="0.3" />
+                                :fill="senseColor(layer.sense, 0.85)" stroke="#fff" stroke-width="0.3" />
                             <line v-if="hoverIndex !== null" :x1="xOf(hoverIndex)" :x2="xOf(hoverIndex)" y1="0"
                                 :y2="overviewHeight" stroke="#333" stroke-width="1" vector-effect="non-scaling-stroke" />
                         </svg>
@@ -72,7 +72,7 @@
                             <strong>{{ time.start + hoverIndex }}</strong>
                             ({{ $t("wordSenses.sentencesThatYear", { n: time.sentences[hoverIndex], works: time.works[hoverIndex] }) }}):
                             <span v-for="node in shown" :key="node.id" class="me-2">
-                                <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.rank, 1) }"></span>
+                                <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.sense, 1) }"></span>
                                 {{ formatValue(curve(node).value[hoverIndex]) }}
                             </span>
                         </template>
@@ -83,9 +83,9 @@
 
                 <div v-if="shown.length > 1" class="d-flex flex-wrap gap-1 mt-2">
                     <button v-for="node in senses" :key="`chip-${node.id}`" type="button" class="btn btn-sm legend-chip"
-                        :style="{ borderColor: senseColor(node.rank, 1), color: senseColor(node.rank, 1) }"
+                        :style="{ borderColor: senseColor(node.sense, 1), color: senseTextColor(node.sense, shades) }"
                         @click="scrollToSense(node)">
-                        <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.rank, 1) }"></span>
+                        <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.sense, 1) }"></span>
                         {{ $t("wordSenses.senseN", { n: node.sense }) }}: {{ label(node) }}
                     </button>
                 </div>
@@ -115,11 +115,11 @@
                         {{ $t("wordSenses.rest", { share: percent(row.node.share) }) }} {{ notSplitReason(row.node) }}
                     </p>
                     <section v-else :id="`sense-card-${row.node.id}`" class="card shadow-sm mb-3 sense-card"
-                        :style="{ borderLeft: `4px solid ${senseColor(row.node.rank, 1)}` }"
+                        :style="{ borderLeft: `4px solid ${senseColor(row.node.sense, 1)}` }"
                         :aria-labelledby="`sense-title-${row.node.id}`">
                         <div class="sense-header px-3 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <h3 class="h6 mb-0" :id="`sense-title-${row.node.id}`">
-                                <span class="legend-swatch" :style="{ backgroundColor: senseColor(row.node.rank, 1) }"></span>
+                                <span class="legend-swatch" :style="{ backgroundColor: senseColor(row.node.sense, 1) }"></span>
                                 {{ $t("wordSenses.senseN", { n: row.node.sense }) }}
                                 <span class="fw-normal text-muted">&middot; {{ $t("wordSenses.shareOfSentences",
                                     { share: percent(row.node.share) }) }}
@@ -141,8 +141,8 @@
                                         preserveAspectRatio="none" role="img"
                                         :aria-label="$t('wordSenses.senseChart', { n: row.node.sense })"
                                         @mousemove="onHover($event)" @mouseleave="hoverIndex = null">
-                                        <path :d="bandPath(row.node)" :fill="senseColor(row.node.rank, 0.18)" stroke="none" />
-                                        <path :d="linePath(row.node)" :stroke="senseColor(row.node.rank, 1)"
+                                        <path :d="bandPath(row.node)" :fill="senseColor(row.node.sense, 0.18)" stroke="none" />
+                                        <path :d="linePath(row.node)" :stroke="senseColor(row.node.sense, 1)"
                                             stroke-width="1.5" fill="none" vector-effect="non-scaling-stroke" />
                                         <line v-if="hoverIndex !== null" :x1="xOf(hoverIndex)" :x2="xOf(hoverIndex)" y1="0"
                                             :y2="cardHeight" stroke="#333" stroke-width="1" vector-effect="non-scaling-stroke" />
@@ -186,6 +186,7 @@ import { useMainStore } from "../../stores/main";
 import { debug, paramsFilter } from "../../utils.js";
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
+import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
@@ -381,11 +382,10 @@ function percent(share) {
     return `${Math.round(share * 100)}%`;
 }
 
-// Same hues as the usage patterns, so colors read alike across tabs; by the rank of a sense's number, the rest grey
-const hues = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
-function senseColor(rank, alpha) {
-    if (rank === null || rank === undefined) return `hsla(0, 0%, 62%, ${alpha})`;
-    return `hsla(${hues[(rank - 1) % hues.length]}, 55%, 50%, ${alpha})`;
+// A hue for each sense numbered at the top, shades of it for those carved out of it, the rest grey (senseColors.js)
+const shades = computed(() => senseShades(nodes.value));
+function senseColor(sense, alpha) {
+    return colorOf(sense, alpha, shades.value);
 }
 
 function scrollToSense(node) {
@@ -439,7 +439,7 @@ const overviewLayers = computed(() => {
         let d = `M ${xOf(0)} ${bottom[0].toFixed(2)} `;
         for (let i = 0; i < n; i++) d += `L ${xOf(i).toFixed(2)} ${bottom[i].toFixed(2)} `;
         for (let i = n - 1; i >= 0; i--) d += `L ${xOf(i).toFixed(2)} ${top[i].toFixed(2)} `;
-        return { id: node.id, rank: node.rank, path: `${d}Z` };
+        return { id: node.id, sense: node.sense, path: `${d}Z` };
     });
 });
 

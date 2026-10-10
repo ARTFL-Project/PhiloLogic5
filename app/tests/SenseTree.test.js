@@ -65,6 +65,18 @@ describe("SenseTree", () => {
         expect(wrapper.find(".selected-sense").text()).toContain("sa raison");
     });
 
+    it("draws the senses carved out of a sense in shades of its color", async () => {
+        const { wrapper } = await loaded();
+        const hsl = (id) => wrapper.find(`#sense-branch-${id}`).attributes("stroke").match(/hsla\((\d+), (\d+)%, (\d+)%/).slice(1).map(Number);
+        const [h1] = hsl(1);
+        const [h2, , l2] = hsl(6); // sense 2
+        const [h21, , l21] = hsl(3); // sense 2.1
+        expect(h21).toBe(h2);
+        expect(l21).not.toBe(l2);
+        expect(h1).not.toBe(h2);
+        expect(wrapper.find("line.cut").exists()).toBe(false);
+    });
+
     it("draws a block for each sense, as wide as its share", async () => {
         const { wrapper } = await loaded();
         await asBlocks(wrapper);
@@ -83,7 +95,7 @@ describe("SenseTree", () => {
             "Sense 2: sa raison · 20% of the sentences",
             "Sense 2.1: mer · 30% of the sentences",
         ]);
-        expect(wrapper.text()).toContain("3 senses at this cut: the distinctions at least 40% as important as the main one.");
+        expect(wrapper.text()).toContain("3 senses: the distinctions at least 40% as important as the main one.");
         expect(wrapper.find("#sense-block-3").classes()).toContain("shown");
         expect(wrapper.find("#sense-block-4").classes()).not.toContain("shown");
     });
@@ -94,7 +106,7 @@ describe("SenseTree", () => {
         expect(atCut(wrapper).map((s) => s.split(":")[0])).toEqual(["Sense 1", "Sense 2", "Sense 2.1", "Sense 2.1.1"]);
         await wrapper.find("#sense-tree-cut").setValue(0);
         expect(atCut(wrapper)).toEqual([]);
-        expect(wrapper.text()).toContain("All the sentences, not split.");
+        expect(wrapper.text()).toContain("1 sense: no distinction shown.");
         await wrapper.find("#sense-tree-cut").element.parentElement.querySelector("button.btn-link").click();
         await flushPromises();
         expect(wrapper.find("#sense-tree-cut").element.value).toBe("2");

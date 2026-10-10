@@ -1089,7 +1089,7 @@ senses shown, and moving the cut makes branches fork. It made one thing about th
 *esprit* is refined, the larger half keeps the number ("supérieur, goût, talent"), while "révolution, gouvernement",
 closer to what sense 1 was, becomes 1.2.
 
-## 19. The sense map tab (Oct 9, prototype)
+## 19. The sense map tab (Oct 9, prototype; dropped Oct 10)
 
 How far apart the senses are ("Sense map (beta)", `collocation_method=senseMap`,
 [SenseMap.vue](app/src/components/collocation/SenseMap.vue)).
@@ -1107,6 +1107,17 @@ How far apart the senses are ("Sense map (beta)", `collocation_method=senseMap`,
   - The page says how much of the distances' variation the map keeps: 62% for the 7 senses of *esprit* one step
     finer than the first view. A table gives the exact distances.
   - Labels that would overlap are moved apart, with a leader line; the circles stay where the distances put them.
+
+**Dropped (Oct 10).** The user found the map awful. The tab, its component and the report's `distances` are gone
+(cache tag `senses26`). The idea of letting the half closest to its parent keep a sense's number would need the
+distances back.
+
+**The tree, revised (Oct 10).**
+- **No cut line and no first-view line.** The slider alone sets the detail, and a click on the chart no longer moves
+  it.
+- **Colors by family** (`senseColors.js`, shared with the senses tab): each sense numbered at the top has its hue, and
+  the senses carved out of it are shades of that hue, in the order of their numbers (1, 1.1, 1.1.1 and 1.2 in blues;
+  2, 2.1 and 2.2 in browns). The names are written in a dark version of the hue, so the palest shades stay readable.
 
 ## What's solid
 
