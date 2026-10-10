@@ -205,6 +205,7 @@
         "timeSeries": "Patrones de uso a lo largo del tiempo",
         "wordMap": "Mapa de palabras",
         "wordSenses": "Sentidos de la palabra (beta)",
+        "senseTree": "Árbol de sentidos (beta)",
         "searchEvolution": "Evolución de la búsqueda",
         "collocateBetweenPeriods": "Colocaciones distintivas desde {start} hasta {end}",
         "similarUsage": "Uso Similar",
@@ -267,6 +268,23 @@
         "legendPopupFocus": "Centrar en este patrón",
         "legendPopupHide": "Ocultar este patrón",
         "legendPopupShow": "Mostrar este patrón"
+    },
+    "senseTree": {
+        "summary": "Los sentidos de «{word}» en {sentences} oraciones de {works} obras, tal como el análisis los divide",
+        "explained": "Cada bloque es un sentido: su anchura es su parte de las oraciones del sentido del que proviene; su altura, el intervalo de detalle en el que se muestra. Un sentido se divide a la altura de la importancia de su división, relativa a la distinción principal, desde el 100 % arriba hasta el {finest}, por debajo del cual no se busca ninguna distinción. La línea negra es el corte: los bloques que atraviesa son los sentidos mostrados a ese detalle, como en la pestaña Sentidos de la palabra. Muévala con el control deslizante o haga clic en el gráfico.",
+        "cut": "Corte",
+        "firstView": "Volver a la primera vista",
+        "firstViewLine": "primera vista",
+        "cutLine": "corte",
+        "cutFirstView": "corte: primera vista",
+        "cutNone": "Todas las oraciones, sin dividir.",
+        "cutText": "{senses} en este corte: las distinciones con al menos el {importance} de la importancia de la principal.",
+        "chart": "El árbol de los sentidos de «{word}»",
+        "atCut": "En este corte",
+        "restShort": "el resto",
+        "restExplained": "El resto de las oraciones, una vez separados los sentidos de al lado: no se desprende de ellas ningún sentido claro.",
+        "all": "«{word}»: las {sentences} oraciones",
+        "axis": "importancia"
     },
     "wordSenses": {
         "detecting": "Buscando los sentidos de la palabra",

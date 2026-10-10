@@ -14,6 +14,7 @@
                 <option value="timeSeries">{{ $t("collocation.timeSeries") }}</option>
                 <option value="wordMap">{{ $t("collocation.wordMap") }}</option>
                 <option value="senses">{{ $t("collocation.wordSenses") }}</option>
+                <option value="senseTree">{{ $t("collocation.senseTree") }}</option>
             </select>
         </div>
 
@@ -69,12 +70,20 @@
                         {{ $t("collocation.wordSenses") }}
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="sense-tree-tab" data-bs-toggle="tab"
+                        :class="{ active: mode === 'senseTree' }" data-bs-target="#sense-tree-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'senseTree'"
+                        @click="setMode('senseTree')">
+                        {{ $t("collocation.senseTree") }}
+                    </button>
+                </li>
             </ul>
         </div>
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
-            v-if="['frequency', 'timeSeries', 'wordMap', 'senses'].includes(mode)"
+            v-if="['frequency', 'timeSeries', 'wordMap', 'senses', 'senseTree'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -111,6 +120,9 @@
 
             <WordSenses v-if="mode === 'senses'" ref="wordSensesRef"
                 @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+
+            <SenseTree v-if="mode === 'senseTree'" ref="senseTreeRef"
+                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
         </div>
     </div>
 </template>
@@ -137,6 +149,7 @@ import WordSenses from "./collocation/WordSenses.vue";
 // Lazy-loaded: WordMap (with its force sim + canvas rendering) only ships when
 // the user actually opens the word-map tab, not on entry to Collocation.
 const WordMap = defineAsyncComponent(() => import("./collocation/WordMap.vue"));
+const SenseTree = defineAsyncComponent(() => import("./collocation/SenseTree.vue"));
 
 //  Injects, route, router, store
 const $http = inject("$http");
@@ -160,6 +173,7 @@ const similarRef = useTemplateRef("similarRef");
 const usagePatternsTimelineRef = useTemplateRef("usagePatternsTimelineRef");
 const wordMapRef = useTemplateRef("wordMapRef");
 const wordSensesRef = useTemplateRef("wordSensesRef");
+const senseTreeRef = useTemplateRef("senseTreeRef");
 
 //  Shared state
 const mode = ref("frequency");
@@ -260,7 +274,7 @@ function updateCollocationUrl() {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
-    if (mode.value === "wordMap" || mode.value === "senses") {
+    if (mode.value === "wordMap" || mode.value === "senses" || mode.value === "senseTree") {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -400,6 +414,11 @@ watch(
                 wordSensesRef.value?.runDetection();
                 return;
             }
+            if (newMode === "senseTree") {
+                await nextTick();
+                senseTreeRef.value?.runDetection();
+                return;
+            }
             // Switching to frequency/similar/compare, but the primary fetch
             // never ran (page was loaded directly on a detection tab) — run it
             // now so the view isn't empty.
@@ -427,6 +446,9 @@ watch(
         } else if (newMode === "senses") {
             await nextTick();
             wordSensesRef.value?.runDetection();
+        } else if (newMode === "senseTree") {
+            await nextTick();
+            senseTreeRef.value?.runDetection();
         } else {
             fetchResults();  // .then() runs runPostFetchModeAction for similar/compare/frequency
         }
@@ -465,6 +487,10 @@ onMounted(async () => {
         case "senses":
             await nextTick();
             wordSensesRef.value?.runDetection();
+            break;
+        case "senseTree":
+            await nextTick();
+            senseTreeRef.value?.runDetection();
             break;
         case "compare":
             fetchResults();  // primary fetch then runPostFetchModeAction → compareRef.runFromMetadata

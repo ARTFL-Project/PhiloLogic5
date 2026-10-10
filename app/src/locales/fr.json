@@ -205,6 +205,7 @@
         "timeSeries": "Schémas d'usage au fil du temps",
         "wordMap": "Carte des mots",
         "wordSenses": "Sens du mot (bêta)",
+        "senseTree": "Arbre des sens (bêta)",
         "searchEvolution": "Rechercher l'évolution",
         "collocateBetweenPeriods": "Collocations distinctives à travers le temps: {start} vs. {end}",
         "similarUsage": "Usage similaire",
@@ -267,6 +268,23 @@
         "legendPopupFocus": "Centrer sur ce schéma",
         "legendPopupHide": "Masquer ce schéma",
         "legendPopupShow": "Afficher ce schéma"
+    },
+    "senseTree": {
+        "summary": "Les sens de « {word} » dans {sentences} phrases de {works} œuvres, tels que l'analyse les divise",
+        "explained": "Chaque bloc est un sens : sa largeur est sa part des phrases du sens dont il est issu ; sa hauteur, l'étendue du détail auquel il est montré. Un sens se divise à la hauteur de l'importance de sa division, rapportée à la distinction principale, de 100 % en haut jusqu'à {finest}, sous quoi aucune distinction n'est recherchée. La ligne noire est la coupe : les blocs qu'elle traverse sont les sens montrés à ce détail, comme dans l'onglet Sens du mot. Déplacez-la avec le curseur, ou cliquez sur le graphique.",
+        "cut": "Coupe",
+        "firstView": "Revenir à la première vue",
+        "firstViewLine": "première vue",
+        "cutLine": "coupe",
+        "cutFirstView": "coupe : première vue",
+        "cutNone": "Toutes les phrases, non divisées.",
+        "cutText": "{senses} à cette coupe : les distinctions au moins {importance} aussi importantes que la principale.",
+        "chart": "L'arbre des sens de « {word} »",
+        "atCut": "À cette coupe",
+        "restShort": "le reste",
+        "restExplained": "Le reste des phrases, une fois séparés les sens à côté : aucun sens clair ne s'en dégage.",
+        "all": "« {word} » : les {sentences} phrases",
+        "axis": "importance"
     },
     "wordSenses": {
         "detecting": "Recherche des sens du mot",

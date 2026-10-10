@@ -1065,6 +1065,23 @@ choosing a number of components were compared on the same 60 trees, each with th
   from 10 to 3, *bank* from 3 to 6.
 - Only `detail` changes: the 10 reference reports are otherwise identical.
 
+## 18. The sense tree tab (Oct 9, prototype)
+
+A picture of the whole sense space, as its own tab ("Sense tree (beta)", `collocation_method=senseTree`,
+[SenseTree.vue](app/src/components/collocation/SenseTree.vue)). It reads the same report as the senses tab, from
+the same cache.
+- **Blocks.** Each sense is a block as wide as its share of the sense it was split from. Vertically, it spans the
+  range of detail at which it is shown. A split sits at the height of its importance (a log scale from 100% down to
+  FINEST). A sense's height is the most important split within it, since showing a split shows those it is within.
+- **The cut.** A horizontal line, moved with a slider or by clicking the chart: the blocks it crosses are the senses
+  the senses tab shows at that detail. A dotted line marks the first view (the elbow).
+- **Colors and numbers** are the senses tab's; the rest of the sentences is grey.
+- Below the chart: the senses at the cut, in order of their numbers. A click on one, or on a block, shows its words
+  and the words next to the query.
+- Why a tree and not a force-directed graph of collocates: words of a sense that stand in for one another rarely
+  share a sentence, so co-occurrence does not group them. The ego-network prototype (collocate graph and Leiden) did
+  worse than the senses on pseudowords.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter
