@@ -1116,8 +1116,11 @@ distances back.
 - **No cut line and no first-view line.** The slider alone sets the detail, and a click on the chart no longer moves
   it.
 - **Colors by family** (`senseColors.js`, shared with the senses tab): each sense numbered at the top has its hue, and
-  the senses carved out of it are shades of that hue, in the order of their numbers (1, 1.1, 1.1.1 and 1.2 in blues;
-  2, 2.1 and 2.2 in browns). The names are written in a dark version of the hue, so the palest shades stay readable.
+  the senses carved out of it are shades of that hue (1, 1.1, 1.1.1 and 1.2 in blues; 2, 2.1 and 2.2 in browns).
+  - A sense's shade follows its number: the sum of the parts after the first (1: 0; 1.1: 1; 1.2 and 1.1.1: 2).
+  - The shades alternate light and dark, from 24% to 82% lightness. A sense differs in shade from those carved out of
+    it, and from the senses carved out of the same one, at any detail.
+  - The names are written in a dark version of the hue, so the palest shades stay readable.
 
 ## What's solid
 
