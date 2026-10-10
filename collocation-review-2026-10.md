@@ -1117,9 +1117,12 @@ distances back.
   it.
 - **Colors by family** (`senseColors.js`, shared with the senses tab): each sense numbered at the top has its hue, and
   the senses carved out of it are shades of that hue (1, 1.1, 1.1.1 and 1.2 in blues; 2, 2.1 and 2.2 in browns).
-  - A sense's shade follows its number: the sum of the parts after the first (1: 0; 1.1: 1; 1.2 and 1.1.1: 2).
-  - The shades alternate light and dark, from 24% to 82% lightness. A sense differs in shade from those carved out of
-    it, and from the senses carved out of the same one, at any detail.
+  - A sense's shade derives from that of the sense it was carved out of, which its number tells (1.1.1 out of 1.1,
+    1.2 out of 1). The first carved out of a sense goes to the other side of the middle (dark gives light, light gives
+    dark), the second the other way, by steps that shrink with depth (26, 16 and 10 points of lightness, within
+    22–84%).
+  - So a sense stands apart from the one it comes from, from its siblings and from its grandparent, at any detail.
+    On *esprit*: 1 is mid-tone; 1.1 light, and its child 1.1.1 a step back toward mid; 1.2 dark.
   - The names are written in a dark version of the hue, so the palest shades stay readable.
 
 ## What's solid
