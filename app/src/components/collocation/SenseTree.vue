@@ -28,6 +28,16 @@
                 </div>
                 <p id="sense-tree-detail-text" class="small mb-2" aria-live="polite">{{ detailText }}</p>
 
+                <div v-if="splits.length" class="mb-2">
+                    <label for="sense-tree-find" class="form-label small fw-semibold mb-0">{{ $t("wordSenses.findWord") }}</label>
+                    <input id="sense-tree-find" v-model="search" type="search" class="form-control form-control-sm find-input"
+                        list="sense-tree-words" :placeholder="$t('wordSenses.findPlaceholder')" />
+                    <datalist id="sense-tree-words">
+                        <option v-for="w in searchable" :key="w" :value="w" />
+                    </datalist>
+                    <p v-if="search.trim()" class="small mb-0 mt-1" aria-live="polite">{{ foundText }}</p>
+                </div>
+
                 <svg :viewBox="`0 0 ${W} ${tree.height}`" class="sense-tree" role="group"
                     :aria-label="$t('senseTree.chart', { word: queryWord })">
                     <!-- The importance axis, relative to the main distinction, from the left -->
@@ -49,9 +59,12 @@
                     </path>
                     <!-- The senses shown, each on its row: a click (or Enter) shows its words -->
                     <g v-for="row in tree.rows" :key="`row-${row.node.id}`" class="row-label" role="button" tabindex="0"
-                        :class="{ picked: selected && selected.id === row.node.id }" :aria-label="title(row.node)"
+                        :class="{ picked: selected && selected.id === row.node.id, found: isFound(row.node) }"
+                        :aria-label="title(row.node)"
                         :aria-pressed="Boolean(selected && selected.id === row.node.id)" @click="select(row.node)"
                         @keydown.enter.prevent="select(row.node)" @keydown.space.prevent="select(row.node)">
+                        <rect v-if="isFound(row.node)" class="found-row" :x="RIGHT + 4" :y="row.y - ROW / 2 + 3"
+                            :width="W - RIGHT - 6" :height="ROW - 6" rx="4" />
                         <text :id="`sense-row-${row.node.id}`" :x="RIGHT + 10" :y="row.y + 4"
                             :fill="senseTextColor(row.node.sense, shades)">
                             <tspan font-weight="600">{{ row.node.sense ? $t("wordSenses.senseN", { n: row.node.sense })
@@ -96,6 +109,7 @@ import { useMainStore } from "../../stores/main";
 import { debug, paramsFilter } from "../../utils.js";
 import ProgressSpinner from "../ProgressSpinner";
 import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
+import { findWord, inSense, searchableWords } from "./senseSearch.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
@@ -109,6 +123,7 @@ const failed = ref(false);
 const result = ref(null);
 const position = ref(0); // how many distinctions are shown, the most important first
 const selected = ref(null);
+const search = ref(""); // a word looked for among the senses' words
 let fetchToken = 0;
 
 // Importance from the left; the senses shown on rows, named in the column on the right
@@ -248,6 +263,27 @@ function select(node) {
     selected.value = node;
 }
 
+// ---- A word looked for: the senses it marks, at the detail shown or another (as in the senses tab) ----
+const searchable = computed(() => searchableWords(nodes.value));
+const found = computed(() => findWord(nodes.value, search.value, queryWord.value));
+
+function isFound(node) {
+    return Boolean(search.value.trim() && node.sense && inSense(node, search.value, queryWord.value));
+}
+
+const foundText = computed(() => {
+    const term = search.value.trim();
+    if (!found.value.length) return t("wordSenses.notFound", { word: term });
+    const shownOf = new Map(tree.value.rows.map((row) => [row.node.sense, row.node]));
+    const list = found.value.map((f) => {
+        const node = shownOf.get(f.sense);
+        const elsewhere = !node || !inSense(node, term, queryWord.value);
+        const times = `${String.fromCharCode(215)}${f.ratio >= 10 ? f.ratio.toFixed(0) : f.ratio.toFixed(1)}`;
+        return `${t("wordSenses.senseN", { n: f.sense })} (${times}${elsewhere ? `, ${t("wordSenses.otherDetail")}` : ""})`;
+    });
+    return t("wordSenses.foundIn", { word: term, senses: list.join(", ") });
+});
+
 // ---- Words ----
 function wordText(w, group = w.group) {
     if (w.phrase) return w.phrase;
@@ -325,6 +361,18 @@ function senseColor(sense, alpha) {
 .row-label.picked text,
 .row-label:focus-visible text {
     text-decoration: underline;
+}
+
+.find-input {
+    max-width: 22rem;
+}
+
+.found-row {
+    fill: rgba(255, 193, 7, 0.4);
+}
+
+.row-label.found text {
+    font-weight: 600;
 }
 
 .detail-range {

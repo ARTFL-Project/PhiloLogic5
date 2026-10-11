@@ -39,6 +39,16 @@
                     <p id="word-senses-detail-text" class="small mb-0" aria-live="polite">{{ detailText }}</p>
                 </div>
 
+                <div v-if="splits.length" class="find-word mb-3">
+                    <label for="word-senses-find" class="form-label small fw-semibold mb-0">{{ $t("wordSenses.findWord") }}</label>
+                    <input id="word-senses-find" v-model="search" type="search" class="form-control form-control-sm find-input"
+                        list="word-senses-words" :placeholder="$t('wordSenses.findPlaceholder')" />
+                    <datalist id="word-senses-words">
+                        <option v-for="w in searchable" :key="w" :value="w" />
+                    </datalist>
+                    <p v-if="search.trim()" class="small mb-0 mt-1" aria-live="polite">{{ foundText }}</p>
+                </div>
+
                 <template v-if="time && shown.length > 1">
                     <div class="d-flex align-items-center flex-wrap gap-2 mb-2" role="group"
                         :aria-label="$t('wordSenses.viewLabel')">
@@ -58,7 +68,8 @@
                             role="img" :aria-label="$t('wordSenses.overviewChart')"
                             @mousemove="onHover($event)" @mouseleave="hoverIndex = null">
                             <path v-for="layer in overviewLayers" :key="layer.id" :d="layer.path"
-                                :fill="senseColor(layer.sense, 0.85)" stroke="#fff" stroke-width="0.3" />
+                                :fill="senseColor(layer.sense, focused !== null && layer.id !== focused ? 0.15 : 0.85)"
+                                stroke="#fff" stroke-width="0.3" />
                             <line v-if="hoverIndex !== null" :x1="xOf(hoverIndex)" :x2="xOf(hoverIndex)" y1="0"
                                 :y2="overviewHeight" stroke="#333" stroke-width="1" vector-effect="non-scaling-stroke" />
                         </svg>
@@ -84,7 +95,8 @@
                 <div v-if="shown.length > 1" class="d-flex flex-wrap gap-1 mt-2">
                     <button v-for="node in senses" :key="`chip-${node.id}`" type="button" class="btn btn-sm legend-chip"
                         :style="{ borderColor: senseColor(node.sense, 1), color: senseTextColor(node.sense, shades) }"
-                        @click="scrollToSense(node)">
+                        @click="scrollToSense(node)" @mouseenter="focused = node.id" @mouseleave="focused = null"
+                        @focus="focused = node.id" @blur="focused = null">
                         <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.sense, 1) }"></span>
                         {{ $t("wordSenses.senseN", { n: node.sense }) }}: {{ label(node) }}
                     </button>
@@ -94,7 +106,8 @@
             <!-- The word around the query in general: the whole query, compared with the corpus -->
             <div class="card shadow-sm p-3 mb-3">
                 <h3 class="h6 mb-2">{{ $t("wordSenses.general", { word: queryWord }) }}</h3>
-                <WordList :node="root" :query-word="queryWord" :against-corpus="true" />
+                <WordList :node="root" :query-word="queryWord" :against-corpus="true" :term="search"
+                    :pick="(w, group) => openWordExamples(root, w, group)" />
                 <button v-if="shown.length === 1" type="button" class="btn btn-sm btn-link p-0 mt-2"
                     @click="openExamples(root)">{{ $t("wordSenses.examples") }} &rarr;</button>
             </div>
@@ -115,6 +128,7 @@
                         {{ $t("wordSenses.rest", { share: percent(row.node.share) }) }} {{ notSplitReason(row.node) }}
                     </p>
                     <section v-else :id="`sense-card-${row.node.id}`" class="card shadow-sm mb-3 sense-card"
+                        :class="{ 'found-card': search.trim() && inSense(row.node, search, queryWord) }"
                         :style="{ borderLeft: `4px solid ${senseColor(row.node.sense, 1)}` }"
                         :aria-labelledby="`sense-title-${row.node.id}`">
                         <div class="sense-header px-3 py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -133,7 +147,8 @@
                         </div>
                         <div class="card-body py-2">
                             <WordList :node="row.node" :query-word="queryWord" :against-corpus="false"
-                                :others="othersOf(row.node)" />
+                                :others="othersOf(row.node)" :term="search"
+                                :pick="(w, group) => openWordExamples(row.node, w, group)" />
                             <template v-if="time">
                                 <div class="chart-frame mt-2">
                                     <span class="y-max small text-muted">{{ formatValue(cardMax(row.node)) }}</span>
@@ -172,7 +187,7 @@
         <div v-else-if="result" class="text-center py-5 text-muted">{{ $t("wordSenses.noResults") }}</div>
 
         <DistinctivePassagesModal :group-name="modal.groupName" :signature="modal.signature" :passages="modal.passages"
-            :loading="modal.loading" :has-more="modal.hasMore" :ordering-note="$t('wordSenses.examplesNote')"
+            :loading="modal.loading" :has-more="modal.hasMore" :ordering-note="modal.note"
             @load-more="loadMoreExamples" />
     </div>
 </template>
@@ -187,6 +202,7 @@ import { debug, paramsFilter } from "../../utils.js";
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
+import { findWord, inSense, matches, searchableWords } from "./senseSearch.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
@@ -201,6 +217,8 @@ const result = ref(null);
 const view = ref("share"); // "share" of the year's sentences, or uses per million words ("rate")
 const hoverIndex = ref(null); // the year (from time.start) the pointer is on, in every chart at once
 const position = ref(0); // how many distinctions are shown, the most important first
+const search = ref(""); // a word looked for among the senses' words
+const focused = ref(null); // the sense the overview focuses on (its chip pointed at)
 let fetchToken = 0;
 
 const chartWidth = 1000;
@@ -291,6 +309,22 @@ const shown = computed(() => {
 
 const senses = computed(() => shown.value.filter((node) => node.sense !== null));
 const restShare = computed(() => shown.value.filter((node) => node.sense === null).reduce((a, n) => a + n.share, 0));
+
+// ---- A word looked for: the senses it marks (those whose words include it), at the detail shown or another ----
+const searchable = computed(() => searchableWords(nodes.value));
+const found = computed(() => findWord(nodes.value, search.value, queryWord.value));
+const foundText = computed(() => {
+    const term = search.value.trim();
+    if (!found.value.length) return t("wordSenses.notFound", { word: term });
+    const shownOf = new Map(senses.value.map((node) => [node.sense, node]));
+    const list = found.value.map((f) => {
+        const node = shownOf.get(f.sense);
+        const elsewhere = !node || !inSense(node, term, queryWord.value);
+        const times = `${String.fromCharCode(215)}${f.ratio >= 10 ? f.ratio.toFixed(0) : f.ratio.toFixed(1)}`;
+        return `${t("wordSenses.senseN", { n: f.sense })} (${times}${elsewhere ? `, ${t("wordSenses.otherDetail")}` : ""})`;
+    });
+    return t("wordSenses.foundIn", { word: term, senses: list.join(", ") });
+});
 
 function sensesText(n) {
     return n === 1 ? t("wordSenses.oneSense") : t("wordSenses.nSenses", { n });
@@ -496,6 +530,7 @@ function tickShift(pct) {
 // ---- Examples: the sentences most clearly in a sense ----
 const modal = ref({
     groupName: "", signature: [], passages: [], loading: false, hasMore: false, examples: [], offset: 0, node: null,
+    note: "",
 });
 let modalInstance = null;
 let examplesToken = 0;
@@ -519,6 +554,31 @@ function openExamples(node) {
         examples: node.examples,
         offset: 0,
         node,
+        note: t("wordSenses.examplesNote"),
+    };
+    const el = document.getElementById("distinctive-passages-modal");
+    if (el) {
+        if (!modalInstance) modalInstance = new Modal(el);
+        modalInstance.show();
+    }
+    fetchExamples(false);
+}
+
+// The sentences of a sense with one of its words, the most clearly in the sense first
+function openWordExamples(node, w, group) {
+    if (!w.hits?.length) return;
+    const text = wordText(w, group);
+    const name = node.sense ? ` · ${t("wordSenses.senseN", { n: node.sense })}: ${label(node)}` : "";
+    modal.value = {
+        groupName: `${queryWord.value}${name} · “${text}”`,
+        signature: [],
+        passages: [],
+        loading: true,
+        hasMore: false,
+        examples: w.hits.map((hit) => ({ hit })),
+        offset: 0,
+        node,
+        note: t("wordSenses.wordExamplesNote", { word: text }),
     };
     const el = document.getElementById("distinctive-passages-modal");
     if (el) {
@@ -540,7 +600,7 @@ async function fetchExamples(append) {
         const byHit = Object.fromEntries(page.map((e) => [e.hit, e]));
         const passages = (response.data?.passages || []).map((p) => {
             const e = byHit[p.hit];
-            const note = e
+            const note = e && e.p !== undefined
                 ? `${t("wordSenses.inThisSense", { p: percent(e.p) })} · ${t("wordSenses.decidedBy")}: ${e.evidence.map((x) => evidenceText(x, modal.value.node)).join(", ")}`
                 : "";
             return { ...p, note };
@@ -562,20 +622,26 @@ function loadMoreExamples() {
 // ---- A sense's words: its marker words, those markedly more frequent in it than in the sense it was split from ----
 const SHOWN = 12;
 const WordList = defineComponent({
-    props: { node: Object, queryWord: String, againstCorpus: Boolean, others: Array },
+    props: { node: Object, queryWord: String, againstCorpus: Boolean, others: Array, term: String, pick: Function },
     setup(props) {
         const open = ref(false);
         const ratio = (w) => {
             const r = props.againstCorpus ? w.lift : w.ratio;
             return r >= 10 ? r.toFixed(0) : r.toFixed(1);
         };
-        const chip = (w, text, extra = "") =>
-            h("span", {
-                class: ["word-chip", extra],
-                title: t(props.againstCorpus ? "wordSenses.chipTitleCorpus" : "wordSenses.chipTitle", {
-                    n: Math.round(w.n), ratio: ratio(w),
-                }),
+        // A word: a button for the sentences of the sense with it, when the report has them
+        const chip = (w, text, extra = "", group = 0) => {
+            const clickable = Boolean(w.hits?.length && props.pick);
+            const title = t(props.againstCorpus ? "wordSenses.chipTitleCorpus" : "wordSenses.chipTitle", {
+                n: Math.round(w.n), ratio: ratio(w),
+            });
+            return h(clickable ? "button" : "span", {
+                type: clickable ? "button" : undefined,
+                class: ["word-chip", extra, { "found-chip": matches(w, props.term, props.queryWord) }],
+                title: clickable ? `${title} ${t("wordSenses.chipClick")}` : title,
+                onClick: clickable ? () => props.pick(w, group) : undefined,
             }, [text, h("span", { class: "chip-ratio" }, ` ${String.fromCharCode(215)}${ratio(w)}`)]);
+        };
         return () => {
             const lines = [];
             // Words that go together in the sense's sentences, around hub words, then the others
@@ -618,11 +684,11 @@ const WordList = defineComponent({
             const near = [];
             if (props.node.before.length) {
                 near.push(h("span", { class: "small text-muted me-1" }, `${t("wordSenses.before")}:`));
-                near.push(...props.node.before.slice(0, 6).map((w) => chip(w, w.phrase || `${w.word} ${props.queryWord}`)));
+                near.push(...props.node.before.slice(0, 6).map((w) => chip(w, w.phrase || `${w.word} ${props.queryWord}`, "", 1)));
             }
             if (props.node.after.length) {
                 near.push(h("span", { class: "small text-muted ms-2 me-1" }, `${t("wordSenses.after")}:`));
-                near.push(...props.node.after.slice(0, 6).map((w) => chip(w, w.phrase || `${props.queryWord} ${w.word}`)));
+                near.push(...props.node.after.slice(0, 6).map((w) => chip(w, w.phrase || `${props.queryWord} ${w.word}`, "", 2)));
             }
             if (near.length) lines.push(h("div", {}, near));
             const rarer = props.againstCorpus ? [] : props.node.rarer || [];
@@ -652,6 +718,27 @@ const WordList = defineComponent({
 .sense-header {
     background-color: #fafafa;
     border-bottom: 1px solid #eee;
+}
+
+.find-input {
+    max-width: 22rem;
+}
+
+.found-card {
+    box-shadow: 0 0 0 3px rgba(255, 193, 7, 0.8) !important;
+}
+
+:deep(.found-chip) {
+    background-color: rgba(255, 193, 7, 0.45) !important;
+    font-weight: 600;
+}
+
+:deep(button.word-chip) {
+    cursor: pointer;
+}
+
+:deep(button.word-chip:hover) {
+    text-decoration: underline;
 }
 
 :deep(.word-chip) {

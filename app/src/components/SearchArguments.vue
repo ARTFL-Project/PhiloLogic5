@@ -91,7 +91,7 @@
             :start_date="formData.start_date" :end_date="formData.end_date"
             :removeMetadata="removeMetadata"></bibliography-criteria>
         <div v-if="queryReport === 'collocation'">
-            <template v-if="['timeSeries', 'wordMap'].includes(collocMethod)">
+            <template v-if="['senses', 'senseTree'].includes(collocMethod)">
                 {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
             </template>
             <template v-else>
@@ -152,8 +152,8 @@ const selectedTerm = computed(() => {
     return description.value.approximateGroups?.[index]?.term ?? wordGroups.value?.[index] ?? "";
 });
 
-// Sub-mode within the collocation report — frequency / compare / similar /
-// timeSeries / wordMap. Used to pick the right "occurrences" wording.
+// Sub-mode within the collocation report — frequency / compare / similar / senses / senseTree. Used to pick the right
+// "occurrences" wording: the senses show no list of the top collocates.
 const collocMethod = computed(() => route.query.collocation_method || "frequency");
 
 // The similar words of a term of an approximate search, folded: liberté (27 similar terms), not the 27 of them

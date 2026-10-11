@@ -14,7 +14,6 @@ from .get_landing_page_content import get_landing_page_content
 from .get_more_context import get_more_context
 from .get_notes import get_notes
 from .get_outlier_groups import get_outlier_groups
-from .get_usage_patterns import get_usage_patterns
 from .get_query_terms import get_query_terms
 from .get_representative_passages import get_representative_passages
 from .get_sense_passages import get_sense_passages

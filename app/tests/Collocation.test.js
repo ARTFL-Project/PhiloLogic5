@@ -52,8 +52,10 @@ describe("Collocation", () => {
         expect(wrapper.find("#frequency-tab").exists()).toBe(true);
         expect(wrapper.find("#compare-tab").exists()).toBe(true);
         expect(wrapper.find("#similar-tab").exists()).toBe(true);
-        expect(wrapper.find("#time-series-tab").exists()).toBe(true);
         expect(wrapper.find("#word-senses-tab").exists()).toBe(true);
+        expect(wrapper.find("#sense-tree-tab").exists()).toBe(true);
+        expect(wrapper.find("#time-series-tab").exists()).toBe(false); // usage patterns over time: replaced by the senses
+        expect(wrapper.find("#word-map-tab").exists()).toBe(false);
     });
 
     it("fetches and displays collocates table", async () => {
@@ -113,16 +115,16 @@ describe("Collocation", () => {
         expect(wrapper.find("#similar-tab").attributes("aria-selected")).toBe("true");
     });
 
-    it("switches to time series view on tab click", async () => {
+    it("switches to the sense tree on tab click", async () => {
         const wrapper = mountCollocation();
         await flushPromises();
         await nextTick();
 
-        await wrapper.find("#time-series-tab").trigger("click");
+        await wrapper.find("#sense-tree-tab").trigger("click");
         await nextTick();
 
-        expect(wrapper.find("#time-series-tab").classes()).toContain("active");
-        expect(wrapper.find("#time-series-tab").attributes("aria-selected")).toBe("true");
+        expect(wrapper.find("#sense-tree-tab").classes()).toContain("active");
+        expect(wrapper.find("#sense-tree-tab").attributes("aria-selected")).toBe("true");
     });
 
     it("switches back to frequency view", async () => {
@@ -242,29 +244,20 @@ describe("Collocation", () => {
         expect(wrapper.find("#similar-tab").classes()).toContain("active");
     });
 
-    it("timeSeries mode fetches collocation_time_series.py and activates the time-series tab", async () => {
-        // The component first hits reports/collocation.py to get a file_path,
-        // then polls scripts/collocation_time_series.py until response.data.done
-        // is truthy. We must return done: true on the first poll or the test hangs.
+    it("links to the usage patterns over time open the senses, which replaced them", async () => {
         const http = createMockHttp({
-            "reports/collocation.py": { file_path: "/tmp/test-time-series" },
-            "collocation_time_series.py": {
-                period: { year: 1800, collocates: { frequent: [], distinctive: [] } },
-                done: true,
-            },
+            "get_word_senses.py": { n_hits: 0, n_sentences: 0, n_works: 0, nodes: [], time: null, filter_list: [] },
         });
         const wrapper = await mountCollocationWithRoute(http, {
             q: "liberty",
             report: "collocation",
             collocation_method: "timeSeries",
-            time_series_interval: "10",
         });
         await flushPromises();
         await nextTick();
 
-        const calls = http.get.mock.calls.filter(c => c[0].includes("collocation_time_series.py"));
-        expect(calls.length).toBeGreaterThan(0);
-        expect(wrapper.find("#time-series-tab").classes()).toContain("active");
+        expect(http.get.mock.calls.some((c) => c[0].includes("get_word_senses.py"))).toBe(true);
+        expect(wrapper.find("#word-senses-tab").classes()).toContain("active");
     });
 
     it("compare mode activates the compare tab and shows the compare panel", async () => {

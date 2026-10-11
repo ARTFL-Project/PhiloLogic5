@@ -1134,6 +1134,31 @@ branches alone.
 - A style left from the blocks (`pointer-events: none` on all chart text) would have made the names unclickable in a
   browser. It is gone, and a real click was checked in Chromium.
 
+## 20. The old tabs removed, three of their ideas kept (Oct 11)
+
+"Usage patterns over time" and "Word map" are gone: the user finds the senses better. Removed:
+- the two components, their texts, their wiring in the collocation page and the search summary;
+- `usage_patterns.py`, the `get_usage_patterns` script and its registration.
+
+The test of the old timeSeries mode, which had failed all along, went with them. Links with
+`collocation_method=timeSeries` or `wordMap` open the senses. The search summary now gives the senses tabs the plain
+"N occurrences" wording, not "the top 100 collocates". `collocation_time_series.py` is no longer called by the page;
+it was left in place.
+
+**Kept from them:**
+- **Find a word** (from the word map's search), in both senses tabs (`senseSearch.js`). It finds the senses whose
+  words include it: the word itself, or next to the query the form the text has ("sa" finds *sa volonté*). The cards
+  and rows of those shown are highlighted, and a line names each sense and how markedly; "at another detail" marks
+  those that list the word only at a coarser or finer detail. A word that marks none is said so.
+- **Passages for one word within a sense** (from "Show passages for this word"). Each word a sense lists carries the
+  hits of up to `_WORD_EXAMPLES` (10) of the sense's sentences containing it, the most clearly in the sense first
+  (cache tag `senses27`). A word with such sentences is a button in the card, and opens them in the passages window.
+  - Only the listed words' columns are taken out of each group's matrix, once. Turning the whole matrix into columns
+    had cost eebo *liberty* 11 s and *reason* 17 s; now they take 1% more. All 12 reference queries take 3% more.
+  - The response grows by about 10% (frantext *esprit*: 1.36 to 1.50 MB).
+- **Focus** (from solo/hide). Pointing at a sense's chip, or tabbing to it, fades the other senses in the overview
+  chart.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

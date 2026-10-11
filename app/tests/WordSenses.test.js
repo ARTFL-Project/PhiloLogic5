@@ -290,4 +290,46 @@ describe("WordSenses", () => {
         expect(note).toContain("97% in this sense");
         expect(note).toContain("dieu, avoir raison");
     });
+
+    it("opens the sentences of a sense with one of its words", async () => {
+        const withHits = {
+            ...senses,
+            nodes: senses.nodes.map((n) => (n.id === 1 ? { ...n, words: [{ ...word("dieu", 8.3), hits: [7, 9] }, word("foi")] } : n)),
+        };
+        const { wrapper, http } = await loaded(withHits);
+        const chips = wrapper.findAll("#sense-card-1 .word-chip");
+        expect(chips[0].element.tagName).toBe("BUTTON"); // dieu: the report has its sentences
+        expect(chips[1].element.tagName).toBe("SPAN"); // foi: none
+        await chips[0].trigger("click");
+        await flushPromises();
+        const call = http.get.mock.calls.find(([url]) => url.includes("get_sense_passages.py"));
+        expect(call[1].params.hits).toBe("7,9");
+        const modal = wrapper.findComponent(DistinctivePassagesModal);
+        expect(modal.props("groupName")).toContain("Sense 1: dieu, foi · “dieu”");
+        expect(modal.props("orderingNote")).toContain("The sentences of this sense with “dieu”");
+    });
+
+    it("finds a word among the senses, at the detail shown or another", async () => {
+        const { wrapper } = await loaded();
+        await wrapper.find("#word-senses-find").setValue("vague");
+        expect(wrapper.text()).toContain("“vague” marks Sense 2.1.1 (×3.0, at another detail).");
+        await wrapper.find("#word-senses-find").setValue("ciel");
+        expect(wrapper.text()).toContain("“ciel” marks Sense 2 (×3.0, at another detail).");
+        await wrapper.find("#word-senses-find").setValue("foi");
+        expect(wrapper.find("#sense-card-1").classes()).toContain("found-card");
+        expect(wrapper.find("#sense-card-1 .found-chip").text()).toContain("foi");
+        expect(wrapper.find("#sense-card-3").classes()).not.toContain("found-card");
+        await wrapper.find("#word-senses-find").setValue("nulle");
+        expect(wrapper.text()).toContain("“nulle” marks no sense");
+    });
+
+    it("focuses the overview on the sense whose chip is pointed at", async () => {
+        const { wrapper } = await loaded();
+        const fills = () => wrapper.findAll("svg.overview-chart path").map((p) => p.attributes("fill"));
+        expect(fills().every((f) => f.endsWith("0.85)"))).toBe(true);
+        await wrapper.findAll(".legend-chip")[1].trigger("mouseenter");
+        expect(fills().filter((f) => f.endsWith("0.85)"))).toHaveLength(1);
+        await wrapper.findAll(".legend-chip")[1].trigger("mouseleave");
+        expect(fills().every((f) => f.endsWith("0.85)"))).toBe(true);
+    });
 });

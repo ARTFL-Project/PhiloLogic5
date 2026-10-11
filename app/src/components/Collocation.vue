@@ -11,8 +11,6 @@
                 <option value="frequency">{{ $t("collocation.collocation") }}</option>
                 <option value="compare">{{ $t("collocation.compareTo") }}</option>
                 <option value="similar">{{ $t("collocation.similarUsage") }}</option>
-                <option value="timeSeries">{{ $t("collocation.timeSeries") }}</option>
-                <option value="wordMap">{{ $t("collocation.wordMap") }}</option>
                 <option value="senses">{{ $t("collocation.wordSenses") }}</option>
                 <option value="senseTree">{{ $t("collocation.senseTree") }}</option>
             </select>
@@ -47,22 +45,6 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link shadow-sm" id="time-series-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'timeSeries' }" data-bs-target="#time-series-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'timeSeries'"
-                        @click="setMode('timeSeries')">
-                        {{ $t("collocation.timeSeries") }}
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link shadow-sm" id="word-map-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'wordMap' }" data-bs-target="#word-map-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'wordMap'"
-                        @click="setMode('wordMap')">
-                        {{ $t("collocation.wordMap") }}
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="word-senses-tab" data-bs-toggle="tab"
                         :class="{ active: mode === 'senses' }" data-bs-target="#word-senses-tab-pane" type="button"
                         role="tab" :aria-selected="mode === 'senses'"
@@ -83,7 +65,7 @@
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
-            v-if="['frequency', 'timeSeries', 'wordMap', 'senses', 'senseTree'].includes(mode)"
+            v-if="['frequency', 'senses', 'senseTree'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -112,12 +94,6 @@
                 @field-selected="onSimilarFieldSelected"
                 @pivot-to-compare="pivotToCompare" />
 
-            <UsagePatternsTimeline v-if="mode === 'timeSeries'" ref="usagePatternsTimelineRef"
-                @filter-list="filterList = $event" />
-
-            <WordMap v-if="mode === 'wordMap'" ref="wordMapRef"
-                @filter-list="filterList = $event" />
-
             <WordSenses v-if="mode === 'senses'" ref="wordSensesRef"
                 @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
 
@@ -144,11 +120,8 @@ import ResultsSummary from "./ResultsSummary";
 import Compare from "./collocation/Compare.vue";
 import Frequency from "./collocation/Frequency.vue";
 import Similar from "./collocation/Similar.vue";
-import UsagePatternsTimeline from "./collocation/UsagePatternsTimeline.vue";
 import WordSenses from "./collocation/WordSenses.vue";
-// Lazy-loaded: WordMap (with its force sim + canvas rendering) only ships when
-// the user actually opens the word-map tab, not on entry to Collocation.
-const WordMap = defineAsyncComponent(() => import("./collocation/WordMap.vue"));
+// Lazy-loaded: the sense tree only ships when the user opens its tab, not on entry to Collocation.
 const SenseTree = defineAsyncComponent(() => import("./collocation/SenseTree.vue"));
 
 //  Injects, route, router, store
@@ -170,20 +143,24 @@ const {
 const frequencyRef = useTemplateRef("frequencyRef");
 const compareRef = useTemplateRef("compareRef");
 const similarRef = useTemplateRef("similarRef");
-const usagePatternsTimelineRef = useTemplateRef("usagePatternsTimelineRef");
-const wordMapRef = useTemplateRef("wordMapRef");
 const wordSensesRef = useTemplateRef("wordSensesRef");
 const senseTreeRef = useTemplateRef("senseTreeRef");
 
 //  Shared state
 const mode = ref("frequency");
+
+// The collocation method a URL asks for; links to the usage patterns over time and the word map, which the senses
+// replaced, open the senses
+function methodOf(query) {
+    const method = query.collocation_method || "frequency";
+    return method === "timeSeries" || method === "wordMap" ? "senses" : method;
+}
 const results = ref({});
 const filterList = ref([]);
 const stopwordsMissing = ref(false);
 // Whether the primary collocation fetch has run for the current query. False
-// when the page was loaded directly on a detection tab (wordMap/timeSeries),
-// which only run pattern detection — so switching to frequency/similar/compare
-// must trigger the primary fetch.
+// when the page was loaded directly on a senses tab, which runs its own detection
+// — so switching to frequency/similar/compare must trigger the primary fetch.
 const primaryFetched = ref(false);
 const biblio = ref({});
 const sortedList = ref([]);
@@ -263,18 +240,12 @@ function updateCollocationUrl() {
         urlParams.similarity_by = similarFieldForUrl.value;
         delete urlParams.time_series_interval;
     }
-    if (mode.value === "timeSeries") {
-        // UsagePatternsTimeline doesn't take an interval parameter (legacy from
-        // the per-decade time-series view). Clear stale URL params.
-        delete urlParams.similarity_by;
-        delete urlParams.time_series_interval;
-    }
     if (mode.value === "compare") {
         Object.assign(urlParams, getNonEmptyComparedMetadata());
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
-    if (["wordMap", "senses", "senseTree"].includes(mode.value)) {
+    if (["senses", "senseTree"].includes(mode.value)) {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -313,7 +284,7 @@ function updateCollocation() {
 
 // After the primary fetch completes, mode-specific follow-up runs in the active child.
 async function runPostFetchModeAction() {
-    mode.value = route.query.collocation_method || "frequency";
+    mode.value = methodOf(route.query);
     await nextTick();  // ensure the active mode's child is mounted
     if (mode.value === "similar") {
         // A URL without the field to compare by (the server needs one): the first one configured
@@ -389,26 +360,16 @@ watch(
         if (route.name !== "collocation") return;
 
         // Sync mode + biblio cheaply on every route change.
-        const oldMode = oldQuery.collocation_method || "frequency";
-        const newMode = newQuery.collocation_method || "frequency";
+        const oldMode = methodOf(oldQuery);
+        const newMode = methodOf(newQuery);
         const modeChanged = newMode !== oldMode;
         if (newMode !== mode.value) mode.value = newMode;
         if (newMode === "compare") restoreComparedMetadataFromUrl();
         biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
 
-        // timeSeries / wordMap auto-run on tab switch (no Detect button anymore).
+        // The senses tabs run on tab switch (no Detect button).
         // The child is freshly v-if-mounted, so its result is null and needs a fetch.
         if (modeChanged && !shouldRefetchOnQueryChange(newQuery, oldQuery)) {
-            if (newMode === "timeSeries") {
-                await nextTick();
-                usagePatternsTimelineRef.value?.runDetection();
-                return;
-            }
-            if (newMode === "wordMap") {
-                await nextTick();
-                wordMapRef.value?.runDetection();
-                return;
-            }
             if (newMode === "senses") {
                 await nextTick();
                 wordSensesRef.value?.runDetection();
@@ -437,13 +398,7 @@ watch(
         primaryFetched.value = false;
 
         // Refetch the right path for the active mode.
-        if (newMode === "timeSeries") {
-            await nextTick();
-            usagePatternsTimelineRef.value?.runDetection();
-        } else if (newMode === "wordMap") {
-            await nextTick();
-            wordMapRef.value?.runDetection();
-        } else if (newMode === "senses") {
+        if (newMode === "senses") {
             await nextTick();
             wordSensesRef.value?.runDetection();
         } else if (newMode === "senseTree") {
@@ -462,7 +417,7 @@ formData.value.report = "collocation";
 currentReport.value = "collocation";
 buildMetadata(searchableMetadata.value);
 biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
-mode.value = route.query.collocation_method || "frequency";
+mode.value = methodOf(route.query);
 if (mode.value === "compare") restoreComparedMetadataFromUrl();
 if (mode.value === "similar" && route.query.similarity_by) {
     similarFieldForUrl.value = route.query.similarity_by;
@@ -475,14 +430,6 @@ onMounted(async () => {
             break;
         case "similar":
             fetchResults();  // primary fetch then runPostFetchModeAction → similarRef.runSimilar
-            break;
-        case "timeSeries":
-            await nextTick();
-            usagePatternsTimelineRef.value?.runDetection();
-            break;
-        case "wordMap":
-            await nextTick();
-            wordMapRef.value?.runDetection();
             break;
         case "senses":
             await nextTick();

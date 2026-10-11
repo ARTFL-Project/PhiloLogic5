@@ -78,8 +78,9 @@ _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the sea
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
+_WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses26\0"  # bump when the result changes
+_CACHE_TAG = b"senses27\0"  # bump when the result changes
 
 
 class Dist:
@@ -2294,6 +2295,32 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
             near_by_node[node.id] = phrases.near(np.flatnonzero(margin[:, node.id] > 0))
         return near_by_node[node.id]
 
+    asked = []  # the words of the senses, to which their sentences are added once all are known (with_hits)
+
+    def with_hits(item, node, ci, i):
+        asked.append((item, node.id, ci, i))
+        return item
+
+    def add_hits():
+        """To each word of a sense, the sentences of the sense with it, the most clearly in the sense first (their
+        first hits): the words' columns taken out of each group's matrix at once, not the whole matrix turned."""
+        for ci in range(len(Xall)):
+            mine = [a for a in asked if a[2] == ci]
+            if not mine:
+                continue
+            cols = np.unique([i for *_, i in mine])
+            sub = Xall[ci][:, cols].tocsc()
+            where = {int(c): k for k, c in enumerate(cols)}
+            for item, nid, _, i in mine:
+                k = where[i]
+                rows = sub.indices[sub.indptr[k] : sub.indptr[k + 1]]
+                rows = rows[margin[rows, nid] > 0]
+                clear = posteriors[rows, nid]
+                if len(rows) > _WORD_EXAMPLES:  # the clearest only, without sorting them all
+                    keep = np.argpartition(-clear, _WORD_EXAMPLES)[:_WORD_EXAMPLES]
+                    rows, clear = rows[keep], clear[keep]
+                item["hits"] = first_hit[rows[np.argsort(-clear, kind="stable")]].astype(np.int64).tolist()
+
     def with_phrase(item, node, ci, i):
         if ci > 0:
             phrase = phrases.text(ci, near(node).get(ci, {}).get(int(names[ci][i])))
@@ -2313,13 +2340,12 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
             listed = [item for item in listed if shown(ci, item[0])]
             if ci == 0:
                 listed_words[node.id] = np.array([i for i, *_ in listed[:_MAX_WORDS]], dtype=np.int64)
-            groups_of_words.append(
-                [
-                    with_phrase({"word": word(ci, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(f, 3)}, *at)
-                    for i, c, r, f, _ in listed[:_MAX_WORDS]
-                    for at in [(node, ci, i)]
-                ]
-            )
+
+            def entry(i, c, r, f):  # a word of the sense, as the page shows it
+                item = {"word": word(ci, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(f, 3)}
+                return with_hits(with_phrase(item, node, ci, i), node, ci, i)
+
+            groups_of_words.append([entry(i, c, r, f) for i, c, r, f, _ in listed[:_MAX_WORDS]])
         # A sense with nothing else to show: the words of the filter that mark it
         if not any(groups_of_words):
             hidden = [
@@ -2408,6 +2434,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     for item in out:
         item["sense"] = number[item["id"]]
         item["rank"] = None if item["sense"] is None else rank[item["sense"]]
+    add_hits()
     return {
         "n_hits": int(sentences["n_hits"]),
         "n_sentences": int(n),

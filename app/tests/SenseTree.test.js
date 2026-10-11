@@ -77,6 +77,16 @@ describe("SenseTree", () => {
         expect(wrapper.find(".selected-sense").text()).toContain("dieu");
     });
 
+    it("finds a word among the senses, and marks the rows of those shown", async () => {
+        const wrapper = await loaded();
+        await wrapper.find("#sense-tree-find").setValue("mer");
+        expect(wrapper.text()).toContain("“mer” marks Sense 2.1 (×3.0).");
+        expect(wrapper.findAll(".row-label.found")).toHaveLength(1);
+        expect(wrapper.find(".row-label.found").text()).toContain("Sense 2.1");
+        await wrapper.find("#sense-tree-find").setValue("sa"); // the form next to the query, for the lemma son
+        expect(wrapper.text()).toContain("“sa” marks Sense 2 (×3.0).");
+    });
+
     it("draws the senses carved out of a sense in shades of its color", async () => {
         const wrapper = await loaded();
         const hsl = (id) => wrapper.find(`#sense-branch-${id}`).attributes("stroke").match(/hsla\((\d+), (\d+)%, ([\d.]+)%/).slice(1).map(Number);

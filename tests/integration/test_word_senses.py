@@ -159,6 +159,24 @@ class TestWordSenses:
         assert [p["hit"] for p in passages] == [e["hit"] for e in examples]
         assert all("highlight" in p["context"] for p in passages)
 
+    def test_a_senses_words_bring_its_sentences_with_them(self, eltec_db):
+        from philologic.runtime.reports.word_senses import _WORD_EXAMPLES
+
+        report = call(eltec_db, get_word_senses, q="lemma:light")
+        for node in report["nodes"]:
+            for w in node["words"] + node["before"] + node["after"]:
+                assert 0 < len(w["hits"]) <= _WORD_EXAMPLES and len(set(w["hits"])) == len(w["hits"])
+        # Each is a sentence of the query with the word (the passages shown around a hit may be too short to show it)
+        from philologic.runtime.reports.word_senses import query_sentences
+
+        sentences = query_sentences(eltec_db, "lemma:light", True)
+        X, ids = sentences["channels"][0]
+        blob, offsets = sentences["v_blob"], sentences["v_offsets"]
+        pipe = next(k for k, i in enumerate(ids) if blob[offsets[i] : offsets[i + 1]] == b"lemma:pipe")
+        unit = {int(hit): u for u, hit in enumerate(sentences["first_hit"])}
+        w = next(w for n in report["nodes"] if n["sense"] for w in n["words"] if w["word"] == "pipe")
+        assert all(X[unit[hit], pipe] > 0 for hit in w["hits"])
+
     def test_no_dates_no_course_over_time(self, shakespeare_db):
         # Every play has the same year: senses, but no course over time
         report = call(shakespeare_db, get_word_senses, q="king")
