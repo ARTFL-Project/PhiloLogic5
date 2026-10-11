@@ -2,27 +2,34 @@
 // and the senses carved out of it (2.1, 2.1.1, 2.2, ...) are shades of it; the rest of the sentences, which no sense
 // takes, is grey.
 const HUES = [205, 30, 145, 280, 0, 90, 165, 235, 50, 315, 120, 260, 15, 60, 200, 320];
-// A sense's shade derives from that of the sense it was carved out of, which its number tells (1.1.1 out of 1.1, 1.2
-// out of 1): the first carved out of a sense goes to the other side of the middle (a dark sense gives a light one, a
-// light one a dark one), the second the other way, by steps that shrink with depth, so that each stands apart from
-// the sense it comes from, from its siblings and from its grandparent
-const STEPS = [26, 16, 10];
-const LIGHTEST = 84;
-const DARKEST = 22;
+// The shades of a family are chosen from the end of the tree up: its final senses (where each of its branches ends,
+// at the finest detail), in the order the tree draws them, share the range from dark to light evenly, so that the
+// whole range serves however many there are, and senses next to one another in the tree, which split from one
+// another, have neighboring shades. A sense keeps the shade of the branch its number ends in, at any detail.
+const LIGHTEST = 82;
+const DARKEST = 26;
 
 export function senseShades(nodes) {
     const out = {};
-    const shade = (sense) => {
-        if (out[sense] !== undefined) return out[sense];
-        const parts = sense.split(".");
-        if (parts.length === 1) return (out[sense] = 46);
-        const parent = shade(parts.slice(0, -1).join("."));
-        const i = Number(parts[parts.length - 1]);
-        const step = STEPS[Math.min(parts.length - 2, STEPS.length - 1)] * Math.ceil(i / 2);
-        const away = parent < 50 ? 1 : -1;
-        return (out[sense] = Math.max(DARKEST, Math.min(LIGHTEST, parent + (i % 2 ? away : -away) * step)));
+    if (!nodes.length) return out;
+    const first = (node) => (node.children.length
+        ? Math.min(...node.children.map((c) => first(nodes[c])))
+        : node.sense === null ? Infinity : node.rank);
+    const ends = {}; // for each sense at the top, the senses its branches end in, in the tree's order
+    const walk = (node) => {
+        if (node.children.length) {
+            node.children.map((c) => nodes[c]).sort((a, b) => first(a) - first(b)).forEach(walk);
+        } else if (node.sense) {
+            (ends[node.sense.split(".")[0]] ||= []).push(node.sense);
+        }
     };
-    for (const node of nodes) if (node.sense) shade(node.sense);
+    walk(nodes[0]);
+    for (const senses of Object.values(ends)) {
+        senses.forEach((sense, i) => {
+            out[sense] = senses.length > 1 ? DARKEST + ((LIGHTEST - DARKEST) * i) / (senses.length - 1) : 46;
+        });
+    }
+    for (const node of nodes) if (node.sense && out[node.sense] === undefined) out[node.sense] = 46;
     return out;
 }
 
