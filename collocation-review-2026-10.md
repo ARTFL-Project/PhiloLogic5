@@ -1127,6 +1127,13 @@ distances back.
     Those could not know how many branches would follow, so they crowded some shades and left others unused.
   - The names are written in a dark version of the hue, so the palest shades stay readable.
 
+**Blocks dropped (Oct 11).** The user likes the tree ("looks great") and dropped the blocks. The tab is now the
+branches alone.
+- No view switch, and no list of senses under the chart: the tree's rows say the same.
+- The rows are keyboard buttons (Tab, then Enter or Space), so a sense can be picked without a mouse.
+- A style left from the blocks (`pointer-events: none` on all chart text) would have made the names unclickable in a
+  browser. It is gone, and a real click was checked in Chromium.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

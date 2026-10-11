@@ -271,18 +271,12 @@
     },
     "senseTree": {
         "summary": "Los sentidos de «{word}» en {sentences} oraciones de {works} obras, tal como el análisis los divide",
-        "explained": "Cada bloque es un sentido: su anchura es su parte de las oraciones del sentido del que proviene; su altura, el intervalo de detalle en el que se muestra. Un sentido se divide a la altura de la importancia de su división, relativa a la distinción principal, desde el 100 % arriba hasta el {finest}, por debajo del cual no se busca ninguna distinción. Los sentidos separados de un sentido son matices de su color. Los bloques en color pleno son los sentidos mostrados al detalle elegido con el control deslizante, como en la pestaña Sentidos de la palabra.",
-        "viewLabel": "Cómo se dibuja el árbol",
-        "viewBranches": "Ramas",
-        "viewBlocks": "Bloques",
-        "explainedBranches": "Cada rama es un sentido, tan gruesa como su parte de las oraciones. Se bifurca donde el análisis la divide, a la importancia de esa división, relativa a la distinción principal: desde el 100 % a la izquierda hasta el {finest}, por debajo del cual no se busca ninguna distinción. Los sentidos separados de un sentido son matices de su color. El árbol se dibuja hasta el detalle elegido con el control deslizante, como en la pestaña Sentidos de la palabra.",
+        "explained": "Cada rama es un sentido, tan gruesa como su parte de las oraciones. Se bifurca donde el análisis la divide, a la importancia de esa división, relativa a la distinción principal: desde el 100 % a la izquierda hasta el {finest}, por debajo del cual no se busca ninguna distinción. Los sentidos separados de un sentido son matices de su color. El árbol se dibuja hasta el detalle elegido con el control deslizante, como en la pestaña Sentidos de la palabra.",
         "firstView": "Volver a la primera vista",
         "chart": "El árbol de los sentidos de «{word}»",
-        "atCut": "En este detalle",
         "restShort": "el resto",
         "restExplained": "El resto de las oraciones, una vez separados los sentidos de al lado: no se desprende de ellas ningún sentido claro.",
-        "all": "«{word}»: las {sentences} oraciones",
-        "axis": "importancia"
+        "all": "«{word}»: las {sentences} oraciones"
     },
     "wordSenses": {
         "detecting": "Buscando los sentidos de la palabra",

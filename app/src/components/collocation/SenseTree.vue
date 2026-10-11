@@ -14,103 +14,55 @@
                         works: result.n_works.toLocaleString(),
                     }) }}
                 </p>
-                <div class="btn-group btn-group-sm mb-2" role="group" :aria-label="$t('senseTree.viewLabel')">
-                    <button type="button" class="btn btn-secondary" :class="{ active: view === 'branches' }"
-                        :aria-pressed="view === 'branches'" @click="view = 'branches'">{{ $t("senseTree.viewBranches") }}</button>
-                    <button type="button" class="btn btn-secondary" :class="{ active: view === 'blocks' }"
-                        :aria-pressed="view === 'blocks'" @click="view = 'blocks'">{{ $t("senseTree.viewBlocks") }}</button>
-                </div>
-                <p class="text-muted small mb-2">{{ $t(view === "branches" ? "senseTree.explainedBranches"
-                    : "senseTree.explained", { finest: percent(result.finest) }) }}</p>
+                <p class="text-muted small mb-2">{{ $t("senseTree.explained", { finest: percent(result.finest) }) }}</p>
 
                 <div v-if="splits.length" class="d-flex align-items-center gap-2 flex-wrap">
-                    <label for="sense-tree-cut" class="small fw-semibold mb-0">{{ $t("wordSenses.detail") }}</label>
+                    <label for="sense-tree-detail" class="small fw-semibold mb-0">{{ $t("wordSenses.detail") }}</label>
                     <span class="small text-muted" aria-hidden="true">{{ $t("wordSenses.coarser") }}</span>
-                    <input id="sense-tree-cut" v-model.number="position" type="range" class="form-range cut-range" min="0"
-                        :max="splits.length" step="1" :aria-valuetext="cutText" aria-describedby="sense-tree-cut-text" />
+                    <input id="sense-tree-detail" v-model.number="position" type="range" class="form-range detail-range"
+                        min="0" :max="splits.length" step="1" :aria-valuetext="detailText"
+                        aria-describedby="sense-tree-detail-text" />
                     <span class="small text-muted" aria-hidden="true">{{ $t("wordSenses.finer") }}</span>
                     <button type="button" class="btn btn-sm btn-link p-0" :disabled="position === defaultPosition"
                         @click="position = defaultPosition">{{ $t("senseTree.firstView") }}</button>
                 </div>
-                <p id="sense-tree-cut-text" class="small mb-2" aria-live="polite">{{ cutText }}</p>
+                <p id="sense-tree-detail-text" class="small mb-2" aria-live="polite">{{ detailText }}</p>
 
-                <svg v-if="view === 'branches'" :viewBox="`0 0 ${W} ${branches.height}`" class="sense-tree branches"
-                    role="img" :aria-label="$t('senseTree.chart', { word: queryWord })">
+                <svg :viewBox="`0 0 ${W} ${tree.height}`" class="sense-tree" role="group"
+                    :aria-label="$t('senseTree.chart', { word: queryWord })">
                     <!-- The importance axis, relative to the main distinction, from the left -->
-                    <g class="axis">
+                    <g class="axis" aria-hidden="true">
                         <template v-for="tick in ticks" :key="tick">
-                            <line :x1="xOf(tick)" :x2="xOf(tick)" :y1="B_TOP - 6" :y2="branches.height - 18" />
-                            <text :x="xOf(tick)" :y="branches.height - 4" text-anchor="middle">{{ percent(tick) }}</text>
+                            <line :x1="xOf(tick)" :x2="xOf(tick)" :y1="TOP - 6" :y2="tree.height - 18" />
+                            <text :x="xOf(tick)" :y="tree.height - 4" text-anchor="middle">{{ percent(tick) }}</text>
                         </template>
                     </g>
                     <text class="root-label" :x="4" :y="14">{{ $t("senseTree.all", {
                         word: queryWord, sentences: result.n_sentences.toLocaleString() }) }}</text>
                     <!-- The trunk, and each sense's branch: as thick as its share, forking where it is split -->
-                    <path :d="`M 4 ${branches.rootY} H ${branches.rootX}`" class="branch" :stroke-width="thickness(1)"
-                        stroke="hsla(0, 0%, 62%, 1)" />
-                    <path v-for="b in branches.segments" :key="`branch-${b.node.id}`" :id="`sense-branch-${b.node.id}`"
+                    <path :d="`M 4 ${tree.rootY} H ${tree.rootX}`" class="branch" :stroke-width="thickness(1)"
+                        stroke="hsla(0, 0%, 62%, 1)" aria-hidden="true" />
+                    <path v-for="b in tree.segments" :key="`branch-${b.node.id}`" :id="`sense-branch-${b.node.id}`"
                         class="branch" :d="`M ${b.x0} ${b.y0} V ${b.y1} H ${b.x1}`" :stroke="senseColor(b.node.sense, 1)"
-                        :stroke-width="thickness(b.node.share)" @click.stop="select(b.node)">
-                        <title>{{ blockTitle(b.node) }}</title>
+                        :stroke-width="thickness(b.node.share)" aria-hidden="true" @click="select(b.node)">
+                        <title>{{ title(b.node) }}</title>
                     </path>
-                    <!-- The senses at the cut, each on its row -->
-                    <g v-for="row in branches.rows" :key="`row-${row.node.id}`" class="row-label"
-                        :class="{ picked: selected && selected.id === row.node.id }" @click.stop="select(row.node)">
-                        <text :id="`sense-row-${row.node.id}`" :x="B_RIGHT + 10" :y="row.y + 4"
+                    <!-- The senses shown, each on its row: a click (or Enter) shows its words -->
+                    <g v-for="row in tree.rows" :key="`row-${row.node.id}`" class="row-label" role="button" tabindex="0"
+                        :class="{ picked: selected && selected.id === row.node.id }" :aria-label="title(row.node)"
+                        :aria-pressed="Boolean(selected && selected.id === row.node.id)" @click="select(row.node)"
+                        @keydown.enter.prevent="select(row.node)" @keydown.space.prevent="select(row.node)">
+                        <text :id="`sense-row-${row.node.id}`" :x="RIGHT + 10" :y="row.y + 4"
                             :fill="senseTextColor(row.node.sense, shades)">
                             <tspan font-weight="600">{{ row.node.sense ? $t("wordSenses.senseN", { n: row.node.sense })
                                 : $t("senseTree.restShort") }}</tspan>
-                            <tspan fill="#495057"> · {{ percent(row.node.share) }} · {{ label(row.node) }}</tspan>
+                            <tspan fill="#495057"> · {{ percent(row.node.share) }}{{ row.node.sense ? ` · ${label(row.node)}` : "" }}</tspan>
                         </text>
                     </g>
                 </svg>
-
-                <svg v-else :viewBox="`0 0 ${W} ${H}`" class="sense-tree" role="img"
-                    :aria-label="$t('senseTree.chart', { word: queryWord })">
-                    <!-- The importance axis, relative to the main distinction -->
-                    <g class="axis">
-                        <template v-for="tick in ticks" :key="tick">
-                            <line :x1="LEFT" :x2="RIGHT" :y1="yOf(tick)" :y2="yOf(tick)" />
-                            <text :x="LEFT - 6" :y="yOf(tick) + 4" text-anchor="end">{{ percent(tick) }}</text>
-                        </template>
-                        <text :x="4" :y="TOP - 6">{{ $t("senseTree.axis") }}</text>
-                    </g>
-                    <!-- All the sentences, above; then each sense, as wide as its share, as tall as it is shown -->
-                    <rect class="block" :class="{ shown: !position }" :x="LEFT" :y="4" :width="RIGHT - LEFT"
-                        :height="TOP - 20" fill="hsla(0, 0%, 88%, 1)" />
-                    <rect v-for="b in blocks" :id="`sense-block-${b.node.id}`" :key="b.node.id" class="block"
-                        :class="{ shown: shownIds.has(b.node.id) }" :x="b.x + 0.5" :y="b.y" :width="Math.max(0, b.w - 1)"
-                        :height="b.h" :fill="senseColor(b.node.sense, shownIds.has(b.node.id) ? 0.8 : 0.2)"
-                        :stroke="selected && selected.id === b.node.id ? '#000' : '#fff'"
-                        :stroke-width="selected && selected.id === b.node.id ? 2 : 1" @click.stop="select(b.node)">
-                        <title>{{ blockTitle(b.node) }}</title>
-                    </rect>
-                    <text :x="LEFT + 6" :y="TOP - 20">{{ $t("senseTree.all", {
-                        word: queryWord, sentences: result.n_sentences.toLocaleString() }) }}</text>
-                    <template v-for="b in blocks" :key="`label-${b.node.id}`">
-                        <text v-if="b.label" class="block-label" :x="b.x + 5" :y="b.y + 14"
-                            :fill="shownIds.has(b.node.id) ? '#fff' : '#333'">{{ b.label }}</text>
-                    </template>
-                </svg>
             </div>
 
-            <!-- The senses the cut crosses, in the order of their numbers, and the rest -->
-            <div class="card shadow-sm p-3 mb-3">
-                <h3 class="h6 mb-2">{{ $t("senseTree.atCut") }}</h3>
-                <ul class="list-unstyled mb-0">
-                    <li v-for="node in atCut" :key="node.id" class="mb-1">
-                        <button type="button" class="btn btn-sm btn-link p-0 text-start at-cut" @click="select(node)">
-                            <span class="legend-swatch" :style="{ backgroundColor: senseColor(node.sense, 1) }"></span>
-                            <template v-if="node.sense">{{ $t("wordSenses.senseN", { n: node.sense }) }}:</template>
-                            {{ label(node) }}
-                            <span class="text-muted">&middot; {{ $t("wordSenses.shareOfSentences",
-                                { share: percent(node.share) }) }}</span>
-                        </button>
-                    </li>
-                </ul>
-            </div>
-
-            <!-- A sense picked on the chart or in the list -->
+            <!-- A sense picked in the tree -->
             <div v-if="selected" class="card shadow-sm p-3 mb-3 selected-sense">
                 <h3 class="h6 mb-2">
                     <span class="legend-swatch" :style="{ backgroundColor: senseColor(selected.sense, 1) }"></span>
@@ -155,21 +107,15 @@ const { t } = useI18n();
 const loading = ref(false);
 const failed = ref(false);
 const result = ref(null);
-const position = ref(0); // how many distinctions the cut reveals, the most important first
+const position = ref(0); // how many distinctions are shown, the most important first
 const selected = ref(null);
-const view = ref("branches"); // the tree as "branches" forking from the left, or as nested "blocks"
 let fetchToken = 0;
 
+// Importance from the left; the senses shown on rows, named in the column on the right
 const W = 1000;
-const H = 440;
-const TOP = 40;
-const BOTTOM = H - 16;
-const LEFT = 46;
-const RIGHT = W;
-// The branches: importance from the left; the senses at the cut on rows, named in the column on the right
-const B_LEFT = 60;
-const B_RIGHT = 560;
-const B_TOP = 44;
+const LEFT = 60;
+const RIGHT = 560;
+const TOP = 44;
 const ROW = 28;
 
 const queryWord = computed(() => (formData.value.q || "").replace(/lemma:/g, "").replace(/"/g, "").trim());
@@ -219,7 +165,7 @@ onMounted(() => {
     if (!result.value && !loading.value) runDetection();
 });
 
-// ---- The tree's geometry ----
+// ---- The tree ----
 // A sense's height: the importance at which the detail first shows its split, its own or a finer one's within it
 // (showing a split shows those it is within)
 const heightOf = computed(() => {
@@ -235,14 +181,17 @@ const heightOf = computed(() => {
 });
 
 const lowest = computed(() => Math.min(result.value?.finest ?? 0.1, ...splits.value.map((n) => n.split.relative)));
+const ticks = computed(() => [1, 0.5, 0.25, result.value?.finest ?? 0.1].filter((r) => r >= lowest.value));
 
-// Importance on a log scale, from the main distinction (100%) at the top to the finest detail at the bottom
-function yOf(r) {
+// Importance on a log scale, from the main distinction (100%) on the left to the finest detail
+function xOf(r) {
     const span = Math.log(1 / lowest.value) || 1;
-    return TOP + (Math.log(1 / Math.max(r, lowest.value)) / span) * (BOTTOM - TOP - 20);
+    return LEFT + (Math.log(1 / Math.max(r, lowest.value)) / span) * (RIGHT - LEFT - 30);
 }
 
-const ticks = computed(() => [1, 0.5, 0.25, result.value?.finest ?? 0.1].filter((r) => r >= lowest.value));
+function thickness(share) {
+    return 1.5 + 14 * share;
+}
 
 // In the order of their senses' numbers, the rest of the sentences last
 function firstRank(node) {
@@ -250,34 +199,7 @@ function firstRank(node) {
     return node.sense === null ? Infinity : node.rank;
 }
 
-const blocks = computed(() => {
-    const out = [];
-    if (!root.value) return out;
-    const place = (node, x0, x1, top) => {
-        const bottom = node.children.length ? yOf(heightOf.value[node.id]) : BOTTOM;
-        if (node !== root.value) {
-            const w = x1 - x0;
-            const h = Math.max(0, bottom - top);
-            const text = `${node.sense ? `${node.sense} ` : ""}${label(node)}`;
-            const room = Math.floor((w - 8) / 6.4);
-            const label_ = w >= 34 && h >= 16 ? (text.length > room ? `${text.slice(0, Math.max(1, room - 1))}…` : text) : "";
-            out.push({ node, x: x0, w, y: top, h, label: label_ });
-        }
-        if (!node.children.length) return;
-        const kids = node.children.map((c) => nodes.value[c]).sort((a, b) => firstRank(a) - firstRank(b));
-        const total = kids.reduce((s, k) => s + k.share, 0) || 1;
-        let x = x0;
-        for (const kid of kids) {
-            const w = ((x1 - x0) * kid.share) / total;
-            place(kid, x, x + w, bottom);
-            x += w;
-        }
-    };
-    place(root.value, LEFT, RIGHT, TOP);
-    return out;
-});
-
-// The splits the cut reveals (with those they are within), and the senses it crosses: as in the senses tab
+// The splits the detail reveals, with those they are within: as in the senses tab
 const revealed = computed(() => {
     const ids = new Set();
     for (const node of splits.value.slice(0, position.value)) {
@@ -286,46 +208,15 @@ const revealed = computed(() => {
     return ids;
 });
 
-const atCut = computed(() => {
-    const out = [];
-    const walk = (node) => {
-        if (revealed.value.has(node.id)) node.children.forEach((c) => walk(nodes.value[c]));
-        else out.push(node);
-    };
-    if (root.value && position.value) walk(root.value);
-    return out.sort((a, b) => (a.rank ?? Infinity) - (b.rank ?? Infinity));
-});
-
-const shownIds = computed(() => new Set(atCut.value.map((n) => n.id)));
-
-const cutText = computed(() => {
-    if (!position.value) return t("wordSenses.detailNone");
-    const senses = atCut.value.filter((n) => n.sense !== null).length;
-    return t("wordSenses.detailText", {
-        senses: senses === 1 ? t("wordSenses.oneSense") : t("wordSenses.nSenses", { n: senses }),
-        importance: percent(splits.value[position.value - 1].split.relative),
-    });
-});
-
-// ---- The branches ----
-function xOf(r) {
-    const span = Math.log(1 / lowest.value) || 1;
-    return B_LEFT + (Math.log(1 / Math.max(r, lowest.value)) / span) * (B_RIGHT - B_LEFT - 30);
-}
-
-function thickness(share) {
-    return 1.5 + 14 * share;
-}
-
-// The tree down to the cut: the senses at the cut on rows, in the tree's order; a split forks at the height of its
+// The tree down to the detail: the senses shown on rows, in the tree's order; a split forks at the height of its
 // importance, halfway between the rows of its two halves
-const branches = computed(() => {
+const tree = computed(() => {
     const rows = [];
     const segments = [];
-    if (!root.value) return { rows, segments, rootX: B_LEFT, rootY: B_TOP, height: B_TOP + ROW + 24 };
+    if (!root.value) return { rows, segments, rootX: LEFT, rootY: TOP, height: TOP + ROW + 24 };
     const layout = (node) => {
         if (!revealed.value.has(node.id)) {
-            const y = B_TOP + rows.length * ROW + ROW / 2;
+            const y = TOP + rows.length * ROW + ROW / 2;
             rows.push({ node, y });
             return y;
         }
@@ -334,14 +225,23 @@ const branches = computed(() => {
         const ys = kids.map(layout);
         const y = (ys[0] + ys[ys.length - 1]) / 2;
         kids.forEach((kid, i) => {
-            const x1 = revealed.value.has(kid.id) ? xOf(heightOf.value[kid.id]) : B_RIGHT;
+            const x1 = revealed.value.has(kid.id) ? xOf(heightOf.value[kid.id]) : RIGHT;
             segments.push({ node: kid, x0: x, y0: y, y1: ys[i], x1 });
         });
         return y;
     };
     const rootY = layout(root.value);
-    const rootX = revealed.value.has(root.value.id) ? xOf(heightOf.value[root.value.id]) : B_RIGHT;
-    return { rows, segments, rootX, rootY, height: B_TOP + rows.length * ROW + 24 };
+    const rootX = revealed.value.has(root.value.id) ? xOf(heightOf.value[root.value.id]) : RIGHT;
+    return { rows, segments, rootX, rootY, height: TOP + rows.length * ROW + 24 };
+});
+
+const detailText = computed(() => {
+    if (!position.value) return t("wordSenses.detailNone");
+    const senses = tree.value.rows.filter((row) => row.node.sense !== null).length;
+    return t("wordSenses.detailText", {
+        senses: senses === 1 ? t("wordSenses.oneSense") : t("wordSenses.nSenses", { n: senses }),
+        importance: percent(splits.value[position.value - 1].split.relative),
+    });
 });
 
 function select(node) {
@@ -369,7 +269,7 @@ function label(node) {
     return words.join(", ") || queryWord.value;
 }
 
-function blockTitle(node) {
+function title(node) {
     const name = node.sense ? t("wordSenses.senseN", { n: node.sense }) : t("senseTree.restShort");
     return `${name}: ${label(node)} · ${t("wordSenses.shareOfSentences", { share: percent(node.share) })}`;
 }
@@ -392,8 +292,7 @@ function senseColor(sense, alpha) {
 }
 
 .sense-tree text {
-    font-size: 11px;
-    pointer-events: none;
+    font-size: 13px;
 }
 
 .axis line {
@@ -403,10 +302,6 @@ function senseColor(sense, alpha) {
 
 .axis text {
     fill: #6c757d;
-}
-
-.block {
-    cursor: pointer;
 }
 
 .branch {
@@ -423,15 +318,16 @@ function senseColor(sense, alpha) {
     cursor: pointer;
 }
 
-.row-label.picked text {
+.row-label:focus {
+    outline: none;
+}
+
+.row-label.picked text,
+.row-label:focus-visible text {
     text-decoration: underline;
 }
 
-.sense-tree.branches text {
-    font-size: 13px;
-}
-
-.cut-range {
+.detail-range {
     max-width: 22rem;
 }
 
@@ -442,10 +338,6 @@ function senseColor(sense, alpha) {
     border-radius: 2px;
     margin-right: 0.3rem;
     vertical-align: -0.05rem;
-}
-
-.at-cut {
-    text-decoration: none;
 }
 
 .word-chip {

@@ -271,18 +271,12 @@
     },
     "senseTree": {
         "summary": "Les sens de « {word} » dans {sentences} phrases de {works} œuvres, tels que l'analyse les divise",
-        "explained": "Chaque bloc est un sens : sa largeur est sa part des phrases du sens dont il est issu ; sa hauteur, l'étendue du détail auquel il est montré. Un sens se divise à la hauteur de l'importance de sa division, rapportée à la distinction principale, de 100 % en haut jusqu'à {finest}, sous quoi aucune distinction n'est recherchée. Les sens séparés d'un sens sont des nuances de sa couleur. Les blocs en couleur pleine sont les sens montrés au détail choisi avec le curseur, comme dans l'onglet Sens du mot.",
-        "viewLabel": "Comment l'arbre est dessiné",
-        "viewBranches": "Branches",
-        "viewBlocks": "Blocs",
-        "explainedBranches": "Chaque branche est un sens, aussi épaisse que sa part des phrases. Elle se divise là où l'analyse la divise, à l'importance de cette division, rapportée à la distinction principale : de 100 % à gauche jusqu'à {finest}, sous quoi aucune distinction n'est recherchée. Les sens séparés d'un sens sont des nuances de sa couleur. L'arbre est dessiné jusqu'au détail choisi avec le curseur, comme dans l'onglet Sens du mot.",
+        "explained": "Chaque branche est un sens, aussi épaisse que sa part des phrases. Elle se divise là où l'analyse la divise, à l'importance de cette division, rapportée à la distinction principale : de 100 % à gauche jusqu'à {finest}, sous quoi aucune distinction n'est recherchée. Les sens séparés d'un sens sont des nuances de sa couleur. L'arbre est dessiné jusqu'au détail choisi avec le curseur, comme dans l'onglet Sens du mot.",
         "firstView": "Revenir à la première vue",
         "chart": "L'arbre des sens de « {word} »",
-        "atCut": "À ce détail",
         "restShort": "le reste",
         "restExplained": "Le reste des phrases, une fois séparés les sens à côté : aucun sens clair ne s'en dégage.",
-        "all": "« {word} » : les {sentences} phrases",
-        "axis": "importance"
+        "all": "« {word} » : les {sentences} phrases"
     },
     "wordSenses": {
         "detecting": "Recherche des sens du mot",
