@@ -177,8 +177,21 @@ class TestWordSenses:
         w = next(w for n in report["nodes"] if n["sense"] for w in n["words"] if w["word"] == "pipe")
         assert all(X[unit[hit], pipe] > 0 for hit in w["hits"])
 
+    def test_senses_say_when_they_rise_and_what_came_before(self, eltec_db):
+        report = call(eltec_db, get_word_senses, q="lemma:light")
+        for node in report["nodes"]:
+            onset = node["onset"]
+            if onset is None:
+                continue
+            assert report["time"]["start"] < onset["year"] <= report["time"]["end"]
+            assert onset["after"] > onset["before"]
+            assert all(p["year"] < onset["year"] for p in onset["precursors"])
+            years = [p["year"] for p in onset["precursors"]]
+            assert years == sorted(years) and len(onset["precursors"]) <= onset["sentences_before"]
+
     def test_no_dates_no_course_over_time(self, shakespeare_db):
         # Every play has the same year: senses, but no course over time
         report = call(shakespeare_db, get_word_senses, q="king")
         assert report["n_sentences"] > 0
         assert report["time"] is None
+        assert all(node["onset"] is None for node in report["nodes"])

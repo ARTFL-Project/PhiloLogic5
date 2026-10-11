@@ -1159,6 +1159,94 @@ it was left in place.
 - **Focus** (from solo/hide). Pointing at a sense's chip, or tabbing to it, fades the other senses in the overview
   chart.
 
+## 21. Three tabs for what is new over time (Oct 11, prototypes)
+
+The goal: find when new uses of a word ("social", "tradition") start appearing, and the texts they may have come from.
+The senses are found without regard to time, so the senses tab only shows how existing senses wax and wane. Three
+approaches were built as separate tabs so they can be compared.
+
+**1. Sense onsets** (`SenseOnsets.vue`, data from `get_word_senses`). For each sense at the detail shown:
+- the year its share of the works' sentences rises, if it does (`word_senses.rise`: one change point, binomial, rises
+  only, kept when G2 is above the BIC threshold; each work counts once, through its posterior share);
+- before that year, its earliest sentences clearly in the sense (`sense_onsets`: up to `_PRECURSORS`).
+
+**2. Rising words** (`RisingWords.vue`, `word_trends.rising_words`, script `get_rising_words`).
+- Candidates are the query's collocates outside the filter. A candidate rises when its rate in the query's sentences
+  has a change point (sentences as trials, works as units, quasi-binomial dispersion over the works).
+- It must also rise more than the word does in the whole corpus at that year (`_count_by_year`, a numba scan). A word
+  the corpus lacks before then is marked "new in the corpus".
+- Rising words that go together (G2 above log n, grouped around HyperLex hubs) form one emerging use. Each use has its
+  rise, its course over time and its earliest sentences with two of its words.
+
+**3. Ahead of their time** (`AheadOfTime.vue` and `AheadWork.vue`, `word_trends.ahead_of_time`, script
+`get_ahead_of_time`). This follows resonance (Barron, Huang, Spang and DeDeo 2018: novelty against the past minus
+transience against the future), done with works.
+- Each work's vector is its collocates of the query, idf-weighted as the senses weigh evidence, filter words removed
+  from the sentence channel.
+- It is compared, by cosine, with every work by another author from the span before its year and the span after (the
+  span is `time_series_interval`). Each cosine is divided by that other work's mean closeness to all works.
+- A Mann–Whitney test over those works decides whether the later works are, as a rule, closer than the earlier ones.
+  - **Clearly ahead:** above a Bonferroni threshold over the works tested, ranked by the share of (later, earlier)
+    pairs in which the later work is closer.
+  - **Perhaps ahead:** above EVIDENCE only, shown with how many would pass by chance alone.
+- Each work comes with: the words the later works have more of; its sentences with most of them; the closest later
+  works.
+
+**What did not work** (tab 3's first design, "new uses"):
+- Per decade, the period's sentences were split, the way a sense is split, into those the recent past explains and a
+  new use carved out of it, tested on held-out works.
+- Against the past alone, it flagged every decade tested in ELTeC for *light* and *man*, and the new uses were
+  mostly character names. Any extra data improves held-out predictions, so the test is biased toward "new".
+- Against the past refitted with the period, it flagged nothing, not even *révolution* in the 1790s (z = −4.8). The
+  refit absorbs the drift that the carved use cannot.
+- Telling a new use from drift needs the past's own uses as the baseline, which would largely repeat tab 1. Dropped.
+
+**Three more things the work-level tab needed:**
+- **Rank test over works, not a window model.** Comparing each work with one model of the works before and one of the
+  works after was decided by which particular works fell into each window. On ELTeC it found as many works "behind"
+  as "ahead" (14 vs 17 for *man*). William Morris's archaic style came out "ahead".
+- **The closeness correction.** Without it, works came out ahead but never behind. Later works use *révolution* more,
+  their vectors are fuller, and they look a little like every work. The rank of each closeness among all works gave
+  the same list as dividing by the mean; the division scales and was kept.
+- **Collocates only.** On eebo_ecco_combo, the seam between EEBO and ECCO at 1700 ("thoſe" vs "those") made the works
+  around 1700 look ahead because of their spelling.
+
+**Results** (frantext, the page's defaults: frequency filter, words in over 1% of sentences hidden):
+
+| | Sense onsets | Rising words | Ahead of their time |
+|---|---|---|---|
+| *révolution* | 1.2 (Paris, juillet) 1819; 2 (siècle, social, politique) 1890 | 220 of 2,356 rise; *révolution française* 1790; Louis XVI and Antoinette 1793; the July days 1821 | 2 clear (Balzac 1846, Bertrand 1841); 101 perhaps, ~39 by chance |
+| *social* | 1 (milieu, fonction) 1884; 1.2 (groupe, solidarité) 1893; 2.2 (révolution, économique, démocratie) 1831 | 246 of 3,315; *phénomènes sociaux* 1822; *conditions sociales* 1838 | 0 clear; 72 perhaps, ~32 by chance (novels of the late 1880s) |
+| *tradition* | 1 (religieux, social, historique) 1881; 1.1 (vieux, français, antique) 1808 | 88 of 1,454; *tradition religieuse* 1810; *tradition française* 1850 | 0 clear; 37 perhaps, ~28 by chance (Maurras 1894, Clemenceau 1899, Barrès 1913) |
+
+- On ELTeC, tab 3 puts 1893–1900 novels with *electric light* first among those perhaps ahead for *light*.
+- With 20-year spans (not the default), it ranks Tarde, Bergson and Durkheim first for *social*. Tarde's closest later
+  works are Durkheim's.
+- Frantext dates works by edition, so Balzac's novels sit at 1841–46 (the Furne edition). That puts them at the head
+  of tab 3's list for *révolution*.
+
+**Reading:**
+- Tab 1 gives the periods and is readable. Its precursors often reach back to the start of the corpus, so they are
+  weak as sources.
+- Tab 2 gives the most concrete leads: dated word groups with their first sentences. Many of its "uses" did not rise;
+  they just first appear.
+- Tab 3 is the only one that names texts ahead of their time, and it is honest about evidence. In frantext, though,
+  little passes its strict threshold, and most of the "perhaps" lists could be chance.
+
+**Cost:**
+- Frantext: tab 2 1–4 s, tab 3 0.3–0.7 s.
+- eebo_ecco_combo, tab 3: *liberty* 31 s; *church* 49 s and 8.7 GB at peak.
+
+**Fixed on the way:**
+- The trends cache returned numpy numbers on a first computation, so the rising words' first request failed with a
+  500 (orjson). `_cached` now returns what it writes.
+- `_Phrases.near` failed on sentences with no word on one side of the query.
+
+**Choices left:**
+- the span (the database's time series interval);
+- `_WORKS` = 50, `_FOLLOWERS` = 3, `_SOURCES` = 10, `_WORDS` = 12 (display);
+- EVIDENCE for "perhaps".
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

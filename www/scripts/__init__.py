@@ -4,6 +4,7 @@ from .autocomplete_term import autocomplete_term
 from .collocation_time_series import collocation_time_series
 from .comparative_collocations import comparative_collocations
 from .get_academic_citation import get_academic_citation
+from .get_ahead_of_time import get_ahead_of_time
 from .get_bibliography import get_bibliography
 from .get_collocate_distribution import get_collocate_distribution
 from .get_custom_landing_page import get_custom_landing_page
@@ -16,6 +17,7 @@ from .get_notes import get_notes
 from .get_outlier_groups import get_outlier_groups
 from .get_query_terms import get_query_terms
 from .get_representative_passages import get_representative_passages
+from .get_rising_words import get_rising_words
 from .get_sense_passages import get_sense_passages
 from .get_similar_collocate_distributions import get_similar_collocate_distributions
 from .get_sorted_frequency import get_sorted_frequency

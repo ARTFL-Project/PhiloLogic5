@@ -91,7 +91,7 @@
             :start_date="formData.start_date" :end_date="formData.end_date"
             :removeMetadata="removeMetadata"></bibliography-criteria>
         <div v-if="queryReport === 'collocation'">
-            <template v-if="['senses', 'senseTree'].includes(collocMethod)">
+            <template v-if="['senses', 'senseTree', 'senseOnsets', 'risingWords', 'aheadOfTime'].includes(collocMethod)">
                 {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
             </template>
             <template v-else>
