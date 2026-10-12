@@ -1347,9 +1347,13 @@ The user finds the tree the clearest explanation, and the overall timeline the m
   the rows, its branches ending at the first line of each name, at the rows' measured heights. Names and years are
   HTML text, so they take the page's font size (14 px on frantext) and grow with the reader's zoom and text settings.
 - **Wide or narrow.** At 46 em wide or more, the tree with its names takes the left half and the timelines the right.
+  All the rows share one grid (CSS subgrid), so the names' column is as wide as the widest name needs, up to half of
+  the tree's side, and the tree takes all the rest: 528 px at 1920, 308 at 1400, 183 at 900. A first version capped
+  the tree at 20 em, and the user saw it stay small on a wide screen.
   Below that, the tabs follow the ARIA tabs pattern: `role="tab"` buttons with `aria-selected`, one in the tab order,
   and the arrows, Home and End to move between them; the chart is their `tabpanel`.
-  - In the "Tree" tab, the tree takes up to 40 % of the width and the names wrap beside it.
+  - In the "Tree" tab, the same rule over the whole width: the names take up to half, and wrap; the tree takes the
+    rest.
   - In the "Over time" tab, each sense's name sits above its band, indented by its depth in the tree, and the sense
     numbers (1, 1.2, 2.1) stand in for the tree.
   - The period columns in the opened panel wrap onto new lines instead of scrolling sideways (this also changes the

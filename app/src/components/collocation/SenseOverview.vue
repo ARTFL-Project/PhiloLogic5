@@ -54,8 +54,7 @@
                      sentences over the years, cut into their periods, on the right half -->
                 <div id="sense-overview-chart" ref="box" class="overview" :class="{ wide, 'with-tree': showTree }"
                     :role="wide || !time ? null : 'tabpanel'"
-                    :aria-labelledby="wide || !time ? null : `sense-overview-tab-${view}`"
-                    :style="{ '--tree-width': `${treeWidth}px` }">
+                    :aria-labelledby="wide || !time ? null : `sense-overview-tab-${view}`">
                     <div v-if="showTime" class="years-row" aria-hidden="true">
                         <div v-if="wide" class="tree-cell"></div>
                         <div v-if="wide" class="name-cell"></div>
@@ -92,7 +91,7 @@
                     </ul>
                     <!-- The tree, beside the rows, from their measured places (it draws what the rows' names say) -->
                     <svg v-if="showTree && treeLayout" class="tree" :width="treeWidth" :height="listHeight"
-                        :style="{ top: `${listTop}px` }" aria-hidden="true">
+                        :style="{ top: `${listTop}px`, left: `${treeLeft}px` }" aria-hidden="true">
                         <path :d="`M 2 ${treeLayout.rootY} H ${treeLayout.rootX}`" class="trunk" :stroke-width="thickness(1)" />
                         <g v-for="b in treeLayout.segments" :key="`branch-${b.node.id}`">
                             <path class="branch-casing" :d="branchPath(b)" :stroke="senseTextColor(b.node.sense, shades)"
@@ -277,10 +276,8 @@ const view = ref("tree");
 const wide = computed(() => width.value >= 46 * fontSize.value);
 const showTree = computed(() => wide.value || !time.value || view.value === "tree");
 const showTime = computed(() => Boolean(time.value) && (wide.value || view.value === "time"));
-const treeWidth = computed(() => {
-    const room = wide.value ? width.value / 2 : width.value; // the tree's side: its half, or all of a narrow screen
-    return Math.round(Math.min(Math.max(room * 0.4, 6 * fontSize.value), 20 * fontSize.value));
-});
+const treeWidth = ref(0); // the tree's column, as wide as the names leave it
+const treeLeft = ref(0);
 const bandHeight = computed(() => Math.round(2.2 * fontSize.value));
 
 // The tabs' keys: the arrows, Home and End move between them
@@ -308,6 +305,9 @@ function measure() {
     });
     const cell = list.value.querySelector(".sense-time");
     timeWidth.value = cell ? cell.clientWidth : 0;
+    const treeCell = list.value.querySelector(".tree-cell")?.getBoundingClientRect();
+    treeWidth.value = treeCell ? Math.round(treeCell.width) : 0;
+    treeLeft.value = treeCell ? treeCell.left - box.value.getBoundingClientRect().left : 0;
 }
 
 function remeasure() {
@@ -599,23 +599,32 @@ function openPeriodWork(node, p, w) {
     padding: 0 0.25rem 0 calc(4px + 0.5rem);
 }
 
-/* With the tree: its branches end at the senses' names */
-.overview.with-tree .sense-row {
+/* With the tree: one grid for all the rows (each row a subgrid), its branches ending at the senses' names. The names
+   take what they need, up to half the tree's side, and the tree all the rest. */
+.overview.with-tree {
     display: grid;
-    grid-template-columns: var(--tree-width) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) fit-content(50%);
     column-gap: 0.75rem;
-    align-items: center;
-    padding: 0.2rem 0.25rem;
-    border-left: none;
-    margin-bottom: 0;
 }
 
 /* Wide: the tree and the names on the left half, the years on the right half */
-.overview.wide .years-row,
-.overview.wide .sense-row {
+.overview.wide {
+    grid-template-columns: minmax(0, 1fr) fit-content(25%) minmax(0, 50%);
+}
+
+.overview.with-tree .years-row,
+.overview.with-tree .sense-rows,
+.overview.with-tree .sense-row {
+    grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: var(--tree-width) minmax(0, calc(50% - var(--tree-width))) minmax(0, 1fr);
-    column-gap: 0.75rem;
+    grid-template-columns: subgrid;
+}
+
+.overview.with-tree .sense-row {
+    align-items: center;
+    padding: 0.2rem 0;
+    border-left: none;
+    margin-bottom: 0;
 }
 
 .sense-row.picked {
