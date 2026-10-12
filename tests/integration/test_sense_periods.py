@@ -66,6 +66,18 @@ class TestSensePeriods:
         ]
         assert [p["hit"] for p in passages] == w["hits"][:3]
 
+    def test_the_senses_asked_for(self, eltec_db):
+        # Any senses of the tree, by their ids, each as the default view's call has it
+        default = call(eltec_db, get_sense_periods, q="lemma:light")
+        senses = [n["id"] for n in default["nodes"] if n["sense"]]
+        asked = list(reversed(senses))
+        report = call(eltec_db, get_sense_periods, q="lemma:light", nodes=",".join(map(str, asked)))
+        assert [s["id"] for s in report["senses"]] == [i for i in asked if i in {s["id"] for s in report["senses"]}]
+        by_id = {s["id"]: s for s in report["senses"]}
+        for s in default["senses"]:
+            assert by_id[s["id"]] == s
+        assert len(report["senses"]) >= len(default["senses"])
+
 
 @pytest.mark.integration
 def test_no_dates_no_periods(shakespeare_db):

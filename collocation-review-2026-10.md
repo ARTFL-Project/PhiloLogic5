@@ -1311,6 +1311,39 @@ tab's cached tree).
 - `_WORDS` 8, `_FADING` 5, `_WORKS` 3 and the examples (10): display limits.
 - The stop rule, the first failure: a stated convention.
 
+## 23. Senses at a glance: the tree with each sense's course over time (Oct 12, prototype)
+
+The user finds the tree the clearest explanation, and the overall timeline the most useful single view. A new tab,
+"Senses at a glance (beta)" (`SenseOverview.vue`), joins them; the three sense tabs stay as they are.
+
+**The view:**
+- **Left:** the sense tree, as the Sense tree tab draws it, with the detail slider and the word search.
+- **Right, on each sense's row:** its share of the word's sentences over the years, on one time axis and one scale
+  for all rows (the senses tab's curves). Dotted ticks mark its periods (§22), and under each period sits its strongest
+  new word (in grey italics for the first period: what set it apart).
+- **Clicking a row** opens the sense below: its words, which open their sentences, and its periods in full
+  (`PeriodColumns.vue`, now shared with the Senses over time tab).
+- **The explanations** sit behind an "i" button (`InfoButton.vue`): a popover opened by click or keyboard, closed by
+  Escape, its button or a click elsewhere. The page keeps a one-line summary.
+
+**Backend:**
+- The senses report now saves which sentences are clearly in each sense next to its cached JSON
+  (`<hash>.membership.npz`, packed bits; `senses_with_membership`). Its JSON output is unchanged.
+- `sense_periods` reads the membership instead of growing the senses again, and takes `nodes` (the senses asked for).
+  Each sense's periods are cached on their own (`periods-<id>.json`), so moving the slider only costs the senses not
+  seen yet.
+- Timings for *révolution*:
+  - periods for the default view: 3.7 s, down from 6.8;
+  - all 24 senses of the tree: 9 s;
+  - cached: 0.02 s.
+
+**Open design points:**
+- Before about 1750 the word has few sentences a year, so the bands swing there (*social*: peaks around 1620–1650).
+  The bands could fade where the data is thin, or a strip could show the sentences per year.
+- The shared time axis must be proportional to time, so the dense 19th century gets narrow periods: one word each
+  at most, and some are left out where they would overlap. The full lists are in the opened panel.
+- The tree layout code is copied from `SenseTree.vue`; if the view is kept, both should share it.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

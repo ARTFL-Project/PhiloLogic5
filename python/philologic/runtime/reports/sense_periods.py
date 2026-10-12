@@ -25,7 +25,6 @@ import json
 import math
 import os
 import tempfile
-import time
 
 import numba
 import numpy as np
@@ -35,7 +34,7 @@ from scipy.special import xlogy
 from philologic.runtime.reports import word_senses as ws
 from philologic.runtime.reports.time_series import _get_doc_year_data
 
-_CACHE_TAG = b"periods1\0"  # bump when the result changes
+_CACHE_TAG = b"periods2\0"  # bump when the result changes
 _WORDS = 8  # the new words listed for a period, the strongest first
 _FADING = 5  # the fading words listed for a period
 _WORKS = 3  # the representative works of a period
@@ -52,84 +51,110 @@ def sense_periods(
     distance=None,
     year_field=None,
     filter_words=None,
+    nodes=None,
 ):
-    """The periods of the query's senses (see the module), as JSON-ready data, cached in the hitlist directory."""
+    """The periods of the query's senses (see the module), as JSON-ready data: of the senses nodes (their ids in the
+    senses report), or of those of its default view. Each sense's periods are cached in the hitlist directory, so that
+    the senses of another detail only cost their own."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
+    args = (db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words)
+    report, membership = ws.senses_with_membership(*args)
+    slim = [
+        {k: node[k] for k in ("id", "parent", "children", "sense", "rank", "share", "words", "before", "after")}
+        for node in report["nodes"]
+    ]
+    for node in slim:  # the words a label needs, not their sentences
+        for group in ("words", "before", "after"):
+            node[group] = [{k: v for k, v in w.items() if k in ("word", "phrase")} for w in node[group][:6]]
+    base = {k: report.get(k) for k in ("n_hits", "n_sentences", "n_works", "detail")}
+    base["nodes"] = slim
+    base["filter_list"] = filter_words
+    if nodes is None:
+        nodes = [n["id"] for n in ws.leaves_at(report["nodes"], report["detail"]) if n["sense"] is not None]
+    nodes = [i for i in nodes if 0 <= i < len(report["nodes"]) and report["nodes"][i]["sense"] is not None]
+    if not report["nodes"] or not year_field:
+        return {**base, "senses": []}
+
     h = hashlib.sha1(_CACHE_TAG)
     for part in (q, bool(count_lemmas), attribute, attribute_value, metadata, distance, year_field, filter_words):
         h.update(json.dumps(part, sort_keys=True, default=str).encode("utf-8"))
         h.update(b"\0")
-    path = os.path.join(db.hitlist_dir, f"{h.hexdigest()}.periods.json")
-    if os.path.exists(path):
+    paths = {i: os.path.join(db.hitlist_dir, f"{h.hexdigest()}.periods-{i}.json") for i in nodes}
+    found = {}
+    for i, path in paths.items():
         try:
             with open(path, encoding="utf-8") as f:
-                return json.load(f)
+                found[i] = json.load(f)
         except (OSError, ValueError):
             pass
-    began = time.perf_counter()
-    result = _sense_periods(
-        db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words
-    )
-    result["seconds"] = round(time.perf_counter() - began, 2)
-    result["filter_list"] = filter_words
-    text = json.dumps(result)
-    fd, tmp = tempfile.mkstemp(dir=db.hitlist_dir, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, path)
-    except OSError:  # a cache that can't be written is no cache
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-    return json.loads(text)  # as it is read back: plain numbers
+    missing = [i for i in nodes if i not in found]
+    if missing:
+        context = _Context(db, report, membership, *args[1:])
+        for i in missing:
+            text = json.dumps(context.periods(i))
+            found[i] = json.loads(text)  # as it is read back: plain numbers
+            fd, tmp = tempfile.mkstemp(dir=db.hitlist_dir, suffix=".tmp")
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(text)
+                os.replace(tmp, paths[i])
+            except OSError:  # a cache that can't be written is no cache
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+    return {**base, "senses": [found[i] for i in nodes if found[i] is not None]}
 
 
-def _sense_periods(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words):
-    sentences = ws.query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
-    empty = {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "senses": []}
-    if sentences is None:
-        return empty
-    channels, names = ws._senses_channels(sentences, count_lemmas)
-    common = ws._filtered(sentences, filter_words)
-    root = ws.induce_senses(channels, sentences["docs"], unseeded=[common[ids] for ids in names])
-    report = ws._senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field)
-    nodes = [
-        {k: node[k] for k in ("id", "parent", "children", "sense", "rank", "share", "words", "before", "after")}
-        for node in report["nodes"]
-    ]
-    for node in nodes:  # the words a label needs, not their sentences
-        for group in ("words", "before", "after"):
-            node[group] = [{k: v for k, v in w.items() if k in ("word", "phrase")} for w in node[group][:6]]
-    base = {k: report[k] for k in ("n_hits", "n_sentences", "n_works")}
-    base["nodes"] = nodes
-    if not year_field:
-        return {**base, "senses": []}
-    try:
-        year_array = _get_doc_year_data(db, year_field)[0]
-    except Exception:  # no year field the database can read
-        return {**base, "senses": []}
-    docs = np.asarray(sentences["docs"])
-    years = np.where(docs < len(year_array), year_array[np.clip(docs, 0, len(year_array) - 1)], 0).astype(np.int64)
-    if len(np.unique(years[years > 0])) < 2:
-        return {**base, "senses": []}
+class _Context:
+    """What the periods of any sense of a query read: its sentences, their words and years, and the senses'
+    membership."""
 
-    Xall = [csr_matrix(c[0]) for c in channels]
-    _, _, margin = ws.node_posteriors(root, Xall)
-    corpus = [ws.Dist(np.asarray(c[1], dtype=np.float64), float(c[2])) for c in channels]
-    counts_all = [np.asarray(X.sum(axis=0)).ravel() for X in Xall]
-    collocates = [np.isin(np.arange(len(c)), ws.markedly_more_frequent(c, d.p)[0]) for c, d in zip(counts_all, corpus)]
-    shared = _Shared(db, sentences, channels, names, common, Xall, corpus, counts_all, collocates, years, year_array)
-    out = []
-    for node in ws.leaves_at(report["nodes"], report["detail"]):
-        if node["sense"] is None:
-            continue
-        rows = np.flatnonzero((margin[:, node["id"]] > 0) & (years > 0))
-        if len(np.unique(docs[rows])) < 2:
-            continue
-        periods, tried = _Sense(shared, rows).periods()
-        out.append({"id": node["id"], "sense": node["sense"], "periods": periods, "tried": tried})
-    return {**base, "detail": report["detail"], "senses": out}
+    def __init__(
+        self,
+        db,
+        report,
+        membership,
+        q,
+        count_lemmas,
+        attribute,
+        attribute_value,
+        metadata,
+        distance,
+        year_field,
+        filter_words,
+    ):
+        self.report, self.membership, self.shared = report, membership, None
+        sentences = ws.query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
+        if sentences is None:
+            return
+        try:
+            year_array = _get_doc_year_data(db, year_field)[0]
+        except Exception:  # no year field the database can read
+            return
+        docs = np.asarray(sentences["docs"])
+        years = np.where(docs < len(year_array), year_array[np.clip(docs, 0, len(year_array) - 1)], 0).astype(np.int64)
+        if len(np.unique(years[years > 0])) < 2:
+            return
+        self.years, self.docs = years, docs
+        channels, names = ws._senses_channels(sentences, count_lemmas)
+        common = ws._filtered(sentences, filter_words)
+        Xall = [csr_matrix(c[0]) for c in channels]
+        corpus = [ws.Dist(np.asarray(c[1], dtype=np.float64), float(c[2])) for c in channels]
+        counts = [np.asarray(X.sum(axis=0)).ravel() for X in Xall]
+        collocates = [np.isin(np.arange(len(c)), ws.markedly_more_frequent(c, d.p)[0]) for c, d in zip(counts, corpus)]
+        self.shared = _Shared(
+            db, sentences, channels, names, common, Xall, corpus, counts, collocates, years, year_array
+        )
+
+    def periods(self, i):
+        """The periods of the sense of id i, or None when it has no dated sentences of two works."""
+        if self.shared is None:
+            return None
+        rows = np.flatnonzero(self.membership[:, i] & (self.years > 0))
+        if len(np.unique(self.docs[rows])) < 2:
+            return None
+        periods, tried = _Sense(self.shared, rows).periods()
+        return {"id": i, "sense": self.report["nodes"][i]["sense"], "periods": periods, "tried": tried}
 
 
 @numba.njit(cache=True, nogil=True)

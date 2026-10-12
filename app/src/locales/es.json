@@ -205,6 +205,7 @@
         "wordSenses": "Sentidos de la palabra (beta)",
         "senseTree": "Árbol de sentidos (beta)",
         "sensePeriods": "Sentidos a lo largo del tiempo (beta)",
+        "senseOverview": "Sentidos de un vistazo (beta)",
         "searchEvolution": "Evolución de la búsqueda",
         "collocateBetweenPeriods": "Colocaciones distintivas desde {start} hasta {end}",
         "similarUsage": "Uso Similar",
@@ -268,6 +269,16 @@
         "untitled": "Obra sin título",
         "wordNote": "Las oraciones de {years} con «{word}», las más típicas del periodo primero.",
         "workNote": "Las oraciones de esta obra más típicas de {years}."
+    },
+    "senseOverview": {
+        "summary": "Los sentidos de «{word}» y su curso a lo largo del tiempo, en {sentences} oraciones de {works} obras",
+        "howToRead": "Cómo leer esto",
+        "treeExplained": "A la izquierda, el árbol de los sentidos: cada rama es un sentido, tan gruesa como su parte de las oraciones, que se bifurca donde el análisis lo separa. El control de detalle muestra más o menos de sus separaciones.",
+        "timeExplained": "A la derecha, la parte de las oraciones de la palabra que corresponde a cada sentido a lo largo de los años, a la misma escala para todos.",
+        "periodsExplained": "Líneas de puntos cortan cada sentido en periodos de tantas obras, tantos como los datos permiten; bajo cada periodo, su palabra nueva más marcada frente a los periodos anteriores (en cursiva gris, lo que distinguía al primero). Haga clic en un sentido para ver sus palabras y sus periodos completos.",
+        "chart": "Los sentidos de «{word}»: su árbol, y su parte de las oraciones a lo largo de los años",
+        "periodsLoading": "Buscando sus periodos…",
+        "noPeriods": "Muy pocas obras fechadas para cortar en periodos."
     },
     "wordSenses": {
         "detecting": "Buscando los sentidos de la palabra",

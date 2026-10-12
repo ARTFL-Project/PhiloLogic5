@@ -4,6 +4,7 @@ import numpy as np
 from scipy.stats import chi2_contingency
 
 from philologic.runtime.reports import sense_periods as sp
+from philologic.runtime.reports import word_senses as ws
 
 
 def sense(years_of_works, sentences_per_work=3):
@@ -56,3 +57,15 @@ class TestChoice:
         s.has_new = lambda period, k: False
         s.describe = lambda period: int(period.max()) + 1
         assert s.periods() == (1, [[2, False]])
+
+
+class TestMembership:
+    def test_the_senses_membership_reads_back_as_written(self, tmp_path):
+        rng = np.random.default_rng(0)
+        membership = rng.random((37, 5)) > 0.5  # sentences x senses, not a multiple of 8 sentences
+        path = str(tmp_path / "x.membership.npz")
+        ws._save_membership(path, membership)
+        assert np.array_equal(ws._load_membership(path), membership)
+
+    def test_a_missing_file_reads_as_none(self, tmp_path):
+        assert ws._load_membership(str(tmp_path / "none.membership.npz")) is None

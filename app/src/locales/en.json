@@ -205,6 +205,7 @@
         "wordSenses": "Word senses (beta)",
         "senseTree": "Sense tree (beta)",
         "sensePeriods": "Senses over time (beta)",
+        "senseOverview": "Senses at a glance (beta)",
         "searchEvolution": "Search evolution",
         "collocateBetweenPeriods": "Distinctive Collocations Over Time: {start} vs. {end}",
         "similarUsage": "Similar Usage",
@@ -268,6 +269,16 @@
         "untitled": "Untitled work",
         "wordNote": "The sentences of {years} with “{word}”, the most typical of the period first.",
         "workNote": "This work's sentences most typical of {years}."
+    },
+    "senseOverview": {
+        "summary": "The senses of “{word}” and their course over time, in {sentences} sentences from {works} works",
+        "howToRead": "How to read this",
+        "treeExplained": "On the left, the tree of the senses: each branch is a sense, as thick as its share of the sentences, forking where the analysis splits it. The detail slider shows more or fewer of its splits.",
+        "timeExplained": "On the right, each sense's share of the word's sentences over the years, on the same scale for all.",
+        "periodsExplained": "Dotted lines cut each sense into periods of as many works, as many as the data supports; under each period, its strongest new word against the periods before (in grey italics, what set the first apart). Click a sense for its words and its periods in full.",
+        "chart": "The senses of “{word}”: their tree, and their share of the sentences over the years",
+        "periodsLoading": "Finding its periods…",
+        "noPeriods": "Too few dated works to cut into periods."
     },
     "wordSenses": {
         "detecting": "Finding the senses of the word",

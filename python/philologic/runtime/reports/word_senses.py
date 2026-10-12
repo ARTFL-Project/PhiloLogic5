@@ -2088,6 +2088,9 @@ def word_senses(
             pass
     began = time.perf_counter()
     result = _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words)
+    membership = result.pop("_membership", None)
+    if membership is not None:
+        _save_membership(_membership_path(path), membership)
     result["seconds"] = round(time.perf_counter() - began, 2)
     result["filter_list"] = filter_words
     fd, tmp = tempfile.mkstemp(dir=db.hitlist_dir, suffix=".tmp")
@@ -2099,6 +2102,59 @@ def word_senses(
         if os.path.exists(tmp):
             os.unlink(tmp)
     return result
+
+
+def senses_with_membership(
+    db,
+    q,
+    count_lemmas,
+    attribute=None,
+    attribute_value=None,
+    metadata=None,
+    distance=None,
+    year_field=None,
+    filter_words=None,
+):
+    """The senses report (word_senses) and which of the query's sentences are clearly in each of its senses (on its
+    side of every split): a sentences x senses array of booleans, kept next to the cached report, else found again."""
+    report = word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words)
+    metadata = {k: v for k, v in (metadata or {}).items() if v}
+    filter_words = sorted(set(filter_words or []))
+    path = _membership_path(
+        _cache_path(db, q, bool(count_lemmas), attribute, attribute_value, metadata, distance, year_field, filter_words)
+    )
+    membership = _load_membership(path)
+    if membership is None or membership.shape[1] != len(report["nodes"]):  # a report cached before its membership
+        fresh = _word_senses(
+            db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words
+        )
+        membership = fresh["_membership"]
+        _save_membership(path, membership)
+    return report, membership
+
+
+def _membership_path(report_path):
+    return report_path[: -len(".senses.json")] + ".membership.npz"
+
+
+def _save_membership(path, membership):
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            np.savez_compressed(f, bits=np.packbits(membership, axis=0), shape=np.array(membership.shape))
+        os.replace(tmp, path)
+    except OSError:  # a cache that can't be written is no cache
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def _load_membership(path):
+    try:
+        with np.load(path) as data:
+            n, k = (int(x) for x in data["shape"])
+            return np.unpackbits(data["bits"], axis=0, count=n).astype(np.bool_)[:, :k]
+    except (OSError, ValueError, KeyError):
+        return None
 
 
 def _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words=None):
@@ -2428,6 +2484,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         "finest": FINEST,
         "nodes": out,
         "time": timeline,
+        "_membership": margin > 0,  # which sentences are clearly in each sense: kept apart, not sent (word_senses)
     }
 
 
