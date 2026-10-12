@@ -42,12 +42,21 @@
                 <p v-if="!time" class="small text-muted mb-1">{{ $t("wordSenses.noTime") }}</p>
                 <p class="visually-hidden" aria-live="polite">{{ periodsStatus }}</p>
 
-                <!-- The senses, one on each row: the tree on the left (wide screens), each sense's name, and its share of
-                     the sentences over the years, cut into its periods. On narrow screens the rows stack. -->
-                <div ref="box" class="overview" :class="{ wide }" :style="{ '--tree-width': `${treeWidth}px` }">
-                    <!-- Its width follows the text's font and spacing, so the words are placed again when the reader changes them -->
-                    <span ref="probe" class="probe" aria-hidden="true">{{ queryWord }} 1900</span>
-                    <div v-if="time" class="years-row" aria-hidden="true">
+                <!-- On a narrow screen, the tree and the years take turns -->
+                <div v-if="!wide && time" class="nav nav-tabs mb-2" role="tablist" :aria-label="$t('senseOverview.views')">
+                    <button v-for="v in VIEWS" :id="`sense-overview-tab-${v}`" :key="v" type="button" role="tab"
+                        class="nav-link" :class="{ active: view === v }" :aria-selected="view === v"
+                        :tabindex="view === v ? 0 : -1" aria-controls="sense-overview-chart" @click="view = v"
+                        @keydown="tabKey">{{ $t(`senseOverview.${v}Tab`) }}</button>
+                </div>
+
+                <!-- The senses, one on each row: the tree and the senses' names on the left half, their share of the
+                     sentences over the years, cut into their periods, on the right half -->
+                <div id="sense-overview-chart" ref="box" class="overview" :class="{ wide, 'with-tree': showTree }"
+                    :role="wide || !time ? null : 'tabpanel'"
+                    :aria-labelledby="wide || !time ? null : `sense-overview-tab-${view}`"
+                    :style="{ '--tree-width': `${treeWidth}px` }">
+                    <div v-if="showTime" class="years-row" aria-hidden="true">
                         <div v-if="wide" class="tree-cell"></div>
                         <div v-if="wide" class="name-cell"></div>
                         <div class="years">
@@ -59,16 +68,17 @@
                             :class="{ picked: selected && selected.id === row.id, found: isFound(row) }"
                             :style="{ '--depth': depth(row), '--sense-color': senseColor(row.sense, 1),
                                 '--sense-dark': senseTextColor(row.sense, shades) }">
-                            <div v-if="wide" class="tree-cell"></div>
+                            <div v-if="showTree" class="tree-cell"></div>
                             <button type="button" class="sense-name" :aria-expanded="Boolean(selected && selected.id === row.id)"
                                 :aria-controls="selected && selected.id === row.id ? 'sense-overview-panel' : null"
                                 :aria-describedby="time ? `sense-overview-about-${row.id}` : null"
                                 @click="select(row)">
                                 <span class="swatch" aria-hidden="true"></span>
                                 <span class="name">{{ row.sense ? $t("wordSenses.senseN", { n: row.sense }) : $t("senseTree.restShort") }}</span>
-                                <span class="what"> · {{ percent(row.share) }}<template v-if="row.sense"> · {{ label(row) }}</template></span>
+                                <span class="sep"> · </span>
+                                <span class="what">{{ percent(row.share) }}<template v-if="row.sense"> · {{ label(row) }}</template></span>
                             </button>
-                            <div v-if="time" class="sense-time">
+                            <div v-if="showTime" class="sense-time">
                                 <svg v-if="timeWidth" class="band" :width="timeWidth" :height="bandHeight" aria-hidden="true">
                                     <line v-for="year in yearTicks" :key="year" class="grid" :x1="xYear(year)" :x2="xYear(year)"
                                         y1="0" :y2="bandHeight" />
@@ -76,16 +86,12 @@
                                     <line v-for="tick in periodTicks(row)" :key="tick" class="period-tick" :x1="tick" :x2="tick"
                                         y1="0" :y2="bandHeight" />
                                 </svg>
-                                <div class="period-words" aria-hidden="true">
-                                    <span v-for="w in periodWords(row)" :key="w.key" class="period-word" :class="{ start: w.start }"
-                                        :style="{ left: `${w.left}px` }">{{ w.text }}</span>
-                                </div>
-                                <span :id="`sense-overview-about-${row.id}`" class="visually-hidden">{{ about(row) }}</span>
                             </div>
+                            <span v-if="time" :id="`sense-overview-about-${row.id}`" class="visually-hidden">{{ about(row) }}</span>
                         </li>
                     </ul>
                     <!-- The tree, beside the rows, from their measured places (it draws what the rows' names say) -->
-                    <svg v-if="wide && treeLayout" class="tree" :width="treeWidth" :height="listHeight"
+                    <svg v-if="showTree && treeLayout" class="tree" :width="treeWidth" :height="listHeight"
                         :style="{ top: `${listTop}px` }" aria-hidden="true">
                         <path :d="`M 2 ${treeLayout.rootY} H ${treeLayout.rootX}`" class="trunk" :stroke-width="thickness(1)" />
                         <g v-for="b in treeLayout.segments" :key="`branch-${b.node.id}`">
@@ -256,39 +262,48 @@ function select(node) {
 // ---- The page's measures: the drawings are made at the size they show, so their text is the page's ----
 const box = ref(null);
 const list = ref(null);
-const probe = ref(null);
 const width = ref(0);
 const timeWidth = ref(0);
-const centers = ref([]); // the middle of each row's name, from the top of the list
+const centers = ref([]); // the middle of each row's name (its first line), from the top of the list
 const listHeight = ref(0);
 const listTop = ref(0);
 const fontSize = ref(16);
-// The text's font and spacing, as the reader may set them (a text spacing stylesheet): the words are placed again
-const textStyle = ref({ font: "16px sans-serif", letter: 0, word: 0 });
 let observer = null;
 let frame = null;
 
-// Wide enough for the tree beside the rows; narrower, the rows stack, the senses' numbers telling the tree
+// Wide enough, the tree and the years side by side; narrower, they take turns, the tree first
+const VIEWS = ["tree", "time"];
+const view = ref("tree");
 const wide = computed(() => width.value >= 46 * fontSize.value);
-const treeWidth = computed(() => Math.round(Math.min(Math.max(width.value * 0.18, 9 * fontSize.value), 17 * fontSize.value)));
+const showTree = computed(() => wide.value || !time.value || view.value === "tree");
+const showTime = computed(() => Boolean(time.value) && (wide.value || view.value === "time"));
+const treeWidth = computed(() => {
+    const room = wide.value ? width.value / 2 : width.value; // the tree's side: its half, or all of a narrow screen
+    return Math.round(Math.min(Math.max(room * 0.4, 6 * fontSize.value), 20 * fontSize.value));
+});
 const bandHeight = computed(() => Math.round(2.2 * fontSize.value));
+
+// The tabs' keys: the arrows, Home and End move between them
+function tabKey(event) {
+    const i = VIEWS.indexOf(view.value);
+    const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: VIEWS.length - 1 }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    view.value = VIEWS[(next + VIEWS.length) % VIEWS.length];
+    nextTick(() => document.getElementById(`sense-overview-tab-${view.value}`)?.focus());
+}
 
 function measure() {
     frame = null;
     if (!box.value) return;
     const style = getComputedStyle(box.value);
     fontSize.value = parseFloat(style.fontSize) || 16;
-    const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-    const letter = parseFloat(style.letterSpacing) || 0;
-    const word = parseFloat(style.wordSpacing) || 0;
-    const was = textStyle.value;
-    if (font !== was.font || letter !== was.letter || word !== was.word) textStyle.value = { font, letter, word };
     width.value = box.value.clientWidth;
     if (!list.value) return;
     listTop.value = list.value.offsetTop;
     listHeight.value = list.value.offsetHeight;
     centers.value = [...list.value.children].map((li) => {
-        const name = li.querySelector(".sense-name");
+        const name = li.querySelector(".sense-name .name");
         return li.offsetTop + (name ? name.offsetTop + name.offsetHeight / 2 : li.offsetHeight / 2);
     });
     const cell = list.value.querySelector(".sense-time");
@@ -308,12 +323,13 @@ onBeforeUnmount(() => {
     if (frame) cancelAnimationFrame(frame);
 });
 
-// Measured again when the rows change, and whenever the box or the list change size (zoom, text spacing, the window)
-watch([rows, box, list, () => periodsById.value], async () => {
+// Measured again when the rows or the view change, and whenever the box or the list change size (zoom, text spacing,
+// the window)
+watch([rows, box, list, wide, view], async () => {
     await nextTick();
     if (observer) {
         observer.disconnect();
-        for (const el of [box.value, list.value, probe.value]) if (el) observer.observe(el);
+        for (const el of [box.value, list.value]) if (el) observer.observe(el);
     }
     measure();
 });
@@ -403,44 +419,7 @@ function periodTicks(node) {
     return entry.periods.slice(1).map((p, i) => xYear((entry.periods[i].end + p.start) / 2));
 }
 
-// Under each period, its strongest new word where it fits (the first: what set it apart), at the page's size
-let canvas = null;
-function textWidth(words) {
-    const { font, letter, word } = textStyle.value;
-    const spaced = letter * [...words].length + word * (words.split(" ").length - 1);
-    let ctx = null;
-    try {
-        canvas ||= document.createElement("canvas");
-        ctx = canvas.getContext("2d");
-    } catch {
-        ctx = null;
-    }
-    if (!ctx) return words.length * fontSize.value * 0.55 + spaced;
-    ctx.font = font;
-    return ctx.measureText(words).width + spaced;
-}
-
-function periodWords(node) {
-    const entry = periodsById.value[node.id];
-    if (!entry || entry.periods.length < 2 || !timeWidth.value) return [];
-    const out = [];
-    let lastRight = -Infinity;
-    const gap = fontSize.value * 0.6;
-    entry.periods.forEach((p, i) => {
-        const first = (i === 0 ? p.characteristic : p.new)?.[0];
-        if (!first) return;
-        const text = periodWord(first, queryWord.value);
-        const w = textWidth(text);
-        const center = xYear((p.start + p.end) / 2);
-        const left = Math.min(Math.max(center - w / 2, 0), timeWidth.value - w);
-        if (left < lastRight + gap) return;
-        lastRight = left + w;
-        out.push({ key: `${p.start}`, text, left, start: i === 0 });
-    });
-    return out;
-}
-
-// What the drawing of a row tells, in words: when the sense is most used, and its periods with their new words
+// What the drawing of a row tells, in words: when the sense is most used, and its periods
 function about(node) {
     const values = time.value?.share.value[node.id] || [];
     const parts = [];
@@ -453,11 +432,7 @@ function about(node) {
     }
     const entry = periodsById.value[node.id];
     if (entry && entry.periods.length > 1) {
-        const list = entry.periods.map((p, i) => {
-            const first = (i === 0 ? p.characteristic : p.new)?.[0];
-            return first ? `${periodYears(p)} (${periodWord(first, queryWord.value)})` : periodYears(p);
-        });
-        parts.push(t("senseOverview.rowPeriods", { periods: list.join("; ") }));
+        parts.push(t("senseOverview.rowPeriods", { periods: entry.periods.map((p) => periodYears(p)).join(", ") }));
     } else if (entry && entry.periods.length === 1) {
         parts.push(t("sensePeriods.onePeriod"));
     }
@@ -614,27 +589,33 @@ function openPeriodWork(node, p, w) {
     border-radius: 0.25rem;
 }
 
-/* Narrow: the tree is told by the senses' numbers and by indenting their names (not their years, which share an axis) */
-.overview:not(.wide) .sense-name {
+/* Without the tree (a narrow screen, over time): the senses' numbers and their names' indents tell it (not their
+   years, which share an axis) */
+.overview:not(.with-tree) .sense-name {
     margin-left: calc(var(--depth) * 1rem);
 }
 
-.overview:not(.wide) .years-row {
+.overview:not(.with-tree) .years-row {
     padding: 0 0.25rem 0 calc(4px + 0.5rem);
 }
 
+/* With the tree: its branches end at the senses' names */
+.overview.with-tree .sense-row {
+    display: grid;
+    grid-template-columns: var(--tree-width) minmax(0, 1fr);
+    column-gap: 0.75rem;
+    align-items: center;
+    padding: 0.2rem 0.25rem;
+    border-left: none;
+    margin-bottom: 0;
+}
+
+/* Wide: the tree and the names on the left half, the years on the right half */
 .overview.wide .years-row,
 .overview.wide .sense-row {
     display: grid;
-    grid-template-columns: var(--tree-width) minmax(12rem, 24rem) 1fr;
+    grid-template-columns: var(--tree-width) minmax(0, calc(50% - var(--tree-width))) minmax(0, 1fr);
     column-gap: 0.75rem;
-    align-items: start;
-}
-
-.overview.wide .sense-row {
-    padding: 0.35rem 0.25rem;
-    border-left: none;
-    margin-bottom: 0;
 }
 
 .sense-row.picked {
@@ -673,6 +654,8 @@ function openPeriodWork(node, p, w) {
     color: var(--sense-dark);
 }
 
+/* The dot stays after the name when the rest goes to the next line */
+.sense-name .sep,
 .sense-name .what {
     color: #495057;
 }
@@ -715,31 +698,6 @@ function openPeriodWork(node, p, w) {
     stroke: #212529;
     stroke-width: 1.5;
     stroke-dasharray: 3 3;
-}
-
-.probe {
-    position: absolute;
-    visibility: hidden;
-    white-space: nowrap;
-    pointer-events: none;
-}
-
-.period-words {
-    position: relative;
-    height: 1.5em;
-    height: 1lh;
-}
-
-.period-word {
-    position: absolute;
-    top: 0;
-    white-space: nowrap;
-    color: #212529;
-}
-
-.period-word.start {
-    font-style: italic;
-    color: #495057;
 }
 
 /* ---- The years above the rows ---- */

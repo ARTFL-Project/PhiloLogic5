@@ -273,14 +273,17 @@
     "senseOverview": {
         "summary": "The senses of “{word}” and their course over time, in {sentences} sentences from {works} works",
         "howToRead": "How to read this",
-        "treeExplained": "On the left, the tree of the senses: each branch is a sense, as thick as its share of the sentences, forking where the analysis splits it. The detail slider shows more or fewer of its splits.",
-        "timeExplained": "On the right, each sense's share of the word's sentences over the years, on the same scale for all.",
-        "periodsExplained": "Dotted lines cut each sense into periods of as many works, as many as the data supports; under each period, its strongest new word against the periods before (in grey italics, what set the first apart). Click a sense for its words and its periods in full.",
+        "treeExplained": "The tree of the senses: each branch is a sense, as thick as its share of the sentences, forking where the analysis splits it. The detail slider shows more or fewer of its splits.",
+        "timeExplained": "Over time: each sense's share of the word's sentences over the years, on the same scale for all.",
+        "periodsExplained": "Dotted lines cut each sense into periods of as many works, as many as the data supports. Click a sense for its words and, period by period, its new words and its most representative works.",
         "chart": "The senses of “{word}”: their tree, and their share of the sentences over the years",
         "periodsLoading": "Finding its periods…",
         "noPeriods": "Too few dated works to cut into periods.",
         "rowPeak": "Its share of the word's sentences is highest around {year} ({share}).",
-        "rowPeriods": "Periods, with their strongest new word: {periods}."
+        "rowPeriods": "Periods: {periods}.",
+        "views": "View",
+        "treeTab": "Tree",
+        "timeTab": "Over time"
     },
     "wordSenses": {
         "detecting": "Finding the senses of the word",

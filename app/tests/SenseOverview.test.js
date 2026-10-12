@@ -79,7 +79,8 @@ describe("SenseOverview", () => {
         const call = http.get.mock.calls.find(([url]) => url.includes("get_sense_periods.py"));
         expect(call[1].params.nodes).toBe("1,2");
         expect(rows[0].findAll(".period-tick")).toHaveLength(1);
-        expect(rows[0].findAll(".period-word").map((w) => w.text())).toEqual(["étrange", "assemblée"]);
+        expect(wrapper.find(".period-word").exists()).toBe(false); // the opened sense lists the words
+        expect(wrapper.find('[role="tablist"]').exists()).toBe(false); // wide: the tree and the years side by side
         wrapper.unmount();
     });
 
@@ -89,19 +90,37 @@ describe("SenseOverview", () => {
         const about = wrapper.find(`#${name.attributes("aria-describedby")}`);
         expect(about.classes()).toContain("visually-hidden");
         expect(about.text()).toContain("highest around 1700 (60%)");
-        expect(about.text()).toContain("1700–1790 (étrange); 1791–1900 (assemblée)");
-        expect(wrapper.findAll(".band, .tree, .period-words, .years-row").every((e) => e.attributes("aria-hidden") === "true")).toBe(true);
+        expect(about.text()).toContain("Periods: 1700–1790, 1791–1900.");
+        expect(wrapper.findAll(".band, .tree, .years-row").every((e) => e.attributes("aria-hidden") === "true")).toBe(true);
         wrapper.unmount();
     });
 
-    it("stacks the rows without the tree on a narrow screen", async () => {
+    it("shows the tree on a narrow screen, and the years under a tab", async () => {
         boxWidth = 300;
         const { wrapper } = await loaded();
-        expect(wrapper.find(".overview").classes()).not.toContain("wide");
+        const chart = wrapper.find("#sense-overview-chart");
+        expect(chart.classes()).not.toContain("wide");
+        const tabs = () => wrapper.findAll('[role="tab"]');
+        expect(tabs().map((b) => b.text())).toEqual(["Tree", "Over time"]);
+        expect(tabs().map((b) => b.attributes("aria-selected"))).toEqual(["true", "false"]);
+        expect(tabs().map((b) => b.attributes("tabindex"))).toEqual(["0", "-1"]);
+        expect(chart.attributes("role")).toBe("tabpanel");
+        expect(chart.attributes("aria-labelledby")).toBe("sense-overview-tab-tree");
+        expect(wrapper.findAll(".tree .branch")).toHaveLength(2);
+        expect(wrapper.find(".band").exists()).toBe(false);
+
+        await tabs()[1].trigger("click");
+        await flushPromises();
         expect(wrapper.find(".tree").exists()).toBe(false);
         expect(wrapper.find(".tree-cell").exists()).toBe(false);
-        expect(wrapper.findAll(".sense-rows .sense-row")).toHaveLength(2);
         expect(wrapper.findAll(".band")).toHaveLength(2);
+        expect(wrapper.find("#sense-overview-chart").attributes("aria-labelledby")).toBe("sense-overview-tab-time");
+
+        await tabs()[1].trigger("keydown", { key: "ArrowRight" }); // round to the first
+        await flushPromises();
+        expect(tabs().map((b) => b.attributes("aria-selected"))).toEqual(["true", "false"]);
+        expect(document.activeElement.id).toBe("sense-overview-tab-tree");
+        expect(wrapper.find(".band").exists()).toBe(false);
         wrapper.unmount();
     });
 
@@ -109,7 +128,7 @@ describe("SenseOverview", () => {
         const { wrapper } = await loaded();
         expect(wrapper.find(".info-pop").exists()).toBe(false);
         await wrapper.find(".info-button").trigger("click");
-        expect(wrapper.find(".info-pop").text()).toContain("On the left, the tree of the senses");
+        expect(wrapper.find(".info-pop").text()).toContain("The tree of the senses: each branch is a sense");
         await wrapper.find(".info-pop").trigger("keydown", { key: "Escape" });
         expect(wrapper.find(".info-pop").exists()).toBe(false);
         await wrapper.find(".info-button").trigger("click");

@@ -273,14 +273,17 @@
     "senseOverview": {
         "summary": "Les sens de « {word} » et leur cours au fil du temps, dans {sentences} phrases de {works} œuvres",
         "howToRead": "Comment lire ceci",
-        "treeExplained": "À gauche, l'arbre des sens : chaque branche est un sens, aussi épaisse que sa part des phrases, qui bifurque là où l'analyse le sépare. Le curseur de détail montre plus ou moins de ses séparations.",
-        "timeExplained": "À droite, la part des phrases du mot qui revient à chaque sens au fil des années, à la même échelle pour tous.",
-        "periodsExplained": "Des pointillés coupent chaque sens en périodes d'autant d'œuvres, autant que les données le permettent ; sous chaque période, son mot nouveau le plus marqué par rapport aux périodes d'avant (en italique gris, ce qui distinguait la première). Cliquez sur un sens pour voir ses mots et ses périodes en entier.",
+        "treeExplained": "L'arbre des sens : chaque branche est un sens, aussi épaisse que sa part des phrases, qui bifurque là où l'analyse le sépare. Le curseur de détail montre plus ou moins de ses séparations.",
+        "timeExplained": "Au fil du temps : la part des phrases du mot qui revient à chaque sens au fil des années, à la même échelle pour tous.",
+        "periodsExplained": "Des pointillés coupent chaque sens en périodes d'autant d'œuvres, autant que les données le permettent. Cliquez sur un sens pour voir ses mots et, période par période, ses mots nouveaux et ses œuvres les plus représentatives.",
         "chart": "Les sens de « {word} » : leur arbre, et leur part des phrases au fil des années",
         "periodsLoading": "Recherche de ses périodes…",
         "noPeriods": "Trop peu d'œuvres datées pour couper en périodes.",
         "rowPeak": "Sa part des phrases du mot culmine vers {year} ({share}).",
-        "rowPeriods": "Périodes, avec leur mot nouveau le plus marqué : {periods}."
+        "rowPeriods": "Périodes : {periods}.",
+        "views": "Vue",
+        "treeTab": "Arbre",
+        "timeTab": "Au fil du temps"
     },
     "wordSenses": {
         "detecting": "Recherche des sens du mot",

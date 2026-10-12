@@ -1317,10 +1317,14 @@ The user finds the tree the clearest explanation, and the overall timeline the m
 "Senses at a glance (beta)" (`SenseOverview.vue`), joins them; the three sense tabs stay as they are.
 
 **The view:**
-- **Left:** the sense tree, as the Sense tree tab draws it, with the detail slider and the word search.
-- **Right, on each sense's row:** its share of the word's sentences over the years, on one time axis and one scale
-  for all rows (the senses tab's curves). Dotted ticks mark its periods (§22), and under each period sits its strongest
-  new word (in grey italics for the first period: what set it apart).
+- **Left half:** the sense tree, as the Sense tree tab draws it, with the senses' names at its branch ends, the detail
+  slider and the word search.
+- **Right half, on each sense's row:** its share of the word's sentences over the years, on one time axis and one
+  scale for all rows (the senses tab's curves). Dotted ticks mark its periods (§22).
+- **No words under the bands.** At first each period's strongest new word sat under the band. The user dropped them:
+  the opened panel lists them, and without them the rows are one line each, so the tree and the timelines can split
+  the width.
+- **On a narrow screen** the two halves take turns under two tabs, "Tree" (the default) and "Over time".
 - **Clicking a row** opens the sense below: its words, which open their sentences, and its periods in full
   (`PeriodColumns.vue`, now shared with the Senses over time tab).
 - **The explanations** sit behind an "i" button (`InfoButton.vue`): a popover opened by click or keyboard, closed by
@@ -1340,36 +1344,40 @@ The user finds the tree the clearest explanation, and the overall timeline the m
 **Text size, narrow screens and WCAG 2.1 AA** (the user asked for all three):
 - **Text at the page's size.** The tree and the bands are no longer one scaled SVG. Each sense is an HTML row: its
   name is a button, and its band is a small SVG drawn at the width the row measures. The tree is an SVG laid beside
-  the rows, at the rows' measured heights. Names, years and period words are HTML text, so they take the page's font
-  size (14 px on frantext) and grow with the reader's zoom and text settings.
-- **Wide or narrow.** The tree is drawn beside the rows when the box is at least 46 em wide. Below that, the rows
-  stack: each sense's name above its band, indented by its depth in the tree, and the sense numbers (1, 1.2, 2.1)
-  stand in for the tree. The period columns in the opened panel wrap onto new lines instead of scrolling sideways
-  (this also changes the Senses over time tab). The "i" popover moves back inside the window when it would overflow.
-- **Things a reader can't see.** The band, the tree, the years and the period words are hidden from screen readers.
-  Each sense's button is described by a sentence saying the same: the year its share peaks, and its periods with
-  their strongest new word. Its `aria-expanded` follows the panel, and a live region says when periods are loading.
+  the rows, its branches ending at the first line of each name, at the rows' measured heights. Names and years are
+  HTML text, so they take the page's font size (14 px on frantext) and grow with the reader's zoom and text settings.
+- **Wide or narrow.** At 46 em wide or more, the tree with its names takes the left half and the timelines the right.
+  Below that, the tabs follow the ARIA tabs pattern: `role="tab"` buttons with `aria-selected`, one in the tab order,
+  and the arrows, Home and End to move between them; the chart is their `tabpanel`.
+  - In the "Tree" tab, the tree takes up to 40 % of the width and the names wrap beside it.
+  - In the "Over time" tab, each sense's name sits above its band, indented by its depth in the tree, and the sense
+    numbers (1, 1.2, 2.1) stand in for the tree.
+  - The period columns in the opened panel wrap onto new lines instead of scrolling sideways (this also changes the
+    Senses over time tab). The "i" popover moves back inside the window when it would overflow.
+- **Things a reader can't see.** The band, the tree and the years are hidden from screen readers. Each sense's
+  button is described by a sentence saying the same, in either tab: the year its share peaks, and its periods. Its
+  `aria-expanded` follows the panel, and a live region says when periods are loading.
 - **Contrast and forced colors.** The band's outline and the tree's casings use the sense's dark text shade (at least 3:1
   against white). Focus shows a 3 px outline. Under forced colors, the bands and branches take the system colors.
-- **Text spacing (1.4.12).** The period words are placed by measured width, and the measurement includes the
-  reader's letter and word spacing. A hidden probe whose width follows the font and spacing triggers placing them
-  again; without it, a spacing stylesheet left words overlapping at phone widths.
+- **Text spacing (1.4.12).** While the period words sat under the bands, a spacing stylesheet left them overlapping
+  at phone widths: canvas measuring ignores CSS letter spacing, and a spacing change resizes no box, so nothing placed
+  them again. Dropping the words removed the problem. Nothing else is placed by measured text width.
 - **How it was checked:** axe-core (tags wcag2a, wcag2aa, wcag21a, wcag21aa) in Chromium on the test server, for
-  *révolution*, at 1400, 900, 640 (200 % zoom of 1280), 375 and 320 px. It was run with the panel open, the popover
-  open, a text spacing stylesheet and forced colors. Results:
+  *révolution*, at 1400, 900, 640 (200 % zoom of 1280), 375 and 320 px, in both tabs on the narrow widths. It was
+  run with the panel open, the popover open, a text spacing stylesheet and forced colors. Results:
   - no violations;
   - no horizontal scroll at any width;
   - no overlapping or cut-off words under the spacing stylesheet;
   - font sizes equal to the body's.
 
-  The only "incomplete" items are the app's own mobile selects, whose background image axe can't judge, and contrast
-  under forced colors.
+  The only "incomplete" items are the app's own mobile selects, whose background image axe can't judge, the popover's
+  own text (it lies over the page; #343a40 on white, 11:1), and contrast under forced colors.
 
 **Open design points:**
 - Before about 1750 the word has few sentences a year, so the bands swing there (*social*: peaks around 1620–1650).
   The bands could fade where the data is thin, or a strip could show the sentences per year.
-- The shared time axis must be proportional to time, so the dense 19th century gets narrow periods: one word each
-  at most, and some are left out where they would overlap. The full lists are in the opened panel.
+- The shared time axis must be proportional to time, so the dense 19th century gets narrow periods; their ticks
+  crowd together there.
 - The tree layout code is copied from `SenseTree.vue`; if the view is kept, both should share it.
 
 ## What's solid
