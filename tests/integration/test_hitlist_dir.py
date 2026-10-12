@@ -318,7 +318,8 @@ def test_everything_cached_in_hitlist_dir(served_read_only):
                  ".npz", ".approximate_terms"):
         assert any(name.endswith(kind) for name in cached), f"no {kind} file in {cache}"
     assert "time_series_year_data.npz" in cached
-    assert "sentence_df_word.npy" in cached  # the collocation filter's document frequencies
+    # The collocation filter's document frequencies are read from the database, written there at load time
+    assert "sentence_df_word.npy" not in cached
     assert server.errors() == []
     served_read_only.assert_databases_unchanged()
 

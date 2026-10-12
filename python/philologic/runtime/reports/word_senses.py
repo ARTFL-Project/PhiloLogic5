@@ -55,6 +55,7 @@ from scipy.special import gammaincinv, ndtr
 
 from philologic.runtime.reports.collocation import (
     _load_sentence_df,
+    _load_token_counts,
     _nb_build_filter,
     _nb_span_with,
     collocation_search_method,
@@ -1807,30 +1808,6 @@ def sense_curves(posteriors, years, works, year_words=None):
 # ----------------------------- The sentences of a query ------------------------------
 
 
-_TOKEN_FREQUENCY_CACHE: dict = {}
-
-
-@numba.njit(cache=True, nogil=True)
-def _count_tokens(count_ids, n_vocab):
-    counts = np.zeros(n_vocab, dtype=np.int64)
-    for i in range(len(count_ids)):
-        counts[count_ids[i]] += 1
-    return counts
-
-
-def _token_frequency(data_path, count_lemmas):
-    """How many times each word (or lemma) is in the corpus, cached per worker."""
-    key = (data_path, bool(count_lemmas))
-    if key not in _TOKEN_FREQUENCY_CACHE:
-        colloc_dir = os.path.join(data_path, "collocations")
-        ids = "attr_lemma_ids.npy" if count_lemmas else "token_ids.npy"
-        offsets = "attr_lemma_vocab_offsets.npy" if count_lemmas else "vocab_offsets.npy"
-        n_vocab = len(np.load(os.path.join(colloc_dir, offsets), mmap_mode="r")) - 1
-        count_ids = np.load(os.path.join(colloc_dir, ids), mmap_mode="r")
-        _TOKEN_FREQUENCY_CACHE[key] = _count_tokens(count_ids, n_vocab)
-    return _TOKEN_FREQUENCY_CACHE[key]
-
-
 @numba.njit(cache=True, nogil=True)
 def _sentence_words(
     unit_bounds,
@@ -2142,7 +2119,7 @@ def _senses_channels(sentences, count_lemmas):
     sentence, of its running words for those just before and after."""
     data_path = sentences["data_path"]
     df, n_corpus_sentences = _load_sentence_df(data_path, count_lemmas)
-    tf = _token_frequency(data_path, count_lemmas)
+    tf = _load_token_counts(data_path, count_lemmas)
     channels = []
     names = []
     for (X, ids), background, units in zip(sentences["channels"], (df, tf, tf), (n_corpus_sentences, None, None)):
