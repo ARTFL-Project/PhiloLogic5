@@ -1159,7 +1159,13 @@ it was left in place.
 - **Focus** (from solo/hide). Pointing at a sense's chip, or tabbing to it, fades the other senses in the overview
   chart.
 
-## 21. Three tabs for what is new over time (Oct 11, prototypes)
+## 21. Three tabs for what is new over time (Oct 11; all three dropped the same day)
+
+**Dropped.** The user found that none of the three works on *révolution*, and dropped them all "for now". The record
+below is kept for a later revisit.
+- The code is in commit `b6d0bf4d` on the local branch `word-senses-prototype`: the three tabs, `word_trends.py`, the
+  two scripts, `rise` and `sense_onsets` in `word_senses.py`, their texts and tests.
+- Only one thing from this work is still in the code: the fix to `_Phrases.near` (below), now with a regression test.
 
 The goal: find when new uses of a word ("social", "tradition") start appearing, and the texts they may have come from.
 The senses are found without regard to time, so the senses tab only shows how existing senses wax and wane. Three
@@ -1239,8 +1245,8 @@ transience against the future), done with works.
 
 **Fixed on the way:**
 - The trends cache returned numpy numbers on a first computation, so the rising words' first request failed with a
-  500 (orjson). `_cached` now returns what it writes.
-- `_Phrases.near` failed on sentences with no word on one side of the query.
+  500 (orjson). `_cached` now returns what it writes. This went with the tabs; any revival must keep the fix.
+- `_Phrases.near` failed on sentences with no word on one side of the query. Kept, with a test.
 
 **Choices left:**
 - the span (the database's time series interval);

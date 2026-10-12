@@ -51,7 +51,7 @@ import numba
 import numpy as np
 import regex
 from scipy.sparse import csr_matrix, hstack
-from scipy.special import gammaincinv, ndtr, xlogy
+from scipy.special import gammaincinv, ndtr
 
 from philologic.runtime.reports.collocation import (
     _load_sentence_df,
@@ -79,9 +79,8 @@ _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized 
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
-_PRECURSORS = 10  # the earliest sentences sent for each sense that rises: those clearly in it before its rise
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses28\0"  # bump when the result changes
+_CACHE_TAG = b"senses27\0"  # bump when the result changes
 
 
 class Dist:
@@ -1731,81 +1730,6 @@ def _nanpercentile(smoothed, q):
     return np.percentile(smoothed[drawn], q, axis=0)
 
 
-def rise(successes, trials, dispersion=1.0, units=None):
-    """Where a rate rises, over units in order (years, their works the trials): the cut into a before and an after,
-    with a rate each, that fits the counts best (binomial), kept when the rate after is the higher and the better fit
-    is worth its two more numbers (the rate after, and where the cut is) by the threshold of the Bayesian information
-    criterion: G2 above twice the log of the number of trials (or of units, the independent ones, when the trials are
-    not: sentences of works), G2 divided by the dispersion of the counts (quasi-binomial). Returns (index of the first
-    unit after, rate before, rate after, G2), or None without a rise."""
-    s = np.asarray(successes, dtype=np.float64)
-    t = np.asarray(trials, dtype=np.float64)
-    total_s, total_t = float(s.sum()), float(t.sum())
-    if len(s) < 2 or total_t <= 1:
-        return None
-    s0, t0 = np.cumsum(s)[:-1], np.cumsum(t)[:-1]
-    s1, t1 = total_s - s0, total_t - t0
-    ok = (t0 > 0) & (t1 > 0)
-    p0 = np.where(ok, s0 / np.where(t0 > 0, t0, 1), 0.0)
-    p1 = np.where(ok, s1 / np.where(t1 > 0, t1, 1), 0.0)
-
-    def loglik(k, n, p):
-        return xlogy(k, p) + xlogy(n - k, 1.0 - p)
-
-    g2 = 2.0 * (loglik(s0, t0, p0) + loglik(s1, t1, p1) - loglik(total_s, total_t, total_s / total_t))
-    g2 = np.where(ok & (p1 > p0), g2 / max(dispersion, 1.0), -np.inf)
-    best = int(np.argmax(g2))
-    if not g2[best] > 2.0 * math.log(total_t if units is None else max(units, 2)):
-        return None
-    return best + 1, float(p0[best]), float(p1[best]), float(g2[best])
-
-
-def sense_onsets(posteriors, margin, years, works, first_hit):
-    """When each sense takes off, if it does, and what came before: its share of each work's sentences, the works of
-    each year the trials (works are the units of evidence, as for the course over time), cut where it rises (rise).
-    With the rise, the sentences clearly in the sense (on its side of every split) dated before it, the earliest
-    first (_PRECURSORS of them), and how many sentences and works there are. A list, None for a sense without a
-    rise; None without dates."""
-    dated = years > 0
-    if len(np.unique(years[dated])) < 2:
-        return None
-    year_ids, year_of = np.unique(years[dated], return_inverse=True)
-    work_ids, work_of = np.unique(works[dated], return_inverse=True)
-    work_year = np.zeros(len(work_ids), dtype=np.int64)
-    work_year[work_of] = year_of
-    work_n = np.bincount(work_of).astype(np.float64)
-    work_s = np.zeros((len(work_ids), posteriors.shape[1]))
-    np.add.at(work_s, work_of, posteriors[dated])
-    share = work_s / work_n[:, None]  # each work's share of its sentences in each sense
-    trials = np.bincount(work_year, minlength=len(year_ids)).astype(np.float64)
-    rows = np.flatnonzero(dated)
-    out = []
-    for k in range(posteriors.shape[1]):
-        found = rise(np.bincount(work_year, weights=share[:, k], minlength=len(year_ids)), trials)
-        if found is None:
-            out.append(None)
-            continue
-        cut, before, after, g2 = found
-        onset = int(year_ids[cut])
-        early = rows[(years[rows] < onset) & (margin[rows, k] > 0)]
-        early = early[np.lexsort((-posteriors[early, k], years[early]))]
-        out.append(
-            {
-                "year": onset,
-                "before": round(before, 4),
-                "after": round(after, 4),
-                "g2": round(g2, 2),
-                "sentences_before": int(len(early)),
-                "works_before": int(len(np.unique(works[early]))),
-                "precursors": [
-                    {"hit": int(first_hit[u]), "year": int(years[u]), "p": round(float(posteriors[u, k]), 3)}
-                    for u in early[:_PRECURSORS]
-                ],
-            }
-        )
-    return out
-
-
 def sense_curves(posteriors, years, works, year_words=None):
     """The course over time of each sense: its share of the year's sentences and, with the words of each year
     (year_words), its uses per million words, smoothed, with bands from resampling the works. Years weigh by their
@@ -2491,7 +2415,6 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         )
 
     timeline = None
-    onsets = None
     if year_field:
         try:
             year_array, year_words, _, _, _ = _get_doc_year_data(db, year_field)
@@ -2500,10 +2423,8 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
             if metadata:
                 year_words, _ = _corpus_year_counts(db, year_array, metadata)
             timeline = sense_curves(posteriors, years, docs, year_words)
-            onsets = sense_onsets(posteriors, margin, years, docs, first_hit)
         except Exception:  # no year field the database can read: senses without their course over time
             timeline = None
-            onsets = None
 
     # The senses' numbers; a sense that goes on as its parent is told from the sense its number started in (the
     # rest of a sense, after one is carved out of it, has the words of that sense, not those of none)
@@ -2516,7 +2437,6 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     for item in out:
         item["sense"] = number[item["id"]]
         item["rank"] = None if item["sense"] is None else rank[item["sense"]]
-        item["onset"] = None if onsets is None else onsets[item["id"]]
     add_hits()
     return {
         "n_hits": int(sentences["n_hits"]),

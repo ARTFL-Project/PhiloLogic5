@@ -13,9 +13,6 @@
                 <option value="similar">{{ $t("collocation.similarUsage") }}</option>
                 <option value="senses">{{ $t("collocation.wordSenses") }}</option>
                 <option value="senseTree">{{ $t("collocation.senseTree") }}</option>
-                <option value="senseOnsets">{{ $t("collocation.senseOnsets") }}</option>
-                <option value="risingWords">{{ $t("collocation.risingWords") }}</option>
-                <option value="aheadOfTime">{{ $t("collocation.aheadOfTime") }}</option>
             </select>
         </div>
 
@@ -63,36 +60,12 @@
                         {{ $t("collocation.senseTree") }}
                     </button>
                 </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link shadow-sm" id="sense-onsets-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'senseOnsets' }" data-bs-target="#sense-onsets-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'senseOnsets'"
-                        @click="setMode('senseOnsets')">
-                        {{ $t("collocation.senseOnsets") }}
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link shadow-sm" id="rising-words-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'risingWords' }" data-bs-target="#rising-words-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'risingWords'"
-                        @click="setMode('risingWords')">
-                        {{ $t("collocation.risingWords") }}
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link shadow-sm" id="ahead-of-time-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'aheadOfTime' }" data-bs-target="#ahead-of-time-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'aheadOfTime'"
-                        @click="setMode('aheadOfTime')">
-                        {{ $t("collocation.aheadOfTime") }}
-                    </button>
-                </li>
             </ul>
         </div>
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
-            v-if="mode === 'frequency' || mode in detectors"
+            v-if="['frequency', 'senses', 'senseTree'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -126,15 +99,6 @@
 
             <SenseTree v-if="mode === 'senseTree'" ref="senseTreeRef"
                 @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
-
-            <SenseOnsets v-if="mode === 'senseOnsets'" ref="senseOnsetsRef"
-                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
-
-            <RisingWords v-if="mode === 'risingWords'" ref="risingWordsRef"
-                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
-
-            <AheadOfTime v-if="mode === 'aheadOfTime'" ref="aheadOfTimeRef"
-                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
         </div>
     </div>
 </template>
@@ -159,9 +123,6 @@ import Similar from "./collocation/Similar.vue";
 import WordSenses from "./collocation/WordSenses.vue";
 // Lazy-loaded: the sense tree only ships when the user opens its tab, not on entry to Collocation.
 const SenseTree = defineAsyncComponent(() => import("./collocation/SenseTree.vue"));
-const SenseOnsets = defineAsyncComponent(() => import("./collocation/SenseOnsets.vue"));
-const RisingWords = defineAsyncComponent(() => import("./collocation/RisingWords.vue"));
-const AheadOfTime = defineAsyncComponent(() => import("./collocation/AheadOfTime.vue"));
 
 //  Injects, route, router, store
 const $http = inject("$http");
@@ -184,23 +145,6 @@ const compareRef = useTemplateRef("compareRef");
 const similarRef = useTemplateRef("similarRef");
 const wordSensesRef = useTemplateRef("wordSensesRef");
 const senseTreeRef = useTemplateRef("senseTreeRef");
-const senseOnsetsRef = useTemplateRef("senseOnsetsRef");
-const risingWordsRef = useTemplateRef("risingWordsRef");
-const aheadOfTimeRef = useTemplateRef("aheadOfTimeRef");
-
-// The tabs that run their own detection on the query (no Detect button), by method
-const detectors = {
-    senses: wordSensesRef,
-    senseTree: senseTreeRef,
-    senseOnsets: senseOnsetsRef,
-    risingWords: risingWordsRef,
-    aheadOfTime: aheadOfTimeRef,
-};
-
-async function detect(method) {
-    await nextTick();
-    detectors[method].value?.runDetection();
-}
 
 //  Shared state
 const mode = ref("frequency");
@@ -301,7 +245,7 @@ function updateCollocationUrl() {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
-    if (mode.value in detectors) {
+    if (["senses", "senseTree"].includes(mode.value)) {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -426,8 +370,14 @@ watch(
         // The senses tabs run on tab switch (no Detect button).
         // The child is freshly v-if-mounted, so its result is null and needs a fetch.
         if (modeChanged && !shouldRefetchOnQueryChange(newQuery, oldQuery)) {
-            if (newMode in detectors) {
-                await detect(newMode);
+            if (newMode === "senses") {
+                await nextTick();
+                wordSensesRef.value?.runDetection();
+                return;
+            }
+            if (newMode === "senseTree") {
+                await nextTick();
+                senseTreeRef.value?.runDetection();
                 return;
             }
             // Switching to frequency/similar/compare, but the primary fetch
@@ -448,8 +398,12 @@ watch(
         primaryFetched.value = false;
 
         // Refetch the right path for the active mode.
-        if (newMode in detectors) {
-            await detect(newMode);
+        if (newMode === "senses") {
+            await nextTick();
+            wordSensesRef.value?.runDetection();
+        } else if (newMode === "senseTree") {
+            await nextTick();
+            senseTreeRef.value?.runDetection();
         } else {
             fetchResults();  // .then() runs runPostFetchModeAction for similar/compare/frequency
         }
@@ -470,16 +424,20 @@ if (mode.value === "similar" && route.query.similarity_by) {
 }
 
 onMounted(async () => {
-    if (mode.value in detectors) {
-        await detect(mode.value);
-        return;
-    }
     switch (mode.value) {
         case "frequency":
             fetchResults();
             break;
         case "similar":
             fetchResults();  // primary fetch then runPostFetchModeAction → similarRef.runSimilar
+            break;
+        case "senses":
+            await nextTick();
+            wordSensesRef.value?.runDetection();
+            break;
+        case "senseTree":
+            await nextTick();
+            senseTreeRef.value?.runDetection();
             break;
         case "compare":
             fetchResults();  // primary fetch then runPostFetchModeAction → compareRef.runFromMetadata

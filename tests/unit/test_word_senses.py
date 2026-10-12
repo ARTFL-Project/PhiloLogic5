@@ -265,25 +265,6 @@ class TestNumbers:
 
 
 @pytest.mark.unit
-class TestRise:
-    def test_a_rate_that_steps_up_rises_where_it_does(self):
-        trials = np.full(20, 50.0)
-        successes = np.r_[np.full(12, 2.0), np.full(8, 20.0)]
-        cut, before, after, g2 = ws.rise(successes, trials)
-        assert cut == 12 and before == pytest.approx(0.04) and after == pytest.approx(0.4)
-
-    def test_a_flat_rate_or_a_fall_does_not_rise(self):
-        trials = np.full(20, 50.0)
-        assert ws.rise(np.full(20, 10.0), trials) is None
-        assert ws.rise(np.r_[np.full(10, 20.0), np.full(10, 2.0)], trials) is None
-
-    def test_noise_does_not_rise(self):
-        rng = np.random.default_rng(1)
-        trials = np.full(30, 40.0)
-        assert ws.rise(rng.binomial(40, 0.1, size=30).astype(float), trials) is None
-
-
-@pytest.mark.unit
 class TestModel:
     def test_discount_from_words_seen_once_and_twice(self):
         assert ws.discount(np.array([1, 1, 1, 2, 5, 0])) == pytest.approx(3 / (3 + 2))
