@@ -278,7 +278,9 @@
         "periodsExplained": "Des pointillés coupent chaque sens en périodes d'autant d'œuvres, autant que les données le permettent ; sous chaque période, son mot nouveau le plus marqué par rapport aux périodes d'avant (en italique gris, ce qui distinguait la première). Cliquez sur un sens pour voir ses mots et ses périodes en entier.",
         "chart": "Les sens de « {word} » : leur arbre, et leur part des phrases au fil des années",
         "periodsLoading": "Recherche de ses périodes…",
-        "noPeriods": "Trop peu d'œuvres datées pour couper en périodes."
+        "noPeriods": "Trop peu d'œuvres datées pour couper en périodes.",
+        "rowPeak": "Sa part des phrases du mot culmine vers {year} ({share}).",
+        "rowPeriods": "Périodes, avec leur mot nouveau le plus marqué : {periods}."
     },
     "wordSenses": {
         "detecting": "Recherche des sens du mot",

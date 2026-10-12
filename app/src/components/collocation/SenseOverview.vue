@@ -7,7 +7,7 @@
 
         <div v-if="result && result.n_sentences" class="mx-2 my-3">
             <div class="card shadow-sm p-3 mb-3">
-                <p class="mb-2 fw-semibold">
+                <h2 class="h6 mb-2 fw-semibold">
                     {{ $t("senseOverview.summary", {
                         word: queryWord,
                         sentences: result.n_sentences.toLocaleString(),
@@ -18,7 +18,7 @@
                         <span class="d-block mb-1">{{ $t("senseOverview.timeExplained") }}</span>
                         <span class="d-block">{{ $t("senseOverview.periodsExplained") }}</span>
                     </InfoButton>
-                </p>
+                </h2>
 
                 <div v-if="splits.length" class="d-flex align-items-center gap-2 flex-wrap mb-1">
                     <label for="sense-overview-detail" class="small fw-semibold mb-0">{{ $t("wordSenses.detail") }}</label>
@@ -28,8 +28,8 @@
                     <span class="small text-muted" aria-hidden="true">{{ $t("wordSenses.finer") }}</span>
                     <button type="button" class="btn btn-sm btn-link p-0" :disabled="position === defaultPosition"
                         @click="position = defaultPosition">{{ $t("senseTree.firstView") }}</button>
-                    <span class="small text-muted ms-2" aria-live="polite">{{ detailText }}</span>
-                    <span class="ms-auto d-flex align-items-center gap-1">
+                    <span class="small text-muted" aria-live="polite">{{ detailText }}</span>
+                    <span class="find d-flex align-items-center gap-1 flex-wrap">
                         <label for="sense-overview-find" class="small fw-semibold mb-0">{{ $t("wordSenses.findWord") }}</label>
                         <input id="sense-overview-find" v-model="search" type="search" class="form-control form-control-sm find-input"
                             list="sense-overview-words" :placeholder="$t('wordSenses.findPlaceholder')" />
@@ -40,59 +40,69 @@
                 </div>
                 <p v-if="search.trim()" class="small mb-1" aria-live="polite">{{ foundText }}</p>
                 <p v-if="!time" class="small text-muted mb-1">{{ $t("wordSenses.noTime") }}</p>
+                <p class="visually-hidden" aria-live="polite">{{ periodsStatus }}</p>
 
-                <svg :viewBox="`0 0 ${W} ${tree.height}`" class="sense-overview" role="group"
-                    :aria-label="$t('senseOverview.chart', { word: queryWord })">
-                    <!-- The years, above the senses' rows -->
-                    <g v-if="time" class="axis" aria-hidden="true">
-                        <template v-for="year in yearTicks" :key="year">
-                            <line :x1="xYear(year)" :x2="xYear(year)" :y1="TOP - 8" :y2="tree.height - 6" />
-                            <text :x="xYear(year)" :y="TOP - 12" text-anchor="middle">{{ year }}</text>
-                        </template>
-                    </g>
-                    <!-- The tree: each sense's branch, as thick as its share, forking where it is split -->
-                    <path :d="`M 4 ${tree.rootY} H ${tree.rootX}`" class="branch" :stroke-width="thickness(1)"
-                        stroke="hsla(0, 0%, 62%, 1)" aria-hidden="true" />
-                    <path v-for="b in tree.segments" :key="`branch-${b.node.id}`" class="branch"
-                        :d="`M ${b.x0} ${b.y0} V ${b.y1} H ${b.x1}`" :stroke="senseColor(b.node.sense, 1)"
-                        :stroke-width="thickness(b.node.share)" aria-hidden="true" @click="select(b.node)">
-                        <title>{{ title(b.node) }}</title>
-                    </path>
-                    <!-- Each sense shown on its row: its name, then its share of the sentences over the years, cut into
-                         its periods, each with its strongest new word -->
-                    <g v-for="row in tree.rows" :key="`row-${row.node.id}`" class="sense-row" role="button" tabindex="0"
-                        :class="{ picked: selected && selected.id === row.node.id, found: isFound(row.node) }"
-                        :aria-label="title(row.node)" :aria-pressed="Boolean(selected && selected.id === row.node.id)"
-                        @click="select(row.node)" @keydown.enter.prevent="select(row.node)"
-                        @keydown.space.prevent="select(row.node)">
-                        <rect class="row-hit" :x="TREE_RIGHT" :y="row.y - ROW / 2 + 2" :width="W - TREE_RIGHT - 4"
-                            :height="ROW - 4" rx="4" />
-                        <text :x="TREE_RIGHT + 8" :y="row.y + 4" :fill="senseTextColor(row.node.sense, shades)">
-                            <tspan font-weight="600">{{ row.node.sense ? $t("wordSenses.senseN", { n: row.node.sense })
-                                : $t("senseTree.restShort") }}</tspan>
-                            <tspan fill="#495057"> · {{ percent(row.node.share) }}{{ row.node.sense ? ` · ${shortLabel(row.node)}` : "" }}</tspan>
-                        </text>
-                        <template v-if="time">
-                            <path :d="bandPath(row.node, row.y)" :fill="senseColor(row.node.sense, 0.55)"
-                                :stroke="senseColor(row.node.sense, 1)" stroke-width="0.8" />
-                            <template v-for="mark in periodMarks(row.node)" :key="mark.key">
-                                <line v-if="mark.tick !== null" class="period-tick" :x1="mark.tick" :x2="mark.tick"
-                                    :y1="row.y - BAND + 2" :y2="row.y + 2" />
-                                <text v-if="mark.word" class="period-word" :class="{ start: mark.start }" :x="mark.x"
-                                    :y="row.y + 15" text-anchor="middle">{{ mark.word }}</text>
-                            </template>
-                            <text v-if="row.node.sense && periodsById[row.node.id] === undefined" class="period-word"
-                                :x="T1" :y="row.y + 15" text-anchor="end">…</text>
-                        </template>
-                    </g>
-                </svg>
+                <!-- The senses, one on each row: the tree on the left (wide screens), each sense's name, and its share of
+                     the sentences over the years, cut into its periods. On narrow screens the rows stack. -->
+                <div ref="box" class="overview" :class="{ wide }" :style="{ '--tree-width': `${treeWidth}px` }">
+                    <!-- Its width follows the text's font and spacing, so the words are placed again when the reader changes them -->
+                    <span ref="probe" class="probe" aria-hidden="true">{{ queryWord }} 1900</span>
+                    <div v-if="time" class="years-row" aria-hidden="true">
+                        <div v-if="wide" class="tree-cell"></div>
+                        <div v-if="wide" class="name-cell"></div>
+                        <div class="years">
+                            <span v-for="year in yearTicks" :key="year" class="year" :style="{ left: `${xYear(year)}px` }">{{ year }}</span>
+                        </div>
+                    </div>
+                    <ul ref="list" class="sense-rows" :aria-label="$t('senseOverview.chart', { word: queryWord })">
+                        <li v-for="row in rows" :key="row.id" class="sense-row"
+                            :class="{ picked: selected && selected.id === row.id, found: isFound(row) }"
+                            :style="{ '--depth': depth(row), '--sense-color': senseColor(row.sense, 1),
+                                '--sense-dark': senseTextColor(row.sense, shades) }">
+                            <div v-if="wide" class="tree-cell"></div>
+                            <button type="button" class="sense-name" :aria-expanded="Boolean(selected && selected.id === row.id)"
+                                :aria-controls="selected && selected.id === row.id ? 'sense-overview-panel' : null"
+                                :aria-describedby="time ? `sense-overview-about-${row.id}` : null"
+                                @click="select(row)">
+                                <span class="swatch" aria-hidden="true"></span>
+                                <span class="name">{{ row.sense ? $t("wordSenses.senseN", { n: row.sense }) : $t("senseTree.restShort") }}</span>
+                                <span class="what"> · {{ percent(row.share) }}<template v-if="row.sense"> · {{ label(row) }}</template></span>
+                            </button>
+                            <div v-if="time" class="sense-time">
+                                <svg v-if="timeWidth" class="band" :width="timeWidth" :height="bandHeight" aria-hidden="true">
+                                    <line v-for="year in yearTicks" :key="year" class="grid" :x1="xYear(year)" :x2="xYear(year)"
+                                        y1="0" :y2="bandHeight" />
+                                    <path :d="bandPath(row)" class="band-area" />
+                                    <line v-for="tick in periodTicks(row)" :key="tick" class="period-tick" :x1="tick" :x2="tick"
+                                        y1="0" :y2="bandHeight" />
+                                </svg>
+                                <div class="period-words" aria-hidden="true">
+                                    <span v-for="w in periodWords(row)" :key="w.key" class="period-word" :class="{ start: w.start }"
+                                        :style="{ left: `${w.left}px` }">{{ w.text }}</span>
+                                </div>
+                                <span :id="`sense-overview-about-${row.id}`" class="visually-hidden">{{ about(row) }}</span>
+                            </div>
+                        </li>
+                    </ul>
+                    <!-- The tree, beside the rows, from their measured places (it draws what the rows' names say) -->
+                    <svg v-if="wide && treeLayout" class="tree" :width="treeWidth" :height="listHeight"
+                        :style="{ top: `${listTop}px` }" aria-hidden="true">
+                        <path :d="`M 2 ${treeLayout.rootY} H ${treeLayout.rootX}`" class="trunk" :stroke-width="thickness(1)" />
+                        <g v-for="b in treeLayout.segments" :key="`branch-${b.node.id}`">
+                            <path class="branch-casing" :d="branchPath(b)" :stroke="senseTextColor(b.node.sense, shades)"
+                                :stroke-width="thickness(b.node.share) + 2" />
+                            <path class="branch" :d="branchPath(b)" :stroke="senseColor(b.node.sense, 1)"
+                                :stroke-width="thickness(b.node.share)" @click="select(b.node)" />
+                        </g>
+                    </svg>
+                </div>
             </div>
 
             <!-- A sense picked: its words, and its periods in full -->
-            <div v-if="selected" class="card shadow-sm p-3 mb-3 selected-sense"
-                :style="{ borderLeft: `4px solid ${senseColor(selected.sense, 1)}` }">
-                <h3 class="h6 mb-2">
-                    <span class="legend-swatch" :style="{ backgroundColor: senseColor(selected.sense, 1) }"></span>
+            <section v-if="selected" id="sense-overview-panel" class="card shadow-sm p-3 mb-3 selected-sense"
+                :style="{ borderLeft: `4px solid ${senseColor(selected.sense, 1)}` }" aria-labelledby="sense-overview-panel-title">
+                <h3 id="sense-overview-panel-title" class="h6 mb-2">
+                    <span class="legend-swatch" :style="{ backgroundColor: senseColor(selected.sense, 1) }" aria-hidden="true"></span>
                     <span :style="{ color: senseTextColor(selected.sense, shades) }">{{ selected.sense
                         ? $t("wordSenses.senseN", { n: selected.sense }) : $t("senseTree.restShort") }}</span>
                     {{ " " }}<span class="fw-normal text-muted">&middot; {{ $t("wordSenses.shareOfSentences",
@@ -121,7 +131,7 @@
                             @work="(p, w) => openPeriodWork(selected, p, w)" />
                     </template>
                 </template>
-            </div>
+            </section>
         </div>
 
         <div v-else-if="result" class="text-center py-5 text-muted">{{ $t("wordSenses.noResults") }}</div>
@@ -134,7 +144,7 @@
 <script setup>
 import { Modal } from "bootstrap";
 import { storeToRefs } from "pinia";
-import { computed, inject, onMounted, ref, watch } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../../stores/main";
 import { debug, paramsFilter } from "../../utils.js";
@@ -160,16 +170,6 @@ const selected = ref(null);
 const search = ref("");
 const periodsById = ref({}); // each sense's periods once fetched (null: too few works to cut)
 let fetchToken = 0;
-
-// The tree on the left, the senses' names in the middle, their years on the right
-const W = 1300;
-const LEFT = 20;
-const TREE_RIGHT = 300;
-const T0 = 640;
-const T1 = W - 12;
-const TOP = 34;
-const ROW = 58;
-const BAND = 34;
 
 const queryWord = computed(() => (formData.value.q || "").replace(/lemma:/g, "").replace(/"/g, "").trim());
 const nodes = computed(() => result.value?.nodes || []);
@@ -214,66 +214,7 @@ function reset() {
 
 defineExpose({ runDetection, reset });
 
-onMounted(() => {
-    if (!result.value && !loading.value) runDetection();
-});
-
-// ---- The periods of the senses shown: fetched once each, after the tree is drawn ----
-let periodsTimer = null;
-let periodsToken = 0;
-
-function fetchPeriods() {
-    if (!time.value) return;
-    const wanted = tree.value.rows.map((row) => row.node).filter((n) => n.sense && periodsById.value[n.id] === undefined);
-    if (!wanted.length) return;
-    const myToken = ++periodsToken;
-    const query = fetchToken;
-    $http
-        .get(`${$dbUrl}/scripts/get_sense_periods.py`, {
-            params: { ...paramsFilter(formData.value), nodes: wanted.map((n) => n.id).join(",") },
-        })
-        .then((response) => {
-            if (query !== fetchToken) return;
-            const got = { ...periodsById.value };
-            for (const n of wanted) got[n.id] = null; // asked for, not cut: too few works
-            for (const s of response.data?.senses || []) got[s.id] = s;
-            periodsById.value = got;
-        })
-        .catch((error) => {
-            if (myToken === periodsToken) debug({ $options: { name: "sense-overview" } }, error);
-        });
-}
-
-// When the detail changes, the senses newly shown are fetched, once the slider rests
-watch([result, position], () => {
-    clearTimeout(periodsTimer);
-    periodsTimer = setTimeout(fetchPeriods, result.value && Object.keys(periodsById.value).length ? 300 : 0);
-});
-
-// ---- The tree, as the sense tree tab draws it ----
-const heightOf = computed(() => {
-    const out = {};
-    const walk = (node) => {
-        let h = node.children.length ? node.split.relative : 0;
-        for (const c of node.children) h = Math.max(h, walk(nodes.value[c]));
-        out[node.id] = h;
-        return h;
-    };
-    if (root.value) walk(root.value);
-    return out;
-});
-
-const lowest = computed(() => Math.min(result.value?.finest ?? 0.1, ...splits.value.map((n) => n.split.relative)));
-
-function xOf(r) {
-    const span = Math.log(1 / lowest.value) || 1;
-    return LEFT + (Math.log(1 / Math.max(r, lowest.value)) / span) * (TREE_RIGHT - LEFT - 20);
-}
-
-function thickness(share) {
-    return 1.5 + 12 * share;
-}
-
+// ---- The senses shown: those the detail reveals, in the tree's order ----
 function firstRank(node) {
     if (node.children.length) return Math.min(...node.children.map((c) => firstRank(nodes.value[c])));
     return node.sense === null ? Infinity : node.rank;
@@ -287,34 +228,24 @@ const revealed = computed(() => {
     return ids;
 });
 
-const tree = computed(() => {
-    const rows = [];
-    const segments = [];
-    if (!root.value) return { rows, segments, rootX: LEFT, rootY: TOP, height: TOP + ROW + 10 };
-    const layout = (node) => {
-        if (!revealed.value.has(node.id)) {
-            const y = TOP + rows.length * ROW + ROW / 2;
-            rows.push({ node, y });
-            return y;
-        }
-        const x = xOf(heightOf.value[node.id]);
-        const kids = node.children.map((c) => nodes.value[c]).sort((a, b) => firstRank(a) - firstRank(b));
-        const ys = kids.map(layout);
-        const y = (ys[0] + ys[ys.length - 1]) / 2;
-        kids.forEach((kid, i) => {
-            const x1 = revealed.value.has(kid.id) ? xOf(heightOf.value[kid.id]) : TREE_RIGHT;
-            segments.push({ node: kid, x0: x, y0: y, y1: ys[i], x1 });
-        });
-        return y;
-    };
-    const rootY = layout(root.value);
-    const rootX = revealed.value.has(root.value.id) ? xOf(heightOf.value[root.value.id]) : TREE_RIGHT;
-    return { rows, segments, rootX, rootY, height: TOP + rows.length * ROW + 10 };
+function kids(node) {
+    return node.children.map((c) => nodes.value[c]).sort((a, b) => firstRank(a) - firstRank(b));
+}
+
+const rows = computed(() => {
+    const out = [];
+    const walk = (node) => (revealed.value.has(node.id) ? kids(node).forEach(walk) : out.push(node));
+    if (root.value) walk(root.value);
+    return out;
 });
+
+function depth(node) {
+    return node.sense ? node.sense.split(".").length - 1 : 0;
+}
 
 const detailText = computed(() => {
     if (!position.value) return t("wordSenses.detailNone");
-    const senses = tree.value.rows.filter((row) => row.node.sense !== null).length;
+    const senses = rows.value.filter((n) => n.sense !== null).length;
     return senses === 1 ? t("wordSenses.oneSense") : t("wordSenses.nSenses", { n: senses });
 });
 
@@ -322,55 +253,250 @@ function select(node) {
     selected.value = selected.value && selected.value.id === node.id ? null : node;
 }
 
-// ---- The years: each sense's share of the sentences, on one axis for all ----
+// ---- The page's measures: the drawings are made at the size they show, so their text is the page's ----
+const box = ref(null);
+const list = ref(null);
+const probe = ref(null);
+const width = ref(0);
+const timeWidth = ref(0);
+const centers = ref([]); // the middle of each row's name, from the top of the list
+const listHeight = ref(0);
+const listTop = ref(0);
+const fontSize = ref(16);
+// The text's font and spacing, as the reader may set them (a text spacing stylesheet): the words are placed again
+const textStyle = ref({ font: "16px sans-serif", letter: 0, word: 0 });
+let observer = null;
+let frame = null;
+
+// Wide enough for the tree beside the rows; narrower, the rows stack, the senses' numbers telling the tree
+const wide = computed(() => width.value >= 46 * fontSize.value);
+const treeWidth = computed(() => Math.round(Math.min(Math.max(width.value * 0.18, 9 * fontSize.value), 17 * fontSize.value)));
+const bandHeight = computed(() => Math.round(2.2 * fontSize.value));
+
+function measure() {
+    frame = null;
+    if (!box.value) return;
+    const style = getComputedStyle(box.value);
+    fontSize.value = parseFloat(style.fontSize) || 16;
+    const font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    const letter = parseFloat(style.letterSpacing) || 0;
+    const word = parseFloat(style.wordSpacing) || 0;
+    const was = textStyle.value;
+    if (font !== was.font || letter !== was.letter || word !== was.word) textStyle.value = { font, letter, word };
+    width.value = box.value.clientWidth;
+    if (!list.value) return;
+    listTop.value = list.value.offsetTop;
+    listHeight.value = list.value.offsetHeight;
+    centers.value = [...list.value.children].map((li) => {
+        const name = li.querySelector(".sense-name");
+        return li.offsetTop + (name ? name.offsetTop + name.offsetHeight / 2 : li.offsetHeight / 2);
+    });
+    const cell = list.value.querySelector(".sense-time");
+    timeWidth.value = cell ? cell.clientWidth : 0;
+}
+
+function remeasure() {
+    if (!frame) frame = requestAnimationFrame(measure);
+}
+
+onMounted(() => {
+    if (!result.value && !loading.value) runDetection();
+    if (typeof ResizeObserver !== "undefined") observer = new ResizeObserver(remeasure);
+});
+onBeforeUnmount(() => {
+    observer?.disconnect();
+    if (frame) cancelAnimationFrame(frame);
+});
+
+// Measured again when the rows change, and whenever the box or the list change size (zoom, text spacing, the window)
+watch([rows, box, list, () => periodsById.value], async () => {
+    await nextTick();
+    if (observer) {
+        observer.disconnect();
+        for (const el of [box.value, list.value, probe.value]) if (el) observer.observe(el);
+    }
+    measure();
+});
+
+// ---- The tree, beside the rows ----
+const lowest = computed(() => Math.min(result.value?.finest ?? 0.1, ...splits.value.map((n) => n.split.relative)));
+const heightOf = computed(() => {
+    const out = {};
+    const walk = (node) => {
+        let h = node.children.length ? node.split.relative : 0;
+        for (const c of node.children) h = Math.max(h, walk(nodes.value[c]));
+        out[node.id] = h;
+        return h;
+    };
+    if (root.value) walk(root.value);
+    return out;
+});
+
+function xTree(r) {
+    const span = Math.log(1 / lowest.value) || 1;
+    return 4 + (Math.log(1 / Math.max(r, lowest.value)) / span) * (treeWidth.value - 16);
+}
+
+function thickness(share) {
+    return 1.5 + 9 * share;
+}
+
+const treeLayout = computed(() => {
+    if (!root.value || centers.value.length !== rows.value.length) return null;
+    const yOf = new Map(rows.value.map((n, i) => [n.id, centers.value[i]]));
+    const segments = [];
+    const layout = (node) => {
+        if (!revealed.value.has(node.id)) return yOf.get(node.id);
+        const x = xTree(heightOf.value[node.id]);
+        const children = kids(node);
+        const ys = children.map(layout);
+        children.forEach((child, i) => {
+            const x1 = revealed.value.has(child.id) ? xTree(heightOf.value[child.id]) : treeWidth.value;
+            segments.push({ node: child, x0: x, y0: (ys[0] + ys[ys.length - 1]) / 2, y1: ys[i], x1 });
+        });
+        return (ys[0] + ys[ys.length - 1]) / 2;
+    };
+    const rootY = layout(root.value);
+    const rootX = revealed.value.has(root.value.id) ? xTree(heightOf.value[root.value.id]) : treeWidth.value;
+    return { segments, rootY, rootX };
+});
+
+function branchPath(b) {
+    return `M ${b.x0} ${b.y0} V ${b.y1} H ${b.x1}`;
+}
+
+// ---- The years: each sense's share of the sentences, on one axis and one scale for all ----
 function xYear(year) {
     const span = Math.max(1, time.value.end - time.value.start);
-    return T0 + ((year - time.value.start) / span) * (T1 - T0);
+    return ((year - time.value.start) / span) * timeWidth.value;
 }
 
 const yearTicks = computed(() => {
-    if (!time.value) return [];
+    if (!time.value || !timeWidth.value) return [];
     const span = time.value.end - time.value.start;
-    const step = [10, 25, 50, 100, 200].find((s) => span / s <= 8) || 500;
+    const room = Math.max(1, Math.floor(timeWidth.value / (5 * fontSize.value))); // a year's label needs about 5em
+    const step = [10, 25, 50, 100, 200, 500].find((s) => span / s <= room) || 1000;
     const out = [];
     for (let y = Math.ceil(time.value.start / step) * step; y <= time.value.end; y += step) out.push(y);
     return out;
 });
 
-// The same height for the same share in every row, the highest share shown filling the band
 const bandMax = computed(() => {
     if (!time.value) return 1;
     let max = 1e-9;
-    for (const row of tree.value.rows) for (const v of time.value.share.value[row.node.id] || []) max = Math.max(max, v);
+    for (const n of rows.value) for (const v of time.value.share.value[n.id] || []) max = Math.max(max, v);
     return max;
 });
 
-function bandPath(node, y) {
+function bandPath(node) {
     const values = time.value.share.value[node.id] || [];
-    const base = y + 2;
-    if (!values.length) return "";
-    const pts = values.map((v, i) => `${xYear(time.value.start + i).toFixed(1)} ${(base - (Math.max(0, v) / bandMax.value) * BAND).toFixed(1)}`);
-    return `M ${xYear(time.value.start).toFixed(1)} ${base} L ${pts.join(" L ")} L ${xYear(time.value.end).toFixed(1)} ${base} Z`;
+    if (!values.length || !timeWidth.value) return "";
+    const base = bandHeight.value - 1;
+    const top = 3;
+    const pts = values.map((v, i) => `${xYear(time.value.start + i).toFixed(1)} ${(base - (Math.max(0, v) / bandMax.value) * (base - top)).toFixed(1)}`);
+    return `M 0 ${base} L ${pts.join(" L ")} L ${timeWidth.value.toFixed(1)} ${base} Z`;
 }
 
-// Its periods' edges, and the strongest new word of each where it fits (the first: what set it apart)
-function periodMarks(node) {
+function periodTicks(node) {
     const entry = periodsById.value[node.id];
     if (!entry || entry.periods.length < 2) return [];
+    return entry.periods.slice(1).map((p, i) => xYear((entry.periods[i].end + p.start) / 2));
+}
+
+// Under each period, its strongest new word where it fits (the first: what set it apart), at the page's size
+let canvas = null;
+function textWidth(words) {
+    const { font, letter, word } = textStyle.value;
+    const spaced = letter * [...words].length + word * (words.split(" ").length - 1);
+    let ctx = null;
+    try {
+        canvas ||= document.createElement("canvas");
+        ctx = canvas.getContext("2d");
+    } catch {
+        ctx = null;
+    }
+    if (!ctx) return words.length * fontSize.value * 0.55 + spaced;
+    ctx.font = font;
+    return ctx.measureText(words).width + spaced;
+}
+
+function periodWords(node) {
+    const entry = periodsById.value[node.id];
+    if (!entry || entry.periods.length < 2 || !timeWidth.value) return [];
     const out = [];
     let lastRight = -Infinity;
+    const gap = fontSize.value * 0.6;
     entry.periods.forEach((p, i) => {
-        const tick = i === 0 ? null : xYear((entry.periods[i - 1].end + p.start) / 2);
         const first = (i === 0 ? p.characteristic : p.new)?.[0];
-        const word = first ? periodWord(first, queryWord.value) : "";
-        const x = xYear((p.start + p.end) / 2);
-        const half = (word.length * 5.4) / 2;
-        const fits = word && x - half > lastRight + 4;
-        if (fits) lastRight = x + half;
-        out.push({ key: `${p.start}`, tick, x, word: fits ? word : "", start: i === 0 });
+        if (!first) return;
+        const text = periodWord(first, queryWord.value);
+        const w = textWidth(text);
+        const center = xYear((p.start + p.end) / 2);
+        const left = Math.min(Math.max(center - w / 2, 0), timeWidth.value - w);
+        if (left < lastRight + gap) return;
+        lastRight = left + w;
+        out.push({ key: `${p.start}`, text, left, start: i === 0 });
     });
     return out;
 }
+
+// What the drawing of a row tells, in words: when the sense is most used, and its periods with their new words
+function about(node) {
+    const values = time.value?.share.value[node.id] || [];
+    const parts = [];
+    if (values.length) {
+        let best = 0;
+        values.forEach((v, i) => {
+            if (v > values[best]) best = i;
+        });
+        parts.push(t("senseOverview.rowPeak", { year: time.value.start + best, share: percent(values[best]) }));
+    }
+    const entry = periodsById.value[node.id];
+    if (entry && entry.periods.length > 1) {
+        const list = entry.periods.map((p, i) => {
+            const first = (i === 0 ? p.characteristic : p.new)?.[0];
+            return first ? `${periodYears(p)} (${periodWord(first, queryWord.value)})` : periodYears(p);
+        });
+        parts.push(t("senseOverview.rowPeriods", { periods: list.join("; ") }));
+    } else if (entry && entry.periods.length === 1) {
+        parts.push(t("sensePeriods.onePeriod"));
+    }
+    return parts.join(" ");
+}
+
+// ---- The periods of the senses shown: fetched once each, after the rows are drawn ----
+let periodsTimer = null;
+const periodsPending = ref(false);
+
+function fetchPeriods() {
+    if (!time.value) return;
+    const wanted = rows.value.filter((n) => n.sense && periodsById.value[n.id] === undefined);
+    if (!wanted.length) return;
+    const query = fetchToken;
+    periodsPending.value = true;
+    $http
+        .get(`${$dbUrl}/scripts/get_sense_periods.py`, {
+            params: { ...paramsFilter(formData.value), nodes: wanted.map((n) => n.id).join(",") },
+        })
+        .then((response) => {
+            if (query !== fetchToken) return;
+            const got = { ...periodsById.value };
+            for (const n of wanted) got[n.id] = null; // asked for, not cut: too few works
+            for (const s of response.data?.senses || []) got[s.id] = s;
+            periodsById.value = got;
+        })
+        .catch((error) => debug({ $options: { name: "sense-overview" } }, error))
+        .finally(() => {
+            if (query === fetchToken) periodsPending.value = false;
+        });
+}
+
+const periodsStatus = computed(() => (periodsPending.value ? t("senseOverview.periodsLoading") : ""));
+
+watch([result, position], () => {
+    clearTimeout(periodsTimer);
+    periodsTimer = setTimeout(fetchPeriods, result.value && Object.keys(periodsById.value).length ? 300 : 0);
+});
 
 // ---- A word looked for, as in the sense tree tab ----
 const searchable = computed(() => searchableWords(nodes.value));
@@ -399,16 +525,6 @@ function label(node) {
         words.push(...node.after.slice(0, 1).map((w) => wordText(w, 2)));
     }
     return words.join(", ") || queryWord.value;
-}
-
-function shortLabel(node) {
-    const text = label(node);
-    return text.length > 34 ? `${text.slice(0, 32)}…` : text;
-}
-
-function title(node) {
-    const name = node.sense ? t("wordSenses.senseN", { n: node.sense }) : t("senseTree.restShort");
-    return `${name}: ${label(node)} · ${t("wordSenses.shareOfSentences", { share: percent(node.share) })}`;
 }
 
 function percent(share) {
@@ -465,77 +581,225 @@ function openPeriodWork(node, p, w) {
 </script>
 
 <style scoped>
-.sense-overview {
-    width: 100%;
-    height: auto;
-}
-
 .detail-range {
     max-width: 16rem;
 }
 
+.find {
+    margin-left: auto;
+}
+
 .find-input {
     width: 12rem;
+    max-width: 100%;
 }
 
-.branch {
-    fill: none;
-    stroke-linecap: round;
-    cursor: pointer;
+/* ---- The rows ---- */
+.overview {
+    position: relative;
 }
 
-.axis line {
-    stroke: #e9ecef;
-}
-
-.axis text {
-    font-size: 10px;
-    fill: #868e96;
+.sense-rows {
+    position: relative;
+    list-style: none;
+    margin: 0;
+    padding: 0;
 }
 
 .sense-row {
-    cursor: pointer;
+    position: relative;
+    padding: 0.35rem 0.25rem 0.35rem 0.5rem;
+    border-left: 4px solid var(--sense-color);
+    margin-bottom: 0.4rem;
+    border-radius: 0.25rem;
 }
 
-.row-hit {
-    fill: transparent;
+/* Narrow: the tree is told by the senses' numbers and by indenting their names (not their years, which share an axis) */
+.overview:not(.wide) .sense-name {
+    margin-left: calc(var(--depth) * 1rem);
 }
 
-.sense-row:hover .row-hit,
-.sense-row:focus-visible .row-hit {
-    fill: rgba(13, 110, 253, 0.05);
+.overview:not(.wide) .years-row {
+    padding: 0 0.25rem 0 calc(4px + 0.5rem);
 }
 
-.sense-row.picked .row-hit {
-    fill: rgba(13, 110, 253, 0.1);
+.overview.wide .years-row,
+.overview.wide .sense-row {
+    display: grid;
+    grid-template-columns: var(--tree-width) minmax(12rem, 24rem) 1fr;
+    column-gap: 0.75rem;
+    align-items: start;
 }
 
-.sense-row.found .row-hit {
-    fill: rgba(255, 193, 7, 0.22);
+.overview.wide .sense-row {
+    padding: 0.35rem 0.25rem;
+    border-left: none;
+    margin-bottom: 0;
 }
 
-.sense-row:focus {
-    outline: none;
+.sense-row.picked {
+    background: #e7f1ff;
 }
 
-.sense-row text {
-    font-size: 13px;
+.sense-row.found {
+    background: #fff3cd;
+}
+
+.sense-name {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 0.25rem;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 0.1rem 0.25rem;
+    color: #212529;
+    font: inherit;
+    border-radius: 0.25rem;
+}
+
+.sense-name:hover .name {
+    text-decoration: underline;
+}
+
+.sense-name:focus-visible {
+    outline: 3px solid #0d6efd;
+    outline-offset: 1px;
+}
+
+.sense-name .name {
+    font-weight: 600;
+    color: var(--sense-dark);
+}
+
+.sense-name .what {
+    color: #495057;
+}
+
+.swatch {
+    display: inline-block;
+    width: 0.8em;
+    height: 0.8em;
+    border-radius: 2px;
+    background: var(--sense-color);
+    border: 1px solid var(--sense-dark);
+    align-self: center;
+}
+
+.sense-time {
+    position: relative;
+    min-width: 0;
+    margin-top: 0.25rem;
+}
+
+.overview.wide .sense-time {
+    margin-top: 0;
+}
+
+.band {
+    display: block;
+}
+
+.band-area {
+    fill: color-mix(in srgb, var(--sense-color) 55%, white);
+    stroke: var(--sense-dark);
+    stroke-width: 1.25;
+}
+
+.grid {
+    stroke: #dee2e6;
 }
 
 .period-tick {
-    stroke: #343a40;
-    stroke-width: 1;
-    stroke-dasharray: 2 2;
+    stroke: #212529;
+    stroke-width: 1.5;
+    stroke-dasharray: 3 3;
 }
 
-.sense-row text.period-word {
-    font-size: 10px;
-    fill: #343a40;
+.probe {
+    position: absolute;
+    visibility: hidden;
+    white-space: nowrap;
+    pointer-events: none;
 }
 
-.sense-row text.period-word.start {
+.period-words {
+    position: relative;
+    height: 1.5em;
+    height: 1lh;
+}
+
+.period-word {
+    position: absolute;
+    top: 0;
+    white-space: nowrap;
+    color: #212529;
+}
+
+.period-word.start {
     font-style: italic;
-    fill: #6c757d;
+    color: #495057;
+}
+
+/* ---- The years above the rows ---- */
+.years-row {
+    margin-bottom: 0.2rem;
+}
+
+.years {
+    position: relative;
+    height: 1.5em;
+    height: 1lh;
+}
+
+.year {
+    position: absolute;
+    transform: translateX(-50%);
+    color: #495057;
+    white-space: nowrap;
+}
+
+/* ---- The tree, beside the rows ---- */
+.tree {
+    position: absolute;
+    left: 0;
+    pointer-events: none;
+}
+
+.tree .branch {
+    pointer-events: stroke;
+    cursor: pointer;
+}
+
+.trunk,
+.branch,
+.branch-casing {
+    fill: none;
+    stroke-linecap: butt;
+}
+
+.trunk {
+    stroke: #6c757d;
+}
+
+/* In forced colors, the drawings keep the system's colors */
+@media (forced-colors: active) {
+    .band-area {
+        fill: Canvas;
+        stroke: CanvasText;
+    }
+
+    .period-tick,
+    .trunk,
+    .branch,
+    .branch-casing {
+        stroke: CanvasText;
+    }
+
+    .swatch {
+        forced-color-adjust: none;
+    }
 }
 
 .legend-swatch {
@@ -554,7 +818,7 @@ function openPeriodWork(node, p, w) {
     border: 1px solid #ced4da;
     border-radius: 0.5rem;
     background: #fff;
-    font-size: 0.85rem;
+    color: #212529;
 }
 
 .word-chip:disabled {

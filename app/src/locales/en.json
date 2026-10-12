@@ -278,7 +278,9 @@
         "periodsExplained": "Dotted lines cut each sense into periods of as many works, as many as the data supports; under each period, its strongest new word against the periods before (in grey italics, what set the first apart). Click a sense for its words and its periods in full.",
         "chart": "The senses of “{word}”: their tree, and their share of the sentences over the years",
         "periodsLoading": "Finding its periods…",
-        "noPeriods": "Too few dated works to cut into periods."
+        "noPeriods": "Too few dated works to cut into periods.",
+        "rowPeak": "Its share of the word's sentences is highest around {year} ({share}).",
+        "rowPeriods": "Periods, with their strongest new word: {periods}."
     },
     "wordSenses": {
         "detecting": "Finding the senses of the word",

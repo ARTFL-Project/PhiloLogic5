@@ -278,7 +278,9 @@
         "periodsExplained": "Líneas de puntos cortan cada sentido en periodos de tantas obras, tantos como los datos permiten; bajo cada periodo, su palabra nueva más marcada frente a los periodos anteriores (en cursiva gris, lo que distinguía al primero). Haga clic en un sentido para ver sus palabras y sus periodos completos.",
         "chart": "Los sentidos de «{word}»: su árbol, y su parte de las oraciones a lo largo de los años",
         "periodsLoading": "Buscando sus periodos…",
-        "noPeriods": "Muy pocas obras fechadas para cortar en periodos."
+        "noPeriods": "Muy pocas obras fechadas para cortar en periodos.",
+        "rowPeak": "Su parte de las oraciones de la palabra alcanza su máximo hacia {year} ({share}).",
+        "rowPeriods": "Periodos, con su palabra nueva más marcada: {periods}."
     },
     "wordSenses": {
         "detecting": "Buscando los sentidos de la palabra",

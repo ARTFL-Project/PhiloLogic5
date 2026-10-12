@@ -3,7 +3,7 @@
     <span ref="root" class="info" @keydown.esc="open = false">
         <button type="button" class="info-button" :aria-expanded="open" :aria-controls="id" :aria-label="label"
             :title="label" @click="open = !open">i</button>
-        <span v-if="open" :id="id" class="info-pop shadow" role="note">
+        <span v-if="open" :id="id" ref="pop" class="info-pop shadow" role="note" :style="{ transform: `translateX(${shift}px)` }">
             <slot />
             <button type="button" class="btn-close info-close" :aria-label="$t('common.close')" @click="open = false"></button>
         </span>
@@ -11,13 +11,26 @@
 </template>
 
 <script setup>
-import { onBeforeUnmount, onMounted, ref, useId } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
 
 defineProps({ label: { type: String, required: true } });
 
 const open = ref(false);
 const root = ref(null);
+const pop = ref(null);
+const shift = ref(0); // moves the explanation back inside the window when it would overflow it
 const id = `info-${useId()}`;
+
+watch(open, async (isOpen) => {
+    shift.value = 0;
+    if (!isOpen) return;
+    await nextTick();
+    const rect = pop.value?.getBoundingClientRect();
+    if (!rect) return;
+    const margin = 8;
+    const right = document.documentElement.clientWidth - margin;
+    if (rect.right > right) shift.value = Math.max(margin - rect.left, right - rect.right);
+});
 
 // A click anywhere else closes it
 function outside(event) {

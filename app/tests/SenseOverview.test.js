@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterAll, afterEach, describe, it, expect } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { createGlobalConfig, createMockHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
@@ -37,6 +37,17 @@ const periods = {
     ],
 };
 
+// jsdom lays nothing out: the box's width is given, the rest measures as zero
+let boxWidth = 1000;
+const clientWidth = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth");
+Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get: () => boxWidth });
+afterEach(() => {
+    boxWidth = 1000;
+});
+afterAll(() => {
+    if (clientWidth) Object.defineProperty(Element.prototype, "clientWidth", clientWidth);
+});
+
 async function loaded() {
     const http = createMockHttp({ "get_word_senses.py": senses, "get_sense_periods.py": periods, "get_sense_passages.py": { passages: [] } });
     const global = createGlobalConfig({
@@ -59,14 +70,38 @@ async function loaded() {
 describe("SenseOverview", () => {
     it("draws the tree with each sense's course over the years, cut into its periods", async () => {
         const { wrapper, http } = await loaded();
-        const rows = wrapper.findAll(".sense-row");
+        expect(wrapper.find(".overview").classes()).toContain("wide");
+        const rows = wrapper.findAll(".sense-rows .sense-row");
         expect(rows).toHaveLength(2);
-        expect(rows[0].text()).toContain("Sense 1");
-        expect(rows[0].findAll("path")).toHaveLength(1); // its band
+        expect(rows[0].find("button.sense-name").text()).toContain("Sense 1");
+        expect(rows[0].findAll(".band .band-area")).toHaveLength(1);
+        expect(wrapper.findAll(".tree .branch")).toHaveLength(2);
         const call = http.get.mock.calls.find(([url]) => url.includes("get_sense_periods.py"));
         expect(call[1].params.nodes).toBe("1,2");
         expect(rows[0].findAll(".period-tick")).toHaveLength(1);
         expect(rows[0].findAll(".period-word").map((w) => w.text())).toEqual(["étrange", "assemblée"]);
+        wrapper.unmount();
+    });
+
+    it("says in words what the band and the periods draw", async () => {
+        const { wrapper } = await loaded();
+        const name = wrapper.findAll("button.sense-name")[0];
+        const about = wrapper.find(`#${name.attributes("aria-describedby")}`);
+        expect(about.classes()).toContain("visually-hidden");
+        expect(about.text()).toContain("highest around 1700 (60%)");
+        expect(about.text()).toContain("1700–1790 (étrange); 1791–1900 (assemblée)");
+        expect(wrapper.findAll(".band, .tree, .period-words, .years-row").every((e) => e.attributes("aria-hidden") === "true")).toBe(true);
+        wrapper.unmount();
+    });
+
+    it("stacks the rows without the tree on a narrow screen", async () => {
+        boxWidth = 300;
+        const { wrapper } = await loaded();
+        expect(wrapper.find(".overview").classes()).not.toContain("wide");
+        expect(wrapper.find(".tree").exists()).toBe(false);
+        expect(wrapper.find(".tree-cell").exists()).toBe(false);
+        expect(wrapper.findAll(".sense-rows .sense-row")).toHaveLength(2);
+        expect(wrapper.findAll(".band")).toHaveLength(2);
         wrapper.unmount();
     });
 
@@ -75,13 +110,24 @@ describe("SenseOverview", () => {
         expect(wrapper.find(".info-pop").exists()).toBe(false);
         await wrapper.find(".info-button").trigger("click");
         expect(wrapper.find(".info-pop").text()).toContain("On the left, the tree of the senses");
-        await wrapper.findAll(".sense-row")[0].trigger("click");
-        const panel = wrapper.find(".selected-sense");
+        await wrapper.find(".info-pop").trigger("keydown", { key: "Escape" });
+        expect(wrapper.find(".info-pop").exists()).toBe(false);
+        await wrapper.find(".info-button").trigger("click");
+        expect(wrapper.find(".info-pop").exists()).toBe(true);
+        const names = () => wrapper.findAll("button.sense-name");
+        expect(names()[0].attributes("aria-expanded")).toBe("false");
+        expect(names()[0].attributes("aria-controls")).toBeUndefined();
+        await names()[0].trigger("click");
+        expect(names()[0].attributes("aria-expanded")).toBe("true");
+        expect(names()[0].attributes("aria-controls")).toBe("sense-overview-panel");
+        const panel = wrapper.find("#sense-overview-panel");
         expect(panel.text()).toContain("peuple");
         expect(panel.findAll(".period")).toHaveLength(2);
         expect(panel.text()).toContain("2 periods");
-        await wrapper.findAll(".sense-row")[1].trigger("click");
+        await names()[1].trigger("click");
+        expect(names()[0].attributes("aria-expanded")).toBe("false");
         expect(wrapper.find(".selected-sense").text()).toContain("Too few dated works");
+        expect(wrapper.find(".info-pop").exists()).toBe(false); // the click elsewhere closed it
         wrapper.unmount();
     });
 });

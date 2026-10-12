@@ -1337,6 +1337,34 @@ The user finds the tree the clearest explanation, and the overall timeline the m
   - all 24 senses of the tree: 9 s;
   - cached: 0.02 s.
 
+**Text size, narrow screens and WCAG 2.1 AA** (the user asked for all three):
+- **Text at the page's size.** The tree and the bands are no longer one scaled SVG. Each sense is an HTML row: its
+  name is a button, and its band is a small SVG drawn at the width the row measures. The tree is an SVG laid beside
+  the rows, at the rows' measured heights. Names, years and period words are HTML text, so they take the page's font
+  size (14 px on frantext) and grow with the reader's zoom and text settings.
+- **Wide or narrow.** The tree is drawn beside the rows when the box is at least 46 em wide. Below that, the rows
+  stack: each sense's name above its band, indented by its depth in the tree, and the sense numbers (1, 1.2, 2.1)
+  stand in for the tree. The period columns in the opened panel wrap onto new lines instead of scrolling sideways
+  (this also changes the Senses over time tab). The "i" popover moves back inside the window when it would overflow.
+- **Things a reader can't see.** The band, the tree, the years and the period words are hidden from screen readers.
+  Each sense's button is described by a sentence saying the same: the year its share peaks, and its periods with
+  their strongest new word. Its `aria-expanded` follows the panel, and a live region says when periods are loading.
+- **Contrast and forced colors.** The band's outline and the tree's casings use the sense's dark text shade (at least 3:1
+  against white). Focus shows a 3 px outline. Under forced colors, the bands and branches take the system colors.
+- **Text spacing (1.4.12).** The period words are placed by measured width, and the measurement includes the
+  reader's letter and word spacing. A hidden probe whose width follows the font and spacing triggers placing them
+  again; without it, a spacing stylesheet left words overlapping at phone widths.
+- **How it was checked:** axe-core (tags wcag2a, wcag2aa, wcag21a, wcag21aa) in Chromium on the test server, for
+  *révolution*, at 1400, 900, 640 (200 % zoom of 1280), 375 and 320 px. It was run with the panel open, the popover
+  open, a text spacing stylesheet and forced colors. Results:
+  - no violations;
+  - no horizontal scroll at any width;
+  - no overlapping or cut-off words under the spacing stylesheet;
+  - font sizes equal to the body's.
+
+  The only "incomplete" items are the app's own mobile selects, whose background image axe can't judge, and contrast
+  under forced colors.
+
 **Open design points:**
 - Before about 1750 the word has few sentences a year, so the bands swing there (*social*: peaks around 1620–1650).
   The bands could fade where the data is thin, or a strip could show the sentences per year.

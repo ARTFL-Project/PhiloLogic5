@@ -106,10 +106,11 @@ export function periodWord(w, queryWord = "") {
 </script>
 
 <style scoped>
+/* Left to right, wrapping onto the next line rather than scrolling: on a narrow screen, one period under another */
 .periods {
     display: flex;
-    gap: 0;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
     list-style: none;
     padding: 0 0 0.5rem 0;
     margin: 0;
@@ -120,11 +121,6 @@ export function periodWord(w, queryWord = "") {
     max-width: 16rem;
     padding: 0.25rem 0.6rem 0.25rem 0.6rem;
     border-left: 1px solid #dee2e6;
-}
-
-.period:first-child {
-    border-left: none;
-    padding-left: 0;
 }
 
 .period-years {
