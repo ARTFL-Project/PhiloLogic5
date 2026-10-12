@@ -837,89 +837,39 @@ def decode_group_collocates(tids, counts, group_bounds, group_index, db_path, co
     return Counter(dict(zip(nz_names, nz_counts)))
 
 
-@numba.njit(cache=True, nogil=True)
-def _sentence_df_kernel(count_ids, sent_offsets, n_vocab):
-    """Corpus-wide document frequency: number of sentences each vocab id
-    appears in (deduplicated within a sentence).
+# Per-worker cache of corpus-wide token counts, keyed by (db_path, count_lemmas)
+_TOKEN_COUNTS_CACHE: dict = {}
 
-    The ``seen`` buffer is reset only for the ids touched in each sentence,
-    so a single pass over the flat token stream is O(total tokens).
-    """
-    df = np.zeros(n_vocab, dtype=np.int64)
-    seen = np.zeros(n_vocab, dtype=np.bool_)
-    n_sents = len(sent_offsets) - 1
-    for si in range(n_sents):
-        start = sent_offsets[si]
-        end = sent_offsets[si + 1]
-        for k in range(start, end):
-            tid = count_ids[k]
-            if not seen[tid]:
-                seen[tid] = True
-                df[tid] += 1
-        for k in range(start, end):
-            seen[count_ids[k]] = False
-    return df
+
+def _corpus_counts(db_path, counts, count_lemmas):
+    """The corpus counts (sentence_df: the sentences each word or lemma is in; token_counts: the times it occurs) the
+    loader wrote next to the collocation arrays (PostFilters.write_corpus_counts)."""
+    path = os.path.join(db_path, "collocations", f"{counts}_{'lemma' if count_lemmas else 'word'}.npy")
+    try:
+        return np.load(path)
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"No {path}: the database was loaded before its corpus counts were. "
+            "Write them with python3 -m philologic.utils.write_corpus_counts <database>"
+        ) from None
+
+
+def _load_token_counts(db_path, count_lemmas):
+    """How many times each word (or lemma) occurs in the corpus, cached per worker."""
+    key = (db_path, bool(count_lemmas))
+    if key not in _TOKEN_COUNTS_CACHE:
+        _TOKEN_COUNTS_CACHE[key] = _corpus_counts(db_path, "token_counts", count_lemmas)
+    return _TOKEN_COUNTS_CACHE[key]
 
 
 def _load_sentence_df(db_path, count_lemmas):
-    """Return ``(df_array, n_sentences)`` for the corpus, cached per worker.
-
-    Reads a precomputed ``sentence_df_{word,lemma}.npy`` if present (index-time
-    or a prior runtime computation), otherwise computes it once and persists it
-    to the database's hitlist directory.
-    """
+    """Return ``(df_array, n_sentences)`` for the corpus, cached per worker: the number of sentences each word (or
+    lemma) is in, and of sentences."""
     key = (db_path, bool(count_lemmas))
-    cached = _SENTENCE_DF_CACHE.get(key)
-    if cached is not None:
-        return cached
-
-    colloc_dir = os.path.join(db_path, "collocations")
-    if count_lemmas:
-        ids_file = "attr_lemma_ids.npy"
-        voff_file = "attr_lemma_vocab_offsets.npy"
-        name = "sentence_df_lemma.npy"
-    else:
-        ids_file = "token_ids.npy"
-        voff_file = "vocab_offsets.npy"
-        name = "sentence_df_word.npy"
-
-    v_offsets = np.load(os.path.join(colloc_dir, voff_file), mmap_mode="r")
-    n_vocab = len(v_offsets) - 1
-    sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
-    n_sentences = len(sent_offsets) - 1
-
-    hitlist_dir = get_hitlist_dir(db_path)
-    df = None
-    for cand in (os.path.join(colloc_dir, name), os.path.join(hitlist_dir, name)):
-        if os.path.exists(cand):
-            try:
-                candidate = np.load(cand)
-                if len(candidate) == n_vocab:
-                    df = candidate
-                    break
-            except Exception:
-                pass
-
-    if df is None:
-        count_ids = np.load(os.path.join(colloc_dir, ids_file), mmap_mode="r")
-        df = _sentence_df_kernel(count_ids, sent_offsets, n_vocab)
-        try:
-            out = os.path.join(hitlist_dir, name)
-            fd, tmp_path = tempfile.mkstemp(dir=os.path.dirname(out), suffix=".tmp")
-            try:
-                with os.fdopen(fd, "wb") as f:
-                    np.save(f, df)
-                os.replace(tmp_path, out)
-            except BaseException:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-                raise
-        except Exception:
-            pass  # cache write is best-effort; fall back to in-memory only
-
-    result = (df, n_sentences)
-    _SENTENCE_DF_CACHE[key] = result
-    return result
+    if key not in _SENTENCE_DF_CACHE:
+        sent_offsets = np.load(os.path.join(db_path, "collocations", "sent_offsets.npy"), mmap_mode="r")
+        _SENTENCE_DF_CACHE[key] = (_corpus_counts(db_path, "sentence_df", count_lemmas), len(sent_offsets) - 1)
+    return _SENTENCE_DF_CACHE[key]
 
 
 def _df_threshold_pct(request):

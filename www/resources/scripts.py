@@ -32,6 +32,7 @@ JSON_SCRIPTS = {
     "get_query_terms",
     "get_representative_passages",
     "get_sense_passages",
+    "get_sense_periods",
     "get_similar_collocate_distributions",
     "get_sorted_frequency",
     "get_table_of_contents",

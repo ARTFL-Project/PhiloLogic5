@@ -1253,6 +1253,64 @@ transience against the future), done with works.
 - `_WORKS` = 50, `_FOLLOWERS` = 3, `_SOURCES` = 10, `_WORDS` = 12 (display);
 - EVIDENCE for "perhaps".
 
+## 22. Senses over time: the words of each sense, period by period (Oct 12, prototype)
+
+After the trend tabs were dropped, the user asked for a descriptive view rather than shift detection: the top words of
+each sense over time. A new tab, "Senses over time (beta)" (`SensePeriods.vue`, `sense_periods.py`, script
+`get_sense_periods`). It is offline-tested in scratch prototypes, `chunks*.py`.
+
+**Method:**
+- The senses are those of the senses tab at its default view. A sense's sentences are those clearly in it, dated.
+- Its works, in year order, are cut into K periods with as many works each, at year edges. K grows from 2 while every
+  period after the first has a new word, and stops at the first K where one has none.
+- **New / fading:** the query's collocates markedly more or less frequent in a period than in *all the periods before
+  it* (time is linear: the future does not define the past). Markedly means:
+  - G2 of the 2 × 2 table (Dunning), above ln of both sides' words;
+  - still so without the most prolific author of the side the word is more frequent in;
+  - each word counted once per sentence, the filter's words left out of the counts.
+- **The first period** has instead the words that set it apart from the periods after it.
+- **Representative works:** those whose sentences the period's profile, fitted without the work, predicts best against
+  the comparison's profile; mean gain less its standard error; one work per author.
+
+**What was tried on the way (scratch, all on frantext *révolution, social, tradition* plus controls *fenêtre, arbre*):**
+- **Tested segmentation** (cut where a sense's words change, against the corpus's drift). The corpus check removes
+  1789 for *révolution*, since the whole corpus changes then, and the search could hide valid cuts. Dropped for the
+  descriptive view.
+- **Ten fixed chunks against the other chunks.**
+  - Diagonal grids for every word, since sorting by peak builds one.
+  - Rare words ×20+ when ranked with the idf weight.
+  - Well above shuffled dates, but 1–4 words per chunk by chance.
+- **Against the chunks before, two-sample G2:** chance 0.1–1.2 words per chunk.
+- **Fightin' Words**, the codebase's `fightin_words_zscores`, as the Comparative Collocation report uses it:
+  - Its prior (pooled counts, as strong as both sides) lets the larger side swamp the smaller: *bourgeoisie* 231 vs 0
+    occurrences in 93,155 vs 2,715 words gets z = 0.5.
+  - Comparative collocations of a small subcorpus are likely just as blind (flagged, not fixed).
+  - A balanced prior (mean of the two rates, weight of the smaller side) fixes the swamping.
+- **Chunks grown a year at a time until a word passes,** with either measure: starved (the first chunk closes after a
+  few sentences, then nothing is new against a tiny past) or chance cuts (10–30 chunks with shuffled dates). Dropped.
+- **The number of equal chunks chosen as above** (kept):
+
+  | | G2 | Fightin' Words, balanced |
+  |---|---|---|
+  | Real dates | 2–10 periods | 1–21 |
+  | Shuffled dates | 1–3 | up to 7 |
+
+  G2 kept. Two periods can be chance; more rarely are.
+
+**Reading:**
+- *révolution* 1.1: révolution française and Robespierre (1772–1815), Napoléon, Louis XVI, Aulard and *allemand*,
+  then révolution russe.
+- *social* 1.1: physique sociale (Comte), faits sociaux and sociologie (1886–1900), morphologie sociale (Durkheim,
+  Simiand).
+- Period boundaries fall at equal shares of works, not at detected changes: only how many periods comes from the data.
+
+**Cost:** 6–7 s for *révolution* on frantext, most of it growing the senses again (the tab does not reuse the senses
+tab's cached tree).
+
+**Choices left:**
+- `_WORDS` 8, `_FADING` 5, `_WORKS` 3 and the examples (10): display limits.
+- The stop rule, the first failure: a stated convention.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

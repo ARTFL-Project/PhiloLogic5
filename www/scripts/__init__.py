@@ -17,6 +17,7 @@ from .get_outlier_groups import get_outlier_groups
 from .get_query_terms import get_query_terms
 from .get_representative_passages import get_representative_passages
 from .get_sense_passages import get_sense_passages
+from .get_sense_periods import get_sense_periods
 from .get_similar_collocate_distributions import get_similar_collocate_distributions
 from .get_sorted_frequency import get_sorted_frequency
 from .get_table_of_contents import get_table_of_contents
