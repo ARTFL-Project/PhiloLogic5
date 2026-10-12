@@ -1319,8 +1319,18 @@ The user finds the tree the clearest explanation, and the overall timeline the m
 **The view:**
 - **Left half:** the sense tree, as the Sense tree tab draws it, with the senses' names at its branch ends, the detail
   slider and the word search.
-- **Right half, on each sense's row:** its share of the word's sentences over the years, on one time axis and one
-  scale for all rows (the senses tab's curves). Dotted ticks mark its periods (§22).
+- **Right half:** one stacked chart, as tall as the rows, of how the word's sentences divide between the senses year
+  by year: the Word senses tab's overview, stacked in the tree's order from the top (Sense 1's layer first, as its row
+  is). Siblings are next to each other, so a split shows as a boundary inside its parent's area. Dotted lines across a
+  sense's layer cut it into its periods (§22).
+  - **Why stacked.** At first each row had its own band of the sense's share, on one scale for all. The user found
+    the Word senses tab's chart better "as it shows separation over time": on *révolution*, Sense 2.1 (planète,
+    globe, astre) fills most of the sentences before about 1650 and gives way to the political senses after about
+    1780, one picture. Separate bands left that to be pieced together, and a 10 % sense came out flat.
+  - **Row and layer.** A layer can't sit level with its row, since its place moves with the years. Pointing at a
+    name, or focusing it, outlines its layer and pointing at a layer marks its row; clicking a layer opens its sense.
+  - The cuts are white or near black, whichever stands out more from their layer's color (`senseInk`); the outline
+    of the sense pointed at is dark on a white halo, seen on any color.
 - **No words under the bands.** At first each period's strongest new word sat under the band. The user dropped them:
   the opened panel lists them, and without them the rows are one line each, so the tree and the timelines can split
   the width.
@@ -1354,15 +1364,17 @@ The user finds the tree the clearest explanation, and the overall timeline the m
   and the arrows, Home and End to move between them; the chart is their `tabpanel`.
   - In the "Tree" tab, the same rule over the whole width: the names take up to half, and wrap; the tree takes the
     rest.
-  - In the "Over time" tab, each sense's name sits above its band, indented by its depth in the tree, and the sense
-    numbers (1, 1.2, 2.1) stand in for the tree.
+  - In the "Over time" tab, the senses' names come first as the chart's key, in the layers' order and without their
+    words, then the chart across the whole width, two lines of text tall for each sense. Beside the names, the chart
+    had about 145 px at 375.
   - The period columns in the opened panel wrap onto new lines instead of scrolling sideways (this also changes the
     Senses over time tab). The "i" popover moves back inside the window when it would overflow.
-- **Things a reader can't see.** The band, the tree and the years are hidden from screen readers. Each sense's
+- **Things a reader can't see.** The chart, the tree and the years are hidden from screen readers. Each sense's
   button is described by a sentence saying the same, in either tab: the year its share peaks, and its periods. Its
   `aria-expanded` follows the panel, and a live region says when periods are loading.
-- **Contrast and forced colors.** The band's outline and the tree's casings use the sense's dark text shade (at least 3:1
-  against white). Focus shows a 3 px outline. Under forced colors, the bands and branches take the system colors.
+- **Contrast and forced colors.** The tree's casings use the sense's dark text shade (at least 3:1 against white);
+  the layers are parted by white lines, as in the Word senses tab. Focus shows a 3 px outline. Under forced colors,
+  the layers become outlines and the branches take the system colors.
 - **Text spacing (1.4.12).** While the period words sat under the bands, a spacing stylesheet left them overlapping
   at phone widths: canvas measuring ignores CSS letter spacing, and a spacing change resizes no box, so nothing placed
   them again. Dropping the words removed the problem. Nothing else is placed by measured text width.
@@ -1378,8 +1390,8 @@ The user finds the tree the clearest explanation, and the overall timeline the m
   own text (it lies over the page; #343a40 on white, 11:1), and contrast under forced colors.
 
 **Open design points:**
-- Before about 1750 the word has few sentences a year, so the bands swing there (*social*: peaks around 1620–1650).
-  The bands could fade where the data is thin, or a strip could show the sentences per year.
+- Before about 1750 the word has few sentences a year, so the layers swing there (*social*: peaks around 1620–1650).
+  They could fade where the data is thin, or a strip could show the sentences per year.
 - The shared time axis must be proportional to time, so the dense 19th century gets narrow periods; their ticks
   crowd together there.
 - The tree layout code is copied from `SenseTree.vue`; if the view is kept, both should share it.

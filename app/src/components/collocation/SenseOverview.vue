@@ -50,9 +50,11 @@
                         @keydown="tabKey">{{ $t(`senseOverview.${v}Tab`) }}</button>
                 </div>
 
-                <!-- The senses, one on each row: the tree and the senses' names on the left half, their share of the
-                     sentences over the years, cut into their periods, on the right half -->
-                <div id="sense-overview-chart" ref="box" class="overview" :class="{ wide, 'with-tree': showTree }"
+                <!-- The senses, one on each row: the tree and the senses' names on the left half; on the right half, how the
+                     word's sentences divide between them over the years, each sense a layer in the rows' order, cut into
+                     its periods -->
+                <div id="sense-overview-chart" ref="box" class="overview"
+                    :class="{ wide, 'with-tree': showTree, 'time-only': showTime && !showTree }"
                     :role="wide || !time ? null : 'tabpanel'"
                     :aria-labelledby="wide || !time ? null : `sense-overview-tab-${view}`">
                     <div v-if="showTime" class="years-row" aria-hidden="true">
@@ -64,31 +66,38 @@
                     </div>
                     <ul ref="list" class="sense-rows" :aria-label="$t('senseOverview.chart', { word: queryWord })">
                         <li v-for="row in rows" :key="row.id" class="sense-row"
-                            :class="{ picked: selected && selected.id === row.id, found: isFound(row) }"
+                            :class="{ picked: selected && selected.id === row.id, found: isFound(row), pointed: pointed === row.id }"
                             :style="{ '--depth': depth(row), '--sense-color': senseColor(row.sense, 1),
                                 '--sense-dark': senseTextColor(row.sense, shades) }">
                             <div v-if="showTree" class="tree-cell"></div>
                             <button type="button" class="sense-name" :aria-expanded="Boolean(selected && selected.id === row.id)"
                                 :aria-controls="selected && selected.id === row.id ? 'sense-overview-panel' : null"
                                 :aria-describedby="time ? `sense-overview-about-${row.id}` : null"
-                                @click="select(row)">
+                                @click="select(row)" @mouseenter="pointed = row.id" @mouseleave="pointed = null"
+                                @focus="pointed = row.id" @blur="pointed = null">
                                 <span class="swatch" aria-hidden="true"></span>
                                 <span class="name">{{ row.sense ? $t("wordSenses.senseN", { n: row.sense }) : $t("senseTree.restShort") }}</span>
                                 <span class="sep"> · </span>
-                                <span class="what">{{ percent(row.share) }}<template v-if="row.sense"> · {{ label(row) }}</template></span>
+                                <span class="what">{{ percent(row.share) }}<span v-if="row.sense" class="label"> · {{ label(row) }}</span></span>
                             </button>
-                            <div v-if="showTime" class="sense-time">
-                                <svg v-if="timeWidth" class="band" :width="timeWidth" :height="bandHeight" aria-hidden="true">
-                                    <line v-for="year in yearTicks" :key="year" class="grid" :x1="xYear(year)" :x2="xYear(year)"
-                                        y1="0" :y2="bandHeight" />
-                                    <path :d="bandPath(row)" class="band-area" />
-                                    <line v-for="tick in periodTicks(row)" :key="tick" class="period-tick" :x1="tick" :x2="tick"
-                                        y1="0" :y2="bandHeight" />
-                                </svg>
-                            </div>
+                            <div v-if="wide" class="sense-time"></div>
                             <span v-if="time" :id="`sense-overview-about-${row.id}`" class="visually-hidden">{{ about(row) }}</span>
                         </li>
                     </ul>
+                    <!-- The senses' layers, beside the rows (on a narrow screen, under them): each year, the word's sentences
+                         divided between them -->
+                    <svg v-if="showTime && stack" class="stack" :width="timeWidth" :height="stackHeight"
+                        :style="{ top: `${listTop}px`, left: `${timeLeft}px` }" aria-hidden="true">
+                        <path v-for="layer in stack.layers" :key="layer.node.id" class="layer" :d="layer.path"
+                            :fill="senseColor(layer.node.sense, 1)" @click="select(layer.node)"
+                            @mouseenter="pointed = layer.node.id" @mouseleave="pointed = null" />
+                        <line v-for="tick in stack.ticks" :key="tick.key" class="period-tick" :x1="tick.x" :x2="tick.x"
+                            :y1="tick.y0" :y2="tick.y1" :stroke="senseInk(tick.sense, shades)" />
+                        <template v-if="stack.marked">
+                            <path class="layer-mark-halo" :d="stack.marked.path" />
+                            <path class="layer-mark" :d="stack.marked.path" />
+                        </template>
+                    </svg>
                     <!-- The tree, beside the rows, from their measured places (it draws what the rows' names say) -->
                     <svg v-if="showTree && treeLayout" class="tree" :width="treeWidth" :height="listHeight"
                         :style="{ top: `${listTop}px`, left: `${treeLeft}px` }" aria-hidden="true">
@@ -157,7 +166,7 @@ import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 import InfoButton from "./InfoButton.vue";
 import PeriodColumns, { periodWord, periodYears } from "./PeriodColumns.vue";
-import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
+import { senseColor as colorOf, senseInk, senseShades, senseTextColor } from "./senseColors.js";
 import { findWord, inSense, searchableWords } from "./senseSearch.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
@@ -263,6 +272,8 @@ const box = ref(null);
 const list = ref(null);
 const width = ref(0);
 const timeWidth = ref(0);
+const timeLeft = ref(0);
+const pointed = ref(null); // the sense under the pointer or the keyboard's focus: its row and its layer are marked
 const centers = ref([]); // the middle of each row's name (its first line), from the top of the list
 const listHeight = ref(0);
 const listTop = ref(0);
@@ -278,7 +289,6 @@ const showTree = computed(() => wide.value || !time.value || view.value === "tre
 const showTime = computed(() => Boolean(time.value) && (wide.value || view.value === "time"));
 const treeWidth = ref(0); // the tree's column, as wide as the names leave it
 const treeLeft = ref(0);
-const bandHeight = computed(() => Math.round(2.2 * fontSize.value));
 
 // The tabs' keys: the arrows, Home and End move between them
 function tabKey(event) {
@@ -303,8 +313,10 @@ function measure() {
         const name = li.querySelector(".sense-name .name");
         return li.offsetTop + (name ? name.offsetTop + name.offsetHeight / 2 : li.offsetHeight / 2);
     });
+    // The years' room: beside the rows, their column; under them (a narrow screen), all the width
     const cell = list.value.querySelector(".sense-time");
-    timeWidth.value = cell ? cell.clientWidth : 0;
+    timeWidth.value = cell ? cell.clientWidth : showTime.value ? box.value.clientWidth : 0;
+    timeLeft.value = cell ? cell.getBoundingClientRect().left - box.value.getBoundingClientRect().left : 0;
     const treeCell = list.value.querySelector(".tree-cell")?.getBoundingClientRect();
     treeWidth.value = treeCell ? Math.round(treeCell.width) : 0;
     treeLeft.value = treeCell ? treeCell.left - box.value.getBoundingClientRect().left : 0;
@@ -397,27 +409,47 @@ const yearTicks = computed(() => {
     return out;
 });
 
-const bandMax = computed(() => {
-    if (!time.value) return 1;
-    let max = 1e-9;
-    for (const n of rows.value) for (const v of time.value.share.value[n.id] || []) max = Math.max(max, v);
-    return max;
+// Beside the rows, as tall as they are; under them, two lines of text for each, as the rows beside it would be
+const stackHeight = computed(() => (wide.value ? listHeight.value : Math.round(rows.value.length * 2.2 * fontSize.value)));
+
+// Stacked as the Word senses tab stacks them: each year, the rows' shares renormalized to fill it (the smoothed ones
+// need not sum to one exactly), the first row's layer on top
+const stack = computed(() => {
+    const height = stackHeight.value;
+    if (!time.value || !timeWidth.value || !height) return null;
+    const { start, end } = time.value;
+    const n = end - start + 1;
+    const values = rows.value.map((node) => {
+        const v = time.value.share.value[node.id] || [];
+        return Array.from({ length: n }, (_, i) => Math.max(0, v[i] || 0));
+    });
+    const totals = new Array(n).fill(0);
+    values.forEach((vals) => vals.forEach((v, i) => (totals[i] += v)));
+    const xs = Array.from({ length: n }, (_, i) => xYear(start + i).toFixed(1));
+    const above = new Array(n).fill(0);
+    const layers = rows.value.map((node, k) => {
+        const top = above.map((a) => a * height);
+        values[k].forEach((v, i) => (above[i] += totals[i] > 0 ? v / totals[i] : 0));
+        const bottom = above.map((a) => a * height);
+        const down = xs.map((x, i) => `${x} ${top[i].toFixed(1)}`);
+        const up = xs.map((x, i) => `${x} ${bottom[i].toFixed(1)}`).reverse();
+        return { node, top, bottom, path: `M ${down.join(" L ")} L ${up.join(" L ")} Z` };
+    });
+    // A period's cut, across its sense's layer, between the last year of one period and the first of the next
+    const ticks = [];
+    layers.forEach(({ node, top, bottom }) => {
+        const entry = periodsById.value[node.id];
+        if (!entry || entry.periods.length < 2) return;
+        entry.periods.slice(1).forEach((p, j) => {
+            const cut = (entry.periods[j].end + p.start) / 2;
+            const i = Math.min(n - 1, Math.max(0, Math.round(cut - start)));
+            if (bottom[i] - top[i] < 1) return;
+            ticks.push({ key: `${node.id}-${p.start}`, sense: node.sense, x: xYear(cut), y0: top[i], y1: bottom[i] });
+        });
+    });
+    const markedId = pointed.value ?? selected.value?.id;
+    return { layers, ticks, marked: layers.find((l) => l.node.id === markedId) || null };
 });
-
-function bandPath(node) {
-    const values = time.value.share.value[node.id] || [];
-    if (!values.length || !timeWidth.value) return "";
-    const base = bandHeight.value - 1;
-    const top = 3;
-    const pts = values.map((v, i) => `${xYear(time.value.start + i).toFixed(1)} ${(base - (Math.max(0, v) / bandMax.value) * (base - top)).toFixed(1)}`);
-    return `M 0 ${base} L ${pts.join(" L ")} L ${timeWidth.value.toFixed(1)} ${base} Z`;
-}
-
-function periodTicks(node) {
-    const entry = periodsById.value[node.id];
-    if (!entry || entry.periods.length < 2) return [];
-    return entry.periods.slice(1).map((p, i) => xYear((entry.periods[i].end + p.start) / 2));
-}
 
 // What the drawing of a row tells, in words: when the sense is most used, and its periods
 function about(node) {
@@ -583,24 +615,13 @@ function openPeriodWork(node, p, w) {
 
 .sense-row {
     position: relative;
-    padding: 0.35rem 0.25rem 0.35rem 0.5rem;
-    border-left: 4px solid var(--sense-color);
-    margin-bottom: 0.4rem;
+    padding: 0.2rem 0;
     border-radius: 0.25rem;
+    align-items: center;
 }
 
-/* Without the tree (a narrow screen, over time): the senses' numbers and their names' indents tell it (not their
-   years, which share an axis) */
-.overview:not(.with-tree) .sense-name {
-    margin-left: calc(var(--depth) * 1rem);
-}
-
-.overview:not(.with-tree) .years-row {
-    padding: 0 0.25rem 0 calc(4px + 0.5rem);
-}
-
-/* With the tree: one grid for all the rows (each row a subgrid), its branches ending at the senses' names. The names
-   take what they need, up to half the tree's side, and the tree all the rest. */
+/* With the tree: one grid for all the rows (each row a subgrid). The names take what they need, up to half the
+   tree's side, and the tree all the rest */
 .overview.with-tree {
     display: grid;
     grid-template-columns: minmax(0, 1fr) fit-content(50%);
@@ -620,11 +641,27 @@ function openPeriodWork(node, p, w) {
     grid-template-columns: subgrid;
 }
 
-.overview.with-tree .sense-row {
-    align-items: center;
-    padding: 0.2rem 0;
-    border-left: none;
-    margin-bottom: 0;
+/* Over time on a narrow screen: the senses' names first, in the layers' order, as the chart's key; then the years and
+   the chart, all the width */
+.overview.time-only {
+    display: flex;
+    flex-direction: column;
+}
+
+.overview.time-only .sense-rows {
+    order: -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 0.5rem;
+    margin-bottom: 0.5rem;
+}
+
+.overview.time-only .sense-name .label {
+    display: none;
+}
+
+.overview.time-only .stack {
+    position: static;
 }
 
 .sense-row.picked {
@@ -633,6 +670,10 @@ function openPeriodWork(node, p, w) {
 
 .sense-row.found {
     background: #fff3cd;
+}
+
+.sense-row.pointed {
+    background: #f1f3f5;
 }
 
 .sense-name {
@@ -679,34 +720,44 @@ function openPeriodWork(node, p, w) {
     align-self: center;
 }
 
+/* Each row's room in the layers: as tall as two lines of text at least */
 .sense-time {
-    position: relative;
-    min-width: 0;
-    margin-top: 0.25rem;
+    min-height: 2.2em;
 }
 
-.overview.wide .sense-time {
-    margin-top: 0;
+/* ---- The layers ---- */
+.stack {
+    position: absolute;
 }
 
-.band {
-    display: block;
+.layer {
+    stroke: #fff;
+    stroke-width: 1;
+    cursor: pointer;
 }
 
-.band-area {
-    fill: color-mix(in srgb, var(--sense-color) 55%, white);
-    stroke: var(--sense-dark);
-    stroke-width: 1.25;
+/* The sense pointed at or opened: a dark outline on a white one, seen on any color */
+.layer-mark,
+.layer-mark-halo {
+    fill: none;
+    pointer-events: none;
 }
 
-.grid {
-    stroke: #dee2e6;
+.layer-mark-halo {
+    stroke: #fff;
+    stroke-width: 5;
 }
 
-.period-tick {
+.layer-mark {
     stroke: #212529;
+    stroke-width: 2;
+}
+
+/* A period's cut, white or dark, whichever stands out from its sense's color */
+.period-tick {
     stroke-width: 1.5;
     stroke-dasharray: 3 3;
+    pointer-events: none;
 }
 
 /* ---- The years above the rows ---- */
@@ -752,9 +803,17 @@ function openPeriodWork(node, p, w) {
 
 /* In forced colors, the drawings keep the system's colors */
 @media (forced-colors: active) {
-    .band-area {
+    .layer {
         fill: Canvas;
         stroke: CanvasText;
+    }
+
+    .layer-mark {
+        stroke: Highlight;
+    }
+
+    .layer-mark-halo {
+        stroke: Canvas;
     }
 
     .period-tick,

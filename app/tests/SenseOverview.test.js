@@ -37,15 +37,18 @@ const periods = {
     ],
 };
 
-// jsdom lays nothing out: the box's width is given, the rest measures as zero
+// jsdom lays nothing out: the box's width and every element's height are given, the rest measures as zero
 let boxWidth = 1000;
 const clientWidth = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth");
+const offsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
 Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get: () => boxWidth });
+Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, get: () => 30 });
 afterEach(() => {
     boxWidth = 1000;
 });
 afterAll(() => {
     if (clientWidth) Object.defineProperty(Element.prototype, "clientWidth", clientWidth);
+    if (offsetHeight) Object.defineProperty(HTMLElement.prototype, "offsetHeight", offsetHeight);
 });
 
 async function loaded() {
@@ -74,24 +77,38 @@ describe("SenseOverview", () => {
         const rows = wrapper.findAll(".sense-rows .sense-row");
         expect(rows).toHaveLength(2);
         expect(rows[0].find("button.sense-name").text()).toContain("Sense 1");
-        expect(rows[0].findAll(".band .band-area")).toHaveLength(1);
+        expect(wrapper.findAll(".stack .layer")).toHaveLength(2); // one layer for each row, in their order
         expect(wrapper.findAll(".tree .branch")).toHaveLength(2);
         const call = http.get.mock.calls.find(([url]) => url.includes("get_sense_periods.py"));
         expect(call[1].params.nodes).toBe("1,2");
-        expect(rows[0].findAll(".period-tick")).toHaveLength(1);
+        expect(wrapper.findAll(".stack .period-tick")).toHaveLength(1); // sense 1's two periods
         expect(wrapper.find(".period-word").exists()).toBe(false); // the opened sense lists the words
         expect(wrapper.find('[role="tablist"]').exists()).toBe(false); // wide: the tree and the years side by side
         wrapper.unmount();
     });
 
-    it("says in words what the band and the periods draw", async () => {
+    it("marks a sense's layer from its row, and opens the sense from its layer", async () => {
+        const { wrapper } = await loaded();
+        expect(wrapper.find(".layer-mark").exists()).toBe(false);
+        await wrapper.findAll("button.sense-name")[1].trigger("mouseenter");
+        expect(wrapper.find(".layer-mark").attributes("d")).toBe(wrapper.findAll(".stack .layer")[1].attributes("d"));
+        expect(wrapper.findAll(".sense-row")[1].classes()).toContain("pointed");
+        await wrapper.findAll("button.sense-name")[1].trigger("mouseleave");
+        expect(wrapper.find(".layer-mark").exists()).toBe(false);
+        await wrapper.findAll(".stack .layer")[0].trigger("click");
+        expect(wrapper.find("#sense-overview-panel").text()).toContain("peuple");
+        expect(wrapper.find(".layer-mark").attributes("d")).toBe(wrapper.findAll(".stack .layer")[0].attributes("d"));
+        wrapper.unmount();
+    });
+
+    it("says in words what the layers and the periods draw", async () => {
         const { wrapper } = await loaded();
         const name = wrapper.findAll("button.sense-name")[0];
         const about = wrapper.find(`#${name.attributes("aria-describedby")}`);
         expect(about.classes()).toContain("visually-hidden");
         expect(about.text()).toContain("highest around 1700 (60%)");
         expect(about.text()).toContain("Periods: 1700–1790, 1791–1900.");
-        expect(wrapper.findAll(".band, .tree, .years-row").every((e) => e.attributes("aria-hidden") === "true")).toBe(true);
+        expect(wrapper.findAll(".stack, .tree, .years-row").every((e) => e.attributes("aria-hidden") === "true")).toBe(true);
         wrapper.unmount();
     });
 
@@ -107,20 +124,20 @@ describe("SenseOverview", () => {
         expect(chart.attributes("role")).toBe("tabpanel");
         expect(chart.attributes("aria-labelledby")).toBe("sense-overview-tab-tree");
         expect(wrapper.findAll(".tree .branch")).toHaveLength(2);
-        expect(wrapper.find(".band").exists()).toBe(false);
+        expect(wrapper.find(".stack").exists()).toBe(false);
 
         await tabs()[1].trigger("click");
         await flushPromises();
         expect(wrapper.find(".tree").exists()).toBe(false);
         expect(wrapper.find(".tree-cell").exists()).toBe(false);
-        expect(wrapper.findAll(".band")).toHaveLength(2);
+        expect(wrapper.findAll(".stack .layer")).toHaveLength(2);
         expect(wrapper.find("#sense-overview-chart").attributes("aria-labelledby")).toBe("sense-overview-tab-time");
 
         await tabs()[1].trigger("keydown", { key: "ArrowRight" }); // round to the first
         await flushPromises();
         expect(tabs().map((b) => b.attributes("aria-selected"))).toEqual(["true", "false"]);
         expect(document.activeElement.id).toBe("sense-overview-tab-tree");
-        expect(wrapper.find(".band").exists()).toBe(false);
+        expect(wrapper.find(".stack").exists()).toBe(false);
         wrapper.unmount();
     });
 
