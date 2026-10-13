@@ -161,8 +161,10 @@ class PlainTextParser:
     def is_sentence_end(self, word, last_word, has_next, next_word):
         """Whether what's between two words ends a sentence, after last_word and before next_word, if it has_next"""
         is_sent = False
+        # Break on ! and ?, unless a word in lowercase follows, which goes on with the sentence: an interjection
+        # (Ah! mon Dieu!) or the words introducing what was said (« Viens-tu ? » dit-il)
         if "!" in word or "?" in word:
-            is_sent = True
+            is_sent = not (has_next and next_word is not None and next_word.islower())
 
         # Periods are messy. Let's try by length of previous word and
         # capital letters to avoid hitting abbreviations.

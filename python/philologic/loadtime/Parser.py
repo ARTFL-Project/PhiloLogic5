@@ -1332,10 +1332,11 @@ class XMLParser:
 
     def is_word_sentence_breaker(self, word, last_word, next_word):
         is_sent = False
-        # Always break on ! and ?
+        # Break on ! and ?, unless a word in lowercase follows, which goes on with the sentence: an interjection
+        # (Ah! mon Dieu!) or the words introducing what was said (« Viens-tu ? » dit-il)
         # TODO: why test if word > 2 in p3?
         if "!" in word or "?" in word:
-            is_sent = True
+            is_sent = not next_word.islower()
 
         # Periods are messy. Let's try by length of previous word and
         # capital letters to avoid hitting abbreviations.

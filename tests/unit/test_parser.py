@@ -241,6 +241,38 @@ def test_compound_record_str():
 
 @pytest.mark.unit
 @pytest.mark.parametrize("language", [None])
+def test_lowercase_after_exclamation_and_question_marks(language):
+    """! and ? end a sentence, unless a word in lowercase follows: an interjection, or the words introducing what was
+    said, go on with it"""
+    xml = "<text><body><div><p>Ah! mon Dieu! Viens-tu ? » dit-il. Non? Oui!</p></div></body></text>"
+    output = io.StringIO()
+    options = {"language": language} if language else {}
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}, **options).parse(io.StringIO(xml))
+    sentences = {}
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, name, philo_id, _ = line.split("\t")
+        if kind == "word":
+            sentences.setdefault(philo_id.split()[5], []).append(name)
+    assert list(sentences.values()) == [["ah", "mon", "dieu"], ["viens", "tu", "dit", "il"], ["non"], ["oui"]]
+
+
+@pytest.mark.unit
+def test_lowercase_after_exclamation_and_question_marks_in_plain_text():
+    from philologic.loadtime.PlainTextParser import PlainTextParser
+
+    text = "Ah! mon Dieu! Viens-tu ? dit-il. Non? Oui!\n"
+    output = io.StringIO()
+    PlainTextParser(output, 1, len(text.encode("utf8"))).parse(io.StringIO(text))
+    sentences = {}
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, name, philo_id, _ = line.split("\t")
+        if kind == "word":
+            sentences.setdefault(philo_id.split()[5], []).append(name)
+    assert list(sentences.values()) == [["ah", "mon", "dieu"], ["viens", "tu", "dit", "il"], ["non"], ["oui"]]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("language", [None])
 def test_abbreviations_are_indexed_as_their_expansion(language):
     """The words of an expansion get the bytes of what they stand for in the file: of the word they expand, if the
     abbreviation has as many words, else all of it; a word joined across an abbreviation spans all its text"""
