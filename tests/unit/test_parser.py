@@ -1,6 +1,7 @@
 """Unit tests for XMLParser."""
 
 import io
+import json
 import random
 import sys
 from pathlib import Path
@@ -236,3 +237,40 @@ def test_compound_record_str():
         for _ in range(2):  # the printed id grows at each call
             assert str(new) == compound_record_str(old)
             assert new.id == old.id and new.attrib == old.attrib
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("language", [None])
+def test_abbreviations_are_indexed_as_their_expansion(language):
+    """The words of an expansion get the bytes of what they stand for in the file: of the word they expand, if the
+    abbreviation has as many words, else all of it; a word joined across an abbreviation spans all its text"""
+    xml = (
+        '<text><body><div><p>avant <abbr expan="Valerius Maximus">Val. Max.</abbr> pres<abbr expan="en">&emacr;</abbr>t '
+        '<abbr expan="que">q&#772;</abbr>dam <abbr expan="Saint Augustin">S. A. H.</abbr> <abbr>etc</abbr> '
+        '<abbr expan="donatus es"><w>donatu</w>\'<w>s</w></abbr> <abbr expan="unus">u<pb n="2"/>n.</abbr></p></div>'
+        "</body></text>"
+    )
+    output = io.StringIO()
+    options = {"language": language} if language else {}
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}, **options).parse(io.StringIO(xml))
+    data = xml.encode("utf8")
+    words = []
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, name, _, attrib = line.split("\t")
+        if kind == "word":
+            attrib = json.loads(attrib)
+            words.append((name, data[attrib["start_byte"] : attrib["end_byte"]].decode("utf8")))
+    assert words == [
+        ("avant", "avant"),
+        ("valerius", "Val."),
+        ("maximus", "Max."),
+        ("present", 'pres<abbr expan="en">&emacr;</abbr>t'),
+        ("quedam", "q&#772;</abbr>dam"),
+        ("saint", "S. A. H."),
+        ("augustin", "S. A. H."),
+        ("etc", "etc"),
+        ("donatus", "donatu</w>'<w>s"),  # tags inside it, as <w>, dropped
+        ("es", "donatu</w>'<w>s"),
+        ("u", "u"),  # tags inside it which make objects (a page): left as it is
+        ("n", "n"),
+    ]

@@ -229,7 +229,8 @@ OPTIONS = [
         "bool",
         True,
         "tokenization",
-        'Index abbreviations under their expansion, as in <abbr expan="en">&emacr;</abbr>.',
+        'Index abbreviations under their expansion: pres<abbr expan="en">&emacr;</abbr>t is the word present. The '
+        "words of an expansion get the bytes of what they stand for in the text.",
     ),
     Option(
         "flatten_ligatures",

@@ -291,7 +291,10 @@ join_hyphen_in_words = True
 # This is to handle abbreviation tags.  I have seen two types:
 #       <abbr expan="en">&emacr;</abbr>
 #       <abbr expan="Valerius Maximus">Val. Max.</abbr>
-# For now, lets's try the first.
+# Abbreviations are indexed as their expansion: pres<abbr expan="en">&emacr;</abbr>t is the word "present". The words
+# of an expansion get the bytes of what they stand for in the text (Valerius those of Val., if the abbreviation has
+# as many words, else all of it). Abbreviations with tags inside them which make objects (as <pb/>) are left as
+# they are.
 abbrev_expand = True
 
 # ---------------------- Flatten Ligatures for Indexing --------------
