@@ -146,6 +146,14 @@ words_to_index = ""
 # For Asian script, try using this token_regex: r"[\p{L}\p{M}\p{N}\p{Po}]+|[&\p{L};]+"
 token_regex = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 
+# The language of the texts, as a spaCy language code (such as "fr", "en" or "la"). Words are then split by spaCy's
+# tokenizer for that language (that of spacy_model, if you set one) rather than by token_regex, in each parsing
+# process, for XML and plain text files. The tokenizer gets the text with the tag exceptions below left out, so that
+# they don't split words. Words are indexed without the punctuation at the edges of their token (l for l', il for
+# -il), which they keep in their spacy_token attribute: spacy_model tags the whole token, and words_and_philo_ids has
+# it. If spaCy has no tokenizer for the language, words are split by token_regex.
+language = ""
+
 # This defines whether you want to convert your text and metadata to an ASCII representation for
 # search and autocomplete. Turn off if your language does not translate well to ascii (non-European languages in general)
 ascii_conversion = True

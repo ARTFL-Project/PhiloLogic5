@@ -1,6 +1,7 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 """PhiloLogic5 main parser"""
 
+import html
 import os
 import string
 import sys
@@ -9,6 +10,7 @@ from bisect import bisect_right
 import regex as re
 
 from philologic.loadtime.OHCOVector import CompoundStack
+from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words
 from philologic.utils import convert_entities, extract_full_date, extract_integer
 
 DEFAULT_TAG_TO_OBJ_MAP = {
@@ -206,6 +208,10 @@ ending_punctuation = re.compile(r"[%s]$" % string.punctuation.replace(")", "").r
 abbreviation_tag = re.compile(r"""<abbr\b[^>]*?\bexpan=(["'])(.*?)\1[^>]*>(.*?)</abbr>""", re.I | re.S)
 any_tag = re.compile(r"<[^>]*>")
 semi_colon_strip = re.compile(r"\A;?(\w+);?\Z")
+# What the text the tokenizer splits leaves out or changes (see XMLParser.tokenizer_text): entities, and the "_"
+# of cleanup_content
+tokenizer_special_chars = re.compile(rf"{char_ents.pattern}|_+", re.I)
+UNKNOWN_ENTITY_CHARACTER = chr(0xE000)  # a private use character, which spaCy's tokenizers keep in words
 
 ## Build a list of control characters to remove
 ## http://stackoverflow.com/questions/92438/stripping-non-printable-characters-from-a-string-in-python/93029#93029
@@ -488,6 +494,18 @@ class XMLParser:
         if tag_token_regex == TOKEN_REGEX and tags_start_with_bracket and tag_exceptions:
             self.tag_exception_starts = re.compile(rf"(?<={TOKEN_CHAR.pattern})(?:{tag_exceptions})", re.I | re.M)
 
+        # With a language, words are split by spaCy's tokenizer for it rather than by token_regex (the loader only
+        # gives a language spaCy has a tokenizer for). Tag exceptions are then inline tags, which the text it splits
+        # leaves out, rather than tags cleanup_content takes out of words (see flush_run).
+        self.tokenizer = None
+        self.inline_tags = None
+        self.run = []  # with a tokenizer, the text lines and inline tags not indexed yet (see flush_run)
+        if parse_options.get("language"):
+            self.tokenizer = spacy_tokenizer(parse_options["language"], parse_options.get("spacy_model"))
+            if tag_exceptions:
+                self.inline_tags = re.compile(rf"(?:{tag_exceptions})", re.I)
+            self.tag_exceptions = self.tag_exception_starts = None
+
         if "join_hyphen_in_words" in parse_options:
             self.join_hyphen_in_words = parse_options["join_hyphen_in_words"]
         else:
@@ -577,10 +595,21 @@ class XMLParser:
                 self.bytes_read_in += len(line.encode("utf8"))
                 # TODO : implement DUMPXPATHS?
                 if self.in_the_text:
-                    self.tag_handler(line)
-            else:
+                    if self.tokenizer is None:
+                        self.tag_handler(line)
+                    elif self.is_inline_tag(line):
+                        self.run.append((line, True, self.line_count, self.bytes_read_in))
+                    else:
+                        self.flush_run()
+                        self.tag_handler(line)
+            elif self.tokenizer is None:
                 self.word_handler(line)
                 self.bytes_read_in += len(line.encode("utf8"))
+            else:
+                if self.in_the_text:
+                    self.run.append((line, False, self.line_count, self.bytes_read_in))
+                self.bytes_read_in += len(line.encode("utf8"))
+        self.flush_run()
 
         # if we have an open page, make sure we close it so it is properly stored
         if self.open_page:
@@ -908,9 +937,14 @@ class XMLParser:
             while True:
                 next_line = self.content[next_line_num]
                 if next_line.startswith("<"):  # we've reached the next tag
+                    if self.tokenizer is not None and self.is_inline_tag(next_line):  # left in the text (see flush_run)
+                        next_line_num += 1
+                        continue
                     break
-                speaker_name += next_line.strip()
+                speaker_name += next_line.strip() if self.tokenizer is None else next_line
                 next_line_num += 1
+            if self.tokenizer is not None:  # lines around inline tags: the spaces between them kept, once
+                speaker_name = " ".join(speaker_name.split())
             speaker_name = re.sub(r"\.$", "", speaker_name)  # trailing period often found in speaker names
             self.v["para"]["speaker"] = speaker_name.title()
 
@@ -1251,6 +1285,40 @@ class XMLParser:
             if self.punct_regex.search(word):
                 self.push_punct(word, *self.text_bytes(word, item_start, current_pos))
 
+    def index_tokens(self, items):
+        """Index the items of a run split by the tokenizer (see flush_run), each with its exact bytes in the file:
+        (text, start byte, end byte, whether it's a word, token). A word's token is the tokenizer's, when it has
+        punctuation at its edges which the word leaves out (None otherwise); it's kept in the spacy_token attribute of
+        the word. Between words, items are split as without a tokenizer, and end sentences as they do without one."""
+        last_word = ""
+        for number, (text, start_byte, end_byte, is_word, token) in enumerate(items):
+            converted = self.convert_entities(text) if "&" in text else text
+            if is_word:
+                last_word = converted
+                word = self.index_form(converted)
+                if len(text.encode("utf8")) > self.long_word_limit:
+                    self.skip_long_word(word)
+                elif word and (not self.defined_words_to_index or word in self.words_to_index):
+                    if token is not None:
+                        token = self.index_form(self.convert_entities(token) if "&" in token else token)
+                    end_byte = self.word_ends.get(end_byte, end_byte)  # (joined across an abbreviation)
+                    self.push_word(word, start_byte, end_byte, token if token != word else None)
+                continue
+            if self.placeholders and start_byte in self.placeholders:  # not text: left out
+                placeholder_length = self.placeholders[start_byte] - start_byte
+                text, converted = text[placeholder_length:], converted[placeholder_length:]
+                start_byte += placeholder_length
+            # The bytes of what's between words, without the spaces around it
+            start_byte, end_byte = self.text_bytes(text, start_byte, end_byte)
+            next_word = items[number + 1][0] if number + 1 < len(items) else ""
+            if self.is_word_sentence_breaker(converted, last_word, next_word):
+                sentence_name = converted.replace("\t", " ").strip()
+                if not self.in_line_group and not self.in_tagged_sentence:
+                    self.end_sentence(sentence_name, start_byte, end_byte)
+                self.last_sentence_marker = sentence_name
+            if self.punct_regex.search(converted):
+                self.push_punct(converted, start_byte, end_byte)
+
     @staticmethod
     def text_bytes(item, start_byte, end_byte):
         """The start and end bytes of the text of an item from start_byte to end_byte, without the spaces around it"""
@@ -1291,8 +1359,8 @@ class XMLParser:
         print("Long word in {}: {}".format(self.input.name, word), file=sys.stderr)
         print(f"Removing word from for index since over {self.long_word_limit} bytes long...", file=sys.stderr)
 
-    def push_word(self, word, start_byte, end_byte):
-        """Store a word, with the attributes of its <w> tag or its lemma"""
+    def push_word(self, word, start_byte, end_byte, token=None):
+        """Store a word, with the attributes of its <w> tag or its lemma, and its token if the tokenizer's has more"""
         start_byte, end_byte = self.file_bytes(start_byte, end_byte)
         self.v.push("word", word, start_byte)
         if self.current_tag == "w":
@@ -1308,6 +1376,8 @@ class XMLParser:
                     self.v["word"]["lemma"] = word.lower()
             else:
                 self.v["word"]["lemma"] = self.lemmas[word]
+        if token is not None:
+            self.v["word"]["spacy_token"] = token
         self.v.pull("word", end_byte)
 
     def end_sentence(self, name, start_byte, end_byte):
@@ -1329,6 +1399,136 @@ class XMLParser:
             start_byte, end_byte = self.file_bytes(start_byte, end_byte)
             self.v.push("punct", punct, start_byte)
             self.v.pull("punct", end_byte)
+
+    def convert_entities(self, text):
+        """Entities as index_words converts them in words"""
+        return self.convert_other_ents(self.latin1_ents_to_utf8(text))
+
+    def is_inline_tag(self, tag):
+        """Whether a tag is an inline tag, which doesn't end the text the tokenizer splits (see flush_run): a tag
+        exception, unless it's a suppressed tag or an object tag, which the words after it depend on"""
+        if self.inline_tags is None or not self.inline_tags.fullmatch(tag):
+            return False
+        try:
+            name = tag_matcher.findall(tag)[0]
+        except IndexError:
+            return False
+        return not self.is_tracked_tag(name.lstrip("/"), False)
+
+    def flush_run(self):
+        """Index the run of text lines and inline tags in self.run (lines in order, with whether each is a tag, its
+        line count and its start byte, or end byte for a tag), with the tokenizer. Its words are split from the text
+        of its lines, the inline tags left out, so that a tag inside a word doesn't split it. Inline tags between words
+        are handled where they are, as tags outside runs are. Inside a word, those with a handler (see TAG_HANDLERS)
+        are handled after it; the others are dropped, as cleanup_content drops tag exceptions without a tokenizer."""
+        run, self.run = self.run, []
+        if not run:
+            return
+        line_count, bytes_read_in = self.line_count, self.bytes_read_in
+        pieces, tags = [], []  # (start byte, text) of the lines; (position in the text, tag, line count, end byte)
+        text_length = 0
+        for line, is_tag, count, byte in run:
+            if is_tag:
+                tags.append((text_length, line, count, byte))
+            elif line:
+                if char_ents.search(line):
+                    line = self.clear_char_ents(line)
+                pieces.append((byte, line))
+                text_length += len(line)
+        text = "".join(line for _, line in pieces)
+        text_bytes = TextBytes(pieces)
+        words = []
+        if not self.in_suppressed_tag and check_if_char_word.search(text):  # (letters of entities too)
+            words = self.split_words(text)
+
+        # Lists of items to index (see index_tokens), and the tags to handle between them, in order
+        steps, items = [], []
+        position = tag_number = 0
+
+        def add_items_between_words(end):
+            """The items of the text from position to end, between words and tags, split as without a tokenizer"""
+            nonlocal position
+            for item in self.split_with_token_regex(text[position:end]) if end > position else ():
+                if item:
+                    item_end = position + len(item)
+                    items.append((item, text_bytes.start(position), text_bytes.end(item_end), False, None))
+                    position = item_end
+
+        for token_start, token_end, word_start, word_end in words + [(text_length,) * 4]:  # what's after them too
+            while tag_number < len(tags) and tags[tag_number][0] <= token_start:  # between words: handled there
+                add_items_between_words(tags[tag_number][0])
+                steps += [items, tags[tag_number]]
+                items = []
+                tag_number += 1
+            add_items_between_words(token_start)
+            if token_end > token_start:  # a word
+                handled_after = []  # tags inside it with a handler, handled after it; the others are dropped
+                while tag_number < len(tags) and tags[tag_number][0] < token_end:
+                    tag = tags[tag_number][1]
+                    if self.handler_of(tag, tag_matcher.findall(tag)[0]) is not None:
+                        handled_after.append(tags[tag_number])
+                    tag_number += 1
+                token = None if (word_start, word_end) == (token_start, token_end) else text[token_start:token_end]
+                word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
+                items.append((text[word_start:word_end], *word_bytes, True, token))
+                if handled_after:
+                    steps += [items, *handled_after]
+                    items = []
+            position = token_end
+        steps.append(items)
+
+        for step in steps:
+            if isinstance(step, list):
+                if step and not self.in_suppressed_tag:
+                    self.index_tokens(step)
+            else:
+                _, tag, self.line_count, self.bytes_read_in = step
+                self.tag_handler(tag)
+        self.line_count, self.bytes_read_in = line_count, bytes_read_in
+
+    def split_words(self, text):
+        """The words the tokenizer finds in text, with letters once their entities are converted (as index_tokens has
+        them): see spacy_tokenizer.split_words"""
+        mapped = self.tokenizer_text(text) if "&" in text or "_" in text else ()
+        return split_words(self.tokenizer, text, self.has_letter, *mapped)
+
+    def has_letter(self, word):
+        """Whether a word has a letter, once its entities are converted"""
+        return check_if_char_word.search(self.convert_entities(word) if "&" in word else word) is not None
+
+    def tokenizer_text(self, text):
+        """text as the tokenizer splits it: entities as the characters they stand for, and without "_", which
+        cleanup_content puts in to join words (as at &shy;); and for each of its characters, the start and end in text
+        of what it stands for"""
+        parts, starts, ends = [], [], []
+        position = 0
+        for match in tokenizer_special_chars.finditer(text):
+            start, end = match.span()
+            if start > position:
+                parts.append(text[position:start])
+                starts.extend(range(position, start))
+                ends.extend(range(position + 1, start + 1))
+            if text[start] == "&":
+                characters = self.entity_characters(match.group())
+                parts.append(characters)
+                starts.extend([start] * len(characters))
+                ends.extend([end] * len(characters))
+            position = end
+        if position < len(text):
+            parts.append(text[position:])
+            starts.extend(range(position, len(text)))
+            ends.extend(range(position + 1, len(text) + 1))
+        return "".join(parts), starts, ends
+
+    def entity_characters(self, entity):
+        """The characters an entity stands for, for the tokenizer: as index_words converts it, or as HTML has it, or
+        else a character spaCy keeps in words, as token_regex does entities"""
+        characters = self.convert_entities(entity)
+        if characters.startswith("&"):
+            characters = html.unescape(entity)
+        if not characters or characters.startswith("&"):
+            characters = UNKNOWN_ENTITY_CHARACTER
+        return characters
 
     def is_word_sentence_breaker(self, word, last_word, next_word):
         is_sent = False

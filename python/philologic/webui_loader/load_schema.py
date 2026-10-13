@@ -161,6 +161,18 @@ OPTIONS = [
         allow_empty=False,
     ),
     Option(
+        "language",
+        "string",
+        None,
+        "tokenization",
+        "Language of the texts, as a spaCy language code (fr, en, la...): words are then split by spaCy's tokenizer "
+        "for it (that of the spaCy model, if one is set), with tags inside words left out, rather than by "
+        "token_regex. Words are indexed without the punctuation at the edges of their token (l for l'), which they "
+        "keep in their spacy_token attribute, for tagging. Without spaCy's support for the language, token_regex "
+        "splits them.",
+        basic=True,
+    ),
+    Option(
         "token_regex",
         "regex",
         Parser.TOKEN_REGEX,

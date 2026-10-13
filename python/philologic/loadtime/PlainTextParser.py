@@ -8,6 +8,7 @@ from typing import List, Union
 
 import regex as re
 from philologic.loadtime import OHCOVector
+from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words
 
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 PUNCTUATION = r"""[;,:=+()"]"""
@@ -76,6 +77,12 @@ class PlainTextParser:
 
         self.lemmas = lemmas
 
+        # With a language, words are split by spaCy's tokenizer for it rather than by token_regex (the loader only
+        # gives a language spaCy has a tokenizer for): see index_tokens
+        self.tokenizer = None
+        if parse_options.get("language"):
+            self.tokenizer = spacy_tokenizer(parse_options["language"], parse_options.get("spacy_model"))
+
         if words_to_index:
             self.words_to_index = words_to_index
             self.defined_words_to_index = True
@@ -106,6 +113,10 @@ class PlainTextParser:
                 self.v.push("para", "p", bytes_read_in)  # we assume a new paragraph for each line break
                 open_para = True
             previous_line_empty = False
+            if self.tokenizer is not None:
+                self.index_tokens(line, bytes_read_in, input_file)
+                bytes_read_in += len(line.encode("utf8"))
+                continue
             start_byte = bytes_read_in
             last_word = ""
             words: List[Union[str, None]] = self.token_regex.split(line)
@@ -144,8 +155,8 @@ class PlainTextParser:
             bytes_read_in += len(line.encode("utf8"))
         self.v.pull("doc", self.filesize)
 
-    def push_word(self, word, start_byte, end_byte):
-        """Store a word, with its lemma"""
+    def push_word(self, word, start_byte, end_byte, token=None):
+        """Store a word, with its lemma, and its token if the tokenizer's has more"""
         self.v.push("word", word, start_byte)
         if self.lemmas is not None:
             if word not in self.lemmas:
@@ -156,6 +167,8 @@ class PlainTextParser:
                     self.v["word"]["lemma"] = word.lower()
             else:
                 self.v["word"]["lemma"] = self.lemmas[word]
+        if token is not None:
+            self.v["word"]["spacy_token"] = token
         self.v.pull("word", end_byte)
 
     def is_sentence_end(self, word, last_word, has_next, next_word):
@@ -180,6 +193,56 @@ class PlainTextParser:
         elif word in self.sentence_breakers:
             is_sent = True
         return is_sent
+
+    @staticmethod
+    def index_form(word):
+        """The form under which a word is indexed: in lowercase, without control characters, "_" and spaces"""
+        word = word.lower()
+        word = "".join(c for c in word if unicodedata.category(c)[0] != "C")  # remove control characters
+        word = word.replace("_", "").strip()
+        return word.replace(" ", "")
+
+    def index_tokens(self, line, start_byte, input_file):
+        """Index the words of a line starting at start_byte, split by the tokenizer, and what's between them split by
+        token_regex, each with its exact bytes in the file. Words leave out the punctuation at the edges of their
+        token (as l' or -il has), which they keep in their spacy_token attribute (for the tagger, see
+        LoadFilters.spacy_tagger)."""
+        text_bytes = TextBytes([(start_byte, line)])
+        items = []  # (text, start byte, end byte, whether it's a word, token)
+        position = 0
+
+        def add_items_between_words(end):
+            nonlocal position
+            for item in self.token_regex.split(line[position:end]) if end > position else ():
+                if item:
+                    items.append((item, text_bytes.start(position), text_bytes.end(position + len(item)), False, None))
+                    position += len(item)
+
+        words = split_words(self.tokenizer, line, check_if_char_word.search)
+        for token_start, token_end, word_start, word_end in words:
+            add_items_between_words(token_start)
+            token = None if (word_start, word_end) == (token_start, token_end) else line[token_start:token_end]
+            word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
+            items.append((line[word_start:word_end], *word_bytes, True, token))
+            position = token_end
+        add_items_between_words(len(line))
+
+        last_word = ""
+        for count, (text, start, end, is_word, token) in enumerate(items):
+            if is_word:
+                last_word = text.lower()
+                if len(text.encode("utf8")) > 200:
+                    print(f"Long word in {input_file.name}: {last_word}", file=sys.stderr)
+                    print("Removing word from for index since over 200 bytes long...", file=sys.stderr)
+                    continue
+                word = self.index_form(text)
+                if word and not (self.defined_words_to_index is True and word not in self.words_to_index):
+                    token = token and self.index_form(token)
+                    self.push_word(word, start, end, token if token != word else None)
+                continue
+            has_next = count + 1 < len(items)
+            is_sent = self.is_sentence_end(text, last_word, has_next, items[count + 1][0] if has_next else None)
+            self.index_between_words(text, start, end, is_sent)
 
     def index_between_words(self, text, start_byte, end_byte, is_sent):
         """Index what's between two words, from start_byte to end_byte: the end of a sentence, or else its punctuation,

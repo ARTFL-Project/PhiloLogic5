@@ -46,6 +46,7 @@ from philologic.loadtime.PostFilters import (
     write_word_frequency_table,
     write_word_frequency_table_from_runs,
 )
+from philologic.loadtime.spacy_tokenizer import spacy_tokenizer
 from philologic.loadtime.split_sorted import sort_key
 from philologic.utils import (
     convert_entities,
@@ -103,6 +104,8 @@ PARSER_OPTIONS = [
     "parser_factory",
     "doc_xpaths",
     "token_regex",
+    "language",
+    "spacy_model",
     "tag_to_obj_map",
     "metadata_to_parse",
     "suppress_tags",
@@ -728,6 +731,7 @@ class Loader:
         "parent",
         "page",
         "lemma",
+        "spacy_token",  # the token of a word as the tokenizer split it, when the word leaves out some of it
     }
     word_count = 0
     lemma_count = 0
@@ -779,6 +783,10 @@ class Loader:
                 cls.parser_config[option] = loader_options[option]
             except KeyError:  # option hasn't been set
                 pass
+        if cls.parser_config.get("language"):
+            cls.parser_config["language"] = cls.spacy_tokenization(
+                cls.parser_config["language"], cls.parser_config.get("spacy_model")
+            )
         cls.spacy_model = None
         if loader_options["spacy_model"]:
             import spacy  # only imported when used: importing it takes about a second
@@ -789,6 +797,20 @@ class Loader:
                 cls.spacy_model = loader_options["spacy_model"]
         cls.suppress_word_attributes = set(loader_options["suppress_word_attributes"])
         return cls(**loader_options)
+
+    @staticmethod
+    def spacy_tokenization(language, spacy_model=None):
+        """The language words are split for by spaCy's tokenizer (that of spacy_model, if given), or None if spaCy has
+        no tokenizer for it: words are then split by token_regex. Loads the tokenizer, which parse workers load
+        again."""
+        try:
+            spacy_tokenizer(language, spacy_model)
+        except ImportError as error:  # no spaCy, no tokenizer for the language, or a library it needs is missing
+            print(f"Words are split by token_regex: spaCy has no tokenizer for {language!r} ({error})", file=sys.stderr)
+            return None
+        tokenizer = f"spaCy model {spacy_model}" if spacy_model else f"spaCy's {language!r} model"
+        print(f"Words are split by the tokenizer of {tokenizer}")
+        return language
 
     def __init__(self, **loader_options):
         os.system(f"mkdir -p {self.destination}")
@@ -1237,6 +1259,8 @@ class Loader:
 
         for option in [
             "token_regex",
+            "language",
+            "spacy_model",
             "suppress_tags",
             "break_apost",
             "chars_not_to_index",

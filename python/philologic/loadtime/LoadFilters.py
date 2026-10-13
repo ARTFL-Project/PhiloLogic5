@@ -54,8 +54,12 @@ def generate_words_sorted(loader_obj, text):
 
 
 def spacy_tagger(loader_obj, text):
-    """Tag words with Spacy"""
+    """Tag words with Spacy: their token, as the tokenizer split it, when the indexed word leaves out some of it (see
+    XMLParser.index_tokens)"""
     from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
+
+    def token(record):
+        return record.attrib.get("spacy_token", record.name)
 
     def process_file():
         with open(text["raw"], encoding="utf8") as fh:
@@ -68,13 +72,13 @@ def spacy_tagger(loader_obj, text):
                     record = Record(philo_type, word, philo_id.split())
                     record.attrib = loads(attrib)
                     if current_sent_id is not None and sent_id != current_sent_id:
-                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [r.name for r in sentence_records])
+                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [token(r) for r in sentence_records])
                         yield spacy_sentence, sentence_records
                         sentence_records = []
                     sentence_records.append(record)
                     current_sent_id = sent_id
             if sentence_records:
-                spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [r.name for r in sentence_records])
+                spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [token(r) for r in sentence_records])
                 yield spacy_sentence, sentence_records
 
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
@@ -281,9 +285,7 @@ def index_word_transformation(transform_function):
 def store_words_and_philo_ids(loader_obj, text):
     """Store words and philo ids file for data-mining"""
     files_path = loader_obj.destination + "/words_and_philo_ids/"
-    attributes_to_skip = list(loader_obj.attributes_to_skip)  # make a copy
-    attributes_to_skip.remove("lemma")
-    attributes_to_skip = set(attributes_to_skip)
+    attributes_to_skip = set(loader_obj.attributes_to_skip) - {"lemma", "spacy_token"}  # kept here
     try:
         os.mkdir(files_path)
     except OSError:

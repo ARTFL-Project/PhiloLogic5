@@ -240,7 +240,7 @@ def test_compound_record_str():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("language", [None])
+@pytest.mark.parametrize("language", [None, "fr"])
 def test_lowercase_after_exclamation_and_question_marks(language):
     """! and ? end a sentence, unless a word in lowercase follows: an interjection, or the words introducing what was
     said, go on with it"""
@@ -272,7 +272,7 @@ def test_lowercase_after_exclamation_and_question_marks_in_plain_text():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("language", [None])
+@pytest.mark.parametrize("language", [None, "fr"])
 def test_abbreviations_are_indexed_as_their_expansion(language):
     """The words of an expansion get the bytes of what they stand for in the file: of the word they expand, if the
     abbreviation has as many words, else all of it; a word joined across an abbreviation spans all its text"""
