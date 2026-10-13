@@ -1320,6 +1320,10 @@ The user finds the tree the clearest explanation, and the overall timeline the m
 - **Left half:** the sense tree, as the Sense tree tab draws it, with the senses' names at its branch ends, the detail
   slider and the word search. Each name gives four words, as the user asked: the sense's first four; with fewer, the
   words just before and after the query word (alternately), then those the filter hides, without repeating a word.
+  Each branch carries its share of the sentences above it, inner branches too, so each division shows what it leaves
+  to each side (*révolution*: 58 % and 42 %, then 32 % and 26 %, 22 % and 20 %). The user asked for it, to save room
+  for the four words. The labels sit on a white halo where they cross a branch; the names keep the share for screen
+  readers only. The phones' "Over time" key, which has no tree, shows it.
 - **Right half:** one stacked chart, as tall as the rows, of how the word's sentences divide between the senses year
   by year: the Word senses tab's overview, stacked in the tree's order from the top (Sense 1's layer first, as its row
   is). Siblings are next to each other, so a split shows as a boundary inside its parent's area. Dotted lines across a
@@ -1388,7 +1392,8 @@ The user finds the tree the clearest explanation, and the overall timeline the m
   - font sizes equal to the body's.
 
   The only "incomplete" items are the app's own mobile selects, whose background image axe can't judge, the popover's
-  own text (it lies over the page; #343a40 on white, 11:1), and contrast under forced colors.
+  own text (it lies over the page; #343a40 on white, 11:1), the branches' shares (SVG text: #495057 on its white
+  halo, 8:1), and contrast under forced colors.
 
 **Open design points:**
 - Before about 1750 the word has few sentences a year, so the layers swing there (*social*: peaks around 1620–1650).

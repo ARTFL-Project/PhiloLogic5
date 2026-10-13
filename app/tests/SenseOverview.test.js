@@ -103,10 +103,17 @@ describe("SenseOverview", () => {
         wrapper.unmount();
     });
 
+    it("puts each branch's share above it, the names keeping it for screen readers", async () => {
+        const { wrapper } = await loaded();
+        expect(wrapper.findAll(".tree .branch-share").map((e) => e.text())).toEqual(["60%", "40%"]);
+        expect(wrapper.findAll("button.sense-name .share").map((e) => e.text())).toEqual(["60% ·", "40% ·"]); // test-utils trims the text
+        wrapper.unmount();
+    });
+
     it("names each sense by four words, made up from the words around the query word", async () => {
         const { wrapper } = await loaded();
         const names = wrapper.findAll("button.sense-name .label").map((l) => l.text());
-        expect(names).toEqual(["· peuple, nation, loi, roi", "· astre, globe, grande révolution, révolution céleste"]);
+        expect(names).toEqual(["peuple, nation, loi, roi", "astre, globe, grande révolution, révolution céleste"]);
         wrapper.unmount();
     });
 

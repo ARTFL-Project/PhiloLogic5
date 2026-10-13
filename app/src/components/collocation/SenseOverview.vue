@@ -70,7 +70,8 @@
                             :style="{ '--depth': depth(row), '--sense-color': senseColor(row.sense, 1),
                                 '--sense-dark': senseTextColor(row.sense, shades) }">
                             <div v-if="showTree" class="tree-cell"></div>
-                            <button type="button" class="sense-name" :aria-expanded="Boolean(selected && selected.id === row.id)"
+                            <button type="button" class="sense-name" :class="{ rest: !row.sense }"
+                                :aria-expanded="Boolean(selected && selected.id === row.id)"
                                 :aria-controls="selected && selected.id === row.id ? 'sense-overview-panel' : null"
                                 :aria-describedby="time ? `sense-overview-about-${row.id}` : null"
                                 @click="select(row)" @mouseenter="pointed = row.id" @mouseleave="pointed = null"
@@ -78,7 +79,9 @@
                                 <span class="swatch" aria-hidden="true"></span>
                                 <span class="name">{{ row.sense ? $t("wordSenses.senseN", { n: row.sense }) : $t("senseTree.restShort") }}</span>
                                 <span class="sep"> · </span>
-                                <span class="what">{{ percent(row.share) }}<span v-if="row.sense" class="label"> · {{ label(row) }}</span></span>
+                                <!-- Beside the tree, the share is on the sense's branch: here it is for screen readers -->
+                                <span class="what"><span class="share">{{ percent(row.share) }}<span v-if="row.sense"
+                                    class="share-sep"> · </span></span><span v-if="row.sense" class="label">{{ label(row) }}</span></span>
                             </button>
                             <div v-if="wide" class="sense-time"></div>
                             <span v-if="time" :id="`sense-overview-about-${row.id}`" class="visually-hidden">{{ about(row) }}</span>
@@ -108,6 +111,10 @@
                             <path class="branch" :d="branchPath(b)" :stroke="senseColor(b.node.sense, 1)"
                                 :stroke-width="thickness(b.node.share)" @click="select(b.node)" />
                         </g>
+                        <!-- Each branch's share of the sentences, above it: what each division leaves to each side -->
+                        <text v-for="b in treeLayout.segments" :key="`share-${b.node.id}`" class="branch-share"
+                            :x="b.x0 + thickness(nodes[b.node.parent].share) / 2 + 4"
+                            :y="b.y1 - thickness(b.node.share) / 2 - 4">{{ percent(b.node.share) }}</text>
                     </svg>
                 </div>
             </div>
@@ -668,8 +675,28 @@ function openPeriodWork(node, p, w) {
     margin-bottom: 0.5rem;
 }
 
-.overview.time-only .sense-name .label {
+.overview.time-only .sense-name .label,
+.overview.time-only .sense-name .share-sep {
     display: none;
+}
+
+/* Beside the tree, the shares are on its branches: the names keep them for screen readers only */
+.overview.with-tree .sense-name .share,
+.overview.with-tree .sense-name.rest .sep {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Room above the first branch for its share, where no years are above it */
+.overview.with-tree:not(.wide) .sense-rows {
+    padding-top: 1em;
 }
 
 .overview.time-only .stack {
@@ -794,7 +821,17 @@ function openPeriodWork(node, p, w) {
 .tree {
     position: absolute;
     left: 0;
+    overflow: visible;
     pointer-events: none;
+}
+
+/* On a white halo, so that it reads where it crosses a branch */
+.branch-share {
+    fill: #495057;
+    stroke: #fff;
+    stroke-width: 3px;
+    stroke-linejoin: round;
+    paint-order: stroke;
 }
 
 .tree .branch {
@@ -825,6 +862,11 @@ function openPeriodWork(node, p, w) {
     }
 
     .layer-mark-halo {
+        stroke: Canvas;
+    }
+
+    .branch-share {
+        fill: CanvasText;
         stroke: Canvas;
     }
 
