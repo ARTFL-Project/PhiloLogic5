@@ -1320,7 +1320,7 @@ The user finds the tree the clearest explanation, and the overall timeline the m
 - **Left half:** the sense tree, as the Sense tree tab draws it, with the senses' names at its branch ends, the detail
   slider and the word search. Each name gives four words, as the user asked: the sense's first four; with fewer, the
   words just before and after the query word (alternately), then those the filter hides, without repeating a word.
-  Each branch carries its share of the sentences above it, inner branches too, so each division shows what it leaves
+  Each branch carries its share of the sentences centered above it, inner branches too, so each division shows what it leaves
   to each side (*révolution*: 58 % and 42 %, then 32 % and 26 %, 22 % and 20 %). The user asked for it, to save room
   for the four words. The labels sit on a white halo where they cross a branch; the names keep the share for screen
   readers only. The phones' "Over time" key, which has no tree, shows it.

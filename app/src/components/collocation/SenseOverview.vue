@@ -111,10 +111,9 @@
                             <path class="branch" :d="branchPath(b)" :stroke="senseColor(b.node.sense, 1)"
                                 :stroke-width="thickness(b.node.share)" @click="select(b.node)" />
                         </g>
-                        <!-- Each branch's share of the sentences, above it: what each division leaves to each side -->
+                        <!-- Each branch's share of the sentences, centered above it: what each division leaves to each side -->
                         <text v-for="b in treeLayout.segments" :key="`share-${b.node.id}`" class="branch-share"
-                            :x="b.x0 + thickness(nodes[b.node.parent].share) / 2 + 4"
-                            :y="b.y1 - thickness(b.node.share) / 2 - 4">{{ percent(b.node.share) }}</text>
+                            :x="(b.x0 + b.x1) / 2" :y="b.y1 - thickness(b.node.share) / 2 - 4">{{ percent(b.node.share) }}</text>
                     </svg>
                 </div>
             </div>
@@ -827,6 +826,7 @@ function openPeriodWork(node, p, w) {
 
 /* On a white halo, so that it reads where it crosses a branch */
 .branch-share {
+    text-anchor: middle;
     fill: #495057;
     stroke: #fff;
     stroke-width: 3px;
