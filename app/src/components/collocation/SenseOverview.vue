@@ -525,13 +525,25 @@ function wordText(w, group = w.group) {
     return periodWord({ ...w, group }, queryWord.value);
 }
 
+// A sense's name in the tree: its first four words; with fewer, the words just before and after the query word make up
+// the rest, then those the filter hides
+const LABEL_WORDS = 4;
+
 function label(node) {
-    const words = node.words.slice(0, 3).map((w) => w.word);
-    if (words.length < 2) {
-        words.push(...node.before.slice(0, 1).map((w) => wordText(w, 1)));
-        words.push(...node.after.slice(0, 1).map((w) => wordText(w, 2)));
+    const out = [];
+    const seen = new Set();
+    const add = (w, text) => {
+        if (out.length >= LABEL_WORDS || seen.has(w.word)) return;
+        seen.add(w.word);
+        out.push(text);
+    };
+    node.words.forEach((w) => add(w, w.word));
+    for (let i = 0; i < Math.max(node.before.length, node.after.length); i++) {
+        if (node.before[i]) add(node.before[i], wordText(node.before[i], 1));
+        if (node.after[i]) add(node.after[i], wordText(node.after[i], 2));
     }
-    return words.join(", ") || queryWord.value;
+    (node.hidden || []).forEach((w) => add(w, w.word));
+    return out.join(", ") || queryWord.value;
 }
 
 function percent(share) {

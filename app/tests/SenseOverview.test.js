@@ -15,8 +15,10 @@ const senses = {
     n_hits: 120, n_sentences: 100, n_works: 30, detail: 1, finest: 0.1, filter_list: [],
     nodes: [
         node(0, null, [1, 2], 1, { split: { relative: 1, z: 3, importance: 1, seed: { word: "loi", group: 0 } } }),
-        node(1, 0, [], 0.6, { sense: "1", rank: 1, words: [word("peuple"), word("nation")] }),
-        node(2, 0, [], 0.4, { sense: "2", rank: 2, words: [word("astre"), word("globe")] }),
+        node(1, 0, [], 0.6, { sense: "1", rank: 1, words: ["peuple", "nation", "loi", "roi", "assemblée"].map(word) }),
+        node(2, 0, [], 0.4, {
+            sense: "2", rank: 2, words: [word("astre"), word("globe")], before: [word("grande")], after: [word("globe"), word("céleste")],
+        }),
     ],
     time: {
         start: 1700, end: 1900, sentences: flat(201, 1), works: flat(201, 1),
@@ -98,6 +100,13 @@ describe("SenseOverview", () => {
         await wrapper.findAll(".stack .layer")[0].trigger("click");
         expect(wrapper.find("#sense-overview-panel").text()).toContain("peuple");
         expect(wrapper.find(".layer-mark").attributes("d")).toBe(wrapper.findAll(".stack .layer")[0].attributes("d"));
+        wrapper.unmount();
+    });
+
+    it("names each sense by four words, made up from the words around the query word", async () => {
+        const { wrapper } = await loaded();
+        const names = wrapper.findAll("button.sense-name .label").map((l) => l.text());
+        expect(names).toEqual(["· peuple, nation, loi, roi", "· astre, globe, grande révolution, révolution céleste"]);
         wrapper.unmount();
     });
 

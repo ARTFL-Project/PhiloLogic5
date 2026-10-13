@@ -1318,7 +1318,8 @@ The user finds the tree the clearest explanation, and the overall timeline the m
 
 **The view:**
 - **Left half:** the sense tree, as the Sense tree tab draws it, with the senses' names at its branch ends, the detail
-  slider and the word search.
+  slider and the word search. Each name gives four words, as the user asked: the sense's first four; with fewer, the
+  words just before and after the query word (alternately), then those the filter hides, without repeating a word.
 - **Right half:** one stacked chart, as tall as the rows, of how the word's sentences divide between the senses year
   by year: the Word senses tab's overview, stacked in the tree's order from the top (Sense 1's layer first, as its row
   is). Siblings are next to each other, so a split shows as a boundary inside its parent's area. Dotted lines across a
