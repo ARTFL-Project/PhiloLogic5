@@ -687,7 +687,12 @@ class XMLParser:
         if self.current_tag == "w":
             self.word_tag_attributes = self.get_attributes(tag)
 
-        # The handler for its name, if the tag matches its regex
+        method = self.handler_of(tag, tag_name)
+        if method is not None:
+            getattr(self, method)(tag, tag_name, start_byte)
+
+    def handler_of(self, tag, tag_name):
+        """The handler method of a tag (see TAG_HANDLERS): the one for its name, if the tag matches its regex"""
         if tag_name.isascii():
             name = tag_name.lower()
             if name.startswith("div"):  # div_tag and closed_div_tag match all names starting with div
@@ -698,12 +703,12 @@ class XMLParser:
             if handler is not None:
                 pattern, method = handler
                 if pattern.search(tag):
-                    getattr(self, method)(tag, tag_name, start_byte)
+                    return method
         else:  # ignoring case, letters other than ASCII ones can match the regexes: try them all
             for pattern, method in TAG_HANDLERS.values():
                 if pattern.search(tag):
-                    getattr(self, method)(tag, tag_name, start_byte)
-                    break
+                    return method
+        return None
 
     # Tag handlers (see TAG_HANDLERS): each gets the tag, its name and its start byte
 
@@ -1033,131 +1038,155 @@ class XMLParser:
             # into spaces to get a clean break.
             if char_ents.search(words):
                 words = self.clear_char_ents(words)
-
-            # we're splitting the line of words into distinct words
-            # separated by "\n"
-            if self.token_regex.groups == 1:
-                # Same result as the sub below (the pattern's only group is the whole match), but faster
-                words = "\n".join(self.token_regex.split(words))
-            else:
-                words = self.token_regex.sub(r"\n\1\n", words)
-
-            if self.break_apost:
-                words = words.replace("'", "\n'\n")
-                words = words.replace("’", "\n’\n")
-
-            current_pos = self.bytes_read_in
-            count = 0
-            word_list = words.split("\n")
-            if len(word_list) > 2:
-                # Drop empty inner items: same as collapsing runs of newlines before splitting
-                word_list = [word_list[0], *[w for w in word_list[1:-1] if w], word_list[-1]]
-            last_word = ""
-            next_word = ""
+            word_list = self.split_with_token_regex(words)
             if self.in_the_text:
-                word_list_length = len(word_list)
-                for word in word_list:
-                    word_in_utf8 = word.encode("utf8")
-                    word_length = len(word_in_utf8)
-                    if count + 1 < word_list_length:
-                        next_word = word_list[count + 1]
-                    count += 1
+                self.index_words(word_list, self.bytes_read_in)
 
-                    # Keep track of your bytes since this is where you are getting
-                    # the byte offsets for words.
-                    current_pos += word_length
+    def split_with_token_regex(self, words):
+        """The items of words (see index_words), split by token_regex"""
+        # we're splitting the line of words into distinct words
+        # separated by "\n"
+        if self.token_regex.groups == 1:
+            # Same result as the sub below (the pattern's only group is the whole match), but faster
+            words = "\n".join(self.token_regex.split(words))
+        else:
+            words = self.token_regex.sub(r"\n\1\n", words)
 
-                    # Do we have a word? At least one of these characters.
-                    converted_word = word
-                    if "&" in word:  # convert entities before checking if there are word chars
-                        word = self.latin1_ents_to_utf8(word)
-                        word = self.convert_other_ents(word)
-                        word_match = check_if_char_word.search(word)
-                        converted_word = word
-                    else:
-                        word_match = check_if_char_word.search(word)
-                    if word_match:
-                        last_word = word
-                        word_pos = current_pos - len(word_in_utf8)
-                        if "&" in word:
-                            word = converted_word  # use the converted word from above
+        if self.break_apost:
+            words = words.replace("'", "\n'\n")
+            words = words.replace("’", "\n’\n")
 
-                        # You may have some semi-colons...
-                        if ";" in word:
-                            if "&" in word:
-                                pass  # TODO
-                            else:
-                                word = semi_colon_strip.sub(r"\1", word)  # strip on both ends
+        word_list = words.split("\n")
+        if len(word_list) > 2:
+            # Drop empty inner items: same as collapsing runs of newlines before splitting
+            word_list = [word_list[0], *[w for w in word_list[1:-1] if w], word_list[-1]]
+        return word_list
 
-                        # Get rid of certain characters that don't break words, but don't index.
-                        # These are defined in a compiled regex below: chars_not_to_index
-                        word = self.chars_not_to_index.sub("", word)
+    def index_words(self, word_list, current_pos):
+        """Index the items of word_list, split by token_regex, which follow each other from byte current_pos on: words,
+        and what's between them (spaces, punctuation), which may end a sentence."""
+        count = 0
+        last_word = ""
+        next_word = ""
+        word_list_length = len(word_list)
+        for word in word_list:
+            word_in_utf8 = word.encode("utf8")
+            word_length = len(word_in_utf8)
+            if count + 1 < word_list_length:
+                next_word = word_list[count + 1]
+            count += 1
 
-                        # TODO: Call a function to distinguish between words beginning with an
-                        # upper case and lower case character.  This USED to be a proper
-                        # name split in ARTFL, but we don't see many databases with proper
-                        # names tagged.
+            # Keep track of your bytes since this is where you are getting
+            # the byte offsets for words.
+            current_pos += word_length
 
-                        # Switch everything to lower case
-                        if self.lowercase_index is True:
-                            word = word.lower()
+            # Do we have a word? At least one of these characters.
+            converted_word = word
+            if "&" in word:  # convert entities before checking if there are word chars
+                word = self.latin1_ents_to_utf8(word)
+                word = self.convert_other_ents(word)
+                word_match = check_if_char_word.search(word)
+                converted_word = word
+            else:
+                word_match = check_if_char_word.search(word)
+            if word_match:
+                last_word = word
+                word_pos = current_pos - len(word_in_utf8)
+                if "&" in word:
+                    word = converted_word  # use the converted word from above
+                word = self.index_form(word)
 
-                        # Check to see if the word is longer than we want.  More than 235
-                        # characters appear to cause problems in the indexer.
-                        if len(word_in_utf8) > self.long_word_limit:
-                            print("Long word in {}: {}".format(self.input.name, word), file=sys.stderr)
-                            print(
-                                f"Removing word from for index since over {self.long_word_limit} bytes long...",
-                                file=sys.stderr,
-                            )
+                # Check to see if the word is longer than we want.  More than 235
+                # characters appear to cause problems in the indexer.
+                if len(word_in_utf8) > self.long_word_limit:
+                    self.skip_long_word(word)
+                    continue
+                if word:
+
+                    if self.defined_words_to_index:
+                        if word not in self.words_to_index:
                             continue
+                    self.push_word(word, word_pos, current_pos)
+                is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
+            else:
+                is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
+                # Sentence break handler
+                if is_sentence_breaker and not self.in_line_group and not self.in_tagged_sentence:
+                    # a little hack--we don't know the punctuation mark that will end a sentence
+                    # until we encounter it--so instead, we let the push on "word" create a
+                    # implicit philo_virtual sentence, then change its name once we actually encounter
+                    # the punctuation token.
+                    sentence_name = word.replace("\t", " ").strip()
+                    self.end_sentence(sentence_name, current_pos, current_pos + len(word.encode("utf8")))
+            if is_sentence_breaker:
+                self.last_sentence_marker = word.replace("\t", " ").strip()
+            if self.punct_regex.search(word):
+                self.push_punct(word, current_pos - len(word.encode("utf8")))
 
-                        word = self.remove_control_chars(word)
-                        word = word.replace("_", "").strip()
-                        word = word.replace(" ", "")
-                        if word:
+    def index_form(self, word):
+        """The form under which a word, its entities converted, is indexed"""
+        # You may have some semi-colons...
+        if ";" in word:
+            if "&" in word:
+                pass  # TODO
+            else:
+                word = semi_colon_strip.sub(r"\1", word)  # strip on both ends
 
-                            if self.defined_words_to_index:
-                                if word not in self.words_to_index:
-                                    continue
-                            self.v.push("word", word, word_pos)
-                            if self.current_tag == "w":
-                                word_record = self.v["word"]
-                                for attrib, value in self.word_tag_attributes:
-                                    word_record[attrib] = value
-                            elif self.lemmas is not None:
-                                if word not in self.lemmas:
-                                    lower_word = word.lower()
-                                    try:
-                                        self.v["word"]["lemma"] = self.lemmas[lower_word]
-                                    except KeyError:
-                                        self.v["word"]["lemma"] = word.lower()
-                                else:
-                                    self.v["word"]["lemma"] = self.lemmas[word]
-                            self.v.pull("word", current_pos)
-                        is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
-                    else:
-                        is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
-                        # Sentence break handler
-                        if is_sentence_breaker and not self.in_line_group and not self.in_tagged_sentence:
-                            # a little hack--we don't know the punctuation mark that will end a sentence
-                            # until we encounter it--so instead, we let the push on "word" create a
-                            # implicit philo_virtual sentence, then change its name once we actually encounter
-                            # the punctuation token.
-                            if "sent" not in self.v:
-                                self.v.push("sent", word.replace("\t", " ").strip(), current_pos)
-                            self.v["sent"].name = word.replace("\t", " ").strip()
-                            self.v.pull("sent", current_pos + len(word.encode("utf8")))
-                    if is_sentence_breaker:
-                        self.last_sentence_marker = word.replace("\t", " ").strip()
-                    if self.punct_regex.search(word):
-                        punc_pos = current_pos - len(word.encode("utf8"))
-                        punct = word.strip()
-                        punct = punct.replace("\t", " ")
-                        punct = self.remove_control_chars(punct)
-                        if punct and not punct.isspace():
-                            self.v.push("punct", punct, punc_pos)
-                            self.v.pull("punct", punc_pos + len(punct.encode("utf8")))
+        # Get rid of certain characters that don't break words, but don't index.
+        # These are defined in a compiled regex below: chars_not_to_index
+        word = self.chars_not_to_index.sub("", word)
+
+        # TODO: Call a function to distinguish between words beginning with an
+        # upper case and lower case character.  This USED to be a proper
+        # name split in ARTFL, but we don't see many databases with proper
+        # names tagged.
+
+        # Switch everything to lower case
+        if self.lowercase_index is True:
+            word = word.lower()
+
+        word = self.remove_control_chars(word)
+        word = word.replace("_", "").strip()
+        return word.replace(" ", "")
+
+    def skip_long_word(self, word):
+        """Words longer than long_word_limit bytes, which appear to cause problems in the indexer, aren't indexed"""
+        print("Long word in {}: {}".format(self.input.name, word), file=sys.stderr)
+        print(f"Removing word from for index since over {self.long_word_limit} bytes long...", file=sys.stderr)
+
+    def push_word(self, word, start_byte, end_byte):
+        """Store a word, with the attributes of its <w> tag or its lemma"""
+        self.v.push("word", word, start_byte)
+        if self.current_tag == "w":
+            word_record = self.v["word"]
+            for attrib, value in self.word_tag_attributes:
+                word_record[attrib] = value
+        elif self.lemmas is not None:
+            if word not in self.lemmas:
+                lower_word = word.lower()
+                try:
+                    self.v["word"]["lemma"] = self.lemmas[lower_word]
+                except KeyError:
+                    self.v["word"]["lemma"] = word.lower()
+            else:
+                self.v["word"]["lemma"] = self.lemmas[word]
+        self.v.pull("word", end_byte)
+
+    def end_sentence(self, name, start_byte, end_byte):
+        """End the sentence (one starting at start_byte, if words haven't started one), named after its punctuation"""
+        if "sent" not in self.v:
+            self.v.push("sent", name, start_byte)
+        self.v["sent"].name = name
+        self.v.pull("sent", end_byte)
+
+    def push_punct(self, punct, start_byte):
+        """Store punctuation, from start_byte, for as many bytes as it has once cleaned up"""
+        punct = punct.strip()
+        punct = punct.replace("\t", " ")
+        punct = self.remove_control_chars(punct)
+        if punct and not punct.isspace():
+            self.v.push("punct", punct, start_byte)
+            self.v.pull("punct", start_byte + len(punct.encode("utf8")))
 
     def is_word_sentence_breaker(self, word, last_word, next_word):
         is_sent = False

@@ -133,39 +133,11 @@ class PlainTextParser:
                     if word:
                         if self.defined_words_to_index is True and word not in self.words_to_index:
                             continue
-                        self.v.push("word", word, start_byte)
-                        if self.lemmas is not None:
-                            if word not in self.lemmas:
-                                lower_word = word.lower()
-                                try:
-                                    self.v["word"]["lemma"] = self.lemmas[lower_word]
-                                except KeyError:
-                                    self.v["word"]["lemma"] = word.lower()
-                            else:
-                                self.v["word"]["lemma"] = self.lemmas[word]
-                        self.v.pull("word", end_byte)
+                        self.push_word(word, start_byte, end_byte)
                         start_byte += len(word_in_utf8)
                         continue
-                if "!" in word or "?" in word:
-                    is_sent = True
-
-                # Periods are messy. Let's try by length of previous word and
-                # capital letters to avoid hitting abbreviations.
-                elif "." in word:
-                    is_sent = True
-                    if len(last_word) < 3:
-                        if cap_char_or_num.search(last_word):
-                            is_sent = False
-
-                    # Periods in numbers don't break sentences.
-                    try:
-                        next_word = words[count + 1]
-                        if next_word is None or next_word.islower() or next_word.isdigit():
-                            is_sent = False
-                    except IndexError:
-                        pass
-                elif word in self.sentence_breakers:
-                    is_sent = True
+                has_next = count + 1 < len(words)
+                is_sent = self.is_sentence_end(word, last_word, has_next, words[count + 1] if has_next else None)
 
                 if is_sent:
                     # a little hack--we don't know the punctuation mark that will end a sentence
@@ -189,8 +161,44 @@ class PlainTextParser:
                         punc_pos = end_pos
 
                 start_byte += len(word_in_utf8)
+
             bytes_read_in += len(line.encode("utf8"))
         self.v.pull("doc", self.filesize)
+
+    def push_word(self, word, start_byte, end_byte):
+        """Store a word, with its lemma"""
+        self.v.push("word", word, start_byte)
+        if self.lemmas is not None:
+            if word not in self.lemmas:
+                lower_word = word.lower()
+                try:
+                    self.v["word"]["lemma"] = self.lemmas[lower_word]
+                except KeyError:
+                    self.v["word"]["lemma"] = word.lower()
+            else:
+                self.v["word"]["lemma"] = self.lemmas[word]
+        self.v.pull("word", end_byte)
+
+    def is_sentence_end(self, word, last_word, has_next, next_word):
+        """Whether what's between two words ends a sentence, after last_word and before next_word, if it has_next"""
+        is_sent = False
+        if "!" in word or "?" in word:
+            is_sent = True
+
+        # Periods are messy. Let's try by length of previous word and
+        # capital letters to avoid hitting abbreviations.
+        elif "." in word:
+            is_sent = True
+            if len(last_word) < 3:
+                if cap_char_or_num.search(last_word):
+                    is_sent = False
+
+            # Periods in numbers don't break sentences.
+            if has_next and (next_word is None or next_word.islower() or next_word.isdigit()):
+                is_sent = False
+        elif word in self.sentence_breakers:
+            is_sent = True
+        return is_sent
 
 
 if __name__ == "__main__":
