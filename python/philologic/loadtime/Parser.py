@@ -338,6 +338,20 @@ ENDING_PUNCTUATION_CHARS = frozenset(chr(i) for i in range(128) if ending_punctu
 TOKEN_CHAR = re.compile(r"[\p{L}\p{M}\p{N}&;]", re.I)  # a character of a TOKEN_REGEX token
 
 
+def byte_positions(text):
+    """A function giving the byte (in UTF-8) of character positions of text, asked for in increasing order"""
+    if text.isascii():
+        return lambda position: position
+    last = [0, 0]  # the position last asked for, and its byte
+
+    def byte(position):
+        last[1] += len(text[last[0] : position].encode("utf8"))
+        last[0] = position
+        return last[1]
+
+    return byte
+
+
 def replace_tag_exceptions(content, tag_exceptions, tag_exception_starts, replacement):
     """Same as tag_exceptions.sub(replacement, content), faster. Matches start with a TOKEN_REGEX token, then a tag
     found by tag_exception_starts (which the token ends before): only the token before such a tag, from its start
@@ -580,10 +594,27 @@ class XMLParser:
         # Replace carriage returns with spaces since they can give us all kinds of difficulties.
         self.content = self.content.replace("\r", " ")
 
+        # What cleanup_content takes out (soft hyphens, tag exceptions), it replaces with a "_" for each byte, which
+        # isn't text: start byte of each run of them -> its end byte (see index_words)
+        self.placeholders = {}
+        self.word_ends = {}  # end byte of a word joined across tag exceptions -> the end byte of its text in the file
+
+        def placeholder(content):
+            """A function replacing a match in content with a "_" for each of its bytes, which it records"""
+            byte = byte_positions(content)
+
+            def replace(match):
+                start = byte(match.start())
+                length = len(match.group().encode("utf8"))
+                self.placeholders[start] = start + length
+                return "_" * length
+
+            return replace
+
         # Join hyphens
         if self.join_hyphen_in_words:
-            self.content = join_hyphen_with_lb.sub(lambda match: "_" * len(match.group(1)), self.content)
-            self.content = join_hyphen.sub(lambda match: "_" * len(match.group(1)), self.content)
+            self.content = join_hyphen_with_lb.sub(placeholder(self.content), self.content)
+            self.content = join_hyphen.sub(placeholder(self.content), self.content)
 
         # Replace newlines with spaces.  Remember that we have seen lots of
         # tags with newlines, which can make a mess of things.
@@ -593,20 +624,27 @@ class XMLParser:
         if self.abbrev_expand:
             self.content = abbrev_expand.sub("\1\4\3\2\5", self.content)
 
-        # An experimental inword tag spanner. For selected tags between letters, this replaces the tag with "_"
-        # (in order to keep the byte count).  This is to allow indexing of words broken by tags.
-        def replace_tag(m):
-            if m[-1] is not None:
-                return f"""{m[0]}{m[2]}{m[4]}{"_" * len(m[1])}{"_" * len(m[3])}"""
-            else:
-                return f"""{m[0]}{m[2]}{"_" * (len(m[1])+len(m[3]))}"""
+        # An experimental inword tag spanner. For selected tags between letters, this takes the tags out of the word,
+        # putting a "_" for each of their bytes after it (in order to keep the byte count).  This is to allow indexing
+        # of words broken by tags. The word's text ends in the file after the tags inside it.
+        byte = byte_positions(self.content)
+
+        def replace_tag(match):
+            m = match.groups()
+            start = byte(match.start())
+            word = f"{m[0]}{m[2]}{m[4] or ''}"
+            word_end = start + len(word.encode("utf8"))
+            text_end = start + len((match.group() if m[-1] is not None else m[0] + m[1] + m[2]).encode("utf8"))
+            self.word_ends[word_end] = text_end
+            self.placeholders[word_end] = start + len(match.group().encode("utf8"))
+            return word + "_" * (self.placeholders[word_end] - word_end)
 
         if self.tag_exception_starts is not None:
             self.content = replace_tag_exceptions(
-                self.content, self.tag_exceptions, self.tag_exception_starts, lambda match: replace_tag(match.groups())
+                self.content, self.tag_exceptions, self.tag_exception_starts, replace_tag
             )
         elif self.tag_exceptions is not None:
-            self.content = self.tag_exceptions.sub(lambda match: replace_tag(match.groups()), self.content)
+            self.content = self.tag_exceptions.sub(replace_tag, self.content)
 
         # Add newlines to the beginning and end of all tags
         self.content = self.content.replace("<", "\n<").replace(">", ">\n")
@@ -845,9 +883,9 @@ class XMLParser:
         self.v.pull("line", self.bytes_read_in)
 
     def handle_sentence(self, tag, tag_name, start_byte):
-        """Sentence tags: a new sentence, which turns off automatic sentence tagging"""
+        """Sentence tags: a new sentence, which turns off automatic sentence tagging. The last one ends where it starts."""
         if self.open_sent or self.in_tagged_sentence:
-            self.close_sent(self.bytes_read_in)
+            self.close_sent(start_byte)
         self.v.push("sent", tag_name, start_byte)
         self.in_tagged_sentence = True
         self.open_sent = True
@@ -1064,7 +1102,9 @@ class XMLParser:
 
     def index_words(self, word_list, current_pos):
         """Index the items of word_list, split by token_regex, which follow each other from byte current_pos on: words,
-        and what's between them (spaces, punctuation), which may end a sentence."""
+        and what's between them (spaces, punctuation), which may end a sentence. Each gets the bytes of its text in the
+        file: a word joined across tag exceptions ends after the tags inside it, and what's between words leaves out
+        the spaces around it and the "_" standing for what cleanup_content took out."""
         count = 0
         last_word = ""
         next_word = ""
@@ -1079,6 +1119,10 @@ class XMLParser:
             # Keep track of your bytes since this is where you are getting
             # the byte offsets for words.
             current_pos += word_length
+            item_start = current_pos - word_length
+            if self.placeholders and item_start in self.placeholders:  # not text: left out
+                placeholder_length = self.placeholders[item_start] - item_start
+                word, item_start = word[placeholder_length:], item_start + placeholder_length
 
             # Do we have a word? At least one of these characters.
             converted_word = word
@@ -1106,7 +1150,7 @@ class XMLParser:
                     if self.defined_words_to_index:
                         if word not in self.words_to_index:
                             continue
-                    self.push_word(word, word_pos, current_pos)
+                    self.push_word(word, word_pos, self.word_ends.get(current_pos, current_pos))
                 is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
             else:
                 is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
@@ -1116,12 +1160,20 @@ class XMLParser:
                     # until we encounter it--so instead, we let the push on "word" create a
                     # implicit philo_virtual sentence, then change its name once we actually encounter
                     # the punctuation token.
-                    sentence_name = word.replace("\t", " ").strip()
-                    self.end_sentence(sentence_name, current_pos, current_pos + len(word.encode("utf8")))
+                    self.end_sentence(word.replace("\t", " ").strip(), *self.text_bytes(word, item_start, current_pos))
             if is_sentence_breaker:
                 self.last_sentence_marker = word.replace("\t", " ").strip()
             if self.punct_regex.search(word):
-                self.push_punct(word, current_pos - len(word.encode("utf8")))
+                self.push_punct(word, *self.text_bytes(word, item_start, current_pos))
+
+    @staticmethod
+    def text_bytes(item, start_byte, end_byte):
+        """The start and end bytes of the text of an item from start_byte to end_byte, without the spaces around it"""
+        stripped = item.strip()
+        if not stripped:
+            return start_byte, end_byte
+        start_byte += len(item[: len(item) - len(item.lstrip())].encode("utf8"))
+        return start_byte, end_byte - len(item[len(item.rstrip()) :].encode("utf8"))
 
     def index_form(self, word):
         """The form under which a word, its entities converted, is indexed"""
@@ -1179,14 +1231,14 @@ class XMLParser:
         self.v["sent"].name = name
         self.v.pull("sent", end_byte)
 
-    def push_punct(self, punct, start_byte):
-        """Store punctuation, from start_byte, for as many bytes as it has once cleaned up"""
+    def push_punct(self, punct, start_byte, end_byte=None):
+        """Store punctuation: from start_byte to end_byte, or for as many bytes as it has once cleaned up"""
         punct = punct.strip()
         punct = punct.replace("\t", " ")
         punct = self.remove_control_chars(punct)
         if punct and not punct.isspace():
             self.v.push("punct", punct, start_byte)
-            self.v.pull("punct", start_byte + len(punct.encode("utf8")))
+            self.v.pull("punct", start_byte + len(punct.encode("utf8")) if end_byte is None else end_byte)
 
     def is_word_sentence_breaker(self, word, last_word, next_word):
         is_sent = False

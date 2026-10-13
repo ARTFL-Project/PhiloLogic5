@@ -132,36 +132,15 @@ class PlainTextParser:
                     word = word.replace(" ", "")
                     if word:
                         if self.defined_words_to_index is True and word not in self.words_to_index:
+                            start_byte += len(word_in_utf8)
                             continue
                         self.push_word(word, start_byte, end_byte)
                         start_byte += len(word_in_utf8)
                         continue
                 has_next = count + 1 < len(words)
                 is_sent = self.is_sentence_end(word, last_word, has_next, words[count + 1] if has_next else None)
-
-                if is_sent:
-                    # a little hack--we don't know the punctuation mark that will end a sentence
-                    # until we encounter it--so instead, we let the push on "word" create a
-                    # implicit philo_virtual sentence, then change its name once we actually encounter
-                    # the punctuation token.
-                    if "sent" not in self.v:
-                        self.v.push("sent", word.replace("\t", " ").strip(), start_byte)
-                    self.v["sent"].name = word.replace("\t", " ").strip()
-                    self.v.pull("sent", start_byte + len(word.encode("utf8")))
-                elif self.punct_regex.search(word):
-                    punc_pos = start_byte
-                    punct = word.strip()
-                    punct = punct.replace("\t", " ")
-                    punct = "".join(c for c in punct if unicodedata.category(c)[0] != "C")  # remove control characters
-                    for single_punct in punct:
-                        end_pos = len(single_punct.encode("utf8"))
-                        if single_punct != " ":
-                            self.v.push("punct", single_punct, punc_pos)
-                            self.v.pull("punct", punc_pos + len(single_punct.encode("utf8")))
-                        punc_pos = end_pos
-
+                self.index_between_words(word, start_byte, end_byte, is_sent)
                 start_byte += len(word_in_utf8)
-
             bytes_read_in += len(line.encode("utf8"))
         self.v.pull("doc", self.filesize)
 
@@ -199,6 +178,32 @@ class PlainTextParser:
         elif word in self.sentence_breakers:
             is_sent = True
         return is_sent
+
+    def index_between_words(self, text, start_byte, end_byte, is_sent):
+        """Index what's between two words, from start_byte to end_byte: the end of a sentence, or else its punctuation,
+        each with the exact bytes of its characters in the file, without the spaces around them"""
+        stripped = text.strip()
+        if not stripped:
+            return
+        start_byte += len(text[: len(text) - len(text.lstrip())].encode("utf8"))
+        end_byte -= len(text[len(text.rstrip()) :].encode("utf8"))
+        if is_sent:
+            # a little hack--we don't know the punctuation mark that will end a sentence
+            # until we encounter it--so instead, we let the push on "word" create a
+            # implicit philo_virtual sentence, then change its name once we actually encounter
+            # the punctuation token.
+            name = text.replace("\t", " ").strip()
+            if "sent" not in self.v:
+                self.v.push("sent", name, start_byte)
+            self.v["sent"].name = name
+            self.v.pull("sent", end_byte)
+        elif self.punct_regex.search(text):
+            for character in stripped:
+                character_end = start_byte + len(character.encode("utf8"))
+                if character not in " \t" and unicodedata.category(character)[0] != "C":  # (control characters)
+                    self.v.push("punct", character, start_byte)
+                    self.v.pull("punct", character_end)
+                start_byte = character_end
 
 
 if __name__ == "__main__":
