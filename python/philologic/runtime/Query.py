@@ -699,16 +699,81 @@ def query_parse(query_terms, config):
 
     With ascii_conversion, typographic apostrophes and hyphens (’, ‐, –) are first made their ASCII twins, so that the
     rules for ' and - apply to them too: aujourd’hui gave 0 where aujourd'hui gives 61,505 in frantext. Without it,
-    the index keeps forms as they are, so they are left alone."""
+    the index keeps forms as they are, so they are left alone.
+
+    A word the rules would change is left whole when the index has it whole: aujourd'hui and peut-être stay words of
+    their own in a database whose words spaCy's tokenizer split (see the language load option), where l'homme and
+    dit-il are still split, into the words the index has."""
     db_locals = getattr(config, "db_locals", None)
     twins = db_locals is not None and db_locals["ascii_conversion"] is True
+    rules = config.query_parser_regex
     parts = re.split(r"(\[[^\]]*\])", query_terms)
-    for i in range(0, len(parts), 2):  # those between the protected ones
-        if twins:
-            parts[i] = parts[i].translate(TYPOGRAPHIC_TWINS)
-        for pattern, replacement in config.query_parser_regex:
-            parts[i] = re.sub(rf"{pattern}", rf"{replacement}", parts[i])
+    with IndexedWords(config) as indexed:
+        for i in range(0, len(parts), 2):  # those between the protected ones
+            if twins:
+                parts[i] = parts[i].translate(TYPOGRAPHIC_TWINS)
+            rewritten = apply_rules(parts[i], rules)
+            if rewritten == parts[i]:  # most often: nothing to rewrite, so no word to look up
+                continue
+            pieces, start = [], 0  # the rules apply to all but the words left whole
+            for word in re.finditer(r"\S+", parts[i]):
+                if NOT_A_WORD_CHARACTER.search(word.group()) and indexed(word.group().strip('"')):
+                    pieces += [apply_rules(parts[i][start : word.start()], rules), word.group()]
+                    start = word.end()
+            parts[i] = "".join(pieces) + apply_rules(parts[i][start:], rules) if pieces else rewritten
     return "".join(parts)
+
+
+NOT_A_WORD_CHARACTER = re.compile(r"[^\p{L}\p{M}\p{N}]")  # in a word the rules may split, which the index may have
+
+
+def apply_rules(text, rules):
+    """text with the query_parser_regex rules applied"""
+    for pattern, replacement in rules:
+        text = re.sub(rf"{pattern}", rf"{replacement}", text)
+    return text
+
+
+class IndexedWords:
+    """Whether the index of the database of a web config has a word (as a search for it would find it), its index
+    opened the first time it's asked"""
+
+    def __init__(self, config):
+        db_path = getattr(config, "db_path", None)
+        self.path = None
+        if db_path:
+            self.ascii_conversion = config.db_locals["ascii_conversion"] is True
+            self.lowercase = config.db_locals["lowercase_index"] is not False
+            index = "frequencies/normalized_word_frequencies.lmdb" if self.ascii_conversion else "words.lmdb"
+            self.path = os.path.join(db_path, "data", index)
+        self.env = self.txn = None
+        self.context = None
+
+    def __enter__(self):
+        return self
+
+    def __call__(self, word):
+        if self.path is None or not word:
+            return False
+        if self.txn is None:
+            if not os.path.exists(self.path):
+                self.path = None
+                return False
+            self.context = lmdb_env(self.path)
+            self.env = self.context.__enter__()
+            self.txn = self.env.begin(buffers=True)
+        if self.ascii_conversion:
+            from philologic.runtime.term_expansion import _norm_key  # lazy, as in write_terms_file
+
+            key = _norm_key(word, self.lowercase)
+        else:
+            key = (word.lower() if self.lowercase else word).encode("utf-8")
+        return bool(key) and self.txn.get(key) is not None
+
+    def __exit__(self, *exception):
+        if self.txn is not None:
+            self.txn.abort()
+            self.context.__exit__(None, None, None)
 
 
 # The search methods: those of the search form, and those they resolve to (which links of the client use too)
