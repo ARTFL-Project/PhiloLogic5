@@ -188,7 +188,6 @@ doc_body_tag = re.compile(r"<docbody", re.I)
 body_tag = re.compile(r"<body\W", re.I)
 div_tag = re.compile(r"<div", re.I)
 closed_div_tag = re.compile(r"<\/div", re.I)
-para_tag = re.compile(r"<p\W", re.I)
 page_tag = re.compile(r"<pb\W", re.I)
 attrib_matcher = re.compile(r"""(\S+)="?((?:.(?!"?\s+(?:\S+)=|[>"]))+.)"?""", re.I)
 tag_matcher = re.compile(r"<(\/?\w+)[^>]*>?", re.I)
@@ -293,10 +292,6 @@ entity_regex = [
 # -> (regex which the tag must match, handler method). The regexes match tags starting with different names: a tag has
 # one handler at most.
 TAG_HANDLERS = {
-    "text": (text_tag, "handle_text"),
-    "/text": (re.compile(r"</text\W", re.I), "handle_text_end"),
-    "q": (re.compile(r"<q[ >]", re.I), "handle_quote"),
-    "/q": (re.compile(r"</q\W", re.I), "handle_quote_end"),
     "p": (re.compile(r"<p[ >]", re.I), "handle_paragraph"),
     "note": (re.compile(r"<note\W", re.I), "handle_note"),
     "/note": (re.compile(r"</note\W", re.I), "handle_note_end"),
@@ -405,7 +400,6 @@ class XMLParser:
         """Initialize class"""
         self.types = ["doc", "div1", "div2", "div3", "para", "sent", "word"]
         self.parallel_type = "page"
-        self.output = output
         self.docid = docid
         self.tag_to_obj_map = tag_to_obj_map
         self.metadata_to_parse = {}
@@ -532,10 +526,7 @@ class XMLParser:
 
         self.lowercase_index = lowercase_index
         self.in_the_text = False
-        self.in_text_quote = False
         self.in_front_matter = False
-        self.in_quote_text_tag = False
-        self.do_this_para = True
         self.in_a_note = False
         self.no_deeper_objects = False
         self.in_line_group = False
@@ -547,13 +538,9 @@ class XMLParser:
         self.open_page = False
         self.in_tagged_sentence = False
         self.got_a_div = False
-        self.got_a_para = False
         self.context_div_level = 0
         self.current_tag = "doc"
-        self.in_a_word_tag = False
         self.current_div_id = ""
-        self.current_div_level = 0
-        self.in_seg = False
 
         self.last_sentence_marker = ""  # Caching the last sentence marker in case we need it for <s> tags
 
@@ -563,8 +550,6 @@ class XMLParser:
         self.content = text_input.read()
         if div_tag.search(self.content):
             self.got_a_div = True
-        if para_tag.search(self.content):
-            self.got_a_para = True
         self.cleanup_content()
 
         # Begin by creating a document level object, just call it "text" for now.
@@ -864,20 +849,6 @@ class XMLParser:
 
     # Tag handlers (see TAG_HANDLERS): each gets the tag, its name and its start byte
 
-    def handle_text(self, tag, tag_name, start_byte):
-        """<text> inside a <q>"""
-        if self.in_text_quote:
-            self.in_quote_text_tag = True
-
-    def handle_text_end(self, tag, tag_name, start_byte):
-        self.in_quote_text_tag = False
-
-    def handle_quote(self, tag, tag_name, start_byte):
-        self.in_text_quote = True
-
-    def handle_quote_end(self, tag, tag_name, start_byte):
-        self.in_text_quote = False
-
     def handle_paragraph(self, tag, tag_name, start_byte):
         """Paragraphs, but in notes and objects blocking deeper objects"""
         if self.in_a_note or self.no_deeper_objects:
@@ -1174,7 +1145,7 @@ class XMLParser:
                 self.v[object_level].attrib[metadata] = extract_integer(value)
             else:
                 self.v[object_level].attrib[metadata] = value
-        except KeyError as e:
+        except KeyError:
             try:
                 self.v[object_level].attrib[metadata] = value
             except Exception:
@@ -1388,14 +1359,12 @@ class XMLParser:
         self.v["sent"].name = name
         self.v.pull("sent", end_byte)
 
-    def push_punct(self, punct, start_byte, end_byte=None):
-        """Store punctuation: from start_byte to end_byte, or for as many bytes as it has once cleaned up"""
+    def push_punct(self, punct, start_byte, end_byte):
+        """Store punctuation, from start_byte to end_byte"""
         punct = punct.strip()
         punct = punct.replace("\t", " ")
         punct = self.remove_control_chars(punct)
         if punct and not punct.isspace():
-            if end_byte is None:
-                end_byte = start_byte + len(punct.encode("utf8"))
             start_byte, end_byte = self.file_bytes(start_byte, end_byte)
             self.v.push("punct", punct, start_byte)
             self.v.pull("punct", end_byte)

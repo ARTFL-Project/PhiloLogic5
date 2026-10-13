@@ -68,10 +68,8 @@ SORT_BY_WORD = "-k 2,2"
 SORT_BY_ID = "-k 3,3n -k 4,4n -k 5,5n -k 6,6n -k 7,7n -k 8,8n -k 9,9n"
 OBJECT_TYPES = ["doc", "div1", "div2", "div3", "para", "sent", "word"]
 
-BLOCKSIZE = 2048  # index block size.  Don't alter.
 SPLIT_SORTED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "split_sorted.py")  # run by merge_ranges
 RANGE_ATTRIBUTES = {"words": "word_ranges", "lemmas": "lemma_ranges"}  # Loader attributes where merge_ranges keeps them
-INDEX_CUTOFF = 10  # index frequency cutoff.  Don't alter.
 
 DEFAULT_TABLES = ("toms", "pages", "refs", "graphics", "lines")
 
@@ -2112,11 +2110,6 @@ class Loader:
         with open(os.path.join(filename), "w", encoding="utf8") as output_file:
             print(format_str(str(web_config), mode=FileMode()), file=output_file)
         print(f"wrote Web application info to {filename}")
-
-
-def shellquote(s):
-    """Quote shell commands"""
-    return "'" + s.replace("'", "'\\''") + "'"
 
 
 def setup_db_dir(db_destination, force_delete=False):
