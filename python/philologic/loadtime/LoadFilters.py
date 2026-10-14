@@ -53,12 +53,17 @@ def generate_words_sorted(loader_obj, text):
 
 
 def spacy_tagger(loader_obj, text):
-    """Tag words with Spacy: their token, as the tokenizer split it, when the indexed word is less than it (see
-    XMLParser.index_tokens). The words of a token after its first (peut-être has two), whose spacy_token is empty, are
-    tagged with the first: they get no tags of their own."""
+    """Tag words with Spacy, a sentence at a time: their token, as the tokenizer split it, when the indexed word is less
+    than it (see XMLParser.index_tokens), and the punctuation of the sentence. The words of a token after its first
+    (peut-être has two), whose spacy_token is empty, are tagged with the first: they get no tags of their own. A
+    sentence is the words and punctuation up to its sent record, which isn't tagged, and the punctuation after it
+    which ends it (within its bytes: these records don't have the sentence's id)."""
     from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
 
     def token(record):
+        """What spaCy tags for a record: nothing for a sentence, or a word of a token after its first"""
+        if record.type == "sent":
+            return ""
         return record.attrib.get("spacy_token", record.name)
 
     def tokens(records):
@@ -67,19 +72,22 @@ def spacy_tagger(loader_obj, text):
     def process_file():
         with open(text["raw"], encoding="utf8") as fh:
             sentence_records = []
-            current_sent_id = None
+            sentence_end = None  # end byte of the sent record of sentence_records, once it has come
             for line in fh:
                 philo_type, word, philo_id, attrib = line.split("\t")
                 if philo_type in ("word", "sent", "punct"):
-                    sent_id = " ".join(philo_id.split()[:6])
                     record = Record(philo_type, word, philo_id.split())
                     record.attrib = loads(attrib)
-                    if current_sent_id is not None and sent_id != current_sent_id:
+                    if sentence_end is not None and (
+                        philo_type == "word" or (philo_type == "punct" and record.attrib["end_byte"] > sentence_end)
+                    ):
                         spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, tokens(sentence_records))
                         yield spacy_sentence, sentence_records
                         sentence_records = []
+                        sentence_end = None
                     sentence_records.append(record)
-                    current_sent_id = sent_id
+                    if philo_type == "sent":
+                        sentence_end = record.attrib["end_byte"]
             if sentence_records:
                 spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, tokens(sentence_records))
                 yield spacy_sentence, sentence_records

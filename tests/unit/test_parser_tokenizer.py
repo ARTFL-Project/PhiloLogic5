@@ -327,3 +327,40 @@ def test_tagger_gets_tokens(tmp_path):
     ]
     tagged_words = [json.loads(attrib) for kind, _, _, attrib in tagged if kind == "word"]
     assert "pos" in tagged_words[4] and "pos" not in tagged_words[5]  # the second word of peut-être isn't tagged
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("language", [None, "fr"])
+def test_tagger_gets_sentences(tmp_path, language):
+    """The tagger tags a sentence at a time: its words and punctuation, with what ends it once (its sent record has it
+    too), and nothing for a sentence without punctuation (its sent record is __philo_virtual)"""
+    import spacy
+    from philologic.loadtime.LoadFilters import spacy_tagger
+
+    class Tagger:
+        """A pipeline which tags nothing, and keeps the sentences it's given"""
+
+        vocab = spacy.blank("fr").vocab
+        sentences = []
+
+        def pipe(self, documents, as_tuples, batch_size):
+            for document, context in documents:
+                self.sentences.append([token.text for token in document])
+                yield document, context
+
+    raw = tmp_path / "raw"
+    xml = "<text><body><div><p>Il vient. « Elle part ! » Oui, dit-il.</p><p>Sans point</p></div></body></text>"
+    with open(raw, "w", encoding="utf8") as output:
+        XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}, language=language).parse(io.StringIO(xml))
+    parsed = [line.split("\t")[:2] for line in raw.read_text(encoding="utf8").split("\n")[:-1]]
+    loader = type("Loader", (), {"nlp": Tagger()})
+    spacy_tagger(loader, {"raw": str(raw)})
+    sentences = {
+        "fr": [["Il", "vient", ". «"], ["Elle", "part", "! »"], ["Oui", ",", "dit", "-il", "."], ["Sans", "point"]],
+        None: [["il", "vient", ". «"], ["elle", "part", "! »"], ["oui", ",", "dit", "-", "il", "."], ["sans", "point"]],
+    }
+    assert loader.nlp.sentences == sentences[language]
+    tagged = [line.split("\t") for line in raw.read_text(encoding="utf8").split("\n")[:-1]]
+    kept = [record[:2] for record in parsed if record[0] in ("word", "sent", "punct")]
+    assert [record[:2] for record in tagged] == kept  # in the same order
+    assert all(("pos" in json.loads(attrib)) == (kind != "sent") for kind, _, _, attrib in tagged)
