@@ -161,6 +161,15 @@ OPTIONS = [
         allow_empty=False,
     ),
     Option(
+        "language",
+        "string",
+        None,
+        "tokenization",
+        "Language of the texts, as a spaCy language code (fr, en, la...). If spaCy supports it, its tokenizer for "
+        "that language splits words instead of token_regex.",
+        basic=True,
+    ),
+    Option(
         "token_regex",
         "regex",
         Parser.TOKEN_REGEX,
@@ -229,7 +238,8 @@ OPTIONS = [
         "bool",
         True,
         "tokenization",
-        'Index abbreviations under their expansion, as in <abbr expan="en">&emacr;</abbr>.',
+        'Index abbreviations under their expansion: pres<abbr expan="en">&emacr;</abbr>t is the word present. The '
+        "words of an expansion get the bytes of what they stand for in the text.",
     ),
     Option(
         "flatten_ligatures",

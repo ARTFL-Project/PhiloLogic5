@@ -1,6 +1,7 @@
 """Unit tests for XMLParser."""
 
 import io
+import json
 import random
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ from philologic.loadtime.Parser import (
     DEFAULT_DOC_XPATHS,
     TOKEN_REGEX,
 )
+from philologic.loadtime.PlainTextParser import PlainTextParser
 
 
 @pytest.mark.unit
@@ -182,6 +184,71 @@ class TestTagExceptions:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "body, records",
+    [
+        ("Ga<hi/>maliel</hi>; Act", [("word", "Ga<hi/>maliel"), ("punct", ";"), ("word", "Act")]),
+        ('<hi>Laugh<hi rend="x"/>ter;</hi> x', [("word", 'Laugh<hi rend="x"/>ter'), ("punct", ";"), ("word", "x")]),
+        ("Ga<hi/>;</hi> x", [("word", "Ga"), ("punct", ";"), ("word", "x")]),
+        (
+            "in-4<sup>o</sup>. Elle",
+            [("word", "in"), ("punct", "-"), ("word", "4<sup>o"), ("punct", "."), ("word", "Elle")],
+        ),
+    ],
+)
+def test_words_joined_across_tags_before_a_semicolon(body, records):
+    """A word joined across tag exceptions ends where its text does, and a semicolon right after its tags (which the
+    entity alternative of TOKEN_REGEX let the join take) keeps its own bytes"""
+    xml = f"<text><body><div><p>{body}</p></div></body></text>"
+    output = io.StringIO()
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
+    data = xml.encode("utf8")
+    found = []
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, _, _, attrib = line.split("\t")
+        if kind in ("word", "punct"):
+            attrib = json.loads(attrib)
+            found.append((kind, data[attrib["start_byte"] : attrib["end_byte"]].decode("utf8")))
+    assert found == records
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "body, words",
+    [
+        ('ex<g ref="char:EOLhyphen"/>ecution', [("execution", 'ex<g ref="char:EOLhyphen"/>ecution')]),
+        ("co<g>\u0304</g>mo<g>\u0304</g>s", [("co\u0304mo\u0304s", "co<g>\u0304</g>mo<g>\u0304</g>s")]),  # (abbreviation strokes)
+        ("x<hi>y</hi>z<hi>w</hi>", [("xyzw", "x<hi>y</hi>z<hi>w")]),
+        ("wo<hi><i>r</i></hi>d", [("word", "wo<hi><i>r</i></hi>d")]),
+        ("expedient<lb/>demourer", [("expedient", "expedient"), ("demourer", "demourer")]),
+    ],
+)
+def test_words_joined_across_tags(body, words):
+    """Tag exceptions don't split words, one or several, in a row or not: other tags do"""
+    xml = f"<text><body><div><p>{body} end</p></div></body></text>"
+    output = io.StringIO()
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
+    data = xml.encode("utf8")
+    found = []
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, name, _, attrib = line.split("\t")
+        if kind == "word":
+            attrib = json.loads(attrib)
+            found.append((name, data[attrib["start_byte"] : attrib["end_byte"]].decode("utf8")))
+    assert found == words + [("end", "end")]
+
+
+@pytest.mark.unit
+def test_abbreviation_joined_across_tags():
+    """The tag after a word joined across tags is taken out with it: the abbreviation M<hi>r</hi>. ends no sentence"""
+    xml = '<text><body><div><p>M<hi rend="sup">r</hi>. Smith came.</p></div></body></text>'
+    output = io.StringIO()
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
+    sentences = [line.split("\t")[1] for line in output.getvalue().split("\n")[:-1] if line.startswith("sent\t")]
+    assert sentences == ["."]
+
+
+@pytest.mark.unit
 def test_remove_control_chars():
     """Same as removing them with control_char_re, for every character"""
     parser = plain_parser()
@@ -236,3 +303,157 @@ def test_compound_record_str():
         for _ in range(2):  # the printed id grows at each call
             assert str(new) == compound_record_str(old)
             assert new.id == old.id and new.attrib == old.attrib
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("language", [None, "fr"])
+def test_lowercase_after_exclamation_and_question_marks(language):
+    """! and ? end a sentence, unless a word in lowercase follows: an interjection, or the words introducing what was
+    said, go on with it"""
+    xml = "<text><body><div><p>Ah! mon Dieu! Viens-tu ? » dit-il. Non? Oui!</p></div></body></text>"
+    output = io.StringIO()
+    options = {"language": language} if language else {}
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}, **options).parse(io.StringIO(xml))
+    sentences = {}
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, name, philo_id, _ = line.split("\t")
+        if kind == "word":
+            sentences.setdefault(philo_id.split()[5], []).append(name)
+    assert list(sentences.values()) == [["ah", "mon", "dieu"], ["viens", "tu", "dit", "il"], ["non"], ["oui"]]
+
+
+@pytest.mark.unit
+def test_lowercase_after_exclamation_and_question_marks_in_plain_text():
+    from philologic.loadtime.PlainTextParser import PlainTextParser
+
+    text = "Ah! mon Dieu! Viens-tu ? dit-il. Non? Oui!\n"
+    output = io.StringIO()
+    PlainTextParser(output, 1, len(text.encode("utf8"))).parse(io.StringIO(text))
+    sentences = {}
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, name, philo_id, _ = line.split("\t")
+        if kind == "word":
+            sentences.setdefault(philo_id.split()[5], []).append(name)
+    assert list(sentences.values()) == [["ah", "mon", "dieu"], ["viens", "tu", "dit", "il"], ["non"], ["oui"]]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("language", [None, "fr"])
+def test_abbreviations_are_indexed_as_their_expansion(language):
+    """The words of an expansion get the bytes of what they stand for in the file: of the word they expand, if the
+    abbreviation has as many words, else all of it; a word joined across an abbreviation spans all its text"""
+    xml = (
+        '<text><body><div><p>avant <abbr expan="Valerius Maximus">Val. Max.</abbr> pres<abbr expan="en">&emacr;</abbr>t '
+        '<abbr expan="que">q&#772;</abbr>dam <abbr expan="Saint Augustin">S. A. H.</abbr> <abbr>etc</abbr> '
+        '<abbr expan="donatus es"><w>donatu</w>\'<w>s</w></abbr> <abbr expan="unus">u<pb n="2"/>n.</abbr></p></div>'
+        "</body></text>"
+    )
+    output = io.StringIO()
+    options = {"language": language} if language else {}
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}, **options).parse(io.StringIO(xml))
+    data = xml.encode("utf8")
+    words = []
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, name, _, attrib = line.split("\t")
+        if kind == "word":
+            attrib = json.loads(attrib)
+            words.append((name, data[attrib["start_byte"] : attrib["end_byte"]].decode("utf8")))
+    assert words == [
+        ("avant", "avant"),
+        ("valerius", "Val."),
+        ("maximus", "Max."),
+        ("present", 'pres<abbr expan="en">&emacr;</abbr>t'),
+        ("quedam", "q&#772;</abbr>dam"),
+        ("saint", "S. A. H."),
+        ("augustin", "S. A. H."),
+        ("etc", "etc"),
+        ("donatus", "donatu</w>'<w>s"),  # tags inside it, as <w>, dropped
+        ("es", "donatu</w>'<w>s"),
+        ("u", "u"),  # tags inside it which make objects (a page): left as it is
+        ("n", "n"),
+    ]
+    def test_header_values_keep_xml_entities(self, tmp_path):
+        """Test that &amp; and &lt; in a TEI header are decoded, without losing the text after them."""
+        from philologic.loadtime.Loader import Loader
+
+        (tmp_path / "text.xml").write_text(
+            "<TEI><teiHeader><titleStmt><title>Letters &amp;c. Printed at Boston</title>"
+            "<author>Becket &amp; DeHondt</author></titleStmt>"
+            "<sourceDesc><bibl><pubPlace>1 &lt; 2 &eacute;</pubPlace></bibl></sourceDesc></teiHeader>"
+            "<text><body><p>text</p></body></text></TEI>",
+            encoding="utf8",
+        )
+        loader = Loader.__new__(Loader)
+        loader.textdir = str(tmp_path)
+        loader.deleted_files = []
+        loader.debug = False
+        loader.parser_config = {
+            "doc_xpaths": {
+                "title": [".//titleStmt/title"],
+                "author": [".//titleStmt/author"],
+                "pub_place": [".//sourceDesc/bibl/pubPlace"],
+            },
+            "metadata_sql_types": {},
+        }
+        [metadata] = loader.parse_tei_header(verbose=False)
+        assert metadata["title"] == "Letters &c. Printed at Boston"
+        assert metadata["author"] == "Becket & DeHondt"
+        assert metadata["pub_place"] == "1 < 2 é"
+
+
+def parse_div_head(head):
+    """Parse a div with the given head, and return the head the parser gives the div."""
+    text = f'<TEI><text><body><div type="chapter">\n{head}\n<p>Some text.</p>\n</div></body></text></TEI>\n'
+    output = io.StringIO()
+    parser = XMLParser(output, 1, len(text.encode()), known_metadata={"filename": "t.xml"}, metadata_sql_types={})
+    parser.parse(io.StringIO(text))
+    for line in output.getvalue().splitlines():
+        if line.startswith("div1"):
+            return json.loads(line.split("\t")[3])["head"]
+
+
+@pytest.mark.unit
+class TestDivHead:
+    """Tests for the heads of divs, as table of contents labels."""
+
+    @pytest.mark.parametrize(
+        "head, expected",
+        [
+            ("<head>HISTOIRE<lb/>\nDES COLONIES</head>", "HISTOIRE DES COLONIES"),
+            ("<head>HISTOIRE<lb/>DES COLONIES</head>", "HISTOIRE DES COLONIES"),
+            ('<head>PROS<lb break="no"/>\nPERITE</head>', "PROSPERITE"),
+            ("<head>CHAPITRE I.</head><head>Des Colonies</head>", "CHAPITRE I. Des Colonies"),
+            ('<head><hi rend="initial">L</hi>ETTRES</head>', "LETTRES"),
+            ('<head>1<hi rend="sup">re</hi> PARTIE</head>', "1re PARTIE"),
+            ("<head></head>", "chapter"),
+        ],
+    )
+    def test_head(self, head, expected):
+        """Test that tags break words in heads as in the index, and that heads are kept apart."""
+        assert parse_div_head(head) == expected
+
+
+@pytest.mark.unit
+def test_long_s_is_indexed_as_s():
+    """Test that words with a long s are indexed with an s, at the bytes of the long s form."""
+    text = "<TEI><text><body><div><p>Ils ſont Chriſtiens.</p></div></body></text></TEI>\n"
+    output = io.StringIO()
+    parser = XMLParser(output, 1, len(text.encode()), known_metadata={"filename": "t.xml"}, metadata_sql_types={})
+    parser.parse(io.StringIO(text))
+    words = [line.split("\t") for line in output.getvalue().splitlines() if line.startswith("word")]
+    assert [word[1] for word in words] == ["ils", "sont", "christiens"]
+    sont = json.loads(words[1][3])
+    assert text.encode()[sont["start_byte"] : sont["end_byte"]].decode() == "ſont"
+
+
+@pytest.mark.unit
+def test_long_s_is_indexed_as_s_in_plain_text():
+    """Test that the plain text parser indexes words with a long s with an s too, at the bytes of the long s form."""
+    text = "Ils ſont Chriſtiens.\n"
+    output = io.StringIO()
+    parser = PlainTextParser(output, 1, len(text.encode()), known_metadata={"filename": "t.txt"})
+    parser.parse(io.StringIO(text))
+    words = [line.split("\t") for line in output.getvalue().splitlines() if line.startswith("word")]
+    assert [word[1] for word in words] == ["ils", "sont", "christiens"]
+    sont = json.loads(words[1][3])
+    assert text.encode()[sont["start_byte"] : sont["end_byte"]].decode() == "ſont"

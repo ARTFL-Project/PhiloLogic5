@@ -222,6 +222,10 @@ words_to_index = ""
 # For Asian script, try using this token_regex: r"[\p{L}\p{M}\p{N}\p{Po}]+|[&\p{L};]+"
 token_regex = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 
+# The language of the texts, as a spaCy language code (such as "fr", "en" or "la"). If spaCy supports it, its
+# tokenizer for that language splits words instead of token_regex.
+language = ""
+
 # This defines whether you want to convert your text and metadata to an ASCII representation for
 # search and autocomplete. Turn off if your language does not translate well to ascii (non-European languages in general)
 ascii_conversion = True
@@ -270,6 +274,22 @@ tag_exceptions = [
     r"</i>",
     r"<sup>",
     r"</sup>",
+    r"<sub(?:\s[^>]*)?>",
+    r"<\/sub>",
+    r"<sc(?:\s[^>]*)?>",
+    r"<\/sc>",
+    r"<b(?:\s[^>]*)?>",
+    r"<\/b>",
+    r"<seg(?:\s[^>]*)?>",
+    r"<\/seg>",
+    r"<supplied(?:\s[^>]*)?>",
+    r"<\/supplied>",
+    r"<pn(?:\s[^>]*)?>",
+    r"<\/pn>",
+    r"<g(?:\s[^>]*)?>",
+    r"<\/g>",
+    r"<lb\s[^>]*(?:break=[\"']no|hyphenInWord|rend=[\"']hyphen)[^>]*>",
+    r"<pc\s[^>]*force=[\"']weak[^>]*>",
 ]
 
 # Define a list of word attributes to ingore at parse time. These will not be stored.
@@ -291,7 +311,7 @@ join_hyphen_in_words = True
 # This is to handle abbreviation tags.  I have seen two types:
 #       <abbr expan="en">&emacr;</abbr>
 #       <abbr expan="Valerius Maximus">Val. Max.</abbr>
-# For now, lets's try the first.
+# Abbreviations are indexed as their expansion: pres<abbr expan="en">&emacr;</abbr>t is the word "present".
 abbrev_expand = True
 
 # ---------------------- Flatten Ligatures for Indexing --------------
@@ -319,7 +339,6 @@ lemma_file = ""
 # Unless the model runs on the GPU, each parsing process (see cores) loads its own copy of the model, and the
 # threads the model would use in a single process are shared out among them: memory use grows with cores.
 # On the GPU, files are tagged in a single process.
-# Only official SpaCy models are supported.
 spacy_model = ""
 ```
 
@@ -334,6 +353,8 @@ The basic layout is this:
 `suppress_tags` is a list of tags in which you do not want to perform tokenization at all--that is, no words in them will be searchable via full-text search. It does not prohibit extracting metadata from the content of those tags. `<gap>` is always suppressed, whether or not it is listed here.
 
 `token_regex` is a regular expression used to drive our tokenizer.
+
+`language` is the language of the texts, as a spaCy language code (such as `fr`, `en` or `la`). When it is set and spaCy has a tokenizer for it, spaCy's tokenizer splits words instead of `token_regex` (the tokenizer of `spacy_model`, if one is set), in XML and plain text files, separately from the tagging `spacy_model` does. Each parsing process loads it. Inline tags (the `tag_exceptions`) are left out of the text the tokenizer gets, so that they don't split words (`<hi>L</hi>e` is the word `le`), and entities count as the characters they stand for. Words are indexed without the punctuation at the edges of their token (`l` for `l'`, `il` for `-il`), which they keep in their `spacy_token` attribute: `spacy_model` tags the whole token, `words_and_philo_ids` has it, and the index leaves it out. A word with a hyphen or apostrophe inside it is one word when the tokenizer keeps it whole (`peut-être`, `aujourd'hui`, `Saint-Just`, whatever their case), and is split otherwise (`l'homme`, `dit-il`): a search keeps such a word whole when the index has it, and splits it with `query_parser_regex` otherwise. Characters not to index (`chars_not_to_index`, such as `[` and `]`) split words, as they do with `token_regex`. Words, punctuation and sentences get the exact bytes of their text in the file. What comes between words (punctuation, numbers, sentence ends) is split as `token_regex` splits it, and sentences end as they do without a tokenizer, except after the abbreviations the tokenizer keeps in a word (`M.`, `etc.`). If spaCy has no tokenizer for the language, or lacks a library it needs (Japanese, Korean, Thai and Vietnamese do), `token_regex` splits words.
 
 `words_to_index` is a file containing all words that should be indexed. You'd want to define this in the event you're dealing with dirty OCR and would end up with way too many unique words, which would blow up the index, or just kill search performance. Leaving this empty means that all words will be indexed.
 

@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 
+import lmdb
 import pytest
 
 # Add PhiloLogic to path
@@ -89,6 +90,21 @@ class TestParseQuery:
         result = parse_query("lemma:be:pos")
         assert len(result) == 1
         assert result[0][0] == "LEMMA_ATTR"
+
+    @pytest.mark.parametrize(
+        "query, kind",
+        [
+            ("lemma:peut-être", "LEMMA"),
+            ("lemma:aujourd'hui", "LEMMA"),
+            ("lemma:peut-être:pos:ADV", "LEMMA_ATTR"),
+            ("être:pos:PRON-PER", "ATTR"),
+            ("peut-être:pos:ADV", "ATTR"),
+        ],
+    )
+    def test_lemmas_and_attributes_with_hyphens(self, query, kind):
+        """Lemmas and attributes, and the words of attributes, are whole with their hyphens and apostrophes, as the
+        index has them"""
+        assert parse_query(query) == [(kind, query)]
 
     def test_null_query(self):
         """Test parsing NULL value."""
@@ -334,6 +350,23 @@ class TestQueryParserRules:
     def test_search_terms(self, query, rewritten):
         assert query_parse(query, self.config) == rewritten
 
+    @pytest.mark.parametrize(
+        "query, rewritten",
+        [
+            ("lemma:peut-être", "lemma:peut-être"),
+            ("lemma:aujourd'hui OR lemma:demain", "lemma:aujourd'hui | lemma:demain"),
+            ('"lemma:peut-être pas"', '"lemma:peut-être pas"'),
+            ("lemma:peut-être:pos:ADV", "lemma:peut-être:pos:ADV"),
+            ("lemma:être, avoir", "lemma:être avoir"),  # rules that don't split words apply
+            ("lemma:[a-z]-ci", "lemma:[a-z]-ci"),
+            ("peut-être:pos:ADV", "peut être:pos:ADV"),  # the word of a word's attributes is split, as words are
+            ("dit: oui", "dit: oui"),
+        ],
+    )
+    def test_lemmas_and_attributes(self, query, rewritten):
+        """Lemmas and the attributes of words are kept whole, as the index has them: lemma:peut-être was lemma:peut"""
+        assert query_parse(query, self.config) == rewritten
+
 
 @pytest.mark.unit
 class TestTypographicTwins:
@@ -368,8 +401,64 @@ class TestTypographicTwins:
         """A database that keeps ' in words keeps ’ as ': the index has made it one."""
         assert query_parse("aujourd\u2019hui", self.config(True, rules=[])) == "aujourd'hui"
 
+    def test_lemmas_as_typed(self):
+        """Lemmas keep the apostrophes of the text, as the tagger gives them"""
+        query = "aujourd\u2019hui lemma:aujourd\u2019hui"
+        assert query_parse(query, self.config(True)) == "aujourd hui lemma:aujourd\u2019hui"
+
     def test_without_ascii_conversion(self):
         assert query_parse("aujourd\u2019hui peut\u2013être", self.config(False)) == "aujourd\u2019hui peut\u2013être"
+
+
+@pytest.mark.unit
+class TestWordsTheIndexHasWhole:
+    """A word the rules would split stays whole when the index has it whole, as an index whose words spaCy's tokenizer
+    split has aujourd'hui and peut-être (but l and homme for l'homme)"""
+
+    rules = [(" OR ", " | "), ("'", " "), (",", ""), ("-", " ")]
+
+    def config(self, tmp_path, ascii_conversion):
+        index = "frequencies/normalized_word_frequencies.lmdb" if ascii_conversion else "words.lmdb"
+        (tmp_path / "data" / "frequencies").mkdir(parents=True)
+        env = lmdb.open(str(tmp_path / "data" / index), map_size=1 << 20)
+        with env.begin(write=True) as txn:
+            for word in ("aujourd'hui", "peut-être" if not ascii_conversion else "peut-etre", "peut-estre", "l", "homme"):
+                txn.put(word.encode("utf-8"), word.encode("utf-8"))
+        env.close()
+        return type("Config", (), {
+            "query_parser_regex": self.rules,
+            "db_path": str(tmp_path),
+            "db_locals": {"ascii_conversion": ascii_conversion, "lowercase_index": True},
+        })()
+
+    @pytest.mark.parametrize("ascii_conversion", [True, False])
+    @pytest.mark.parametrize(
+        "query, rewritten",
+        [
+            ("aujourd'hui", "aujourd'hui"),
+            ("Aujourd'hui", "Aujourd'hui"),  # looked up as the index has its words, in lowercase
+            ("peut-être", "peut-être"),
+            ("peut-eſtre", "peut-eſtre"),  # looked up with an s, as loads index the long s
+            ("l'homme", "l homme"),
+            ("aujourd'hui OR demain", "aujourd'hui | demain"),
+            ('"aujourd\'hui l\'homme"', '"aujourd\'hui l homme"'),
+            ("[a-z]ujourd'hui", "[a-z]ujourd hui"),
+            ("liberté, égalité", "liberté égalité"),
+            ("peut-être:pos:ADV", "peut-être:pos:ADV"),
+            ("lemma:peut-être l'homme", "lemma:peut-être l homme"),
+        ],
+    )
+    def test_words_left_whole(self, tmp_path, ascii_conversion, query, rewritten):
+        assert query_parse(query, self.config(tmp_path, ascii_conversion)) == rewritten
+
+    def test_typographic_apostrophe(self, tmp_path):
+        assert query_parse("aujourd\u2019hui", self.config(tmp_path, True)) == "aujourd'hui"
+
+    def test_without_the_index(self, tmp_path):
+        """A database without its index (as the tests' configs) splits words as the rules do"""
+        config = type("Config", (), {"query_parser_regex": self.rules, "db_path": str(tmp_path / "none"),
+                                     "db_locals": {"ascii_conversion": True, "lowercase_index": True}})()
+        assert query_parse("aujourd'hui", config) == "aujourd hui"
 
 
 @pytest.mark.unit

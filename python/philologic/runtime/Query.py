@@ -692,23 +692,106 @@ TYPOGRAPHIC_TWINS = str.maketrans(
 )
 
 
+# Parts of a search the query_parser_regex rules leave alone: the bracket expressions of regexes, whose hyphens make
+# ranges ("[a-z]"), and what follows a colon, the lemma of lemma:peut-être and the attributes of être:pos:VERB (with
+# their own bracket expressions), which only get the rules that don't split words
+BRACKET_EXPRESSION = r"\[[^\]]*\]"
+KEPT_PARTS = re.compile(rf'({BRACKET_EXPRESSION}|:(?:{BRACKET_EXPRESSION}|[^\s|"])+)')
+
+
 def query_parse(query_terms, config):
     """The search terms query_terms with the database's query_parser_regex rules applied, as hyphens and apostrophes
     turned into spaces (where its index splits words). Not inside the bracket expressions of regexes, whose hyphens
-    make ranges ("[a-z]"). (Metadata values have their own grammar: QuerySyntax.parse_metadata_query.)
+    make ranges ("[a-z]"). Lemmas and the attributes of words (what follows a colon: lemma:peut-être, être:pos:VERB)
+    are kept whole, as the index has them: they only get the rules that don't split words (whose replacement has no
+    space). (Metadata values have their own grammar: QuerySyntax.parse_metadata_query.)
+
+    A word the rules would change is left whole when the index has it whole: aujourd'hui and peut-être stay words of
+    their own in a database whose words spaCy's tokenizer split (see the language load option), where l'homme and
+    dit-il are still split, into the words the index has. Quoted words too.
 
     With ascii_conversion, typographic apostrophes and hyphens (’, ‐, –) are first made their ASCII twins, so that the
     rules for ' and - apply to them too: aujourd’hui gave 0 where aujourd'hui gives 61,505 in frantext. Without it,
-    the index keeps forms as they are, so they are left alone."""
+    the index keeps forms as they are, so they are left alone, as they are in lemmas and attributes, which the tagger
+    gives as the text has them."""
     db_locals = getattr(config, "db_locals", None)
     twins = db_locals is not None and db_locals["ascii_conversion"] is True
-    parts = re.split(r"(\[[^\]]*\])", query_terms)
-    for i in range(0, len(parts), 2):  # those between the protected ones
-        if twins:
-            parts[i] = parts[i].translate(TYPOGRAPHIC_TWINS)
-        for pattern, replacement in config.query_parser_regex:
-            parts[i] = re.sub(rf"{pattern}", rf"{replacement}", parts[i])
+    rules = config.query_parser_regex
+    parts = KEPT_PARTS.split(query_terms)
+    with IndexedWords(config) as indexed:
+        for i in range(0, len(parts), 2):  # those between the kept ones
+            text = parts[i].translate(TYPOGRAPHIC_TWINS) if twins else parts[i]
+            parts[i] = apply_rules(text, rules)
+            if parts[i] == text:  # most often: nothing to rewrite, so no word to look up
+                continue
+            pieces, start = [], 0  # the rules apply to all but the words left whole
+            for word in re.finditer(r"\S+", text):
+                if NOT_A_WORD_CHARACTER.search(word.group()) and indexed(word.group().strip('"')):
+                    pieces += [apply_rules(text[start : word.start()], rules), word.group()]
+                    start = word.end()
+            if pieces:
+                parts[i] = "".join(pieces) + apply_rules(text[start:], rules)
+    whole_word_rules = [rule for rule in rules if not re.search(r"\s", rule[1])]
+    for i in range(1, len(parts), 2):
+        if parts[i].startswith(":"):
+            pieces = re.split(rf"({BRACKET_EXPRESSION})", parts[i])
+            for j in range(0, len(pieces), 2):
+                pieces[j] = apply_rules(pieces[j], whole_word_rules)
+            parts[i] = "".join(pieces)
     return "".join(parts)
+
+
+NOT_A_WORD_CHARACTER = re.compile(r"[^\p{L}\p{M}\p{N}]")  # in a word the rules may split, which the index may have
+
+
+def apply_rules(text, rules):
+    """text with the query_parser_regex rules applied"""
+    for pattern, replacement in rules:
+        text = re.sub(rf"{pattern}", rf"{replacement}", text)
+    return text
+
+
+class IndexedWords:
+    """Whether the index of the database of a web config has a word (as a search for it would find it), its index
+    opened the first time it's asked"""
+
+    def __init__(self, config):
+        db_path = getattr(config, "db_path", None)
+        self.path = None
+        if db_path:
+            self.ascii_conversion = config.db_locals["ascii_conversion"] is True
+            self.lowercase = config.db_locals["lowercase_index"] is not False
+            index = "frequencies/normalized_word_frequencies.lmdb" if self.ascii_conversion else "words.lmdb"
+            self.path = os.path.join(db_path, "data", index)
+        self.env = self.txn = None
+        self.context = None
+
+    def __enter__(self):
+        return self
+
+    def __call__(self, word):
+        if self.path is None or not word:
+            return False
+        if self.txn is None:
+            if not os.path.exists(self.path):
+                self.path = None
+                return False
+            self.context = lmdb_env(self.path)
+            self.env = self.context.__enter__()
+            self.txn = self.env.begin(buffers=True)
+        if self.ascii_conversion:
+            from philologic.runtime.term_expansion import _norm_key  # lazy, as in write_terms_file
+
+            key = _norm_key(word, self.lowercase)
+            return bool(key) and self.txn.get(key) is not None
+        word = word.lower() if self.lowercase else word
+        # with a long s, as an s too, as loads index it (and as it is, as they did before)
+        return any(self.txn.get(form.encode("utf-8")) is not None for form in {word, word.replace("ſ", "s")})
+
+    def __exit__(self, *exception):
+        if self.txn is not None:
+            self.txn.abort()
+            self.context.__exit__(None, None, None)
 
 
 # The search methods: those of the search form, and those they resolve to (which links of the client use too)

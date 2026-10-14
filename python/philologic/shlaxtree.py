@@ -14,6 +14,11 @@ except ImportError:
     import xml.etree.ElementTree as ElementTree
 et = ElementTree
 
+# Compiled once: given a string, the regex module looks the pattern up in its cache on every call, which took about
+# half the time of parsing a concordance
+MARKUP = re.compile(shlax.pattern, re.DOTALL)
+ATTRIBUTE = re.compile(shlax.AttributeSPE)
+
 
 def parse(file):
     tokenizer = ShlaxTreeDriver()
@@ -42,66 +47,32 @@ class ShlaxIngestor:
         self.log = logfile
 
     def feed(self, data):
-        #        console.log(data)
         if self.closed:
             return
         self.buffer += data
         last_end = 0
-        matches = re.finditer(shlax.pattern, self.buffer, re.DOTALL)
-        type = ""
-        #        matches = list(matches)
-        #        print >> sys.stderr, repr(matches)
-
-        for m in matches:
-            att = {}
-            name = ""
-            empty = False
+        for m in MARKUP.finditer(self.buffer):
             match_start = self.buffer_offset + m.start(0)
-            match_end = self.buffer_offset + m.end(0)
             text = self.buffer[last_end : m.start(0)]
             if text:
-                type = "text"
-                content = text
-                offset = self.buffer_offset + last_end
-                self.target.feed(type, content, offset, None, None)
+                self.target.feed("text", text, self.buffer_offset + last_end, None, None)
+            # The tokenizer's match has the name and attributes of a tag: they need no matching again
             if m.group("EndTag"):
-                type = "end"
-                content = m.group(0)
-                parseable_content = m.group("EndTag")
-                offset = match_start
-                nm = re.match(shlax.EndTagCE, parseable_content)
-                if nm:
-                    name = nm.group("EndTagName")
-                else:
-                    print("'%s' : no name in end tag?" % content)
-                self.target.feed(type, content, offset, name, None)
-                # have to extract the name, of course.
+                self.target.feed("end", m.group(0), match_start, m.group("EndTagName"), None)
             elif m.group("ElemTag"):
-                type = "start"
-                content = m.group(0)
-                em = re.match(shlax.ElemTagSPE, content)
-                if em.group("Empty"):  # very important
-                    empty = True
-                offset = match_start
-                name = em.group("ElemName")
-                attributes = em.group("Attributes")
-                amatches = re.finditer(shlax.AttributeSPE, attributes)
-                for am in amatches:  # get the attributes out.  kinda nasty.
-                    ad = am.groupdict()
-                    aname = am.group("AttName")
-                    if ad["DQAttVal"] is None:
-                        aval = ad["SQAttVal"]
-                    else:
-                        aval = ad["DQAttVal"]
-                    #                    aval = ad["DQAttVal"] or ad["SQAttVal"] #single or double quotes...
-                    att[aname] = aval
-                self.target.feed(type, content, offset, name, att.copy())
-            else:
-                type = "markup"  # comment or processing instruction.  Ignored.
-            if empty:
-                self.target.feed("end", "", offset, name, None)
+                # The name runs from the "<" to the attributes, and a "/" after them makes the tag empty
+                name = self.buffer[m.start(0) + 1 : m.start("Attributes")]
+                att = {}
+                for am in ATTRIBUTE.finditer(m.group("Attributes")):
+                    aval = am.group("DQAttVal")
+                    if aval is None:  # single quotes
+                        aval = am.group("SQAttVal")
+                    att[am.group("AttName")] = aval
+                self.target.feed("start", m.group(0), match_start, name, att)
+                if "/" in self.buffer[m.end("Attributes") : m.end(0)]:
+                    self.target.feed("end", "", match_start, name, None)
+            # Comments, processing instructions and declarations are left out
             last_end = m.end(0)
-        #            print >> sys.stderr, type + " : " + m.group(0)
         self.buffer_offset = self.buffer_offset + last_end
         self.buffer = self.buffer[last_end:]
 

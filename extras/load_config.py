@@ -146,6 +146,10 @@ words_to_index = ""
 # For Asian script, try using this token_regex: r"[\p{L}\p{M}\p{N}\p{Po}]+|[&\p{L};]+"
 token_regex = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 
+# The language of the texts, as a spaCy language code (such as "fr", "en" or "la"). If spaCy supports it, its
+# tokenizer for that language splits words instead of token_regex.
+language = ""
+
 # This defines whether you want to convert your text and metadata to an ASCII representation for
 # search and autocomplete. Turn off if your language does not translate well to ascii (non-European languages in general)
 ascii_conversion = True
@@ -195,6 +199,22 @@ tag_exceptions = [
     r"</i>",
     r"<sup>",
     r"</sup>",
+    r"<sub(?:\s[^>]*)?>",
+    r"<\/sub>",
+    r"<sc(?:\s[^>]*)?>",
+    r"<\/sc>",
+    r"<b(?:\s[^>]*)?>",
+    r"<\/b>",
+    r"<seg(?:\s[^>]*)?>",
+    r"<\/seg>",
+    r"<supplied(?:\s[^>]*)?>",
+    r"<\/supplied>",
+    r"<pn(?:\s[^>]*)?>",
+    r"<\/pn>",
+    r"<g(?:\s[^>]*)?>",
+    r"<\/g>",
+    r"<lb\s[^>]*(?:break=[\"']no|hyphenInWord|rend=[\"']hyphen)[^>]*>",
+    r"<pc\s[^>]*force=[\"']weak[^>]*>",
 ]
 
 # Define a list of word attributes to ingore at parse time. These will not be stored.
@@ -216,7 +236,7 @@ join_hyphen_in_words = True
 # This is to handle abbreviation tags.  I have seen two types:
 #       <abbr expan="en">&emacr;</abbr>
 #       <abbr expan="Valerius Maximus">Val. Max.</abbr>
-# For now, lets's try the first.
+# Abbreviations are indexed as their expansion: pres<abbr expan="en">&emacr;</abbr>t is the word "present".
 abbrev_expand = True
 
 # ---------------------- Flatten Ligatures for Indexing --------------
@@ -237,10 +257,7 @@ lowercase_index = True
 lemma_file = ""
 
 # Define a SpaCy model to use for lemmatization, part-of-speech tagging, and named entity recognition.
-# Unless the model runs on the GPU, each parsing process (see cores) loads its own copy of the model, and the
-# threads the model would use in a single process are shared out among them: memory use grows with cores.
-# On the GPU, files are tagged in a single process.
-# Only official SpaCy models are supported.
+# Unless the model runs on the GPU, each parsing process (see cores) loads its own copy of the model.
 spacy_model = ""
 
 ###########################################

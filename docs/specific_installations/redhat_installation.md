@@ -5,6 +5,7 @@ Tested on RHEL 9 and CentOS Stream 9.
 ```bash
 sudo dnf install -y \
     libxml2-devel libxslt-devel zlib-devel \
+    libicu-devel pkgconf-pkg-config gcc-c++ \
     lz4 ripgrep curl
 ```
 

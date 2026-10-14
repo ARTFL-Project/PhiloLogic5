@@ -43,6 +43,14 @@ def _norm_key(token: str, lowercase: bool = True) -> bytes:
     return _norm(token, lowercase).encode("utf-8")
 
 
+def _long_s_variants(kind: str, token: str) -> list[str]:
+    """token, and if it is a word or a pattern with a long s, quoted or not, the same with an s: loads index ſ as s,
+    those made before as it is. Lemmas and attributes keep theirs, as the source has them."""
+    if kind in ("TERM", "RANGE", "QUOTE") and "ſ" in token:
+        return [token, token.replace("ſ", "s")]
+    return [token]
+
+
 def _lmdb_lookup(txn, key: bytes) -> list[str]:
     """Return list of original forms for a normalized key, or []. A term normalized to nothing, as an emoji, is no
     key: LMDB fails on an empty one."""
@@ -329,7 +337,25 @@ def _lemma_boundary_filter(kind: str, keys: list[str]) -> list[str]:
 
 def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
                      forms_env: lmdb.Environment | None = None) -> list[str]:
-    """Expand one positive token to the list of words.lmdb lookup keys.
+    """Expand one positive token to the list of words.lmdb lookup keys: the forms of each of its long s variants."""
+    variants = _long_s_variants(kind, token)
+    if len(variants) == 1:
+        return _expand_positive_token(kind, token, txn, ascii_conversion, lowercase, forms_env)
+    forms = Forms()
+    seen: set[str] = set()
+    for variant in variants:
+        expanded = _expand_positive_token(kind, variant, txn, ascii_conversion, lowercase, forms_env)
+        forms.cut = forms.cut or getattr(expanded, "cut", False)
+        for form in expanded:
+            if form not in seen:
+                seen.add(form)
+                forms.append(form)
+    return forms
+
+
+def _expand_positive_token(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
+                           forms_env: lmdb.Environment | None = None) -> list[str]:
+    """Expand one positive token, as it is, to the list of words.lmdb lookup keys.
 
     For TERM/QUOTE with ascii_conversion, expands via norm_word.lmdb (txn).
     Supports regex patterns (e.g. sens.*) via LMDB cursor scan.
@@ -361,9 +387,18 @@ def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowerca
 
 def _expand_exclude(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
                     forms_env: lmdb.Environment | None = None) -> set[str]:
-    """Expand one NOT token to the set of forms to exclude.
+    """Expand one NOT token to the set of forms to exclude: those of each of its long s variants."""
+    return set().union(
+        *(_expand_exclude_token(kind, variant, txn, ascii_conversion, lowercase, forms_env)
+          for variant in _long_s_variants(kind, token))
+    )
 
-    Mirrors _expand_positive but returns a set for O(1) exclusion checks.
+
+def _expand_exclude_token(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
+                          forms_env: lmdb.Environment | None = None) -> set[str]:
+    """Expand one NOT token, as it is, to the set of forms to exclude.
+
+    Mirrors _expand_positive_token but returns a set for O(1) exclusion checks.
     """
     if kind in ("TERM", "RANGE"):
         if ascii_conversion:
@@ -746,6 +781,31 @@ def _by_frequency(keys: list[str], db_path: str, overflow_words, lemmas: bool = 
     return [key for _, _, key in counted]
 
 
+def _autocomplete_forms(
+    txn, raw_token: str, db_path: str, ascii_conversion: bool, lowercase: bool, max_results: int, overflow_words
+) -> list[str]:
+    """The forms of norm_word.lmdb (txn) that start with raw_token, or that a regex matches the start of, most frequent
+    first (see expand_autocomplete)"""
+    if _is_regex_pattern(raw_token):
+        norm_prefix, pattern_str = _normalize_pattern(raw_token, lowercase and ascii_conversion)
+        forms = _lmdb_expand_term(txn, norm_prefix, pattern_str, REGEX_EXPANSION_CAP, prefix_match=True)
+        return _by_frequency(forms, db_path, overflow_words)[:max_results]
+    elif ascii_conversion:
+        norm_prefix = _norm_key(raw_token, lowercase)
+    else:
+        # ascii_conversion=False: query token is the norm key as-is
+        norm_prefix = raw_token.lower().encode("utf-8") if lowercase else raw_token.encode("utf-8")
+    if not norm_prefix:  # a term normalized to nothing, as an emoji: LMDB fails on an empty key
+        return []
+    suggestions = _table_suggestions(db_path, _AUTOCOMPLETE_WORDS, norm_prefix)
+    if suggestions is None:
+        return _lmdb_expand_term(txn, norm_prefix, None, max_results)
+    if suggestions:
+        return suggestions[:max_results]
+    forms = _lmdb_expand_term(txn, norm_prefix, None, AUTOCOMPLETE_SUGGESTIONS)
+    return _by_frequency(forms, db_path, overflow_words)[:max_results]
+
+
 def expand_autocomplete(
     kind: str,
     token: str,
@@ -777,24 +837,19 @@ def expand_autocomplete(
             return []
         with lmdb_env(frequency_file + ".lmdb") as env:
             with env.begin(buffers=True) as txn:
-                if _is_regex_pattern(raw_token):
-                    norm_prefix, pattern_str = _normalize_pattern(raw_token, lowercase and ascii_conversion)
-                    forms = _lmdb_expand_term(txn, norm_prefix, pattern_str, REGEX_EXPANSION_CAP, prefix_match=True)
-                    return _by_frequency(forms, db_path, overflow_words)[:max_results]
-                elif ascii_conversion:
-                    norm_prefix = _norm_key(raw_token, lowercase)
-                else:
-                    # ascii_conversion=False: query token is the norm key as-is
-                    norm_prefix = raw_token.lower().encode("utf-8") if lowercase else raw_token.encode("utf-8")
-                if not norm_prefix:  # a term normalized to nothing, as an emoji: LMDB fails on an empty key
-                    return []
-                suggestions = _table_suggestions(db_path, _AUTOCOMPLETE_WORDS, norm_prefix)
-                if suggestions is None:
-                    return _lmdb_expand_term(txn, norm_prefix, None, max_results)
-                if suggestions:
-                    return suggestions[:max_results]
-                forms = _lmdb_expand_term(txn, norm_prefix, None, AUTOCOMPLETE_SUGGESTIONS)
-                return _by_frequency(forms, db_path, overflow_words)[:max_results]
+                variants = _long_s_variants(kind, raw_token)
+                if len(variants) == 1:
+                    return _autocomplete_forms(
+                        txn, raw_token, db_path, ascii_conversion, lowercase, max_results, overflow_words
+                    )
+                forms: list[str] = []
+                for variant in variants:
+                    for form in _autocomplete_forms(
+                        txn, variant, db_path, ascii_conversion, lowercase, max_results, overflow_words
+                    ):
+                        if form not in forms and len(forms) < max_results:
+                            forms.append(form)
+                return forms
 
     elif kind in ("LEMMA", "ATTR", "LEMMA_ATTR"):
         if not token:

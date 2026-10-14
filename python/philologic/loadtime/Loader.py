@@ -46,6 +46,7 @@ from philologic.loadtime.PostFilters import (
     write_word_frequency_table,
     write_word_frequency_table_from_runs,
 )
+from philologic.loadtime.spacy_tokenizer import spacy_tokenizer
 from philologic.loadtime.split_sorted import sort_key
 from philologic.utils import (
     convert_entities,
@@ -67,10 +68,8 @@ SORT_BY_WORD = "-k 2,2"
 SORT_BY_ID = "-k 3,3n -k 4,4n -k 5,5n -k 6,6n -k 7,7n -k 8,8n -k 9,9n"
 OBJECT_TYPES = ["doc", "div1", "div2", "div3", "para", "sent", "word"]
 
-BLOCKSIZE = 2048  # index block size.  Don't alter.
 SPLIT_SORTED = os.path.join(os.path.dirname(os.path.abspath(__file__)), "split_sorted.py")  # run by merge_ranges
 RANGE_ATTRIBUTES = {"words": "word_ranges", "lemmas": "lemma_ranges"}  # Loader attributes where merge_ranges keeps them
-INDEX_CUTOFF = 10  # index frequency cutoff.  Don't alter.
 
 DEFAULT_TABLES = ("toms", "pages", "refs", "graphics", "lines")
 
@@ -103,6 +102,8 @@ PARSER_OPTIONS = [
     "parser_factory",
     "doc_xpaths",
     "token_regex",
+    "language",
+    "spacy_model",
     "tag_to_obj_map",
     "metadata_to_parse",
     "suppress_tags",
@@ -640,13 +641,14 @@ def npm_node_dir(npm):
 
 
 def tei_header(file_content):
-    """The TEI header of a file, with its entities converted, or None if it has none"""
+    """The TEI header of a file, with its entities converted but those XML decodes itself (left for lxml), or None if
+    it has none"""
     try:
         start_header_index = re.search(r"<teiheader", file_content, re.I).start()
         end_header_index = re.search(r"</teiheader", file_content, re.I).start()
     except AttributeError:  # tag not found
         return None
-    return convert_entities(file_content[start_header_index:end_header_index])
+    return convert_entities(file_content[start_header_index:end_header_index], keep_xml_entities=True)
 
 
 def tei_header_metadata(header, doc_xpaths, metadata_sql_types, matched_xpaths=None):
@@ -728,6 +730,7 @@ class Loader:
         "parent",
         "page",
         "lemma",
+        "spacy_token",  # the token of a word as the tokenizer split it, when the word leaves out some of it
     }
     word_count = 0
     lemma_count = 0
@@ -779,6 +782,10 @@ class Loader:
                 cls.parser_config[option] = loader_options[option]
             except KeyError:  # option hasn't been set
                 pass
+        if cls.parser_config.get("language"):
+            cls.parser_config["language"] = cls.spacy_tokenization(
+                cls.parser_config["language"], cls.parser_config.get("spacy_model")
+            )
         cls.spacy_model = None
         if loader_options["spacy_model"]:
             import spacy  # only imported when used: importing it takes about a second
@@ -789,6 +796,20 @@ class Loader:
                 cls.spacy_model = loader_options["spacy_model"]
         cls.suppress_word_attributes = set(loader_options["suppress_word_attributes"])
         return cls(**loader_options)
+
+    @staticmethod
+    def spacy_tokenization(language, spacy_model=None):
+        """The language words are split for by spaCy's tokenizer (that of spacy_model, if given), or None if spaCy has
+        no tokenizer for it: words are then split by token_regex. Loads the tokenizer, which parse workers load
+        again."""
+        try:
+            spacy_tokenizer(language, spacy_model)
+        except ImportError as error:  # no spaCy, no tokenizer for the language, or a library it needs is missing
+            print(f"Words are split by token_regex: spaCy has no tokenizer for {language!r} ({error})", file=sys.stderr)
+            return None
+        tokenizer = f"spaCy model {spacy_model}" if spacy_model else f"spaCy's {language!r} model"
+        print(f"Words are split by the tokenizer of {tokenizer}")
+        return language
 
     def __init__(self, **loader_options):
         os.system(f"mkdir -p {self.destination}")
@@ -1237,6 +1258,8 @@ class Loader:
 
         for option in [
             "token_regex",
+            "language",
+            "spacy_model",
             "suppress_tags",
             "break_apost",
             "chars_not_to_index",
@@ -2088,11 +2111,6 @@ class Loader:
         with open(os.path.join(filename), "w", encoding="utf8") as output_file:
             print(format_str(str(web_config), mode=FileMode()), file=output_file)
         print(f"wrote Web application info to {filename}")
-
-
-def shellquote(s):
-    """Quote shell commands"""
-    return "'" + s.replace("'", "'\\''") + "'"
 
 
 def setup_db_dir(db_destination, force_delete=False):

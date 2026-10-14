@@ -2,7 +2,6 @@
 """Load Filters used in Loader"""
 
 import os
-from collections import Counter
 
 import lz4.frame
 from orjson import dumps, loads
@@ -54,36 +53,54 @@ def generate_words_sorted(loader_obj, text):
 
 
 def spacy_tagger(loader_obj, text):
-    """Tag words with Spacy"""
+    """Tag words with Spacy, a sentence at a time: their token, as the tokenizer split it, when the indexed word is less
+    than it (see XMLParser.index_tokens), and the punctuation of the sentence. A sentence is the words and punctuation
+    up to its sent record, which isn't tagged, and the punctuation after it which ends it (within its bytes: these
+    records don't have the sentence's id)."""
     from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
+
+    def token(record):
+        """What spaCy tags for a record: nothing for a sentence"""
+        if record.type == "sent":
+            return ""
+        return record.attrib.get("spacy_token", record.name)
+
+    def tokens(records):
+        return [token(r) for r in records if token(r) != ""]
 
     def process_file():
         with open(text["raw"], encoding="utf8") as fh:
             sentence_records = []
-            current_sent_id = None
+            sentence_end = None  # end byte of the sent record of sentence_records, once it has come
             for line in fh:
                 philo_type, word, philo_id, attrib = line.split("\t")
                 if philo_type in ("word", "sent", "punct"):
-                    sent_id = " ".join(philo_id.split()[:6])
                     record = Record(philo_type, word, philo_id.split())
                     record.attrib = loads(attrib)
-                    if current_sent_id is not None and sent_id != current_sent_id:
-                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [r.name for r in sentence_records])
+                    if sentence_end is not None and (
+                        philo_type == "word" or (philo_type == "punct" and record.attrib["end_byte"] > sentence_end)
+                    ):
+                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, tokens(sentence_records))
                         yield spacy_sentence, sentence_records
                         sentence_records = []
+                        sentence_end = None
                     sentence_records.append(record)
-                    current_sent_id = sent_id
+                    if philo_type == "sent":
+                        sentence_end = record.attrib["end_byte"]
             if sentence_records:
-                spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [r.name for r in sentence_records])
+                spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, tokens(sentence_records))
                 yield spacy_sentence, sentence_records
 
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
         for spacy_sentence, sentence_records in loader_obj.nlp.pipe(process_file(), as_tuples=True, batch_size=1024):
-            for record, parsed_word in zip(sentence_records, spacy_sentence):
-                record.attrib["pos"] = parsed_word.pos_
-                record.attrib["tag"] = parsed_word.tag_
-                record.attrib["ent_type"] = parsed_word.ent_type_
-                record.attrib["lemma"] = "_".join((parsed_word.lemma_ or record.name).lower().split())
+            parsed_words = iter(spacy_sentence)
+            for record in sentence_records:
+                if token(record) != "":
+                    parsed_word = next(parsed_words)
+                    record.attrib["pos"] = parsed_word.pos_
+                    record.attrib["tag"] = parsed_word.tag_
+                    record.attrib["ent_type"] = parsed_word.ent_type_
+                    record.attrib["lemma"] = "_".join((parsed_word.lemma_ or record.name).lower().split())
                 print(record, file=tmp_file)
 
             spacy_sentence.tensor = None
@@ -281,9 +298,7 @@ def index_word_transformation(transform_function):
 def store_words_and_philo_ids(loader_obj, text):
     """Store words and philo ids file for data-mining"""
     files_path = loader_obj.destination + "/words_and_philo_ids/"
-    attributes_to_skip = list(loader_obj.attributes_to_skip)  # make a copy
-    attributes_to_skip.remove("lemma")
-    attributes_to_skip = set(attributes_to_skip)
+    attributes_to_skip = set(loader_obj.attributes_to_skip) - {"lemma", "spacy_token"}  # kept here
     try:
         os.mkdir(files_path)
     except OSError:
@@ -311,64 +326,6 @@ def store_words_and_philo_ids(loader_obj, text):
                 output += b"\n"
     with open(f"{filename}.lz4", "wb") as compressed_file:
         compressed_file.write(lz4.frame.compress(output, compression_level=4))
-
-
-def generate_word_frequencies(loader_obj, text):
-    """Generate word frequencies for each text object"""
-
-    def inner_generate_word_frequencies():
-        word_frequencies_path = os.path.join(loader_obj.destination, "frequencies/text_object_word_frequencies")
-        os.makedirs(word_frequencies_path, exist_ok=True)
-        para_frequencies = Counter()
-        div3_frequencies = Counter()
-        div2_frequencies = Counter()
-        div1_frequencies = Counter()
-        doc_frequencies = Counter()
-        with open(text["words"], encoding="utf8") as fh:
-            current_para_id = None
-            current_div3_id = None
-            current_div2_id = None
-            current_div1_id = None
-            doc_id = None
-            for line in fh:
-                _, word, philo_id, _ = line.split("\t")
-                split_id = philo_id.split()
-                para_id = " ".join(split_id[:5])
-                div3_id = " ".join(split_id[:4])
-                div2_id = " ".join(split_id[:3])
-                div1_id = " ".join(split_id[:2])
-                doc_id = split_id[0]
-                if current_para_id is not None and para_id != current_para_id:
-                    para_freq_path = os.path.join(word_frequencies_path, f"{current_para_id}.json")
-                    with open(para_freq_path, "wb") as output:
-                        output.write(dumps(para_freq_path))
-                if current_div3_id is not None and div3_id != current_div3_id:
-                    div3_freq_path = os.path.join(word_frequencies_path, f"{current_div3_id}.json")
-                    with open(div3_freq_path, "wb") as output:
-                        output.write(dumps(div3_freq_path))
-                if current_div2_id is not None and div2_id != current_div2_id:
-                    div2_freq_path = os.path.join(word_frequencies_path, f"{current_div2_id}.json")
-                    with open(div2_freq_path, "wb") as output:
-                        output.write(dumps(div2_freq_path))
-                if current_div1_id is not None and div1_id != current_div1_id:
-                    div1_freq_path = os.path.join(word_frequencies_path, f"{current_div1_id}.json")
-                    with open(div1_freq_path, "wb") as output:
-                        output.write(dumps(div1_freq_path))
-                para_frequencies[word] += 1
-                div3_frequencies[word] += 1
-                div2_frequencies[word] += 1
-                div1_frequencies[word] += 1
-                doc_frequencies[word] += 1
-                current_para_id = para_id
-                current_div3_id = div3_id
-                current_div2_id = div2_id
-                current_div1_id = div1_id
-
-            doc_freq_path = os.path.join(word_frequencies_path, f"{doc_id}.json")
-            with open(doc_freq_path, "wb") as output:
-                output.write(dumps(doc_freq_path))
-
-    return inner_generate_word_frequencies
 
 
 DefaultNavigableObjects = ("doc", "div1", "div2", "div3", "para")

@@ -35,6 +35,7 @@ class LoadOptions:
         self.values["plain_text_obj"] = []
         self.values["parser_factory"] = Parser.XMLParser
         self.values["token_regex"] = Parser.TOKEN_REGEX
+        self.values["language"] = None
         self.values["ascii_conversion"] = Loader.ASCII_CONVERSION
         self.values["doc_xpaths"] = Parser.DEFAULT_DOC_XPATHS
         self.values["tag_to_obj_map"] = Parser.DEFAULT_TAG_TO_OBJ_MAP

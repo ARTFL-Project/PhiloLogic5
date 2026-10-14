@@ -6,6 +6,7 @@ Tested on Ubuntu 22.04 and 24.04.
 sudo apt-get update
 sudo apt-get install -y \
     libxml2-dev libxslt-dev zlib1g-dev \
+    libicu-dev pkg-config g++ \
     liblz4-tool ripgrep curl
 ```
 

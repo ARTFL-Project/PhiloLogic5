@@ -7,9 +7,9 @@ import regex as re
 from philologic.runtime.exceptions import BadRequest
 
 patterns = [
-    ("LEMMA_ATTR", r'lemma:[^\-|\s"]+:[^\-|\s"]+'),
-    ("LEMMA", r'lemma:[^\-|\s"]+'),
-    ("ATTR", r'[^\-|\s"]+:[^\-|\s"]+'),
+    ("LEMMA_ATTR", r'lemma:[^|\s"]+:[^|\s"]+'),  # with their hyphens (lemma:peut-être, peut-être:pos:ADV)
+    ("LEMMA", r'lemma:[^|\s"]+'),
+    ("ATTR", r'[^|\s"]+:[^|\s"]+'),
     ("QUOTE", r'".+?"'),
     ("QUOTE", r'".+'),
     ("NOT", "NOT"),
