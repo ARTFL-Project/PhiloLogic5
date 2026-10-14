@@ -115,6 +115,15 @@ def test_compounds_and_brackets():
 
 
 @pytest.mark.unit
+def test_words_whatever_their_case():
+    """spaCy's exceptions, which it has in lowercase, apply to the other cases too: Peut-être is whole as peut-être is,
+    Est-il split as est-il is"""
+    xml = document("Peut-être PEUT-ÊTRE peut-être. Est-il là ? EST-CE vrai ? Est-ce vrai ?")
+    expected = ["peut-être"] * 3 + ["est", "il", "là"] + ["est", "ce", "vrai"] * 2
+    assert [word for word, _ in words(xml, language="fr")] == expected
+
+
+@pytest.mark.unit
 def test_words_split_as_on_their_own():
     """A token the tokenizer keeps whole only where it is (est-ce-, before a dash) is split as the tokenizer splits its
     word on its own: the index has a word with a hyphen or apostrophe whole only if a search for it would keep it whole

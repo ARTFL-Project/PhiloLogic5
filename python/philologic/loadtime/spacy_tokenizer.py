@@ -22,8 +22,9 @@ APOSTROPHES = str.maketrans({chr(0x2018): chr(0x2019), chr(0x02BC): chr(0x2019)}
 @functools.cache
 def spacy_tokenizer(language, spacy_model=None):
     """The tokenizer of spacy_model (the one its tagging expects), or else of spaCy's blank model for language: one per
-    process, loaded the first time it's asked for. Raises ImportError when spaCy has no tokenizer for the language, or
-    lacks the libraries it needs (Japanese needs SudachiPy...), and OSError when spacy_model can't be found."""
+    process, loaded the first time it's asked for, with the case variants of its exceptions (see with_case_variants).
+    Raises ImportError when spaCy has no tokenizer for the language, or lacks the libraries it needs (Japanese needs
+    SudachiPy...), and OSError when spacy_model can't be found."""
     import spacy  # only imported when used: importing spacy takes about a second
     from spacy import util
 
@@ -33,7 +34,28 @@ def spacy_tokenizer(language, spacy_model=None):
         nlp = spacy.load(spacy_model, exclude=meta.get("components") or meta.get("pipeline", []))
     else:
         nlp = spacy.blank(language)
-    return nlp.tokenizer
+    return with_case_variants(nlp.tokenizer)
+
+
+def with_case_variants(tokenizer):
+    """tokenizer with its exceptions which have a hyphen or apostrophe (peut-être, est-il), which spaCy has in
+    lowercase, for their capitalized and uppercase forms too: otherwise its other rules split Peut-être, and keep
+    Est-il whole. Tokenizers without exceptions (Chinese...) are left as they are."""
+    from spacy.attrs import ORTH
+
+    for text, pieces in list((getattr(tokenizer, "rules", None) or {}).items()):
+        if text != text.lower() or not WORD_JOINER.search(text):
+            continue
+        for variant in (text[:1].upper() + text[1:], text.upper()):
+            if variant in tokenizer.rules or len(variant) != len(text):
+                continue
+            variant_pieces, position = [], 0
+            for piece in pieces:
+                length = len(piece[ORTH])
+                variant_pieces.append({**piece, ORTH: variant[position : position + length]})
+                position += length
+            tokenizer.add_special_case(variant, variant_pieces)
+    return tokenizer
 
 
 def token_spans(tokenizer, text):
