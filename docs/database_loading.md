@@ -222,12 +222,8 @@ words_to_index = ""
 # For Asian script, try using this token_regex: r"[\p{L}\p{M}\p{N}\p{Po}]+|[&\p{L};]+"
 token_regex = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 
-# The language of the texts, as a spaCy language code (such as "fr", "en" or "la"). Words are then split by spaCy's
-# tokenizer for that language (that of spacy_model, if you set one) rather than by token_regex, in each parsing
-# process, for XML and plain text files. The tokenizer gets the text with the tag exceptions below left out, so that
-# they don't split words. Words are indexed without the punctuation at the edges of their token (l for l', il for
-# -il), which they keep in their spacy_token attribute: spacy_model tags the whole token, and words_and_philo_ids has
-# it. If spaCy has no tokenizer for the language, words are split by token_regex.
+# The language of the texts, as a spaCy language code (such as "fr", "en" or "la"). If spaCy supports it, its
+# tokenizer for that language splits words instead of token_regex.
 language = ""
 
 # This defines whether you want to convert your text and metadata to an ASCII representation for
@@ -299,10 +295,7 @@ join_hyphen_in_words = True
 # This is to handle abbreviation tags.  I have seen two types:
 #       <abbr expan="en">&emacr;</abbr>
 #       <abbr expan="Valerius Maximus">Val. Max.</abbr>
-# Abbreviations are indexed as their expansion: pres<abbr expan="en">&emacr;</abbr>t is the word "present". The words
-# of an expansion get the bytes of what they stand for in the text (Valerius those of Val., if the abbreviation has
-# as many words, else all of it). Abbreviations with tags inside them which make objects (as <pb/>) are left as
-# they are.
+# Abbreviations are indexed as their expansion: pres<abbr expan="en">&emacr;</abbr>t is the word "present".
 abbrev_expand = True
 
 # ---------------------- Flatten Ligatures for Indexing --------------
@@ -330,7 +323,6 @@ lemma_file = ""
 # Unless the model runs on the GPU, each parsing process (see cores) loads its own copy of the model, and the
 # threads the model would use in a single process are shared out among them: memory use grows with cores.
 # On the GPU, files are tagged in a single process.
-# Only official SpaCy models are supported.
 spacy_model = ""
 ```
 
