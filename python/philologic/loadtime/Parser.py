@@ -487,18 +487,16 @@ class XMLParser:
 
         tags_start_with_bracket = all(tag.startswith("<") for tag in tag_exceptions)
         tag_exceptions = "|".join(tag_exceptions)
-        try:
-            compiled_tag = re.compile(
-                rf'({parse_options["token_regex"]})({tag_exceptions})({parse_options["token_regex"]})({tag_exceptions})({parse_options["token_regex"]})?',
+        tag_token_regex = parse_options.get("token_regex", TOKEN_REGEX)
+        self.tag_exceptions = self.tag_runs = None  # none: every match would be replaced by itself
+        if tag_exceptions:
+            # Words with tag exceptions inside them: tokens joined by runs of these tags, and the tag right after them
+            # (see cleanup_content)
+            self.tag_exceptions = re.compile(
+                rf"(?:{tag_token_regex})(?:(?:{tag_exceptions})+(?:{tag_token_regex}))+(?:{tag_exceptions})?",
                 re.I | re.M,
             )
-            tag_token_regex = parse_options["token_regex"]
-        except:
-            compiled_tag = re.compile(
-                rf"({TOKEN_REGEX})({tag_exceptions})({TOKEN_REGEX})({tag_exceptions})({TOKEN_REGEX})?", re.I | re.M
-            )
-            tag_token_regex = TOKEN_REGEX
-        self.tag_exceptions = compiled_tag if tag_exceptions else None  # none: every match would be replaced by itself
+            self.tag_runs = re.compile(rf"(?:{tag_exceptions})+", re.I | re.M)
         # With TOKEN_REGEX and tags starting with "<", matches start in the token before one of the tags: finding these
         # tags first saves trying a match everywhere (see replace_tag_exceptions)
         self.tag_exception_starts = None
@@ -674,22 +672,33 @@ class XMLParser:
             return match.group() if match and WORD_CHAR.search(match.group()) else ""
 
         def replace_tag(match):
-            m = match.groups()
-            middle = word_part(m[2])
-            if word_part(m[0]) != m[0] or not middle:  # the tags aren't inside a word
-                return match.group()
+            text = match.group()
+            runs = [(run.start(), run.end()) for run in self.tag_runs.finditer(text)]  # of tags, between tokens
+            if word_part(text[: runs[0][0]]) != text[: runs[0][0]]:  # the tags aren't inside a word
+                return text
+            word, length, tags_length = text[: runs[0][0]], runs[0][0], 0  # the word, and what it takes of the match
+            taken = None  # with the tag after it, if it has one
+            for number, (tags_start, tags_end) in enumerate(runs):
+                tags_length += len(text[tags_start:tags_end].encode("utf8"))
+                if tags_end == len(text):  # the tag after the word
+                    taken = tags_end
+                    break
+                token = text[tags_end : runs[number + 1][0] if number + 1 < len(runs) else len(text)]
+                part = word_part(token)
+                if not part:
+                    tags_length -= len(text[tags_start:tags_end].encode("utf8"))
+                    break
+                word += part
+                length = tags_end + len(part)
+                if part != token:  # the word ends in this token (Laugh<g/>ter;): the rest is left as it is
+                    break
+            if not tags_length:  # no tag inside a word
+                return text
             start = byte(match.start())
-            if middle != m[2]:  # the word ends before the second tag (Laugh<g/>ter;</hi>): the rest is left as it is
-                word, tags_end = m[0] + middle, m[0] + m[1] + middle
-                text_end = start + len(tags_end.encode("utf8"))
-            else:
-                end = word_part(m[4] or "")
-                word, tags_end = m[0] + m[2] + end, m[0] + m[1] + m[2] + m[3] + end
-                text_end = start + len((tags_end if end else m[0] + m[1] + m[2]).encode("utf8"))
             word_end = start + len(word.encode("utf8"))
-            self.word_ends[word_end] = text_end
-            self.placeholders[word_end] = start + len(tags_end.encode("utf8"))
-            return word + "_" * (self.placeholders[word_end] - word_end) + match.group()[len(tags_end) :]
+            self.word_ends[word_end] = start + len(text[:length].encode("utf8"))
+            self.placeholders[word_end] = word_end + tags_length
+            return word + "_" * tags_length + text[taken or length :]
 
         if self.tag_exception_starts is not None:
             self.content = replace_tag_exceptions(

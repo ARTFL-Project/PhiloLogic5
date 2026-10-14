@@ -212,6 +212,42 @@ def test_words_joined_across_tags_before_a_semicolon(body, records):
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "body, words",
+    [
+        ('ex<g ref="char:EOLhyphen"/>ecution', [("execution", 'ex<g ref="char:EOLhyphen"/>ecution')]),
+        ("co<g>\u0304</g>mo<g>\u0304</g>s", [("co\u0304mo\u0304s", "co<g>\u0304</g>mo<g>\u0304</g>s")]),  # (abbreviation strokes)
+        ("x<hi>y</hi>z<hi>w</hi>", [("xyzw", "x<hi>y</hi>z<hi>w")]),
+        ("wo<hi><i>r</i></hi>d", [("word", "wo<hi><i>r</i></hi>d")]),
+        ("expedient<lb/>demourer", [("expedient", "expedient"), ("demourer", "demourer")]),
+    ],
+)
+def test_words_joined_across_tags(body, words):
+    """Tag exceptions don't split words, one or several, in a row or not: other tags do"""
+    xml = f"<text><body><div><p>{body} end</p></div></body></text>"
+    output = io.StringIO()
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
+    data = xml.encode("utf8")
+    found = []
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, name, _, attrib = line.split("\t")
+        if kind == "word":
+            attrib = json.loads(attrib)
+            found.append((name, data[attrib["start_byte"] : attrib["end_byte"]].decode("utf8")))
+    assert found == words + [("end", "end")]
+
+
+@pytest.mark.unit
+def test_abbreviation_joined_across_tags():
+    """The tag after a word joined across tags is taken out with it: the abbreviation M<hi>r</hi>. ends no sentence"""
+    xml = '<text><body><div><p>M<hi rend="sup">r</hi>. Smith came.</p></div></body></text>'
+    output = io.StringIO()
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
+    sentences = [line.split("\t")[1] for line in output.getvalue().split("\n")[:-1] if line.startswith("sent\t")]
+    assert sentences == ["."]
+
+
+@pytest.mark.unit
 def test_remove_control_chars():
     """Same as removing them with control_char_re, for every character"""
     parser = plain_parser()

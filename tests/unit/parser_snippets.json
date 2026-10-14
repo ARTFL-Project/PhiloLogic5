@@ -288,11 +288,9 @@
  "inline_tags_in_words": [
   "word\tword\t1 1 1 1 1 1 1 20 0\t{\"start_byte\":20,\"end_byte\":33,\"parent\":\"1 1 1 1 1 1 0\"}",
   "word\tand\t1 1 1 1 1 1 2 34 0\t{\"start_byte\":34,\"end_byte\":37,\"parent\":\"1 1 1 1 1 1 0\"}",
-  "word\tit\t1 1 1 1 1 1 3 42 0\t{\"start_byte\":42,\"end_byte\":44,\"parent\":\"1 1 1 1 1 1 0\"}",
-  "word\talic\t1 1 1 1 1 1 4 49 0\t{\"start_byte\":49,\"end_byte\":53,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "word\titalic\t1 1 1 1 1 1 3 42 0\t{\"start_byte\":42,\"end_byte\":53,\"parent\":\"1 1 1 1 1 1 0\"}",
   "punct\t,\t1 1 1 1 1 1 0 0 1\t{\"start_byte\":53,\"end_byte\":54}",
-  "word\te\t1 1 1 1 1 1 5 60 0\t{\"start_byte\":60,\"end_byte\":61,\"parent\":\"1 1 1 1 1 1 0\"}",
-  "word\tnd\t1 1 1 1 1 1 6 67 0\t{\"start_byte\":67,\"end_byte\":69,\"parent\":\"1 1 1 1 1 1 0\"}",
+  "word\tend\t1 1 1 1 1 1 4 60 0\t{\"start_byte\":60,\"end_byte\":69,\"parent\":\"1 1 1 1 1 1 0\"}",
   "sent\t__philo_virtual\t1 1 1 1 1 1 0 20 0\t{\"start_byte\":20,\"end_byte\":93,\"parent\":\"1 1 1 1 1 0 0\"}",
   "para\tp\t1 1 1 1 1 0 0 17 0\t{\"start_byte\":17,\"end_byte\":93,\"parent\":\"1 1 1 1 0 0 0\"}",
   "div3\t__philo_virtual\t1 1 1 1 0 0 0 17 0\t{\"start_byte\":17,\"end_byte\":93,\"parent\":\"1 1 1 0 0 0 0\"}",
