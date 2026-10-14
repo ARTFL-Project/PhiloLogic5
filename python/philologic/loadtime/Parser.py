@@ -9,6 +9,7 @@ from bisect import bisect_right
 
 import regex as re
 
+from philologic.loadtime import entities
 from philologic.loadtime.OHCOVector import CompoundStack
 from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input
 from philologic.utils import convert_entities, extract_full_date, extract_integer
@@ -210,11 +211,6 @@ tag_matcher = re.compile(r"<(\/?\w+)[^>]*>?", re.I)
 head_self_close_tag = re.compile(r"<head\/>", re.I)
 head_tag = re.compile(r"<head", re.I)
 closed_head_tag = re.compile(r"<\/head>", re.I)
-apost_ent = re.compile(r"\&apos;", re.I)
-macr_ent = re.compile(r"\&([A-Za-z])macr;", re.I)
-inverted_ent = re.compile(r"\&inverted([a-zA-Z0-9]);", re.I)
-supp_ent = re.compile(r"&supp([a-z0-9]);", re.I)
-ligatures_ent = re.compile(r"\&([A-Za-z][A-Za-z])lig;", re.I)
 type_attrib = re.compile(r'type="([^"]*)"', re.I)
 char_ents = re.compile(r"\&[a-zA-Z0-9\#][a-zA-Z0-9]*;", re.I)
 check_if_char_word = re.compile(r"\p{L}", re.I)
@@ -235,73 +231,6 @@ control_chars = "".join(
     [i for i in [chr(x) for x in list(range(0, 32)) + list(range(127, 160))] if not tab_newline.search(i)]
 )
 control_char_re = re.compile(r"[%s]" % re.escape(control_chars))
-
-# Entities regexes
-entity_regex = [
-    re.compile(r"(\&space;)", re.I),
-    re.compile(r"(\&mdash;)", re.I),
-    re.compile(r"(\&nbsp;)", re.I),
-    re.compile(r"(\&para;)", re.I),
-    re.compile(r"(\&sect;)", re.I),
-    re.compile(r"(\&ast;)", re.I),
-    re.compile(r"(\&commat;)", re.I),
-    re.compile(r"(\&ldquo;)", re.I),
-    re.compile(r"(\&laquo;)", re.I),
-    re.compile(r"(\&rdquo;)", re.I),
-    re.compile(r"(\&raquo;)", re.I),
-    re.compile(r"(\&lsquo;)", re.I),
-    re.compile(r"(\&rsquo;)", re.I),
-    re.compile(r"(\&quot;)", re.I),
-    re.compile(r"(\&sup[0-9]*;)", re.I),
-    re.compile(r"(\&mdash;)", re.I),
-    re.compile(r"(\&amp;)", re.I),
-    re.compile(r"(\&deg;)", re.I),
-    re.compile(r"(\&ndash;)", re.I),
-    re.compile(r"(\&copy;)", re.I),
-    re.compile(r"(\&gt;)", re.I),
-    re.compile(r"(\&lt;)", re.I),
-    re.compile(r"(\&frac[0-9]*;)", re.I),
-    re.compile(r"(\&pound;)", re.I),
-    re.compile(r"(\&colon;)", re.I),
-    re.compile(r"(\&hyphen;)", re.I),
-    re.compile(r"(\&dash;)", re.I),
-    re.compile(r"(\&excl;)", re.I),
-    re.compile(r"(\&dagger;)", re.I),
-    re.compile(r"(\&ddagger;)", re.I),
-    re.compile(r"(\&times;)", re.I),
-    re.compile(r"(\&blank;)", re.I),
-    re.compile(r"(\&dollar;)", re.I),
-    re.compile(r"(\&cent;)", re.I),
-    re.compile(r"(\&verbar;)", re.I),
-    re.compile(r"(\&quest;)", re.I),
-    re.compile(r"(\&hellip;)", re.I),
-    re.compile(r"(\&percnt;)", re.I),
-    re.compile(r"(\&middot;)", re.I),
-    re.compile(r"(\&plusmn;)", re.I),
-    re.compile(r"(\&sqrt;)", re.I),
-    re.compile(r"(\&sol;)", re.I),
-    re.compile(r"(\&sdash;)", re.I),
-    re.compile(r"(\&equals;)", re.I),
-    re.compile(r"(\&ornament;)", re.I),
-    re.compile(r"(\&rule;)", re.I),
-    re.compile(r"(\&prime;)", re.I),
-    re.compile(r"(\&rsqb;)", re.I),
-    re.compile(r"(\&lsqb;)", re.I),
-    re.compile(r"(\&punc;)", re.I),
-    re.compile(r"(\&cross;)", re.I),
-    re.compile(r"(\&diamond;)", re.I),
-    re.compile(r"(\&lpunctel;)", re.I),
-    re.compile(r"(\&lsemicol;)", re.I),
-    re.compile(r"(\&plus;)", re.I),
-    re.compile(r"(\&minus;)", re.I),
-    re.compile(r"(\&ounce;)", re.I),
-    re.compile(r"(\&rindx;)", re.I),
-    re.compile(r"(\&lindx;)", re.I),
-    re.compile(r"(\&leaf;)", re.I),
-    re.compile(r"(\&radic;)", re.I),
-    re.compile(r"(\&dram;)", re.I),
-    re.compile(r"(\&sun;)", re.I),
-]
 
 
 # Handlers of XMLParser.tag_handler: tag name (lowercased; "div" and "/div" stand for all the names starting with them)
@@ -1415,7 +1344,7 @@ class XMLParser:
 
     def convert_entities(self, text):
         """Entities as index_words converts them in words"""
-        return self.convert_other_ents(self.latin1_ents_to_utf8(text))
+        return entities.convert_entities(text, self.flatten_ligatures)
 
     def is_inline_tag(self, tag):
         """Whether a tag is an inline tag, which doesn't end the text the tokenizer splits (see flush_run): a tag
@@ -1706,204 +1635,16 @@ class XMLParser:
         return div_head
 
     def clear_char_ents(self, text):
-        """Replaces a selected set of SGML character ents with spaces in order to keep the byte count right."""
-        # We would want to read a list of character ents that should NOT be considered
-        # valid for including in words or, more likely, a list of VALID characters from a general table.
-        if self.break_apost:
-            try:
-                text = apost_ent.sub(lambda match: "," + " " * len(match.group(1) - 1), text)
-            except IndexError:
-                pass
-        for regex in entity_regex:
-            try:
-                text = regex.sub(lambda match: " " * len(match.group(1)), text)
-            except IndexError:
-                pass
-        return text
+        """text with the entities standing for punctuation and symbols as spaces (see entities.clear_char_ents)"""
+        return entities.clear_char_ents(text, self.break_apost)
 
     def latin1_ents_to_utf8(self, text):
-        """Converts ISO-LATIN-1 character entities in index words to UTF-8
-        for standard word index search consistency. This is for SGML data sets
-        and XML that have character ents rather than UTF-8 characters."""
-        text_in_bytes = text.encode("utf8")
-        if self.flatten_ligatures:
-            text_in_bytes = text_in_bytes.replace(b"&AElig;", b"\xc3\x86")
-            text_in_bytes = text_in_bytes.replace(b"&szlig;", b"\xc3\x9F")
-            text_in_bytes = text_in_bytes.replace(b"&aelig;", b"\xc3\xA6")
-        text_in_bytes = text_in_bytes.replace(b"&Agrave;", b"\xc3\x80")
-        text_in_bytes = text_in_bytes.replace(b"&Aacute;", b"\xc3\x81")
-        text_in_bytes = text_in_bytes.replace(b"&Acirc;", b"\xc3\x82")
-        text_in_bytes = text_in_bytes.replace(b"&Atilde;", b"\xc3\x83")
-        text_in_bytes = text_in_bytes.replace(b"&Auml;", b"\xc3\x84")
-        text_in_bytes = text_in_bytes.replace(b"&Aring;", b"\xc3\x85")
-        text_in_bytes = text_in_bytes.replace(b"&Ccedil;", b"\xc3\x87")
-        text_in_bytes = text_in_bytes.replace(b"&Egrave;", b"\xc3\x88")
-        text_in_bytes = text_in_bytes.replace(b"&Eacute;", b"\xc3\x89")
-        text_in_bytes = text_in_bytes.replace(b"&Ecirc;", b"\xc3\x8A")
-        text_in_bytes = text_in_bytes.replace(b"&Euml;", b"\xc3\x8B")
-        text_in_bytes = text_in_bytes.replace(b"&Igrave;", b"\xc3\x8C")
-        text_in_bytes = text_in_bytes.replace(b"&Iacute;", b"\xc3\x8D")
-        text_in_bytes = text_in_bytes.replace(b"&Icirc;", b"\xc3\x8E")
-        text_in_bytes = text_in_bytes.replace(b"&Iuml;", b"\xc3\x8F")
-        text_in_bytes = text_in_bytes.replace(b"&ETH;", b"\xc3\x90")
-        text_in_bytes = text_in_bytes.replace(b"&Ntilde;", b"\xc3\x91")
-        text_in_bytes = text_in_bytes.replace(b"&Ograve;", b"\xc3\x92")
-        text_in_bytes = text_in_bytes.replace(b"&Oacute;", b"\xc3\x93")
-        text_in_bytes = text_in_bytes.replace(b"&Ocirc;", b"\xc3\x94")
-        text_in_bytes = text_in_bytes.replace(b"&Otilde;", b"\xc3\x95")
-        text_in_bytes = text_in_bytes.replace(b"&Ouml;", b"\xc3\x96")
-        text_in_bytes = text_in_bytes.replace(b"&#215;", b"\xc3\x97")  # MULTIPLICATION SIGN
-        text_in_bytes = text_in_bytes.replace(b"&Oslash;", b"\xc3\x98")
-        text_in_bytes = text_in_bytes.replace(b"&Ugrave;", b"\xc3\x99")
-        text_in_bytes = text_in_bytes.replace(b"&Uacute;", b"\xc3\x9A")
-        text_in_bytes = text_in_bytes.replace(b"&Ucirc;", b"\xc3\x9B")
-        text_in_bytes = text_in_bytes.replace(b"&Uuml;", b"\xc3\x9C")
-        text_in_bytes = text_in_bytes.replace(b"&Yacute;", b"\xc3\x9D")
-        text_in_bytes = text_in_bytes.replace(b"&THORN;", b"\xc3\x9E")
-        text_in_bytes = text_in_bytes.replace(b"&agrave;", b"\xc3\xA0")
-        text_in_bytes = text_in_bytes.replace(b"&aacute;", b"\xc3\xA1")
-        text_in_bytes = text_in_bytes.replace(b"&acirc;", b"\xc3\xA2")
-        text_in_bytes = text_in_bytes.replace(b"&atilde;", b"\xc3\xA3")
-        text_in_bytes = text_in_bytes.replace(b"&auml;", b"\xc3\xA4")
-        text_in_bytes = text_in_bytes.replace(b"&aring;", b"\xc3\xA5")
-        text_in_bytes = text_in_bytes.replace(b"&ccedil;", b"\xc3\xA7")
-        text_in_bytes = text_in_bytes.replace(b"&egrave;", b"\xc3\xA8")
-        text_in_bytes = text_in_bytes.replace(b"&eacute;", b"\xc3\xA9")
-        text_in_bytes = text_in_bytes.replace(b"&ecirc;", b"\xc3\xAA")
-        text_in_bytes = text_in_bytes.replace(b"&euml;", b"\xc3\xAB")
-        text_in_bytes = text_in_bytes.replace(b"&igrave;", b"\xc3\xAC")
-        text_in_bytes = text_in_bytes.replace(b"&iacute;", b"\xc3\xAD")
-        text_in_bytes = text_in_bytes.replace(b"&icirc;", b"\xc3\xAE")
-        text_in_bytes = text_in_bytes.replace(b"&iuml;", b"\xc3\xAF")
-        text_in_bytes = text_in_bytes.replace(b"&eth;", b"\xc3\xB0")
-        text_in_bytes = text_in_bytes.replace(b"&ntilde;", b"\xc3\xB1")
-        text_in_bytes = text_in_bytes.replace(b"&ograve;", b"\xc3\xB2")
-        text_in_bytes = text_in_bytes.replace(b"&oacute;", b"\xc3\xB3")
-        text_in_bytes = text_in_bytes.replace(b"&ocirc;", b"\xc3\xB4")
-        text_in_bytes = text_in_bytes.replace(b"&otilde;", b"\xc3\xB5")
-        text_in_bytes = text_in_bytes.replace(b"&ouml;", b"\xc3\xB6")
-        text_in_bytes = text_in_bytes.replace(b"&#247;", b"\xc3\xB7")  # DIVISION SIGN
-        text_in_bytes = text_in_bytes.replace(b"&oslash;", b"\xc3\xB8")
-        text_in_bytes = text_in_bytes.replace(b"&ugrave;", b"\xc3\xB9")
-        text_in_bytes = text_in_bytes.replace(b"&uacute;", b"\xc3\xBA")
-        text_in_bytes = text_in_bytes.replace(b"&ucirc;", b"\xc3\xBB")
-        text_in_bytes = text_in_bytes.replace(b"&uuml;", b"\xc3\xBC")
-        text_in_bytes = text_in_bytes.replace(b"&yacute;", b"\xc3\xBD")
-        text_in_bytes = text_in_bytes.replace(b"&thorn;", b"\xc3\xBE")
-        text_in_bytes = text_in_bytes.replace(b"&yuml;", b"\xc3\xBF")
-
-        # Greek Entities for HTML4 and Chadwock Healey -- Charles Cooney
-        text_in_bytes = text_in_bytes.replace(b"&agr;", b"\xce\xb1")
-        text_in_bytes = text_in_bytes.replace(b"&alpha;", b"\xce\xb1")
-        text_in_bytes = text_in_bytes.replace(b"&bgr;", b"\xce\xb2")
-        text_in_bytes = text_in_bytes.replace(b"&beta;", b"\xce\xb2")
-        text_in_bytes = text_in_bytes.replace(b"&ggr;", b"\xce\xb3")
-        text_in_bytes = text_in_bytes.replace(b"&gamma;", b"\xce\xb3")
-        text_in_bytes = text_in_bytes.replace(b"&dgr;", b"\xce\xb4")
-        text_in_bytes = text_in_bytes.replace(b"&delta;", b"\xce\xb4")
-        text_in_bytes = text_in_bytes.replace(b"&egr;", b"\xce\xb5")
-        text_in_bytes = text_in_bytes.replace(b"&epsilon;", b"\xce\xb5")
-        text_in_bytes = text_in_bytes.replace(b"&zgr;", b"\xce\xb6")
-        text_in_bytes = text_in_bytes.replace(b"&zeta;", b"\xce\xb6")
-        text_in_bytes = text_in_bytes.replace(b"&eegr;", b"\xce\xb7")
-        text_in_bytes = text_in_bytes.replace(b"&eta;", b"\xce\xb7")
-        text_in_bytes = text_in_bytes.replace(b"&thgr;", b"\xce\xb8")
-        text_in_bytes = text_in_bytes.replace(b"&theta;", b"\xce\xb8")
-        text_in_bytes = text_in_bytes.replace(b"&igr;", b"\xce\xb9")
-        text_in_bytes = text_in_bytes.replace(b"&iota;", b"\xce\xb9")
-        text_in_bytes = text_in_bytes.replace(b"&kgr;", b"\xce\xba")
-        text_in_bytes = text_in_bytes.replace(b"&kappa;", b"\xce\xba")
-        text_in_bytes = text_in_bytes.replace(b"&lgr;", b"\xce\xbb")
-        text_in_bytes = text_in_bytes.replace(b"&lambda;", b"\xce\xbb")
-        text_in_bytes = text_in_bytes.replace(b"&mgr;", b"\xce\xbc")
-        text_in_bytes = text_in_bytes.replace(b"&mu;", b"\xce\xbc")
-        text_in_bytes = text_in_bytes.replace(b"&ngr;", b"\xce\xbd")
-        text_in_bytes = text_in_bytes.replace(b"&nu;", b"\xce\xbd")
-        text_in_bytes = text_in_bytes.replace(b"&xgr;", b"\xce\xbe")
-        text_in_bytes = text_in_bytes.replace(b"&xi;", b"\xce\xbe")
-        text_in_bytes = text_in_bytes.replace(b"&ogr;", b"\xce\xbf")
-        text_in_bytes = text_in_bytes.replace(b"&omicron;", b"\xce\xbf")
-        text_in_bytes = text_in_bytes.replace(b"&pgr;", b"\xcf\x80")
-        text_in_bytes = text_in_bytes.replace(b"&pi;", b"\xcf\x80")
-        text_in_bytes = text_in_bytes.replace(b"&rgr;", b"\xcf\x81")
-        text_in_bytes = text_in_bytes.replace(b"&rho;", b"\xcf\x81")
-        text_in_bytes = text_in_bytes.replace(b"&sfgr;", b"\xcf\x82")
-        text_in_bytes = text_in_bytes.replace(b"&sigmaf;", b"\xcf\x82")
-        text_in_bytes = text_in_bytes.replace(b"&sgr;", b"\xcf\x83")
-        text_in_bytes = text_in_bytes.replace(b"&sigma;", b"\xcf\x83")
-        text_in_bytes = text_in_bytes.replace(b"&tgr;", b"\xcf\x84")
-        text_in_bytes = text_in_bytes.replace(b"&tau;", b"\xcf\x84")
-        text_in_bytes = text_in_bytes.replace(b"&ugr;", b"\xcf\x85")
-        text_in_bytes = text_in_bytes.replace(b"&upsilon;", b"\xcf\x85")
-        text_in_bytes = text_in_bytes.replace(b"&phgr;", b"\xcf\x86")
-        text_in_bytes = text_in_bytes.replace(b"&phi;", b"\xcf\x86")
-        text_in_bytes = text_in_bytes.replace(b"&khgr;", b"\xcf\x87")
-        text_in_bytes = text_in_bytes.replace(b"&chi;", b"\xcf\x87")
-        text_in_bytes = text_in_bytes.replace(b"&psgr;", b"\xcf\x88")
-        text_in_bytes = text_in_bytes.replace(b"&psi;", b"\xcf\x88")
-        text_in_bytes = text_in_bytes.replace(b"&ohgr;", b"\xcf\x89")
-        text_in_bytes = text_in_bytes.replace(b"&omega;", b"\xcf\x89")
-        text_in_bytes = text_in_bytes.replace(b"&Agr;", b"\xce\x91")
-        text_in_bytes = text_in_bytes.replace(b"&Alpha;", b"\xce\x91")
-        text_in_bytes = text_in_bytes.replace(b"&Bgr;", b"\xce\x92")
-        text_in_bytes = text_in_bytes.replace(b"&Beta;", b"\xce\x92")
-        text_in_bytes = text_in_bytes.replace(b"&Ggr;", b"\xce\x93")
-        text_in_bytes = text_in_bytes.replace(b"&Gamma;", b"\xce\x93")
-        text_in_bytes = text_in_bytes.replace(b"&Dgr;", b"\xce\x94")
-        text_in_bytes = text_in_bytes.replace(b"&Delta;", b"\xce\x94")
-        text_in_bytes = text_in_bytes.replace(b"&Egr;", b"\xce\x95")
-        text_in_bytes = text_in_bytes.replace(b"&Epsilon;", b"\xce\x95")
-        text_in_bytes = text_in_bytes.replace(b"&Zgr;", b"\xce\x96")
-        text_in_bytes = text_in_bytes.replace(b"&Zeta;", b"\xce\x96")
-        text_in_bytes = text_in_bytes.replace(b"&EEgr;", b"\xce\x97")
-        text_in_bytes = text_in_bytes.replace(b"&Eta;", b"\xce\x97")
-        text_in_bytes = text_in_bytes.replace(b"&THgr;", b"\xce\x98")
-        text_in_bytes = text_in_bytes.replace(b"&Theta;", b"\xce\x98")
-        text_in_bytes = text_in_bytes.replace(b"&Igr;", b"\xce\x99")
-        text_in_bytes = text_in_bytes.replace(b"&Iota;", b"\xce\x99")
-        text_in_bytes = text_in_bytes.replace(b"&Kgr;", b"\xce\x9a")
-        text_in_bytes = text_in_bytes.replace(b"&Kappa;", b"\xce\x9a")
-        text_in_bytes = text_in_bytes.replace(b"&Lgr;", b"\xce\x9b")
-        text_in_bytes = text_in_bytes.replace(b"&Lambda;", b"\xce\x9b")
-        text_in_bytes = text_in_bytes.replace(b"&Mgr;", b"\xce\x9c")
-        text_in_bytes = text_in_bytes.replace(b"&Mu;", b"\xce\x9c")
-        text_in_bytes = text_in_bytes.replace(b"&Ngr;", b"\xce\x9d")
-        text_in_bytes = text_in_bytes.replace(b"&Nu;", b"\xce\x9d")
-        text_in_bytes = text_in_bytes.replace(b"&Xgr;", b"\xce\x9e")
-        text_in_bytes = text_in_bytes.replace(b"&Xi;", b"\xce\x9e")
-        text_in_bytes = text_in_bytes.replace(b"&Ogr;", b"\xce\x9f")
-        text_in_bytes = text_in_bytes.replace(b"&Omicron;", b"\xce\x9f")
-        text_in_bytes = text_in_bytes.replace(b"&Pgr;", b"\xce\xa0")
-        text_in_bytes = text_in_bytes.replace(b"&Pi;", b"\xce\xa0")
-        text_in_bytes = text_in_bytes.replace(b"&Rgr;", b"\xce\xa1")
-        text_in_bytes = text_in_bytes.replace(b"&Rho;", b"\xce\xa1")
-        text_in_bytes = text_in_bytes.replace(b"&Sgr;", b"\xce\xa3")
-        text_in_bytes = text_in_bytes.replace(b"&Sigma;", b"\xce\xa3")
-        text_in_bytes = text_in_bytes.replace(b"&Tgr;", b"\xce\xa4")
-        text_in_bytes = text_in_bytes.replace(b"&Tau;", b"\xce\xa4")
-        text_in_bytes = text_in_bytes.replace(b"&Ugr;", b"\xce\xa5")
-        text_in_bytes = text_in_bytes.replace(b"&Upsilon;", b"\xce\xa5")
-        text_in_bytes = text_in_bytes.replace(b"&PHgr;", b"\xce\xa6")
-        text_in_bytes = text_in_bytes.replace(b"&Phi;", b"\xce\xa6")
-        text_in_bytes = text_in_bytes.replace(b"&KHgr;", b"\xce\xa7")
-        text_in_bytes = text_in_bytes.replace(b"&Chi;", b"\xce\xa7")
-        text_in_bytes = text_in_bytes.replace(b"&PSgr;", b"\xce\xa8")
-        text_in_bytes = text_in_bytes.replace(b"&Psi;", b"\xce\xa8")
-        text_in_bytes = text_in_bytes.replace(b"&OHgr;", b"\xce\xa9")
-        text_in_bytes = text_in_bytes.replace(b"&Omega;", b"\xce\xa9")
-        return text_in_bytes.decode("utf8")
+        """text with the entities standing for letters as these letters (see entities.latin1_ents_to_utf8)"""
+        return entities.latin1_ents_to_utf8(text, self.flatten_ligatures)
 
     def convert_other_ents(self, text):
-        """handles character entities in index words.
-        There should not be many of these."""
-        text = text.replace("&apos;", "'")
-        text = text.replace("&s;", "s")
-        text = macr_ent.sub(r"\1", text)
-        text = inverted_ent.sub(r"\1", text)
-        text = supp_ent.sub(r"\1", text)
-        if self.flatten_ligatures:
-            text = ligatures_ent.sub(r"\1", text)
-        return text
+        """text with the other entities of index words converted (see entities.convert_other_ents)"""
+        return entities.convert_other_ents(text, self.flatten_ligatures)
 
     def remove_control_chars(self, text):
         if text.isprintable():  # control characters aren't printable: nothing to remove
