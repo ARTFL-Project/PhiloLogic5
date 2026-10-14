@@ -468,32 +468,27 @@ class XMLParser:
         self.bytes_read_in = 0
         self.line_count = 0
         for line in self.content:
-            # Let's start indexing words and objects at either the <text
-            # of the <docbody tag.  We can add more.
-            if self.in_the_text is False:
-                if text_tag.search(line) or doc_body_tag.search(line) or body_tag.search(line):
-                    self.in_the_text = True
-
+            if not self.in_the_text and (text_tag.search(line) or doc_body_tag.search(line) or body_tag.search(line)):
+                self.in_the_text = True  # words and objects are indexed from the <text>, <docbody> or <body> tag on
             self.line_count += 1
-
-            if line.startswith("<"):
-                self.bytes_read_in += len(line.encode("utf8"))
-                # TODO : implement DUMPXPATHS?
+            line_bytes = len(line.encode("utf8"))
+            if not line.startswith("<"):  # text, indexed from its start byte
                 if self.in_the_text:
                     if self.tokenizer is None:
-                        self.tag_handler(line)
-                    elif self.is_inline_tag(line):
-                        self.run.append((line, True, self.line_count, self.bytes_read_in))
+                        self.word_handler(line)
                     else:
-                        self.flush_run()
-                        self.tag_handler(line)
-            elif self.tokenizer is None:
-                self.word_handler(line)
-                self.bytes_read_in += len(line.encode("utf8"))
-            else:
-                if self.in_the_text:
-                    self.run.append((line, False, self.line_count, self.bytes_read_in))
-                self.bytes_read_in += len(line.encode("utf8"))
+                        self.run.append((line, False, self.line_count, self.bytes_read_in))
+                self.bytes_read_in += line_bytes
+                continue
+            self.bytes_read_in += line_bytes  # tags are handled with their end byte
+            if not self.in_the_text:
+                continue
+            if self.tokenizer is not None:
+                if self.is_inline_tag(line):  # left in the text the tokenizer splits (see flush_run)
+                    self.run.append((line, True, self.line_count, self.bytes_read_in))
+                    continue
+                self.flush_run()
+            self.tag_handler(line)
         self.flush_run()
 
         # if we have an open page, make sure we close it so it is properly stored
@@ -506,57 +501,46 @@ class XMLParser:
         self.v.pull("doc", self.filesize)
 
     def cleanup_content(self):
-        """Run various clean-ups before parsing."""
-        # Replace carriage returns with spaces since they can give us all kinds of difficulties.
-        self.content = self.content.replace("\r", " ")
-
-        # What cleanup_content takes out (soft hyphens, tag exceptions), it replaces with a "_" for each byte, which
-        # isn't text: start byte of each run of them -> its end byte (see index_words)
+        """Run various clean-ups before parsing. What they take out (soft hyphens, abbreviations, tag exceptions inside
+        words), they replace with a "_" for each byte, which isn't text: self.placeholders has the start byte of each
+        run of them, and its end byte (see index_words)."""
+        self.content = self.content.replace("\r", " ")  # carriage returns give all kinds of difficulties
         self.placeholders = {}
-        self.word_ends = {}  # end byte of a word joined across tag exceptions -> the end byte of its text in the file
-
-        def placeholder(content):
-            """A function replacing a match in content with a "_" for each of its bytes, which it records"""
-            byte = byte_positions(content)
-
-            def replace(match):
-                start = byte(match.start())
-                length = len(match.group().encode("utf8"))
-                self.placeholders[start] = start + length
-                return "_" * length
-
-            return replace
-
-        # Join hyphens
+        self.word_ends = {}  # end byte of a word joined across tags or an abbreviation -> the end byte of its text
         if self.join_hyphen_in_words:
-            self.content = join_hyphen_with_lb.sub(placeholder(self.content), self.content)
-            self.content = join_hyphen.sub(placeholder(self.content), self.content)
-
-        # Replace newlines with spaces.  Remember that we have seen lots of
-        # tags with newlines, which can make a mess of things.
-        self.content = self.content.replace("\n", " ")
-
-        # Abbreviation expander
+            for soft_hyphen in (join_hyphen_with_lb, join_hyphen):
+                self.content = soft_hyphen.sub(self.placeholder(self.content), self.content)
+        self.content = self.content.replace("\n", " ")  # tags can have newlines, which make a mess of things
         self.expansions = []  # (start, end) bytes of each expansion in the content, and the bytes of its parts
         self.expansion_starts = []
         if self.abbrev_expand:
             self.content = self.expand_abbreviations(self.content)
+        if self.tag_exceptions is not None:
+            self.content = self.join_words_across_tags(self.content)
+        self.content = self.content.replace("<", "\n<").replace(">", ">\n")  # each tag on its own line
 
-        # An experimental inword tag spanner. For selected tags between letters, this takes the tags out of the word,
-        # putting a "_" for each of their bytes after it (in order to keep the byte count).  This is to allow indexing
-        # of words broken by tags. The word's text ends in the file after the tags inside it.
-        byte = byte_positions(self.content)
+    def placeholder(self, content):
+        """A function replacing a match in content with a "_" for each of its bytes, which it records"""
+        byte = byte_positions(content)
 
-        def word_part(token):
-            """The word at the start of a token of the match, as split_with_token_regex splits it: "ter" in the "ter;"
-            the entity alternative of TOKEN_REGEX lets the match have, none in ";"."""
-            match = self.token_regex.match(token)
-            return match.group() if match and WORD_CHAR.search(match.group()) else ""
+        def replace(match):
+            start = byte(match.start())
+            length = len(match.group().encode("utf8"))
+            self.placeholders[start] = start + length
+            return "_" * length
 
-        def replace_tag(match):
+        return replace
+
+    def join_words_across_tags(self, content):
+        """content with the words which have tag exceptions inside them (matches of self.tag_exceptions) joined: the
+        tags taken out of the word, and the tag right after it, with a "_" for each of their bytes after the word. The
+        word's text ends in the file after the tags inside it (see self.word_ends)."""
+        byte = byte_positions(content)
+
+        def replace(match):
             text = match.group()
             runs = [(run.start(), run.end()) for run in self.tag_runs.finditer(text)]  # of tags, between tokens
-            if word_part(text[: runs[0][0]]) != text[: runs[0][0]]:  # the tags aren't inside a word
+            if self.word_part(text[: runs[0][0]]) != text[: runs[0][0]]:  # the tags aren't inside a word
                 return text
             word, length, tags_length = text[: runs[0][0]], runs[0][0], 0  # the word, and what it takes of the match
             taken = None  # with the tag after it, if it has one
@@ -566,7 +550,7 @@ class XMLParser:
                     taken = tags_end
                     break
                 token = text[tags_end : runs[number + 1][0] if number + 1 < len(runs) else len(text)]
-                part = word_part(token)
+                part = self.word_part(token)
                 if not part:
                     tags_length -= len(text[tags_start:tags_end].encode("utf8"))
                     break
@@ -583,14 +567,14 @@ class XMLParser:
             return word + "_" * tags_length + text[taken or length :]
 
         if self.tag_exception_starts is not None:
-            self.content = replace_tag_exceptions(
-                self.content, self.tag_exceptions, self.tag_exception_starts, replace_tag
-            )
-        elif self.tag_exceptions is not None:
-            self.content = self.tag_exceptions.sub(replace_tag, self.content)
+            return replace_tag_exceptions(content, self.tag_exceptions, self.tag_exception_starts, replace)
+        return self.tag_exceptions.sub(replace, content)
 
-        # Add newlines to the beginning and end of all tags
-        self.content = self.content.replace("<", "\n<").replace(">", ">\n")
+    def word_part(self, token):
+        """The word at the start of a token of a word with tags inside it, as split_with_token_regex splits it: "ter"
+        in the "ter;" the entity alternative of TOKEN_REGEX lets the match have, none in ";"."""
+        match = self.token_regex.match(token)
+        return match.group() if match and WORD_CHAR.search(match.group()) else ""
 
     def expand_abbreviations(self, content):
         """content with its abbreviations, as <abbr expan="en">&emacr;</abbr> or <abbr expan="Valerius Maximus">Val.
@@ -1052,23 +1036,11 @@ class XMLParser:
                 pass
 
     def word_handler(self, words):
-        """
-        Word handler. It takes an artbitrary string or words between two tags and
-        splits them into words. It also identifies sentence breaks.  I am not checking for existing sentence
-        tags, but could and conditionalize it. Also note that it does not check for
-        sentences inside of linegroups ... which are typically broken on lines.
-        I am not currently handling ";" at the end of words because of confusion with
-        character ents. Easily fixed.
-        """
-
-        if self.in_suppressed_tag is False:
-            # We don't like many character entities, so let's change them
-            # into spaces to get a clean break.
-            if char_ents.search(words):
+        """Index the words of a text line, and what's between them (see index_words), split by token_regex"""
+        if not self.in_suppressed_tag:
+            if char_ents.search(words):  # entities of punctuation and symbols as spaces, for a clean break
                 words = self.clear_char_ents(words)
-            word_list = self.split_with_token_regex(words)
-            if self.in_the_text:
-                self.index_words(word_list, self.bytes_read_in)
+            self.index_words(self.split_with_token_regex(words), self.bytes_read_in)
 
     def split_with_token_regex(self, words):
         """The items of words (see index_words), split by token_regex"""
@@ -1095,67 +1067,38 @@ class XMLParser:
         and what's between them (spaces, punctuation), which may end a sentence. Each gets the bytes of its text in the
         file: a word joined across tag exceptions ends after the tags inside it, and what's between words leaves out
         the spaces around it and the "_" standing for what cleanup_content took out."""
-        count = 0
-        last_word = ""
-        next_word = ""
-        word_list_length = len(word_list)
-        for word in word_list:
-            word_in_utf8 = word.encode("utf8")
-            word_length = len(word_in_utf8)
-            if count + 1 < word_list_length:
-                next_word = word_list[count + 1]
-            count += 1
-
-            # Keep track of your bytes since this is where you are getting
-            # the byte offsets for words.
-            current_pos += word_length
-            item_start = current_pos - word_length
+        last_word = next_word = ""
+        for number, item in enumerate(word_list):
+            if number + 1 < len(word_list):  # (the last item has itself as the next one)
+                next_word = word_list[number + 1]
+            item_start = word_start = current_pos
+            current_pos += len(item.encode("utf8"))
+            text = item
             if self.placeholders and item_start in self.placeholders:  # not text: left out
                 placeholder_length = self.placeholders[item_start] - item_start
-                word, item_start = word[placeholder_length:], item_start + placeholder_length
-
-            # Do we have a word? At least one of these characters.
-            converted_word = word
-            if "&" in word:  # convert entities before checking if there are word chars
-                word = self.latin1_ents_to_utf8(word)
-                word = self.convert_other_ents(word)
-                word_match = check_if_char_word.search(word)
-                converted_word = word
-            else:
-                word_match = check_if_char_word.search(word)
-            if word_match:
-                last_word = word
-                word_pos = current_pos - len(word_in_utf8)
-                if "&" in word:
-                    word = converted_word  # use the converted word from above
-                word = self.index_form(word)
-
-                # Check to see if the word is longer than we want.  More than 235
-                # characters appear to cause problems in the indexer.
-                if len(word_in_utf8) > self.long_word_limit:
+                text, item_start = text[placeholder_length:], item_start + placeholder_length
+            if "&" in text:  # entities converted before checking for letters
+                text = self.convert_entities(text)
+            is_word = check_if_char_word.search(text) is not None
+            if is_word:
+                last_word = text
+                word = self.index_form(text)
+                if len(item.encode("utf8")) > self.long_word_limit:  # (longer ones caused problems in the indexer)
                     self.skip_long_word(word)
                     continue
                 if word:
-
-                    if self.defined_words_to_index:
-                        if word not in self.words_to_index:
-                            continue
-                    token = converted_word if self.spacy_model and converted_word != word else None
-                    self.push_word(word, word_pos, self.word_ends.get(current_pos, current_pos), token)
-                is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
-            else:
-                is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
-                # Sentence break handler
-                if is_sentence_breaker and not self.in_line_group and not self.in_tagged_sentence:
-                    # a little hack--we don't know the punctuation mark that will end a sentence
-                    # until we encounter it--so instead, we let the push on "word" create a
-                    # implicit philo_virtual sentence, then change its name once we actually encounter
-                    # the punctuation token.
-                    self.end_sentence(word.replace("\t", " ").strip(), *self.text_bytes(word, item_start, current_pos))
-            if is_sentence_breaker:
-                self.last_sentence_marker = word.replace("\t", " ").strip()
-            if self.punct_regex.search(word):
-                self.push_punct(word, *self.text_bytes(word, item_start, current_pos))
+                    if self.defined_words_to_index and word not in self.words_to_index:
+                        continue
+                    token = text if self.spacy_model and text != word else None
+                    self.push_word(word, word_start, self.word_ends.get(current_pos, current_pos), token)
+                text = word  # (the indexed word is what's checked below)
+            if self.is_word_sentence_breaker(text, last_word, next_word):
+                sentence_name = text.replace("\t", " ").strip()
+                if not is_word and not self.in_line_group and not self.in_tagged_sentence:
+                    self.end_sentence(sentence_name, *self.text_bytes(text, item_start, current_pos))
+                self.last_sentence_marker = sentence_name
+            if self.punct_regex.search(text):
+                self.push_punct(text, *self.text_bytes(text, item_start, current_pos))
 
     def index_tokens(self, items):
         """Index the items of a run split by the tokenizer (see flush_run), each with its exact bytes in the file:
@@ -1485,38 +1428,26 @@ class XMLParser:
             pass
 
     def get_div_head(self, tag):
-        """Get div head."""
-        read_more = False
-        look_ahead = self.line_count
-        overflow_trap = 0
-        div_head = ""
-        while not read_more:
-            look_ahead += 1
-            try:
-                next_line = self.content[look_ahead]
-            except IndexError:
-                break
-            if "<" not in next_line:  # none of the tag regexes below can match
+        """The head of a div: the text of the <head> tags after it (all of them, 50 lines at most), up to the next div
+        tag, else its type attribute, else [NA]"""
+        div_head, head_lines = "", 0
+        # (from the line after the one after the tag)
+        lines = (self.content[number] for number in range(self.line_count + 1, len(self.content)))
+        for line in lines:
+            if "<" not in line:
                 continue
-            next_line = head_self_close_tag.sub("", next_line)
-            if div_tag.search(next_line) or closed_div_tag.search(next_line):
-                break  # don't go past an open or close <div.
-            if head_tag.search(next_line):
-                read_more = True
-            if read_more:
-                while read_more:
-                    look_ahead += 1
-                    overflow_trap += 1
-                    try:
-                        next_line = self.content[look_ahead]
-                    except IndexError:
-                        break
-                    if closed_head_tag.search(next_line):
-                        read_more = False
-                    elif overflow_trap > 50:  # Overflow trap in case you miss </head
-                        read_more = False
-                    else:
-                        div_head += next_line
+            line = head_self_close_tag.sub("", line)
+            if div_tag.search(line) or closed_div_tag.search(line):
+                break  # don't go past an open or close <div
+            if not head_tag.search(line):
+                continue
+            for line in lines:  # the lines of the head, up to its closing tag
+                head_lines += 1
+                if closed_head_tag.search(line) or head_lines > 50:  # (in case </head> is missing)
+                    break
+                div_head += line
+            else:
+                break
         if div_head:
             div_head = self.clear_char_ents(div_head)
             div_head = self.latin1_ents_to_utf8(div_head)
