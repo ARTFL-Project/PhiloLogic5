@@ -42,7 +42,6 @@ import html
 import json
 import math
 import os
-import struct
 import tempfile
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
@@ -54,6 +53,7 @@ from scipy.sparse import csr_matrix, hstack
 from scipy.special import gammaincinv, ndtr
 
 from philologic.runtime.reports.collocation import (
+    _filter_hashes,
     _load_sentence_df,
     _load_token_counts,
     _nb_build_filter,
@@ -1910,11 +1910,7 @@ def _filter_mask(colloc_dir, prefix, filter_words, n_vocab):
     if not filter_words:
         return np.zeros(n_vocab, dtype=np.bool_)
     hashes = np.load(os.path.join(colloc_dir, f"{prefix}vocab_hashes.npy"), mmap_mode="r")
-    wanted = np.array(
-        sorted(struct.unpack("<Q", hashlib.md5(w.encode("utf-8")).digest()[:8])[0] for w in filter_words),
-        dtype=np.uint64,
-    )
-    return _nb_build_filter(hashes, wanted)
+    return _nb_build_filter(hashes, _filter_hashes(filter_words))
 
 
 def _vocabulary(data_path, count_lemmas):

@@ -23,7 +23,14 @@ from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.Query import MAX_DISTANCE, get_word_groups, phrase_lengths, rewrite_terms_file, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 from philologic.runtime.sql_validation import validate_request_column
-from philologic.runtime.word_properties import _nb_word_kept, property_masks, property_names, split_properties
+from philologic.runtime.word_properties import (
+    _nb_compare_keys,
+    _nb_sentence_index,
+    _nb_word_kept,
+    property_masks,
+    property_names,
+    split_properties,
+)
 
 # Per-worker cache of corpus-wide sentence document-frequency arrays.
 # Keyed by (db_path, count_lemmas) -> (df_array, n_sentences).
@@ -34,17 +41,6 @@ _SENTENCE_DF_CACHE: dict = {}
 DEFAULT_DF_PCT = 1.0
 MIN_DF_PCT = 0.5
 MAX_DF_PCT = 5.0
-
-
-@numba.njit(cache=True)
-def _nb_compare_keys(a, b):
-    """Lexicographic comparison of two 6-element uint32 key rows."""
-    for k in range(6):
-        if a[k] < b[k]:
-            return -1
-        elif a[k] > b[k]:
-            return 1
-    return 0
 
 
 @numba.njit(parallel=True, cache=True)
@@ -68,19 +64,14 @@ def _nb_build_filter(vocab_hashes, filter_hashes_sorted):
 
 
 @numba.njit(parallel=True, cache=True)
-def _nb_searchsorted(sent_keys, hit_keys, n_sents):
+def _nb_searchsorted(sent_keys, hit_keys):
     """Parallel binary search of hit keys against sorted sentence keys."""
     n_hits = hit_keys.shape[0]
+    n_sents = sent_keys.shape[0]
     result = np.empty(n_hits, dtype=np.int64)
     match = np.empty(n_hits, dtype=numba.boolean)
     for i in numba.prange(n_hits):
-        lo, hi = np.int64(0), np.int64(n_sents)
-        while lo < hi:
-            mid = (lo + hi) // 2
-            if _nb_compare_keys(sent_keys[mid], hit_keys[i]) < 0:
-                lo = mid + 1
-            else:
-                hi = mid
+        lo = _nb_sentence_index(sent_keys, hit_keys[i])
         result[i] = lo
         match[i] = lo < n_sents and _nb_compare_keys(sent_keys[lo], hit_keys[i]) == 0
     return result, match
@@ -458,7 +449,7 @@ def _vectorized_collocation(
 
     #  Parallel binary search (all hits at once)
     hit_keys = np.ascontiguousarray(all_hits[:, :6])
-    si, match = _nb_searchsorted(sent_keys_native, hit_keys, len(sent_keys_native))
+    si, match = _nb_searchsorted(sent_keys_native, hit_keys)
     sent_indices = si[match]
     hit_q_pos = np.ascontiguousarray(span_start[match])
     hit_q_end = np.ascontiguousarray(span_end[match])

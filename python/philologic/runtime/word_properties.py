@@ -128,14 +128,28 @@ def _nb_word_kept(word, columns, allowed):
 
 
 @numba.njit(cache=True)
-def _nb_key_order(sent_key, hit):
-    """Order of a sentence key (6 uint32) and of the sentence of a hit (its first 6 fields)"""
+def _nb_compare_keys(a, b):
+    """Lexicographic comparison of two key rows by their first 6 uint32 fields: a sentence key, or the sentence of a
+    hit."""
     for k in range(6):
-        if sent_key[k] < hit[k]:
+        if a[k] < b[k]:
             return -1
-        if sent_key[k] > hit[k]:
+        elif a[k] > b[k]:
             return 1
     return 0
+
+
+@numba.njit(cache=True)
+def _nb_sentence_index(sent_keys, key):
+    """Where key (by its first 6 fields) is, or would go, among the sorted sentence keys (sent_keys_native.npy)"""
+    lo, hi = np.int64(0), np.int64(sent_keys.shape[0])
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if _nb_compare_keys(sent_keys[mid], key) < 0:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
 
 
 @numba.njit(parallel=True, cache=True)
@@ -146,14 +160,8 @@ def _nb_have_values(hits, sent_keys, sent_offsets, columns, targets):
     n_sents = sent_keys.shape[0]
     keep = np.zeros(n, dtype=np.bool_)
     for i in numba.prange(n):
-        lo, hi = 0, n_sents
-        while lo < hi:
-            mid = (lo + hi) // 2
-            if _nb_key_order(sent_keys[mid], hits[i]) < 0:
-                lo = mid + 1
-            else:
-                hi = mid
-        if lo == n_sents or _nb_key_order(sent_keys[lo], hits[i]) != 0:
+        lo = _nb_sentence_index(sent_keys, hits[i])
+        if lo == n_sents or _nb_compare_keys(sent_keys[lo], hits[i]) != 0:
             continue
         word = np.uint64(sent_offsets[lo]) + np.uint64(hits[i, 7]) - np.uint64(1)
         ok = True
