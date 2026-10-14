@@ -18,6 +18,7 @@ from unidecode import unidecode
 
 from philologic.runtime.lmdb_env import lmdb_env
 from philologic.runtime.QuerySyntax import quoted_text
+from philologic.runtime.word_properties import property_names, split_properties
 
 
 # Flat files (in frequencies/) that feed word_forms.lmdb
@@ -335,16 +336,23 @@ def _lemma_boundary_filter(kind: str, keys: list[str]) -> list[str]:
     return [k for k in keys if k.count(":") == 1]
 
 
-def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
-                     forms_env: lmdb.Environment | None = None) -> list[str]:
+def _expand_positive(
+    kind: str,
+    token: str,
+    txn,
+    ascii_conversion: bool,
+    lowercase: bool,
+    forms_env: lmdb.Environment | None = None,
+    names=frozenset(),
+) -> list[str]:
     """Expand one positive token to the list of words.lmdb lookup keys: the forms of each of its long s variants."""
     variants = _long_s_variants(kind, token)
     if len(variants) == 1:
-        return _expand_positive_token(kind, token, txn, ascii_conversion, lowercase, forms_env)
+        return _expand_positive_token(kind, token, txn, ascii_conversion, lowercase, forms_env, names)
     forms = Forms()
     seen: set[str] = set()
     for variant in variants:
-        expanded = _expand_positive_token(kind, variant, txn, ascii_conversion, lowercase, forms_env)
+        expanded = _expand_positive_token(kind, variant, txn, ascii_conversion, lowercase, forms_env, names)
         forms.cut = forms.cut or getattr(expanded, "cut", False)
         for form in expanded:
             if form not in seen:
@@ -353,13 +361,20 @@ def _expand_positive(kind: str, token: str, txn, ascii_conversion: bool, lowerca
     return forms
 
 
-def _expand_positive_token(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
-                           forms_env: lmdb.Environment | None = None) -> list[str]:
+def _expand_positive_token(
+    kind: str,
+    token: str,
+    txn,
+    ascii_conversion: bool,
+    lowercase: bool,
+    forms_env: lmdb.Environment | None = None,
+    names=frozenset(),
+) -> list[str]:
     """Expand one positive token, as it is, to the list of words.lmdb lookup keys.
 
     For TERM/QUOTE with ascii_conversion, expands via norm_word.lmdb (txn).
     Supports regex patterns (e.g. sens.*) via LMDB cursor scan.
-    For LEMMA/ATTR/LEMMA_ATTR regex, scans word_forms.lmdb (forms_env).
+    For LEMMA/ATTR/LEMMA_ATTR regex, scans word_forms.lmdb (forms_env), see _forms_keys.
     """
     if kind in ("TERM", "RANGE"):
         if ascii_conversion:
@@ -377,25 +392,54 @@ def _expand_positive_token(kind: str, token: str, txn, ascii_conversion: bool, l
         return [inner] if inner else []
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
-            prefix_bytes, pattern_str = _forms_pattern(token)
-            with forms_env.begin(buffers=True) as f_txn:
-                keys = _lmdb_scan_keys(f_txn, prefix_bytes, pattern_str)
-            return _lemma_boundary_filter(kind, keys)
+            return _forms_keys(kind, token, forms_env, names)
         return [token]
     return []
 
 
-def _expand_exclude(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
-                    forms_env: lmdb.Environment | None = None) -> set[str]:
+def _forms_keys(kind: str, token: str, forms_env: lmdb.Environment, names) -> list[str]:
+    """The word_forms.lmdb keys a LEMMA, ATTR or LEMMA_ATTR regex matches. Those keys have one property of the word:
+    with several properties (names: those of the database, see word_properties), the regex is matched with its first,
+    and the others are added to each key."""
+    word, pairs = split_properties(token, names)
+    others = "".join(f":{name}:{value}" for name, value in pairs[1:])
+    if others:
+        token = f"{word}:{pairs[0][0]}:{pairs[0][1]}"
+    prefix_bytes, pattern_str = _forms_pattern(token)
+    with forms_env.begin(buffers=True) as f_txn:
+        keys = _lmdb_scan_keys(f_txn, prefix_bytes, pattern_str)
+    if kind == "ATTR":  # a word's: not the lemmas' keys the pattern matches too (l.*:pos:VERB, lemma:love:pos:VERB)
+        keys = [key for key in keys if not key.startswith("lemma:")]
+    return [key + others for key in _lemma_boundary_filter(kind, keys)]
+
+
+def _expand_exclude(
+    kind: str,
+    token: str,
+    txn,
+    ascii_conversion: bool,
+    lowercase: bool,
+    forms_env: lmdb.Environment | None = None,
+    names=frozenset(),
+) -> set[str]:
     """Expand one NOT token to the set of forms to exclude: those of each of its long s variants."""
     return set().union(
-        *(_expand_exclude_token(kind, variant, txn, ascii_conversion, lowercase, forms_env)
-          for variant in _long_s_variants(kind, token))
+        *(
+            _expand_exclude_token(kind, variant, txn, ascii_conversion, lowercase, forms_env, names)
+            for variant in _long_s_variants(kind, token)
+        )
     )
 
 
-def _expand_exclude_token(kind: str, token: str, txn, ascii_conversion: bool, lowercase: bool,
-                          forms_env: lmdb.Environment | None = None) -> set[str]:
+def _expand_exclude_token(
+    kind: str,
+    token: str,
+    txn,
+    ascii_conversion: bool,
+    lowercase: bool,
+    forms_env: lmdb.Environment | None = None,
+    names=frozenset(),
+) -> set[str]:
     """Expand one NOT token, as it is, to the set of forms to exclude.
 
     Mirrors _expand_positive_token but returns a set for O(1) exclusion checks.
@@ -416,10 +460,7 @@ def _expand_exclude_token(kind: str, token: str, txn, ascii_conversion: bool, lo
         return {inner}
     elif kind in ("LEMMA", "LEMMA_ATTR", "ATTR"):
         if _is_regex_pattern(token) and forms_env is not None:
-            prefix_bytes, pattern_str = _forms_pattern(token)
-            with forms_env.begin(buffers=True) as f_txn:
-                keys = _lmdb_scan_keys(f_txn, prefix_bytes, pattern_str)
-            return set(_lemma_boundary_filter(kind, keys))
+            return set(_forms_keys(kind, token, forms_env, names))
         return {token}
     return set()
 
@@ -467,6 +508,7 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
     db_path = os.path.normpath(os.path.join(os.path.dirname(freq_file), ".."))
     forms_lmdb_path = os.path.join(db_path, "frequencies", "word_forms.lmdb")
     forms = lmdb_env(forms_lmdb_path) if os.path.exists(forms_lmdb_path) else nullcontext()
+    names = property_names(db_path)
     first = True
 
     with lmdb_env(freq_file + ".lmdb") as env, forms as forms_env, env.begin(buffers=True) as txn:
@@ -492,7 +534,7 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
             seen: set[str] = set()
             pos_forms: list[str] = []
             for kind, token in pos_group:
-                for form in _expand_positive(kind, token, txn, ascii_conversion, lowercase, forms_env):
+                for form in _expand_positive(kind, token, txn, ascii_conversion, lowercase, forms_env, names):
                     if form not in seen:
                         seen.add(form)
                         pos_forms.append(form)
@@ -500,7 +542,7 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
             # Set of forms to exclude
             excl: set[str] = set()
             for kind, token in exclude_specs:
-                excl |= _expand_exclude(kind, token, txn, ascii_conversion, lowercase, forms_env)
+                excl |= _expand_exclude(kind, token, txn, ascii_conversion, lowercase, forms_env, names)
 
             # Write filtered forms, one per line
             for form in pos_forms:

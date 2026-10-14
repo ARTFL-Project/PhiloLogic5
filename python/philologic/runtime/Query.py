@@ -26,6 +26,7 @@ from philologic.runtime import HitList
 from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.lmdb_env import lmdb_env
 from philologic.runtime.QuerySyntax import group_terms, parse_query, quoted_text
+from philologic.runtime.word_properties import hits_with_properties
 
 
 @numba.jit(nopython=True, cache=True, nogil=True)
@@ -115,20 +116,7 @@ def _load_word_group_hits(db_path, txn, words, overflow_words):
     Returns:
         Numpy array view of hits, sorted by (doc_id, byte_offset)
     """
-    arrays = []
-    for word in words:
-        if word not in overflow_words:
-            buffer = txn.get(word.encode("utf8"))
-            if buffer:
-                # Use frombuffer for zero-copy view into LMDB's mmap
-                arr = np.frombuffer(buffer, dtype=np.uint32).reshape(-1, 9)
-                arrays.append(arr)
-        else:
-            # Overflow words use memmap for zero-copy access
-            file_path = os.path.join(db_path, "overflow_words",
-                                     f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
-            arr = np.memmap(file_path, dtype=np.uint32, mode='r').reshape(-1, 9)
-            arrays.append(arr)
+    arrays = _load_word_arrays(db_path, txn, words, overflow_words)
 
     if not arrays:
         return np.empty((0, 9), dtype=np.uint32)
@@ -150,17 +138,30 @@ def _load_word_arrays(db_path, txn, words, overflow_words):
     """
     arrays = []
     for word in words:
-        if word not in overflow_words:
-            buffer = txn.get(word.encode("utf8"))
-            if buffer:
-                arr = np.frombuffer(buffer, dtype=np.uint32).reshape(-1, 9)
-                arrays.append(arr)
-        else:
-            file_path = os.path.join(db_path, "overflow_words",
-                                     f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
-            arr = np.memmap(file_path, dtype=np.uint32, mode='r').reshape(-1, 9)
+        arr = _word_hits(db_path, txn, word, overflow_words)
+        if arr is not None and len(arr) > 0:
             arrays.append(arr)
     return arrays
+
+
+def _stored_hits(db_path, txn, word, overflow_words):
+    """The hits the index has under a key, None if none: a zero-copy view of its LMDB value, or of its overflow file"""
+    if word not in overflow_words:
+        buffer = txn.get(word.encode("utf8"))
+        if not buffer:
+            return None
+        return np.frombuffer(buffer, dtype=np.uint32).reshape(-1, 9)
+    file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
+    return np.memmap(file_path, dtype=np.uint32, mode="r").reshape(-1, 9)
+
+
+def _word_hits(db_path, txn, word, overflow_words):
+    """The hits of a key of the .terms file: those the index has under it, or those of a word with several properties
+    (see word_properties). None if none."""
+    hits = hits_with_properties(db_path, word, lambda key: _stored_hits(db_path, txn, key, overflow_words))
+    if hits is None:
+        return _stored_hits(db_path, txn, word, overflow_words)
+    return hits if len(hits) > 0 else None
 
 
 def _partial_merge_first_n(arrays, n):
@@ -336,7 +337,14 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus=None):
         if len(words) == 1:
             with env.begin(buffers=True) as txn, open(hitlist_filename, "wb") as output_file:
                 word = words[0]
-                if corpus is None:
+                with_properties = hits_with_properties(
+                    db_path, word, lambda key: _stored_hits(db_path, txn, key, overflow_words)
+                )
+                if with_properties is not None:
+                    if corpus is not None:
+                        with_properties = filter_philo_ids(corpus, with_properties)
+                    _write_with_early_flush(output_file, with_properties.tobytes())
+                elif corpus is None:
                     if word not in overflow_words:
                         buffer = txn.get(word.encode("utf8"))
                         if buffer is not None:
@@ -373,14 +381,9 @@ def search_word(db_path, hitlist_filename, overflow_words, corpus=None):
 
 
 def get_word_array(txn, word, overflow_words, db_path):
-    """Returns numpy array either from LMDB buffer or memmap"""
-    if word not in overflow_words:
-        buffer = txn.get(word.encode("utf8"))
-        if buffer is None:
-            return np.array([], dtype="u4").reshape(-1, 9)
-        return np.frombuffer(buffer, dtype="u4").reshape(-1, 9)
-    file_path = os.path.join(db_path, "overflow_words", f"{hashlib.sha256(word.encode('utf8')).hexdigest()}.bin")
-    return np.memmap(file_path, dtype="u4", mode='r').reshape(-1, 9)
+    """Returns numpy array either from LMDB buffer or memmap, or of the hits of a word with several properties"""
+    hits = _word_hits(db_path, txn, word, overflow_words)
+    return np.array([], dtype="u4").reshape(-1, 9) if hits is None else hits
 
 
 def get_word_groups(terms_file):
