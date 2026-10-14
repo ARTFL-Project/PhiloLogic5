@@ -13,6 +13,8 @@
                 <option value="similar">{{ $t("collocation.similarUsage") }}</option>
                 <option value="senses">{{ $t("collocation.wordSenses") }}</option>
                 <option value="senseTree">{{ $t("collocation.senseTree") }}</option>
+                <option value="sensePeriods">{{ $t("collocation.sensePeriods") }}</option>
+                <option value="senseOverview">{{ $t("collocation.senseOverview") }}</option>
             </select>
         </div>
 
@@ -60,12 +62,28 @@
                         {{ $t("collocation.senseTree") }}
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="sense-periods-tab" data-bs-toggle="tab"
+                        :class="{ active: mode === 'sensePeriods' }" data-bs-target="#sense-periods-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'sensePeriods'"
+                        @click="setMode('sensePeriods')">
+                        {{ $t("collocation.sensePeriods") }}
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link shadow-sm" id="sense-overview-tab" data-bs-toggle="tab"
+                        :class="{ active: mode === 'senseOverview' }" data-bs-target="#sense-overview-tab-pane" type="button"
+                        role="tab" :aria-selected="mode === 'senseOverview'"
+                        @click="setMode('senseOverview')">
+                        {{ $t("collocation.senseOverview") }}
+                    </button>
+                </li>
             </ul>
         </div>
 
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
-            v-if="['frequency', 'senses', 'senseTree'].includes(mode)"
+            v-if="['frequency', 'senses', 'senseTree', 'sensePeriods', 'senseOverview'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -99,6 +117,12 @@
 
             <SenseTree v-if="mode === 'senseTree'" ref="senseTreeRef"
                 @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+
+            <SensePeriods v-if="mode === 'sensePeriods'" ref="sensePeriodsRef"
+                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+
+            <SenseOverview v-if="mode === 'senseOverview'" ref="senseOverviewRef"
+                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
         </div>
     </div>
 </template>
@@ -123,6 +147,8 @@ import Similar from "./collocation/Similar.vue";
 import WordSenses from "./collocation/WordSenses.vue";
 // Lazy-loaded: the sense tree only ships when the user opens its tab, not on entry to Collocation.
 const SenseTree = defineAsyncComponent(() => import("./collocation/SenseTree.vue"));
+const SensePeriods = defineAsyncComponent(() => import("./collocation/SensePeriods.vue"));
+const SenseOverview = defineAsyncComponent(() => import("./collocation/SenseOverview.vue"));
 
 //  Injects, route, router, store
 const $http = inject("$http");
@@ -145,6 +171,8 @@ const compareRef = useTemplateRef("compareRef");
 const similarRef = useTemplateRef("similarRef");
 const wordSensesRef = useTemplateRef("wordSensesRef");
 const senseTreeRef = useTemplateRef("senseTreeRef");
+const sensePeriodsRef = useTemplateRef("sensePeriodsRef");
+const senseOverviewRef = useTemplateRef("senseOverviewRef");
 
 //  Shared state
 const mode = ref("frequency");
@@ -245,7 +273,7 @@ function updateCollocationUrl() {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
-    if (["senses", "senseTree"].includes(mode.value)) {
+    if (["senses", "senseTree", "sensePeriods", "senseOverview"].includes(mode.value)) {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -380,6 +408,16 @@ watch(
                 senseTreeRef.value?.runDetection();
                 return;
             }
+            if (newMode === "sensePeriods") {
+                await nextTick();
+                sensePeriodsRef.value?.runDetection();
+                return;
+            }
+            if (newMode === "senseOverview") {
+                await nextTick();
+                senseOverviewRef.value?.runDetection();
+                return;
+            }
             // Switching to frequency/similar/compare, but the primary fetch
             // never ran (page was loaded directly on a detection tab) — run it
             // now so the view isn't empty.
@@ -404,6 +442,12 @@ watch(
         } else if (newMode === "senseTree") {
             await nextTick();
             senseTreeRef.value?.runDetection();
+        } else if (newMode === "sensePeriods") {
+            await nextTick();
+            sensePeriodsRef.value?.runDetection();
+        } else if (newMode === "senseOverview") {
+            await nextTick();
+            senseOverviewRef.value?.runDetection();
         } else {
             fetchResults();  // .then() runs runPostFetchModeAction for similar/compare/frequency
         }
@@ -438,6 +482,14 @@ onMounted(async () => {
         case "senseTree":
             await nextTick();
             senseTreeRef.value?.runDetection();
+            break;
+        case "sensePeriods":
+            await nextTick();
+            sensePeriodsRef.value?.runDetection();
+            break;
+        case "senseOverview":
+            await nextTick();
+            senseOverviewRef.value?.runDetection();
             break;
         case "compare":
             fetchResults();  // primary fetch then runPostFetchModeAction → compareRef.runFromMetadata

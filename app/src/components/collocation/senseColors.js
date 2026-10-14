@@ -45,3 +45,19 @@ export function senseTextColor(sense, shades) {
     const top = Number(sense.split(".")[0]);
     return `hsl(${HUES[(top - 1) % HUES.length]}, 62%, ${Math.min(shades[sense] ?? 46, 36)}%)`;
 }
+
+// What to draw on top of a sense's color (a line across it): white or near black, whichever stands out more from it
+export function senseInk(sense, shades) {
+    const hue = sense ? HUES[(Number(sense.split(".")[0]) - 1) % HUES.length] : 0;
+    const s = sense ? 0.62 : 0;
+    const l = (sense ? shades[sense] ?? 46 : 62) / 100;
+    const a = s * Math.min(l, 1 - l);
+    const channel = (n) => {
+        const k = (n + hue / 30) % 12;
+        const c = l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1));
+        return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = 0.2126 * channel(0) + 0.7152 * channel(8) + 0.0722 * channel(4);
+    const dark = 0.0181; // the luminance of #212529
+    return (1.05 / (luminance + 0.05)) >= (luminance + 0.05) / (dark + 0.05) ? "#fff" : "#212529";
+}

@@ -1159,6 +1159,249 @@ it was left in place.
 - **Focus** (from solo/hide). Pointing at a sense's chip, or tabbing to it, fades the other senses in the overview
   chart.
 
+## 21. Three tabs for what is new over time (Oct 11; all three dropped the same day)
+
+**Dropped.** The user found that none of the three works on *révolution*, and dropped them all "for now". The record
+below is kept for a later revisit.
+- The code is in commit `b6d0bf4d` on the local branch `word-senses-prototype`: the three tabs, `word_trends.py`, the
+  two scripts, `rise` and `sense_onsets` in `word_senses.py`, their texts and tests.
+- Only one thing from this work is still in the code: the fix to `_Phrases.near` (below), now with a regression test.
+
+The goal: find when new uses of a word ("social", "tradition") start appearing, and the texts they may have come from.
+The senses are found without regard to time, so the senses tab only shows how existing senses wax and wane. Three
+approaches were built as separate tabs so they can be compared.
+
+**1. Sense onsets** (`SenseOnsets.vue`, data from `get_word_senses`). For each sense at the detail shown:
+- the year its share of the works' sentences rises, if it does (`word_senses.rise`: one change point, binomial, rises
+  only, kept when G2 is above the BIC threshold; each work counts once, through its posterior share);
+- before that year, its earliest sentences clearly in the sense (`sense_onsets`: up to `_PRECURSORS`).
+
+**2. Rising words** (`RisingWords.vue`, `word_trends.rising_words`, script `get_rising_words`).
+- Candidates are the query's collocates outside the filter. A candidate rises when its rate in the query's sentences
+  has a change point (sentences as trials, works as units, quasi-binomial dispersion over the works).
+- It must also rise more than the word does in the whole corpus at that year (`_count_by_year`, a numba scan). A word
+  the corpus lacks before then is marked "new in the corpus".
+- Rising words that go together (G2 above log n, grouped around HyperLex hubs) form one emerging use. Each use has its
+  rise, its course over time and its earliest sentences with two of its words.
+
+**3. Ahead of their time** (`AheadOfTime.vue` and `AheadWork.vue`, `word_trends.ahead_of_time`, script
+`get_ahead_of_time`). This follows resonance (Barron, Huang, Spang and DeDeo 2018: novelty against the past minus
+transience against the future), done with works.
+- Each work's vector is its collocates of the query, idf-weighted as the senses weigh evidence, filter words removed
+  from the sentence channel.
+- It is compared, by cosine, with every work by another author from the span before its year and the span after (the
+  span is `time_series_interval`). Each cosine is divided by that other work's mean closeness to all works.
+- A Mann–Whitney test over those works decides whether the later works are, as a rule, closer than the earlier ones.
+  - **Clearly ahead:** above a Bonferroni threshold over the works tested, ranked by the share of (later, earlier)
+    pairs in which the later work is closer.
+  - **Perhaps ahead:** above EVIDENCE only, shown with how many would pass by chance alone.
+- Each work comes with: the words the later works have more of; its sentences with most of them; the closest later
+  works.
+
+**What did not work** (tab 3's first design, "new uses"):
+- Per decade, the period's sentences were split, the way a sense is split, into those the recent past explains and a
+  new use carved out of it, tested on held-out works.
+- Against the past alone, it flagged every decade tested in ELTeC for *light* and *man*, and the new uses were
+  mostly character names. Any extra data improves held-out predictions, so the test is biased toward "new".
+- Against the past refitted with the period, it flagged nothing, not even *révolution* in the 1790s (z = −4.8). The
+  refit absorbs the drift that the carved use cannot.
+- Telling a new use from drift needs the past's own uses as the baseline, which would largely repeat tab 1. Dropped.
+
+**Three more things the work-level tab needed:**
+- **Rank test over works, not a window model.** Comparing each work with one model of the works before and one of the
+  works after was decided by which particular works fell into each window. On ELTeC it found as many works "behind"
+  as "ahead" (14 vs 17 for *man*). William Morris's archaic style came out "ahead".
+- **The closeness correction.** Without it, works came out ahead but never behind. Later works use *révolution* more,
+  their vectors are fuller, and they look a little like every work. The rank of each closeness among all works gave
+  the same list as dividing by the mean; the division scales and was kept.
+- **Collocates only.** On eebo_ecco_combo, the seam between EEBO and ECCO at 1700 ("thoſe" vs "those") made the works
+  around 1700 look ahead because of their spelling.
+
+**Results** (frantext, the page's defaults: frequency filter, words in over 1% of sentences hidden):
+
+| | Sense onsets | Rising words | Ahead of their time |
+|---|---|---|---|
+| *révolution* | 1.2 (Paris, juillet) 1819; 2 (siècle, social, politique) 1890 | 220 of 2,356 rise; *révolution française* 1790; Louis XVI and Antoinette 1793; the July days 1821 | 2 clear (Balzac 1846, Bertrand 1841); 101 perhaps, ~39 by chance |
+| *social* | 1 (milieu, fonction) 1884; 1.2 (groupe, solidarité) 1893; 2.2 (révolution, économique, démocratie) 1831 | 246 of 3,315; *phénomènes sociaux* 1822; *conditions sociales* 1838 | 0 clear; 72 perhaps, ~32 by chance (novels of the late 1880s) |
+| *tradition* | 1 (religieux, social, historique) 1881; 1.1 (vieux, français, antique) 1808 | 88 of 1,454; *tradition religieuse* 1810; *tradition française* 1850 | 0 clear; 37 perhaps, ~28 by chance (Maurras 1894, Clemenceau 1899, Barrès 1913) |
+
+- On ELTeC, tab 3 puts 1893–1900 novels with *electric light* first among those perhaps ahead for *light*.
+- With 20-year spans (not the default), it ranks Tarde, Bergson and Durkheim first for *social*. Tarde's closest later
+  works are Durkheim's.
+- Frantext dates works by edition, so Balzac's novels sit at 1841–46 (the Furne edition). That puts them at the head
+  of tab 3's list for *révolution*.
+
+**Reading:**
+- Tab 1 gives the periods and is readable. Its precursors often reach back to the start of the corpus, so they are
+  weak as sources.
+- Tab 2 gives the most concrete leads: dated word groups with their first sentences. Many of its "uses" did not rise;
+  they just first appear.
+- Tab 3 is the only one that names texts ahead of their time, and it is honest about evidence. In frantext, though,
+  little passes its strict threshold, and most of the "perhaps" lists could be chance.
+
+**Cost:**
+- Frantext: tab 2 1–4 s, tab 3 0.3–0.7 s.
+- eebo_ecco_combo, tab 3: *liberty* 31 s; *church* 49 s and 8.7 GB at peak.
+
+**Fixed on the way:**
+- The trends cache returned numpy numbers on a first computation, so the rising words' first request failed with a
+  500 (orjson). `_cached` now returns what it writes. This went with the tabs; any revival must keep the fix.
+- `_Phrases.near` failed on sentences with no word on one side of the query. Kept, with a test.
+
+**Choices left:**
+- the span (the database's time series interval);
+- `_WORKS` = 50, `_FOLLOWERS` = 3, `_SOURCES` = 10, `_WORDS` = 12 (display);
+- EVIDENCE for "perhaps".
+
+## 22. Senses over time: the words of each sense, period by period (Oct 12, prototype)
+
+After the trend tabs were dropped, the user asked for a descriptive view rather than shift detection: the top words of
+each sense over time. A new tab, "Senses over time (beta)" (`SensePeriods.vue`, `sense_periods.py`, script
+`get_sense_periods`). It is offline-tested in scratch prototypes, `chunks*.py`.
+
+**Method:**
+- The senses are those of the senses tab at its default view. A sense's sentences are those clearly in it, dated.
+- Its works, in year order, are cut into K periods with as many works each, at year edges. K grows from 2 while every
+  period after the first has a new word, and stops at the first K where one has none.
+- **New / fading:** the query's collocates markedly more or less frequent in a period than in *all the periods before
+  it* (time is linear: the future does not define the past). Markedly means:
+  - G2 of the 2 × 2 table (Dunning), above ln of both sides' words;
+  - still so without the most prolific author of the side the word is more frequent in;
+  - each word counted once per sentence, the filter's words left out of the counts.
+- **The first period** has instead the words that set it apart from the periods after it.
+- **Representative works:** those whose sentences the period's profile, fitted without the work, predicts best against
+  the comparison's profile; mean gain less its standard error; one work per author.
+
+**What was tried on the way (scratch, all on frantext *révolution, social, tradition* plus controls *fenêtre, arbre*):**
+- **Tested segmentation** (cut where a sense's words change, against the corpus's drift). The corpus check removes
+  1789 for *révolution*, since the whole corpus changes then, and the search could hide valid cuts. Dropped for the
+  descriptive view.
+- **Ten fixed chunks against the other chunks.**
+  - Diagonal grids for every word, since sorting by peak builds one.
+  - Rare words ×20+ when ranked with the idf weight.
+  - Well above shuffled dates, but 1–4 words per chunk by chance.
+- **Against the chunks before, two-sample G2:** chance 0.1–1.2 words per chunk.
+- **Fightin' Words**, the codebase's `fightin_words_zscores`, as the Comparative Collocation report uses it:
+  - Its prior (pooled counts, as strong as both sides) lets the larger side swamp the smaller: *bourgeoisie* 231 vs 0
+    occurrences in 93,155 vs 2,715 words gets z = 0.5.
+  - Comparative collocations of a small subcorpus are likely just as blind (flagged, not fixed).
+  - A balanced prior (mean of the two rates, weight of the smaller side) fixes the swamping.
+- **Chunks grown a year at a time until a word passes,** with either measure: starved (the first chunk closes after a
+  few sentences, then nothing is new against a tiny past) or chance cuts (10–30 chunks with shuffled dates). Dropped.
+- **The number of equal chunks chosen as above** (kept):
+
+  | | G2 | Fightin' Words, balanced |
+  |---|---|---|
+  | Real dates | 2–10 periods | 1–21 |
+  | Shuffled dates | 1–3 | up to 7 |
+
+  G2 kept. Two periods can be chance; more rarely are.
+
+**Reading:**
+- *révolution* 1.1: révolution française and Robespierre (1772–1815), Napoléon, Louis XVI, Aulard and *allemand*,
+  then révolution russe.
+- *social* 1.1: physique sociale (Comte), faits sociaux and sociologie (1886–1900), morphologie sociale (Durkheim,
+  Simiand).
+- Period boundaries fall at equal shares of works, not at detected changes: only how many periods comes from the data.
+
+**Cost:** 6–7 s for *révolution* on frantext, most of it growing the senses again (the tab does not reuse the senses
+tab's cached tree).
+
+**Choices left:**
+- `_WORDS` 8, `_FADING` 5, `_WORKS` 3 and the examples (10): display limits.
+- The stop rule, the first failure: a stated convention.
+
+## 23. Senses at a glance: the tree with each sense's course over time (Oct 12, prototype)
+
+The user finds the tree the clearest explanation, and the overall timeline the most useful single view. A new tab,
+"Senses at a glance (beta)" (`SenseOverview.vue`), joins them; the three sense tabs stay as they are.
+
+**The view:**
+- **Left half:** the sense tree, as the Sense tree tab draws it, with the senses' names at its branch ends, the detail
+  slider and the word search. Each name gives four words, as the user asked: the sense's first four; with fewer, the
+  words just before and after the query word (alternately), then those the filter hides, without repeating a word.
+  Each branch carries its share of the sentences centered above it, inner branches too, so each division shows what it leaves
+  to each side (*révolution*: 58 % and 42 %, then 32 % and 26 %, 22 % and 20 %). The user asked for it, to save room
+  for the four words. The labels sit on a white halo where they cross a branch; the names keep the share for screen
+  readers only. The phones' "Over time" key, which has no tree, shows it.
+- **Right half:** one stacked chart, as tall as the rows, of how the word's sentences divide between the senses year
+  by year: the Word senses tab's overview, stacked in the tree's order from the top (Sense 1's layer first, as its row
+  is). Siblings are next to each other, so a split shows as a boundary inside its parent's area. Dotted lines across a
+  sense's layer cut it into its periods (§22).
+  - **Why stacked.** At first each row had its own band of the sense's share, on one scale for all. The user found
+    the Word senses tab's chart better "as it shows separation over time": on *révolution*, Sense 2.1 (planète,
+    globe, astre) fills most of the sentences before about 1650 and gives way to the political senses after about
+    1780, one picture. Separate bands left that to be pieced together, and a 10 % sense came out flat.
+  - **Row and layer.** A layer can't sit level with its row, since its place moves with the years. Pointing at a
+    name, or focusing it, outlines its layer and pointing at a layer marks its row; clicking a layer opens its sense.
+  - The cuts are white or near black, whichever stands out more from their layer's color (`senseInk`); the outline
+    of the sense pointed at is dark on a white halo, seen on any color.
+- **No words under the bands.** At first each period's strongest new word sat under the band. The user dropped them:
+  the opened panel lists them, and without them the rows are one line each, so the tree and the timelines can split
+  the width.
+- **On a narrow screen** the two halves take turns under two tabs, "Tree" (the default) and "Over time".
+- **Clicking a row** opens the sense below: its words, which open their sentences, and its periods in full
+  (`PeriodColumns.vue`, now shared with the Senses over time tab).
+- **The explanations** sit behind an "i" button (`InfoButton.vue`): a popover opened by click or keyboard, closed by
+  Escape, its button or a click elsewhere. The page keeps a one-line summary.
+
+**Backend:**
+- The senses report now saves which sentences are clearly in each sense next to its cached JSON
+  (`<hash>.membership.npz`, packed bits; `senses_with_membership`). Its JSON output is unchanged.
+- `sense_periods` reads the membership instead of growing the senses again, and takes `nodes` (the senses asked for).
+  Each sense's periods are cached on their own (`periods-<id>.json`), so moving the slider only costs the senses not
+  seen yet.
+- Timings for *révolution*:
+  - periods for the default view: 3.7 s, down from 6.8;
+  - all 24 senses of the tree: 9 s;
+  - cached: 0.02 s.
+
+**Text size, narrow screens and WCAG 2.1 AA** (the user asked for all three):
+- **Text at the page's size.** The tree and the bands are no longer one scaled SVG. Each sense is an HTML row: its
+  name is a button, and its band is a small SVG drawn at the width the row measures. The tree is an SVG laid beside
+  the rows, its branches ending at the first line of each name, at the rows' measured heights. Names and years are
+  HTML text, so they take the page's font size (14 px on frantext) and grow with the reader's zoom and text settings.
+- **Wide or narrow.** At 46 em wide or more, the tree with its names takes the left half and the timelines the right.
+  All the rows share one grid (CSS subgrid), so the names' column is as wide as the widest name needs, up to half of
+  the tree's side, and the tree takes all the rest: 528 px at 1920, 308 at 1400, 183 at 900. A first version capped
+  the tree at 20 em, and the user saw it stay small on a wide screen.
+  Below that, the tabs follow the ARIA tabs pattern: `role="tab"` buttons with `aria-selected`, one in the tab order,
+  and the arrows, Home and End to move between them; the chart is their `tabpanel`.
+  - In the "Tree" tab, the same rule over the whole width: the names take up to half, and wrap; the tree takes the
+    rest.
+  - In the "Over time" tab, the senses' names come first as the chart's key, in the layers' order and without their
+    words, then the chart across the whole width, two lines of text tall for each sense. Beside the names, the chart
+    had about 145 px at 375.
+  - The period columns in the opened panel wrap onto new lines instead of scrolling sideways (this also changes the
+    Senses over time tab). The "i" popover moves back inside the window when it would overflow.
+- **Things a reader can't see.** The chart, the tree and the years are hidden from screen readers. Each sense's
+  button is described by a sentence saying the same, in either tab: the year its share peaks, and its periods. Its
+  `aria-expanded` follows the panel, and a live region says when periods are loading.
+- **Contrast and forced colors.** The tree's casings use the sense's dark text shade (at least 3:1 against white);
+  the layers are parted by white lines, as in the Word senses tab. Focus shows a 3 px outline. Under forced colors,
+  the layers become outlines and the branches take the system colors.
+- **Text spacing (1.4.12).** While the period words sat under the bands, a spacing stylesheet left them overlapping
+  at phone widths: canvas measuring ignores CSS letter spacing, and a spacing change resizes no box, so nothing placed
+  them again. Dropping the words removed the problem. Nothing else is placed by measured text width.
+- **How it was checked:** axe-core (tags wcag2a, wcag2aa, wcag21a, wcag21aa) in Chromium on the test server, for
+  *révolution*, at 1400, 900, 640 (200 % zoom of 1280), 375 and 320 px, in both tabs on the narrow widths. It was
+  run with the panel open, the popover open, a text spacing stylesheet and forced colors. Results:
+  - no violations;
+  - no horizontal scroll at any width;
+  - no overlapping or cut-off words under the spacing stylesheet;
+  - font sizes equal to the body's.
+
+  The only "incomplete" items are the app's own mobile selects, whose background image axe can't judge, the popover's
+  own text (it lies over the page; #343a40 on white, 11:1), the branches' shares (SVG text: #495057 on its white
+  halo, 8:1), and contrast under forced colors.
+
+**Open design points:**
+- Before about 1750 the word has few sentences a year, so the layers swing there (*social*: peaks around 1620–1650).
+  They could fade where the data is thin, or a strip could show the sentences per year.
+- The shared time axis must be proportional to time, so the dense 19th century gets narrow periods; their ticks
+  crowd together there.
+- The tree layout code is copied from `SenseTree.vue`; if the view is kept, both should share it.
+
 ## What's solid
 
 - **The collocation table:** counts that match the concordances they link to (integration-tested), the exact filter

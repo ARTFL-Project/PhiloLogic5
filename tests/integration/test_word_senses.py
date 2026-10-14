@@ -134,6 +134,15 @@ class TestWordSenses:
             for group in ("words", "before", "after"):
                 assert not {"my", "lord"} & {w["word"] for w in node[group]}
 
+    def test_sentences_with_no_word_on_one_side_of_the_query_read_no_phrase(self, eltec_db):
+        from philologic.runtime.reports.word_senses import _Phrases, query_sentences
+
+        sentences = query_sentences(eltec_db, "lemma:light", True)
+        before = set(sentences["neighbors"][1]["unit"].tolist())
+        first = next(u for u in range(sentences["n_units"]) if u not in before)  # the query opens the sentence
+        near = _Phrases(eltec_db, sentences).near([first])
+        assert near[1] == {} and near[2]
+
     def test_the_filter_hides_its_words_among_a_senses_words_but_not_next_to_the_word(self, eltec_db):
         report = call(eltec_db, get_word_senses, q="lemma:light")
         common = {w.removeprefix("lemma:") for w in report["filter_list"]}
