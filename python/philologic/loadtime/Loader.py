@@ -641,13 +641,14 @@ def npm_node_dir(npm):
 
 
 def tei_header(file_content):
-    """The TEI header of a file, with its entities converted, or None if it has none"""
+    """The TEI header of a file, with its entities converted but those XML decodes itself (left for lxml), or None if
+    it has none"""
     try:
         start_header_index = re.search(r"<teiheader", file_content, re.I).start()
         end_header_index = re.search(r"</teiheader", file_content, re.I).start()
     except AttributeError:  # tag not found
         return None
-    return convert_entities(file_content[start_header_index:end_header_index])
+    return convert_entities(file_content[start_header_index:end_header_index], keep_xml_entities=True)
 
 
 def tei_header_metadata(header, doc_xpaths, metadata_sql_types, matched_xpaths=None):
