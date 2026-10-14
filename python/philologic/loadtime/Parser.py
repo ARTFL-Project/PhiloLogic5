@@ -452,13 +452,8 @@ class XMLParser:
             self.got_a_div = True
         self.cleanup_content()
 
-        # Begin by creating a document level object, just call it "text" for now.
         self.v.push("doc", "text", 0)
-
-        # if the parser was created with known_metadata,
-        # we can attach it to the newly created doc object here.
-        # you can attach metadata to an object at any time between push() and pull().
-        for k, v in self.known_metadata.items():
+        for k, v in self.known_metadata.items():  # (an object's metadata can be set until it's pulled)
             self.v["doc"][k] = v
 
         # Split content into a list on newlines.
@@ -966,8 +961,6 @@ class XMLParser:
             div_level = self.context_div_level
         self.context_div_level = div_level
 
-        # TODO: ignore divs inside of internal text tags.  Setable
-        # from configuration.  But we will bump the para and sent args
         div = f"div{div_level}"
         if self.open_divs[div_level]:
             self.close_div(div_level, start_byte)
@@ -1022,18 +1015,19 @@ class XMLParser:
         self.v.pull("graphic", self.bytes_read_in)
 
     def set_metadata_value(self, object_level, metadata, value):
-        try:
-            if self.metadata_sql_types[metadata] == "date":
-                self.v[object_level].attrib[metadata] = extract_full_date(value)
-            elif self.metadata_sql_types[metadata] == "int":
-                self.v[object_level].attrib[metadata] = extract_integer(value)
-            else:
-                self.v[object_level].attrib[metadata] = value
-        except KeyError:
+        """Set metadata of the object of object_level, as its SQL type has it (date, int): a value without a type is
+        left out if the object isn't open"""
+        if metadata not in self.metadata_sql_types:
             try:
                 self.v[object_level].attrib[metadata] = value
             except Exception:
                 pass
+        elif self.metadata_sql_types[metadata] == "date":
+            self.v[object_level].attrib[metadata] = extract_full_date(value)
+        elif self.metadata_sql_types[metadata] == "int":
+            self.v[object_level].attrib[metadata] = extract_integer(value)
+        else:
+            self.v[object_level].attrib[metadata] = value
 
     def word_handler(self, words):
         """Index the words of a text line, and what's between them (see index_words), split by token_regex"""
@@ -1144,23 +1138,9 @@ class XMLParser:
 
     def index_form(self, word):
         """The form under which a word, its entities converted, is indexed"""
-        # You may have some semi-colons...
-        if ";" in word:
-            if "&" in word:
-                pass  # TODO
-            else:
-                word = semi_colon_strip.sub(r"\1", word)  # strip on both ends
-
-        # Get rid of certain characters that don't break words, but don't index.
-        # These are defined in a compiled regex below: chars_not_to_index
-        word = self.chars_not_to_index.sub("", word)
-
-        # TODO: Call a function to distinguish between words beginning with an
-        # upper case and lower case character.  This USED to be a proper
-        # name split in ARTFL, but we don't see many databases with proper
-        # names tagged.
-
-        # Switch everything to lower case
+        if ";" in word and "&" not in word:
+            word = semi_colon_strip.sub(r"\1", word)  # semicolons at its ends left out
+        word = self.chars_not_to_index.sub("", word)  # characters which don't split words, but aren't indexed
         if self.lowercase_index is True:
             word = word.lower()
 
@@ -1347,7 +1327,6 @@ class XMLParser:
         is_sent = False
         # Break on ! and ?, unless a word in lowercase follows, which goes on with the sentence: an interjection
         # (Ah! mon Dieu!) or the words introducing what was said (« Viens-tu ? » dit-il)
-        # TODO: why test if word > 2 in p3?
         if "!" in word or "?" in word:
             is_sent = not next_word.islower()
 
@@ -1449,9 +1428,7 @@ class XMLParser:
             else:
                 break
         if div_head:
-            div_head = self.clear_char_ents(div_head)
-            div_head = self.latin1_ents_to_utf8(div_head)
-            div_head = self.convert_other_ents(div_head)
+            div_head = self.convert_entities(self.clear_char_ents(div_head))
             div_head = re.sub(r"\n?<[^>]*>\n?", "", div_head)
             div_head = div_head.replace("_", "")
             div_head = div_head.replace("\t", "")
@@ -1468,7 +1445,6 @@ class XMLParser:
         if not div_head:
             div_head = "[NA]"
 
-        # TODO: evaluate need for below...
         if div_head == "[>]" or div_head == "[<]":
             div_head = "[NA]"
 
@@ -1479,7 +1455,7 @@ class XMLParser:
 
     def clear_char_ents(self, text):
         """text with the entities standing for punctuation and symbols as spaces (see entities.clear_char_ents)"""
-        return entities.clear_char_ents(text, self.break_apost)
+        return entities.clear_char_ents(text)
 
     def latin1_ents_to_utf8(self, text):
         """text with the entities standing for letters as these letters (see entities.latin1_ents_to_utf8)"""

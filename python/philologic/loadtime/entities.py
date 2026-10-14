@@ -40,20 +40,14 @@ BLANKED_ENTITIES = re.compile(
     ),
     re.I,
 )
-apost_ent = re.compile(r"\&apos;", re.I)
 macr_ent = re.compile(r"\&([A-Za-z])macr;", re.I)
 inverted_ent = re.compile(r"\&inverted([a-zA-Z0-9]);", re.I)
 supp_ent = re.compile(r"&supp([a-z0-9]);", re.I)
 ligatures_ent = re.compile(r"\&([A-Za-z][A-Za-z])lig;", re.I)
 
 
-def clear_char_ents(text, break_apost):
+def clear_char_ents(text):
     """text with the entities standing for punctuation and symbols replaced by spaces, which keep the byte count"""
-    if break_apost:
-        try:
-            text = apost_ent.sub(lambda match: "," + " " * len(match.group(1) - 1), text)
-        except IndexError:
-            pass
     return BLANKED_ENTITIES.sub(lambda match: " " * len(match.group()), text)
 
 
