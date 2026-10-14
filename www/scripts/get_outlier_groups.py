@@ -22,9 +22,7 @@ from philologic.runtime.WSGIHandler import whole_number
 def get_outlier_groups(request, config):
     """Score each group's collocate distribution against the rest of the corpus."""
     file_path = cache_file_path(config.db_path, request.file_path, ".npz")
-    tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = (
-        load_map_field_cache(file_path)
-    )
+    tids, counts, group_bounds, group_names, count_lemmas = load_map_field_cache(file_path)
     group_hits = load_group_hits(file_path)  # None for legacy caches
 
     min_hits = whole_number("min_hits", request.min_hits, 10)

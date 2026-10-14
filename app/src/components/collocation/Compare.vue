@@ -137,11 +137,11 @@ import { useMainStore } from "../../stores/main";
 import {
     buildBiblioCriteria,
     collocateCleanup,
+    collocationParams,
     concordanceMethod,
     dateRangeHandler,
     debug,
     extractSurfaceFromCollocate,
-    paramsFilter,
     paramsToRoute,
 } from "../../utils.js";
 import AutocompleteList from "../AutocompleteList.vue";
@@ -208,7 +208,7 @@ function onCollocateClick(item) {
         paramsToRoute({
             ...formData.value,
             report: "concordance",
-            q: collocateCleanup(item, formData.value.q),
+            q: collocateCleanup(item, formData.value.q, formData.value, philoConfig.word_attributes),
             method: concordanceMethod(formData.value.colloc_within),
             cooc_order: "no",
         })
@@ -220,7 +220,7 @@ function onOtherCollocateClick(item) {
         paramsToRoute({
             ...props.comparedMetadataValues,
             report: "concordance",
-            q: collocateCleanup(item, formData.value.q),
+            q: collocateCleanup(item, formData.value.q, formData.value, philoConfig.word_attributes),
             method: concordanceMethod(formData.value.colloc_within),
             cooc_order: "no",
         })
@@ -245,16 +245,8 @@ function runFromMetadata(opts = {}) {
     // would otherwise only update it after the round-trip, and not at all when
     // the new filter has zero hits.
     otherBiblio.value = buildBiblioCriteria(philoConfig, props.comparedMetadataValues, props.comparedMetadataValues);
-    const params = {
-        q: formData.value.q,
-        colloc_filter_choice: formData.value.colloc_filter_choice,
-        colloc_within: formData.value.colloc_within,
-        filter_frequency: formData.value.filter_frequency,
-        filter_df_pct: formData.value.filter_df_pct,
-        q_attribute: formData.value.q_attribute || "",
-        q_attribute_value: formData.value.q_attribute_value || "",
-        ...props.comparedMetadataValues,
-    };
+    // The primary report's query and filters, with the metadata compared instead of its own
+    const params = collocationParams(formData.value, philoConfig, props.comparedMetadataValues);
     comparativeSearchStarted.value = true;
     compareSearching.value = true;
     otherCollocates.value = [];
@@ -262,7 +254,7 @@ function runFromMetadata(opts = {}) {
     // results card (and the tab buttons) are v-if-gated on it, so scheduling
     // the switch first would target a DOM node that doesn't exist yet.
     if (opts.focusDistinctive) focusDistinctiveTab();
-    $http.get(`${$dbUrl}/reports/collocation.py`, { params: paramsFilter(params) })
+    $http.get(`${$dbUrl}/reports/collocation.py`, { params })
         .then((response) => {
             compareSearching.value = false;
             if (response.data.results_length) {

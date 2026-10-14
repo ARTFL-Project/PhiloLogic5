@@ -184,7 +184,7 @@ function onCollocateClick(item) {
         paramsToRoute({
             ...formData.value,
             report: "concordance",
-            q: collocateCleanup(item, formData.value.q),
+            q: collocateCleanup(item, formData.value.q, formData.value, philoConfig.word_attributes),
             method: concordanceMethod(formData.value.colloc_within),
             cooc_order: "no",
         })

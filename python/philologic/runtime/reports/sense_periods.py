@@ -45,8 +45,7 @@ def sense_periods(
     db,
     q,
     count_lemmas,
-    attribute=None,
-    attribute_value=None,
+    properties=(),
     metadata=None,
     distance=None,
     year_field=None,
@@ -58,7 +57,7 @@ def sense_periods(
     the senses of another detail only cost their own."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
-    args = (db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words)
+    args = (db, q, count_lemmas, properties, metadata, distance, year_field, filter_words)
     report, membership = ws.senses_with_membership(*args)
     slim = [
         {k: node[k] for k in ("id", "parent", "children", "sense", "rank", "share", "words", "before", "after")}
@@ -77,7 +76,7 @@ def sense_periods(
         return {**base, "senses": []}
 
     h = hashlib.sha1(_CACHE_TAG)
-    for part in (q, bool(count_lemmas), attribute, attribute_value, metadata, distance, year_field, filter_words):
+    for part in (q, bool(count_lemmas), properties, metadata, distance, year_field, filter_words):
         h.update(json.dumps(part, sort_keys=True, default=str).encode("utf-8"))
         h.update(b"\0")
     paths = {i: os.path.join(db.hitlist_dir, f"{h.hexdigest()}.periods-{i}.json") for i in nodes}
@@ -116,15 +115,14 @@ class _Context:
         membership,
         q,
         count_lemmas,
-        attribute,
-        attribute_value,
+        properties,
         metadata,
         distance,
         year_field,
         filter_words,
     ):
         self.report, self.membership, self.shared = report, membership, None
-        sentences = ws.query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
+        sentences = ws.query_sentences(db, q, count_lemmas, properties, metadata, distance)
         if sentences is None:
             return
         try:

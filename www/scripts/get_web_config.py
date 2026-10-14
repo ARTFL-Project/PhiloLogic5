@@ -3,7 +3,9 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 
-from philologic.Config import MakeDBConfig
+from philologic.Config import UNSTORED_WORD_ATTRIBUTES, MakeDBConfig
+from philologic.runtime.word_properties import property_names
+
 
 def get_web_config(request, config):
     """Retrieve Web Config data, but for where the access file is: a server path the client has no use for"""
@@ -19,7 +21,24 @@ def get_web_config(request, config):
     columns = toms_columns(config.db_path)
     for key in ("metadata", "facets"):
         web_config[key] = [field for field in web_config[key] if not isinstance(field, str) or field in columns]
+    data_path = os.path.join(config.db_path, "data")
+    web_config["collocation_lemmas"] = os.path.exists(os.path.join(data_path, "collocations", "attr_lemma_ids.npy"))
+    web_config["word_attributes"] = collocate_properties(web_config.get("word_attributes") or {}, data_path)
+    web_config["words_facets"] = [f for f in web_config.get("words_facets") or [] if f not in UNSTORED_WORD_ATTRIBUTES]
     return web_config
+
+
+def collocate_properties(word_attributes, data_path):
+    """The word properties collocates can be filtered by, and their values, of those of the web config: those the
+    collocation arrays have, but those loads no longer store (UNSTORED_WORD_ATTRIBUTES: the configs of databases loaded
+    before October 2026 list them), with their values in order, the empty one (no value) aside."""
+    names = property_names(data_path)
+    properties = {}
+    for name, values in word_attributes.items():
+        values = sorted({str(value) for value in values} - {""}, key=lambda value: (value.lower(), value))
+        if name in names and name not in UNSTORED_WORD_ATTRIBUTES and values:
+            properties[name] = values
+    return properties
 
 
 def toms_columns(db_path):

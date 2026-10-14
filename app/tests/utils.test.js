@@ -15,6 +15,10 @@ import {
     sortResults,
     isOnlyFacetChange,
     buildTocTree,
+    collocateCleanup,
+    collocateProperties,
+    collocationParams,
+    upgradeCollocationParams,
 } from "../src/utils.js";
 
 // ---------------------------------------------------------------------------
@@ -423,5 +427,53 @@ describe("databaseUrl", () => {
 
     it("is VITE_DB_URL with npm run dev", () => {
         expect(databaseUrl(document, "http://localhost:8000/philologic5/mydb/")).toBe("http://localhost:8000/philologic5/mydb/");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Collocate filters: word properties, links of collocates, links made before
+// ---------------------------------------------------------------------------
+describe("collocate filters", () => {
+    const wordAttributes = { pos: ["ADJ", "NOUN", "VERB"], tag: ["NC", "VINF"] };
+
+    it("reads the values kept of each property, by property", () => {
+        const formData = { colloc_attr_tag: "VINF", colloc_attr_pos: "VERB | ADJ", colloc_attr_other: "X" };
+        expect(collocateProperties(formData, wordAttributes)).toEqual([["pos", ["ADJ", "VERB"]], ["tag", ["VINF"]]]);
+        expect(collocateProperties({ colloc_attr_pos: " | " }, wordAttributes)).toEqual([]);
+    });
+
+    it("links a collocate to the hits it was counted in: one of the values of each property", () => {
+        const formData = { colloc_attr_pos: "NOUN | VERB", colloc_attr_tag: "VINF" };
+        expect(collocateCleanup({ surfaceForm: "lemma:aimer" }, "liberté", formData, wordAttributes)).toBe(
+            "liberté lemma:aimer:pos:NOUN:tag:VINF | lemma:aimer:pos:VERB:tag:VINF"
+        );
+        expect(collocateCleanup({ surfaceForm: "maison" }, "liberté", {}, wordAttributes)).toBe('liberté "maison"');
+        expect(collocateCleanup({ surfaceForm: "lemma:maison" }, "liberté")).toBe("liberté lemma:maison");
+    });
+
+    it("upgrades links made before the choices: lemmas when the query has one, the one property value", () => {
+        const old = { q: "lemma:aimer", colloc_filter_choice: "attribute", q_attribute: "pos", q_attribute_value: "ADV" };
+        expect(upgradeCollocationParams({ ...old }, {})).toMatchObject({
+            colloc_lemmas: "yes", colloc_filter_choice: "nofilter", colloc_attr_pos: "ADV", q_attribute: "",
+        });
+        expect(upgradeCollocationParams({ q: "aimer", colloc_lemmas: "no" }, { colloc_lemmas: "no" })).toMatchObject({
+            colloc_lemmas: "no", colloc_filter_choice: "frequency",
+        });
+        expect(upgradeCollocationParams({ q: "lemma:aimer", colloc_lemmas: "no" }, { colloc_lemmas: "no" }).colloc_lemmas)
+            .toBe("no");
+    });
+
+    it("gives Compare and Similar the report's filters and distance, with other metadata when compared", () => {
+        createTestPinia();
+        const config = createTestConfig({ word_attributes: wordAttributes });
+        useMainStore().initFromConfig(config);
+        const formData = {
+            report: "collocation", q: "liberté", author: "Hugo", method_arg: "5", colloc_within: "n",
+            colloc_lemmas: "yes", colloc_filter_choice: "frequency | stopwords", colloc_attr_pos: "NOUN",
+        };
+        expect(collocationParams(formData, config)).toMatchObject({ author: "Hugo", method_arg: "5", colloc_attr_pos: "NOUN" });
+        const compared = collocationParams(formData, config, { author: "", title: "Les Misérables" });
+        expect(compared).toMatchObject({ title: "Les Misérables", colloc_lemmas: "yes", method_arg: "5" });
+        expect(compared).not.toHaveProperty("author");
     });
 });

@@ -12,7 +12,7 @@ async function mountSearchArguments(overrides = {}) {
     });
     const pinia = createTestPinia();
     const i18n = createTestI18n();
-    const config = createTestConfig();
+    const config = createTestConfig(overrides.philoConfig);
     const router = createTestRouter({
         name: "concordance", path: "/concordance",
         query: { q: "liberty freedom", report: "concordance" },
@@ -164,6 +164,21 @@ describe("SearchArguments", () => {
         await nextTick();
         const text = wrapper.text();
         expect(text).toContain("liberty");
+    });
+
+    it("says how collocates are counted and filtered: as lemmas, with the values of each property", async () => {
+        const { wrapper, store } = await mountSearchArguments({
+            philoConfig: { word_attributes: { pos: ["ADJ", "NOUN"], tag: ["NC"] }, word_property_aliases: { pos: "Part of speech" } },
+        });
+        Object.assign(store.formData, {
+            report: "collocation", q: "liberty", colloc_within: "sent", colloc_lemmas: "yes",
+            colloc_attr_pos: "NOUN | ADJ", colloc_attr_tag: "NC",
+        });
+        store.currentReport = "collocation";
+        await nextTick();
+        const text = wrapper.text().replace(/\s+/g, " ");
+        expect(text).toContain("Collocates counted as lemmas");
+        expect(text).toContain("Collocates with: Part of speech: ADJ or NOUN; tag: NC");
     });
 });
 

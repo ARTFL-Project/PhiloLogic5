@@ -98,25 +98,28 @@
                     <!-- Collocation filter section -->
                     <div v-if="formData.report === 'collocation'">
                         <div>
-                            <span v-if="['frequency', 'stopwords'].includes(formData.colloc_filter_choice)">
-                                <span>
-                                    <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
-                                        v-if="formData.colloc_filter_choice === 'frequency'"
-                                        :aria-label="$t('resultsSummary.commonWordsDf', { pct: formData.filter_df_pct }) + ' ' + $t('resultsSummary.filtered')"
-                                        :aria-expanded="showFilteredWords" aria-controls="filter-list">
-                                        {{ $t("resultsSummary.commonWordsDf", { pct: formData.filter_df_pct }) }}
-                                    </button>
-                                    <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
-                                        v-if="formData.colloc_filter_choice === 'stopwords' && !stopwordsMissing"
-                                        :aria-label="$t('resultsSummary.commonStopwords') + ' ' + $t('resultsSummary.filtered')"
-                                        :aria-expanded="showFilteredWords" aria-controls="filter-list">
-                                        {{ $t("resultsSummary.commonStopwords") }}
-                                    </button>
-                                    <span v-if="formData.colloc_filter_choice === 'stopwords' && stopwordsMissing">
-                                        {{ $t("resultsSummary.stopwordsMissing") }}
-                                    </span>
-                                    <template v-else>{{ " " + $t("resultsSummary.filtered") }}.</template>
-                                </span>
+                            <span v-if="leftOut.frequency || (leftOut.stopwords && !stopwordsMissing)">
+                                <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
+                                    v-if="leftOut.frequency"
+                                    :aria-label="$t('resultsSummary.commonWordsDf', { pct: formData.filter_df_pct }) + ' ' + $t('resultsSummary.filtered')"
+                                    :aria-expanded="showFilteredWords" aria-controls="filter-list">
+                                    {{ $t("resultsSummary.commonWordsDf", { pct: formData.filter_df_pct }) }}
+                                </button>
+                                <template v-if="leftOut.frequency && leftOut.stopwords && !stopwordsMissing">
+                                    {{ " " + $t("resultsSummary.and") + " " }}
+                                </template>
+                                <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
+                                    v-if="leftOut.stopwords && !stopwordsMissing"
+                                    :aria-label="(leftOut.frequency ? $t('resultsSummary.commonStopwordsToo') : $t('resultsSummary.commonStopwords')) + ' ' + $t('resultsSummary.filtered')"
+                                    :aria-expanded="showFilteredWords" aria-controls="filter-list">
+                                    {{ leftOut.frequency ? $t("resultsSummary.commonStopwordsToo") :
+                                        $t("resultsSummary.commonStopwords") }}
+                                </button>
+                                {{ " " + $t("resultsSummary.filtered") }}.
+                            </span>
+                            <span v-if="leftOut.stopwords && stopwordsMissing">
+                                {{ " " + (leftOut.frequency ? $t("resultsSummary.stopwordsNotFound") :
+                                    $t("resultsSummary.stopwordsMissing")) }}
                             </span>
 
                             <div class="card ps-3 pe-3 pb-3 shadow-lg" id="filter-list" v-if="showFilteredWords"
@@ -233,9 +236,17 @@ import {
     paramsFilter,
     paramsToRoute,
     paramsToUrlString,
+    splitValues,
 } from "../utils.js";
 
 const props = defineProps(["description", "filterList", "groupLength", "stopwordsMissing"]);
+
+// The common words the collocation report leaves out (colloc_filter_choice: frequency, stopwords, both, nofilter;
+// empty is the most frequent words, as the report has it)
+const leftOut = computed(() => {
+    const choices = splitValues(formData.value.colloc_filter_choice || "frequency");
+    return { frequency: choices.includes("frequency"), stopwords: choices.includes("stopwords") };
+});
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");

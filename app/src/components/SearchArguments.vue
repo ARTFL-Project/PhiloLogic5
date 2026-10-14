@@ -72,11 +72,12 @@
                 </span>
                 <span v-else>
                     {{ proximity() }}</span>
-                <div v-if="collocationFilter">
-                    {{ $t("searchArgs.collocateFilter") }}:&nbsp; <b>{{
-                        $philoConfig.word_property_aliases[collocationFilter.attrib] || collocationFilter.attrib }} = {{
-                            collocationFilter.value
-                        }}</b>
+                <div v-if="formData.colloc_lemmas === 'yes'">{{ $t("searchArgs.collocAsLemmas") }}</div>
+                <div v-if="collocationFilters.length > 0">
+                    {{ $t("searchArgs.collocWithProperties") }}:&nbsp;
+                    <span v-for="(property, index) in collocationFilters" :key="property.name"><span
+                            v-if="index > 0">; </span><b>{{ property.label }}: {{
+                                property.values.join(` ${$t("searchArgs.collocOr")} `) }}</b></span>
                 </div>
             </div>
             <!-- Terms that matched more word forms than the search takes (regexes with no literal start) -->
@@ -108,6 +109,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useMainStore } from "../stores/main";
 import {
     buildBiblioCriteria,
+    collocateProperties,
     copyObject,
     debug,
     isOnlyFacetChange,
@@ -177,15 +179,14 @@ const termsProximity = computed(() => {
     return formData.value.cooc_order === "yes" ? `${how}, ${t("searchArgs.inThisOrder")}` : how;
 });
 
-const collocationFilter = computed(() => {
-    if (formData.value.colloc_filter_choice === "attribute") {
-        return {
-            attrib: formData.value.q_attribute,
-            value: formData.value.q_attribute_value,
-        };
-    }
-    return false;
-});
+// The word properties collocates are filtered by: those with values kept, each with its kept values (any of them)
+const collocationFilters = computed(() =>
+    collocateProperties(formData.value, philoConfig.word_attributes).map(([name, values]) => ({
+        name,
+        label: philoConfig.word_property_aliases?.[name] || name,
+        values,
+    }))
+);
 
 const exactPhrase = computed(() => {
     const q = formData.value.q;

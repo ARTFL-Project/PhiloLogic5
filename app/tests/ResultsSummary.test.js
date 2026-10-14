@@ -170,6 +170,18 @@ describe("ResultsSummary", () => {
         expect(filterBtn.length).toBeGreaterThanOrEqual(0);
     });
 
+    it("says both lists of common words are left out", async () => {
+        const wrapper = mountResultsSummary({ report: "collocation" });
+        const store = useMainStore();
+        store.formData.report = "collocation";
+        store.formData.colloc_filter_choice = "frequency | stopwords";
+        store.formData.filter_df_pct = "1";
+        await nextTick();
+        const text = wrapper.text().replace(/\s+/g, " ");
+        expect(text).toContain("Words appearing in over 1% of sentences and the most common function words are being filtered");
+        expect(wrapper.findAll("button[aria-controls='filter-list']").length).toBe(2);
+    });
+
     it("toggles filter word list visibility on click", async () => {
         const wrapper = mountResultsSummary({
             report: "collocation",

@@ -53,6 +53,7 @@ import { inject, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../../stores/main";
 import {
+    collocationParams,
     debug,
     extractSurfaceFromCollocate,
 } from "../../utils.js";
@@ -71,6 +72,7 @@ const emit = defineEmits(["pivot-to-compare", "field-selected"]);
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
+const philoConfig = inject("$philoConfig");
 const { t } = useI18n();
 const store = useMainStore();
 const { formData } = storeToRefs(store);
@@ -89,16 +91,8 @@ function runSimilar(fieldValue) {
     similarSearchProgress.value = t("collocation.similarCollocGatheringMessage");
     similarDistributions.value = [];
     $http.get(`${$dbUrl}/reports/collocation.py`, {
-        params: {
-            q: formData.value.q,
-            colloc_filter_choice: formData.value.colloc_filter_choice,
-            colloc_within: formData.value.colloc_within,
-            filter_frequency: formData.value.filter_frequency,
-            filter_df_pct: formData.value.filter_df_pct,
-            map_field: fieldValue,
-            q_attribute: formData.value.q_attribute || "",
-            q_attribute_value: formData.value.q_attribute_value || "",
-        },
+        // The primary report's query, metadata and filters, so that the distributions compare with its collocates
+        params: { ...collocationParams(formData.value, philoConfig), map_field: fieldValue },
     }).then((response) => {
         getMostSimilarCollocDistribution(response.data.file_path);
     }).catch((error) => {

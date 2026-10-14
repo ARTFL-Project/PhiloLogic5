@@ -62,6 +62,7 @@ from philologic.runtime.reports.collocation import (
     phrase_words,
 )
 from philologic.runtime.get_text import _get_mmap
+from philologic.runtime.word_properties import _nb_word_kept, property_masks
 from philologic.runtime.reports.time_series import _corpus_year_counts, _get_doc_year_data
 
 # The conventions the method rests on: none is fitted to any corpus.
@@ -1818,15 +1819,14 @@ def _sentence_words(
     count_ids,
     excluded,
     filtered,
-    attr_ids,
-    target_attr,
-    use_attr,
+    prop_columns,
+    prop_allowed,
     max_dist,
     n_vocab,
 ):
-    """The words of each sentence (once each; within max_dist of a hit when max_dist >= 0), and the words just before
-    and just after each hit, as flat arrays and their bounds by sentence. The query's own words are left out, and the
-    filtered ones."""
+    """The words of each sentence (once each; within max_dist of a hit when max_dist >= 0; with a kept value of each
+    word property of prop_columns, see word_properties.property_masks), and the words just before and just after each
+    hit, as flat arrays and their bounds by sentence. The query's own words are left out, and the filtered ones."""
     n_units = len(unit_bounds) - 1
     total = 0
     for u in range(n_units):
@@ -1859,7 +1859,7 @@ def _sentence_words(
             t = count_ids[k]
             if excluded[t] or filtered[t] or seen[t]:
                 continue
-            if use_attr and attr_ids[k] != target_attr:
+            if not _nb_word_kept(k, prop_columns, prop_allowed):
                 continue
             if max_dist >= 0:
                 near = False
@@ -1926,12 +1926,11 @@ def _vocabulary(data_path, count_lemmas):
         return f.read(), v_offsets
 
 
-def query_sentences(
-    db, q, count_lemmas, attribute=None, attribute_value=None, metadata=None, distance=None, filter_words=None
-):
+def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=None, filter_words=None):
     """The sentences the query is in, one for each sentence, with their words: a dict, or None without any. The words
     of filter_words (as the collocation report's filter list has them) are left out, of the words of the sentence and
-    of those next to the query alike."""
+    of those next to the query alike; the words of the sentence without a kept value of each word property of
+    properties ((name, values) pairs, as the collocation report's filters have them) too."""
     metadata = metadata or {}
     data_path = os.path.normpath(db.path)
     method, method_arg = collocation_search_method(q, db.locals.query_patterns, distance)
@@ -1971,13 +1970,7 @@ def query_sentences(
     order = np.argsort(si, kind="stable")
     hit_index, si, positions = hit_index[order], si[order], positions[order]
     unit_bounds = np.append(np.flatnonzero(np.r_[True, si[1:] != si[:-1]]), len(si))
-    if attribute:
-        attr_ids = np.load(os.path.join(colloc_dir, f"attr_{attribute}_ids.npy"), mmap_mode="r")
-        attr_vocab = np.load(os.path.join(colloc_dir, f"attr_{attribute}_vocab.npy"), allow_pickle=True)
-        target = next((i for i, v in enumerate(attr_vocab) if v == attribute_value), len(attr_vocab))
-        use_attr = True
-    else:
-        attr_ids, target, use_attr = np.zeros(1, dtype=np.uint32), 0, False
+    prop_columns, prop_allowed = property_masks(data_path, properties)
     max_dist = distance + phrase_words(q, db.locals.query_patterns) if distance is not None else -1
     bag, bag_ptr, left, left_ptr, right, right_ptr, hashes = _sentence_words(
         unit_bounds,
@@ -1988,9 +1981,8 @@ def query_sentences(
         count_ids,
         excluded,
         filtered,
-        attr_ids,
-        np.uint32(target),
-        use_attr,
+        prop_columns,
+        prop_allowed,
         np.int32(max_dist),
         n_vocab,
     )
@@ -2065,8 +2057,7 @@ def word_senses(
     db,
     q,
     count_lemmas,
-    attribute=None,
-    attribute_value=None,
+    properties=(),
     metadata=None,
     distance=None,
     year_field=None,
@@ -2077,9 +2068,7 @@ def word_senses(
     analysis reads them, as every word."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
-    path = _cache_path(
-        db, q, bool(count_lemmas), attribute, attribute_value, metadata, distance, year_field, filter_words
-    )
+    path = _cache_path(db, q, bool(count_lemmas), properties, metadata, distance, year_field, filter_words)
     if os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as f:
@@ -2087,7 +2076,7 @@ def word_senses(
         except (OSError, ValueError):
             pass
     began = time.perf_counter()
-    result = _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words)
+    result = _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field, filter_words)
     membership = result.pop("_membership", None)
     if membership is not None:
         _save_membership(_membership_path(path), membership)
@@ -2108,8 +2097,7 @@ def senses_with_membership(
     db,
     q,
     count_lemmas,
-    attribute=None,
-    attribute_value=None,
+    properties=(),
     metadata=None,
     distance=None,
     year_field=None,
@@ -2117,17 +2105,15 @@ def senses_with_membership(
 ):
     """The senses report (word_senses) and which of the query's sentences are clearly in each of its senses (on its
     side of every split): a sentences x senses array of booleans, kept next to the cached report, else found again."""
-    report = word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words)
+    report = word_senses(db, q, count_lemmas, properties, metadata, distance, year_field, filter_words)
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
     path = _membership_path(
-        _cache_path(db, q, bool(count_lemmas), attribute, attribute_value, metadata, distance, year_field, filter_words)
+        _cache_path(db, q, bool(count_lemmas), properties, metadata, distance, year_field, filter_words)
     )
     membership = _load_membership(path)
     if membership is None or membership.shape[1] != len(report["nodes"]):  # a report cached before its membership
-        fresh = _word_senses(
-            db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words
-        )
+        fresh = _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field, filter_words)
         membership = fresh["_membership"]
         _save_membership(path, membership)
     return report, membership
@@ -2157,10 +2143,10 @@ def _load_membership(path):
         return None
 
 
-def _word_senses(db, q, count_lemmas, attribute, attribute_value, metadata, distance, year_field, filter_words=None):
+def _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field, filter_words=None):
     # The analysis reads every word, rare ones weighing more: left out of it, the filter's words that tell a rare sense
     # (dieu for prière) would be too (see the pseudoword test). They only seed no split
-    sentences = query_sentences(db, q, count_lemmas, attribute, attribute_value, metadata, distance)
+    sentences = query_sentences(db, q, count_lemmas, properties, metadata, distance)
     if sentences is None:
         return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
     channels, names = _senses_channels(sentences, count_lemmas)

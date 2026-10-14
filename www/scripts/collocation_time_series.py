@@ -11,7 +11,7 @@ from philologic.runtime.reports.collocation import cache_file_path, fightin_word
 
 def collocation_time_series(request, config):
     """Reads a numpy cache containing collocations for each year."""
-    cache_tids, cache_counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(
+    cache_tids, cache_counts, group_bounds, group_names, count_lemmas = load_map_field_cache(
         cache_file_path(config.db_path, request.file_path, ".npz")
     )
 
@@ -53,11 +53,7 @@ def collocation_time_series(request, config):
     for tid in unique_tids.tolist():
         s = int(count_offsets[tid])
         e = int(count_offsets[tid + 1])
-        name = vocab_data[s:e].decode("utf-8")
-        if attribute is not None:
-            suffix = f":{attribute}:{attribute_value}"
-            name = (name + suffix) if count_lemmas else (name.lower() + suffix)
-        col_names.append(name)
+        col_names.append(vocab_data[s:e].decode("utf-8"))
 
     # Convert year group_names to integers for period grouping
     year_indices = []

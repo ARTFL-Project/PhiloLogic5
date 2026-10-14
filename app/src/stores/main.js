@@ -16,6 +16,7 @@ export const useMainStore = defineStore("main", {
             end: "",
             colloc_filter_choice: "",
             colloc_within: "sent",
+            colloc_lemmas: "no",
             filter_frequency: 100,
             filter_df_pct: "1",
             approximate: "no",
@@ -88,6 +89,7 @@ export const useMainStore = defineStore("main", {
                 end: "",
                 colloc_filter_choice: "",
                 colloc_within: "sent",
+                colloc_lemmas: "no",
                 filter_frequency: 100,
                 filter_df_pct: "1",
                 approximate: "no",
@@ -104,6 +106,11 @@ export const useMainStore = defineStore("main", {
                 group_by: philoConfig.aggregation_config[0].field,
             };
             for (const field of philoConfig.metadata) {
+                defaults[field] = "";
+            }
+            // The values kept of each word property, for collocates
+            const propertyFields = Object.keys(philoConfig.word_attributes || {}).map((name) => `colloc_attr_${name}`);
+            for (const field of propertyFields) {
                 defaults[field] = "";
             }
             this.defaultFields = defaults;
@@ -129,6 +136,7 @@ export const useMainStore = defineStore("main", {
                     ...commonFields,
                     "start", "colloc_filter_choice", "filter_frequency", "filter_df_pct",
                     "colloc_within", "method_arg", "q_attribute", "q_attribute_value",
+                    "colloc_lemmas", ...propertyFields,
                 ]),
                 time_series: new Set([
                     ...commonFields,

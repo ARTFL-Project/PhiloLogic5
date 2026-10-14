@@ -2,6 +2,7 @@
 """Collocation results"""
 
 import hashlib
+import json
 import os
 import pickle
 import struct
@@ -9,6 +10,7 @@ import tempfile
 import time
 import timeit
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any
 
 import numba
@@ -21,6 +23,7 @@ from philologic.runtime.MetadataQuery import bulk_load_metadata
 from philologic.runtime.Query import MAX_DISTANCE, get_word_groups, phrase_lengths, rewrite_terms_file, split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 from philologic.runtime.sql_validation import validate_request_column
+from philologic.runtime.word_properties import _nb_word_kept, property_masks, property_names, split_properties
 
 # Per-worker cache of corpus-wide sentence document-frequency arrays.
 # Keyed by (db_path, count_lemmas) -> (df_array, n_sentences).
@@ -137,30 +140,34 @@ def _nb_fused_count_distance(sent_indices, hit_q_pos, hit_q_end, sent_offsets, t
     return local_counts
 
 
-@numba.njit(parallel=True, cache=True)
-def _nb_fused_count_attr(sent_indices, hit_q_pos, sent_offsets, count_ids, is_filtered, attr_ids, target_attr_id, vocab_size):
-    """Fused count with attribute inclusion filter and identity exclusion."""
-    n = len(sent_indices)
-    nt = numba.config.NUMBA_NUM_THREADS
-    local_counts = np.zeros((nt, vocab_size), dtype=np.int64)
-    for i in numba.prange(n):
-        tid = numba.get_thread_id()
-        start = sent_offsets[sent_indices[i]]
-        end = sent_offsets[sent_indices[i] + 1]
-        q_pos = hit_q_pos[i]
-        pos = np.uint32(1)
-        for j in range(start, end):
-            if pos != q_pos and attr_ids[j] == target_attr_id:
-                token = count_ids[j]
-                if not is_filtered[token]:
-                    local_counts[tid, token] += 1
-            pos += 1
-    return local_counts
+@numba.njit(cache=True)
+def _nb_other_kept(word, other_ids, other_excluded):
+    """Whether the word at index word of the collocation arrays is not of other_excluded in the other vocabulary:
+    always, without one (None). An "is None" test of its own, which numba takes out when compiling for None."""
+    if other_ids is not None:
+        return not other_excluded[other_ids[word]]
+    return True
 
 
 @numba.njit(parallel=True, cache=True)
-def _nb_fused_count_attr_distance(sent_indices, hit_q_pos, hit_q_end, sent_offsets, count_ids, is_filtered, attr_ids, target_attr_id, vocab_size, max_dist):
-    """Fused count with attribute inclusion filter, identity exclusion, and distance constraint."""
+def _nb_fused_count_filtered(
+    sent_indices,
+    hit_q_pos,
+    hit_q_end,
+    sent_offsets,
+    count_ids,
+    is_filtered,
+    vocab_size,
+    max_dist,
+    prop_columns,
+    prop_allowed,
+    other_ids,
+    other_excluded,
+):
+    """_nb_fused_count with the words filtered further: within max_dist of the hit when max_dist >= 0 (see
+    _nb_span_with), with a kept value of each word property of prop_columns (see word_properties.property_masks;
+    None for any), and not of other_excluded in the other vocabulary: other_ids has the lemma of each word when word
+    forms are counted, its form when lemmas are (None to leave none out)."""
     n = len(sent_indices)
     nt = numba.config.NUMBA_NUM_THREADS
     local_counts = np.zeros((nt, vocab_size), dtype=np.int64)
@@ -172,25 +179,39 @@ def _nb_fused_count_attr_distance(sent_indices, hit_q_pos, hit_q_end, sent_offse
         q_end = hit_q_end[i]
         pos = np.uint32(1)
         for j in range(start, end):
-            if pos != q_pos:
-                if _nb_span_with(pos, q_pos, q_end) <= max_dist and attr_ids[j] == target_attr_id:
-                    token = count_ids[j]
-                    if not is_filtered[token]:
+            if pos != q_pos and (max_dist < 0 or _nb_span_with(pos, q_pos, q_end) <= max_dist):
+                token = count_ids[j]
+                if not is_filtered[token] and _nb_word_kept(j, prop_columns, prop_allowed):
+                    if _nb_other_kept(j, other_ids, other_excluded):
                         local_counts[tid, token] += 1
             pos += 1
     return local_counts
 
+
 @numba.njit(parallel=True, cache=True)
 def _nb_gather_grouped(
-    sent_indices, hit_q_pos, hit_q_end, hit_gids, sent_offsets,
-    count_ids, is_filtered, attr_ids, target_attr_id,
-    use_attr, max_dist, hit_word_offsets,
-    out_tokens, out_gids, out_valid,
+    sent_indices,
+    hit_q_pos,
+    hit_q_end,
+    hit_gids,
+    sent_offsets,
+    count_ids,
+    is_filtered,
+    prop_columns,
+    prop_allowed,
+    other_ids,
+    other_excluded,
+    max_dist,
+    hit_word_offsets,
+    out_tokens,
+    out_gids,
+    out_valid,
 ):
     """Single-pass gather: annotate every word with token, group, validity.
 
     One kernel call for ALL hits (all groups combined). Produces flat arrays
-    that are then split by group in numpy for per-group bincount.
+    that are then split by group in numpy for per-group bincount. The words are filtered as by
+    _nb_fused_count_filtered.
     """
     n = len(sent_indices)
     for i in numba.prange(n):
@@ -208,12 +229,14 @@ def _nb_gather_grouped(
             out_tokens[w] = t
             out_gids[w] = gid
             ok = pos != qp
-            if ok and use_attr:
-                ok = attr_ids[j] == target_attr_id
             if ok:
                 ok = not is_filtered[t]
             if ok and max_dist >= np.int32(0):
                 ok = _nb_span_with(pos, qp, qe) <= max_dist
+            if ok:
+                ok = _nb_word_kept(j, prop_columns, prop_allowed)
+            if ok:
+                ok = _nb_other_kept(j, other_ids, other_excluded)
             out_valid[w] = ok
             pos += 1
 
@@ -373,17 +396,19 @@ def _vectorized_collocation(
     hits,
     filter_list,
     count_lemmas,
-    attribute,
-    attribute_value,
     collocate_distance,
     map_field_info=None,
+    properties=(),
+    other_list=(),
 ):
     """Fully vectorized collocation counting using columnar numpy arrays.
 
     Returns either a Counter (when map_field_info is None) or
     a dict {metadata_value: Counter} (when map_field_info is set).
     Collocates are counted around each hit, so that each count is the number of hits a search for the query and the
-    collocate finds (in the sentence or within collocate_distance words).
+    collocate finds (in the sentence or within collocate_distance words). The words of filter_list are not counted,
+    nor those without a kept value of each word property of properties ((name, values) pairs), nor those of
+    other_list in the other vocabulary (lemmas when word forms are counted, word forms when lemmas are).
     """
     colloc_dir = os.path.join(db_path, "collocations")
 
@@ -424,19 +449,12 @@ def _vectorized_collocation(
     count_vocab_size = len(count_hashes)
 
     #  Build identity filter (always — applies to both attribute and non-attribute paths)
-    filter_hashes = np.array(
-        sorted(struct.unpack("<Q", hashlib.md5(w.encode("utf-8")).digest()[:8])[0] for w in filter_list),
-        dtype=np.uint64,
-    )
-    is_filtered = _nb_build_filter(count_hashes, filter_hashes)
+    is_filtered = _nb_build_filter(count_hashes, _filter_hashes(filter_list))
 
-    #  Load attribute arrays if needed
-    if attribute is not None:
-        attr_ids_mmap = np.load(os.path.join(colloc_dir, f"attr_{attribute}_ids.npy"), mmap_mode="r")
-        attr_vocab = np.load(os.path.join(colloc_dir, f"attr_{attribute}_vocab.npy"), allow_pickle=True)
-        target_attr_id = np.uint32(
-            next((i for i, v in enumerate(attr_vocab) if v == attribute_value), len(attr_vocab))
-        )
+    #  Word property arrays, and the query's words of the other vocabulary, if any
+    prop_columns, prop_allowed = property_masks(db_path, properties)
+    other_ids, other_excluded = _other_vocabulary_filter(colloc_dir, count_lemmas, other_list)
+    filtered = prop_columns is not None or other_ids is not None
 
     #  Parallel binary search (all hits at once)
     hit_keys = np.ascontiguousarray(all_hits[:, :6])
@@ -447,17 +465,20 @@ def _vectorized_collocation(
 
     #  Helpers: fused count + decode (shared by all modes)
     def _fused_count(group_si, group_qp, group_qe):
-        if attribute is not None:
-            if collocate_distance is not None:
-                return _nb_fused_count_attr_distance(
-                    group_si, group_qp, group_qe, sent_offsets_arr,
-                    count_ids, is_filtered, attr_ids_mmap, target_attr_id,
-                    count_vocab_size, collocate_distance,
-                )
-            return _nb_fused_count_attr(
-                group_si, group_qp, sent_offsets_arr,
-                count_ids, is_filtered, attr_ids_mmap, target_attr_id,
+        if filtered:
+            return _nb_fused_count_filtered(
+                group_si,
+                group_qp,
+                group_qe,
+                sent_offsets_arr,
+                count_ids,
+                is_filtered,
                 count_vocab_size,
+                np.int32(-1 if collocate_distance is None else collocate_distance),
+                prop_columns,
+                prop_allowed,
+                other_ids,
+                other_excluded,
             )
         if collocate_distance is not None:
             return _nb_fused_count_distance(
@@ -476,12 +497,6 @@ def _vectorized_collocation(
         ends_list = count_offsets[nonzero + 1].tolist()
         nz_names = [count_data[s:e].decode("utf-8") for s, e in zip(starts_list, ends_list)]
         nz_counts = counts[nonzero].tolist()
-        if attribute is not None:
-            suffix = f":{attribute}:{attribute_value}"
-            if count_lemmas:
-                nz_names = [n + suffix for n in nz_names]
-            else:
-                nz_names = [n.lower() + suffix for n in nz_names]
         return Counter(dict(zip(nz_names, nz_counts)))
 
     #  Simple mode: one fused count over all hits
@@ -528,20 +543,24 @@ def _vectorized_collocation(
 
     # Single gather kernel call (all hits, all groups)
     _max_dist = np.int32(collocate_distance) if collocate_distance is not None else np.int32(-1)
-    if attribute is not None:
-        _nb_gather_grouped(
-            v_si, v_qp, v_qe, v_gids, sent_offsets_arr,
-            count_ids, is_filtered, attr_ids_mmap, target_attr_id,
-            np.bool_(True), _max_dist, hit_word_offsets,
-            out_tokens, out_gids, out_valid,
-        )
-    else:
-        _nb_gather_grouped(
-            v_si, v_qp, v_qe, v_gids, sent_offsets_arr,
-            count_ids, is_filtered, np.empty(1, dtype=np.uint32), np.uint32(0),
-            np.bool_(False), _max_dist, hit_word_offsets,
-            out_tokens, out_gids, out_valid,
-        )
+    _nb_gather_grouped(
+        v_si,
+        v_qp,
+        v_qe,
+        v_gids,
+        sent_offsets_arr,
+        count_ids,
+        is_filtered,
+        prop_columns,
+        prop_allowed,
+        other_ids,
+        other_excluded,
+        _max_dist,
+        hit_word_offsets,
+        out_tokens,
+        out_gids,
+        out_valid,
+    )
 
     # Sort by group, then per-group bincount via numba dirty-list kernel
     vt = out_tokens[out_valid]
@@ -565,6 +584,29 @@ def _vectorized_collocation(
     # Ensure group_names are strings (metadata values may be int, e.g. year)
     group_names = [str(n) for n in group_names]
     return unique_tids, unique_counts, group_bounds, group_names, group_hits
+
+def _filter_hashes(words):
+    """The hashes of words, as the vocabularies have them (vocab_hashes.npy), sorted for _nb_build_filter"""
+    return np.array(
+        sorted(struct.unpack("<Q", hashlib.md5(w.encode("utf-8")).digest()[:8])[0] for w in words),
+        dtype=np.uint64,
+    )
+
+
+def _other_vocabulary_filter(colloc_dir, count_lemmas, other_list):
+    """The words of the other vocabulary (lemmas when word forms are counted, word forms when lemmas are) of
+    other_list: the id of each word in it and the mask of those of other_list, or (None, None) without any."""
+    if not other_list:
+        return None, None
+    prefix = "" if count_lemmas else "attr_lemma_"
+    excluded = _nb_build_filter(
+        np.load(os.path.join(colloc_dir, f"{prefix}vocab_hashes.npy"), mmap_mode="r"), _filter_hashes(other_list)
+    )
+    if not excluded.any():
+        return None, None
+    ids = np.load(os.path.join(colloc_dir, "token_ids.npy" if count_lemmas else "attr_lemma_ids.npy"), mmap_mode="r")
+    return ids, excluded
+
 
 def collocate_distance(request):
     """The number of words collocates are counted within, or None for the whole sentence. At most MAX_DISTANCE:
@@ -598,6 +640,96 @@ def collocation_search_method(q, query_patterns=None, distance=None):
     return "sentence_unordered", "0"
 
 
+@dataclass(frozen=True)
+class CollocateFilters:
+    """How collocates are counted: as lemmas or as word forms, without the common words of common (frequency: the
+    words of more sentences than filter_df_pct percent; stopwords: the database's stopwords), and only with a value
+    of each word property of properties ((name, values) pairs, by name) among its values."""
+
+    count_lemmas: bool
+    common: tuple = ()
+    properties: tuple = ()
+
+    def key(self):
+        """The filters as a string, for cache names"""
+        return json.dumps([self.count_lemmas, self.common, self.properties])
+
+
+# Request parameters of the values kept of a word property (colloc_attr_pos=NOUN | ADJ): any of them
+PROPERTY_PARAM = "colloc_attr_"
+
+
+def collocate_filters(request, db):
+    """The collocate filters of a request. Without colloc_lemmas, collocates are counted as lemmas when the query has
+    one, and colloc_filter_choice=attribute is the value q_attribute_value of q_attribute without any other filter:
+    links made before the choices were there."""
+    if request.colloc_lemmas == "":
+        count_lemmas = "lemma:" in request.q
+    elif request.colloc_lemmas in ("yes", "no"):
+        count_lemmas = request.colloc_lemmas == "yes"
+    else:
+        raise BadRequest(f"Collocates are counted as lemmas (colloc_lemmas=yes) or not (no): {request.colloc_lemmas}")
+    if count_lemmas and not os.path.exists(os.path.join(db.path, "collocations", "attr_lemma_ids.npy")):
+        raise BadRequest("This database has no lemmas to count collocates as")
+    choices = {choice.strip() for choice in request.colloc_filter_choice.split("|")} - {""} or {"frequency"}
+    unknown = choices - {"frequency", "stopwords", "nofilter", "attribute"}
+    if unknown:
+        raise BadRequest(f"No such collocate filter: {', '.join(sorted(unknown))}")
+    properties = {}
+    if "attribute" in choices:
+        if not request.q_attribute:
+            raise BadRequest("Filtering collocates by attribute needs the attribute (q_attribute)")
+        properties[request.q_attribute] = {request.q_attribute_value}
+        choices = set()
+    for key, value in request:
+        if key.startswith(PROPERTY_PARAM):
+            values = {v.strip() for v in str(value).split("|")} - {""}
+            if values:
+                properties.setdefault(key[len(PROPERTY_PARAM) :], set()).update(values)
+    names = property_names(db.path)
+    for name in properties:
+        if name not in names:
+            raise BadRequest(f"{name!r} is no word property of this database")
+    return CollocateFilters(
+        count_lemmas,
+        tuple(choice for choice in ("frequency", "stopwords") if choice in choices),
+        tuple((name, tuple(sorted(values))) for name, values in sorted(properties.items())),
+    )
+
+
+def common_words(request, config, filters):
+    """The common words filters leave out, and whether the stopwords list was not found (it is then left out)"""
+    words = []
+    missing = False
+    for choice in filters.common:
+        found = build_filter_list(request, config, filters.count_lemmas, choice)
+        if found is None:
+            missing = True
+        else:
+            words.extend(found)
+    return words, missing
+
+
+def collocate_keys(collocate, filters):
+    """The index keys a search for a collocate is made of, as the filters count it: collocate (a key of the counts:
+    lemma:{lemma} for a lemma) with one of the kept values of each word property, if any. Their searches find the
+    hits it was counted in."""
+    keys = [collocate]
+    for name, values in filters.properties:
+        keys = [f"{key}:{name}:{value}" for key in keys for value in values]
+    return keys
+
+
+def query_exclusions(query_words, filters, db):
+    """The query's words, which are not counted (their other occurrences in the sentence included): the keys of the
+    count vocabulary, and those of the other one (lemmas when word forms are counted, word forms when lemmas are).
+    A word with properties (aimer:pos:VERB) is left out as the word."""
+    names = property_names(db.path)
+    words = {split_properties(word, names)[0] for word in query_words}
+    other = {word for word in words if word.startswith("lemma:") != filters.count_lemmas}
+    return set(query_words) | (words - other), other
+
+
 def collocation_results(request, config):
     """Fetch collocation results"""
     collocation_object: dict[str, Any] = {"query": dict([i for i in request])}
@@ -608,8 +740,7 @@ def collocation_results(request, config):
         map_field = validate_request_column(map_field, db)
         if map_field not in db.locals["metadata_fields"]:  # a column, but no metadata (lemma, word_count...)
             raise BadRequest(f"Collocates can only be counted by a metadata field, not {map_field}")
-    if request.colloc_filter_choice == "attribute" and not request.q_attribute:
-        raise BadRequest("Filtering collocates by attribute needs the attribute (q_attribute)")
+    filters = collocate_filters(request, db)
 
     if not request.q:  # collocates are counted around search hits: without a query there are none
         collocation_object.update({"filter_list": [], "results_length": 0, "distance": None})
@@ -627,15 +758,6 @@ def collocation_results(request, config):
         raw_bytes=True,
         **request.metadata,
     )
-
-    count_lemmas = "lemma:" in request.q
-
-    if request.colloc_filter_choice == "attribute":
-        attribute = request.q_attribute
-        attribute_value = request.q_attribute_value
-    else:
-        attribute = None
-        attribute_value = None
 
     # Build list of search terms to filter out.
     # The .terms file lines ARE the count-vocab keys: "lemma:{value}" when
@@ -658,17 +780,12 @@ def collocation_results(request, config):
 
     # Bare query_words must be in filter_list so the count-side identity hash
     # matches the (un-suffixed) count vocab keys.
-    filter_list = set(query_words)
-    if request.colloc_filter_choice == "attribute":
-        filter_list.update(f"{word}:{attribute}:{attribute_value}" for word in query_words)
-        filter_list.add(f"{request.q}:{attribute}:{attribute_value}")
-    elif request.colloc_filter_choice != "nofilter":
-        common_words = build_filter_list(request, config, count_lemmas)
-        if common_words is None:  # the stopwords list was not found: only the query's words are filtered
-            collocation_object["stopwords_missing"] = True
-            common_words = []
-        filter_list.update(common_words)
-    collocation_object["filter_list"] = sorted(filter_list, key=lambda w: (w.lower(), w))
+    filter_list, other_list = query_exclusions(query_words, filters, db)
+    common, stopwords_missing = common_words(request, config, filters)
+    if stopwords_missing:  # the stopwords list was not found: it is left out
+        collocation_object["stopwords_missing"] = True
+    filter_list.update(common)
+    collocation_object["filter_list"] = sorted(filter_list | other_list, key=lambda w: (w.lower(), w))
 
     hits.finish()
     total_hits = len(hits)
@@ -696,12 +813,12 @@ def collocation_results(request, config):
             db.path,
             hits,
             filter_list,
-            count_lemmas,
-            attribute,
-            attribute_value,
+            filters.count_lemmas,
             # Within distance words of a phrase is of its first or last word, as for the search
             distance + phrase_words(request.q, db.locals.query_patterns) if distance is not None else None,
             map_field_info=map_field_info,
+            properties=filters.properties,
+            other_list=other_list,
         )
 
     collocation_object["results_length"] = total_hits
@@ -712,16 +829,21 @@ def collocation_results(request, config):
         if None in all_collocates:
             del all_collocates[None]
         # Cache full Counter to disk; return only top 100 for display
-        file_path = create_file_path(request, "", db.hitlist_dir)
+        file_path = create_file_path(request, "", db.hitlist_dir, filters=filters)
         atomic_pickle_dump(all_collocates, file_path)
         collocation_object["collocates"] = all_collocates.most_common(100)
         collocation_object["file_path"] = file_path
     else:
         unique_tids, unique_counts, group_bounds, group_names, group_hits = result
-        file_path = create_file_path(request, map_field, db.hitlist_dir, ext=".npz")
+        file_path = create_file_path(request, map_field, db.hitlist_dir, ext=".npz", filters=filters)
         save_map_field_cache(
-            file_path, unique_tids, unique_counts, group_bounds, group_names,
-            count_lemmas, attribute, attribute_value, group_hits=group_hits,
+            file_path,
+            unique_tids,
+            unique_counts,
+            group_bounds,
+            group_names,
+            filters.count_lemmas,
+            group_hits=group_hits,
         )
         collocation_object["file_path"] = file_path
 
@@ -756,8 +878,9 @@ def atomic_pickle_dump(data, file_path):
         raise
 
 
-def save_map_field_cache(file_path, unique_tids, unique_counts, group_bounds, group_names,
-                         count_lemmas, attribute, attribute_value, group_hits=None):
+def save_map_field_cache(
+    file_path, unique_tids, unique_counts, group_bounds, group_names, count_lemmas, group_hits=None
+):
     """Save map_field results as numpy arrays (no string decode, no pickle overhead)."""
     dir_path = os.path.dirname(file_path)
     fd, tmp_path = tempfile.mkstemp(dir=dir_path, suffix=".tmp")
@@ -769,12 +892,6 @@ def save_map_field_cache(file_path, unique_tids, unique_counts, group_bounds, gr
                 "group_bounds": group_bounds.astype(np.int64),
                 "group_names": np.frombuffer("\0".join(group_names).encode("utf-8"), dtype=np.uint8),
                 "meta": np.array([int(count_lemmas)], dtype=np.uint8),
-                "attr": np.frombuffer(
-                    (attribute or "").encode("utf-8"), dtype=np.uint8
-                ) if attribute else np.array([], dtype=np.uint8),
-                "attr_val": np.frombuffer(
-                    (attribute_value or "").encode("utf-8"), dtype=np.uint8
-                ) if attribute_value else np.array([], dtype=np.uint8),
             }
             if group_hits is not None:
                 arrays["group_hits"] = group_hits.astype(np.int32)
@@ -786,7 +903,7 @@ def save_map_field_cache(file_path, unique_tids, unique_counts, group_bounds, gr
 
 
 def load_map_field_cache(file_path):
-    """Load map_field numpy cache. Returns (tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value)."""
+    """Load map_field numpy cache. Returns (tids, counts, group_bounds, group_names, count_lemmas)."""
     data = np.load(file_path, allow_pickle=False)
     tids = data["tids"]
     counts = data["counts"]
@@ -794,11 +911,7 @@ def load_map_field_cache(file_path):
     # Zero groups and a single empty-named group are both stored as b"": group_bounds tells them apart
     group_names = data["group_names"].tobytes().decode("utf-8").split("\0") if len(group_bounds) > 1 else []
     count_lemmas = bool(data["meta"][0])
-    attr_raw = data["attr"]
-    attribute = attr_raw.tobytes().decode("utf-8") if len(attr_raw) > 0 else None
-    attr_val_raw = data["attr_val"]
-    attribute_value = attr_val_raw.tobytes().decode("utf-8") if len(attr_val_raw) > 0 else None
-    return tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value
+    return tids, counts, group_bounds, group_names, count_lemmas
 
 
 def load_group_hits(file_path):
@@ -809,7 +922,7 @@ def load_group_hits(file_path):
     return data["group_hits"]
 
 
-def decode_group_collocates(tids, counts, group_bounds, group_index, db_path, count_lemmas, attribute, attribute_value):
+def decode_group_collocates(tids, counts, group_bounds, group_index, db_path, count_lemmas):
     """Decode string names for a single group from the numpy cache. Returns Counter."""
     colloc_dir = os.path.join(db_path, "data", "collocations")
     if count_lemmas:
@@ -828,12 +941,6 @@ def decode_group_collocates(tids, counts, group_bounds, group_index, db_path, co
     ends_list = count_offsets[tids_g + 1].tolist()
     nz_names = [count_data[s:e].decode("utf-8") for s, e in zip(starts_list, ends_list)]
     nz_counts = cnts_g.tolist()
-    if attribute is not None:
-        suffix = f":{attribute}:{attribute_value}"
-        if count_lemmas:
-            nz_names = [n + suffix for n in nz_names]
-        else:
-            nz_names = [n.lower() + suffix for n in nz_names]
     return Counter(dict(zip(nz_names, nz_counts)))
 
 
@@ -921,11 +1028,16 @@ def _df_filter_list(db_path, count_lemmas, pct):
     return out
 
 
-def build_filter_list(request, config, count_lemmas):
-    """The words to filter out: the database's stopwords, or its most frequent words (or lemmas). None if the
-    stopwords list is not found: its name was taken for a word to filter, and the report was unfiltered."""
-    if config.stopwords and request.colloc_filter_choice == "stopwords":
-        if config.stopwords and "/" not in config.stopwords:
+def build_filter_list(request, config, count_lemmas, choice=None):
+    """The words to filter out: the database's stopwords (choice "stopwords"), or its most frequent words (or lemmas).
+    None if the stopwords list is not found, or the database has none. choice is the request's colloc_filter_choice
+    unless given."""
+    if choice is None:
+        choice = request.colloc_filter_choice
+    if choice == "stopwords":
+        if not config.stopwords:
+            return None
+        if "/" not in config.stopwords:
             filter_file = os.path.join(config.db_path, "data", config.stopwords)
         elif os.path.isabs(config.stopwords):
             filter_file = config.stopwords
@@ -970,8 +1082,10 @@ def build_filter_list(request, config, count_lemmas):
     return filter_list
 
 
-def create_file_path(request, field, hitlist_dir, ext=".pickle"):
+def create_file_path(request, field, hitlist_dir, ext=".pickle", filters=None):
     hash = hashlib.sha1()
+    if filters is not None:
+        hash.update(filters.key().encode("utf-8"))
     hash.update(request["q"].encode("utf-8"))
     hash.update(request["method"].encode("utf-8"))
     hash.update(str(request["method_arg"]).encode("utf-8"))
@@ -1000,6 +1114,7 @@ if __name__ == "__main__":
             self.method = "proxy"
             self.arg = ""
             self.colloc_filter_choice = "frequency"
+            self.colloc_lemmas = ""
             self.q_attribute = ""
             self.q_attribute_value = ""
             self.colloc_within = "sent"

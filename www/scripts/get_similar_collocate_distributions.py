@@ -47,7 +47,7 @@ def _nb_cosine_similarities(ref_tids, ref_weights, all_tids, all_weights, group_
 def get_similar_collocate_distributions(request, config):
     """Get similar collocate distributions"""
     # Load the map_field numpy cache (all groups)
-    tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(
+    tids, counts, group_bounds, group_names, count_lemmas = load_map_field_cache(
         cache_file_path(config.db_path, request.file_path, ".npz")
     )
 
@@ -76,15 +76,11 @@ def get_similar_collocate_distributions(request, config):
         name_to_tid[name] = tid
         tid_to_name[tid] = name
 
-    # Convert reference Counter to sparse arrays.
-    # Reference Counter keys may have an attribute suffix (e.g. ":pos:noun")
-    # that the vocab strings don't include -- strip it before looking up tids.
-    attr_suffix = f":{attribute}:{attribute_value}" if attribute else ""
+    # Convert reference Counter to sparse arrays: its keys are the vocab strings
     ref_tids_list = []
     ref_counts_list = []
     for word, count in reference_collocates.items():
-        key = word.removesuffix(attr_suffix) if attr_suffix else word
-        tid = name_to_tid.get(key)
+        tid = name_to_tid.get(word)
         if tid is not None:
             ref_tids_list.append(tid)
             ref_counts_list.append(count)

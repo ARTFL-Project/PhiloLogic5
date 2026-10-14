@@ -81,7 +81,7 @@ class TestPhrase:
         words = {"my", "My", "MY", "lord", "Lord", "LORD"}
 
         def count(rows, distance):
-            return _vectorized_collocation(shakespeare_db.path, Rows(rows), words, False, None, None, distance)
+            return _vectorized_collocation(shakespeare_db.path, Rows(rows), words, False, distance)
 
         # The two words already span 1: no collocate is within 1 word of both
         assert count(rows, 1) == Counter()

@@ -24,7 +24,9 @@ from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB, LEVEL_MAP, hit_to_string
 from philologic.runtime.get_text import _get_mmap, adjust_bytes
 from philologic.runtime.ObjectFormatter import format_concordance_distinctive
-from philologic.runtime.Query import resolve_method
+from philologic.runtime.Query import get_word_groups, resolve_method
+from philologic.runtime.reports.collocation import collocate_filters, collocate_keys
+from philologic.runtime.word_properties import property_names, split_properties
 
 
 def get_representative_passages(request, config):
@@ -48,7 +50,8 @@ def get_representative_passages(request, config):
     main_q = (request["q"] or "").strip()
     if not main_q:
         return _empty_response(request)
-    count_lemmas = main_q.startswith("lemma:")
+    filters = collocate_filters(request, db)  # as the collocation report counted the signature's collocates
+    count_lemmas = filters.count_lemmas
 
     # Resolve signature tokens to their corpus token ids.
     sig_keys = [(f"lemma:{w}" if count_lemmas else w) for w in sig_words]
@@ -66,8 +69,9 @@ def get_representative_passages(request, config):
 
     # Build cooc query: "main_q sig1|sig2|..." (lemma: prefix for both sides
     # when applicable). PhiloLogic parses space-separated tokens as a cooc
-    # AND-group and `|` as an inline OR within each group.
-    sig_or = "|".join(sig_keys)
+    # AND-group and `|` as an inline OR within each group. Each signature word is searched as it was counted: with
+    # the kept values of the word properties of the filters.
+    sig_or = "|".join(key for sig_key in sig_keys for key in collocate_keys(sig_key, filters))
     cooc_q = f"{main_q} {sig_or}"
     raw_method = "proxy" if (request.colloc_within or "") == "n" else "sentence"
     raw_arg = request.method_arg if raw_method == "proxy" else ""
@@ -89,7 +93,7 @@ def get_representative_passages(request, config):
     # the same way the cooc engine does — ensures we can tell main from sig
     # at each hit position even when the main word is also in the signature
     # (e.g. main_q="lemma:citoyen" with "citoyen" present as a sig token).
-    main_tids = _resolve_main_tids(config.db_path, hits.filename, count_lemmas)
+    main_tids = _resolve_main_tids(config.db_path, hits.filename)
 
     # Bulk-read the multi-word hitlist as a uint32 matrix.
     # Layout for a 2-word query (length = 7 + 2*2 = 11):
@@ -109,10 +113,15 @@ def get_representative_passages(request, config):
     colloc_dir = os.path.join(config.db_path, "data", "collocations")
     sent_keys_s24 = np.load(os.path.join(colloc_dir, "sent_keys_s24.npy"), mmap_mode="r")
     sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
-    if count_lemmas:
-        per_word_ids = np.load(os.path.join(colloc_dir, "attr_lemma_ids.npy"), mmap_mode="r")
-    else:
-        per_word_ids = np.load(os.path.join(colloc_dir, "token_ids.npy"), mmap_mode="r")
+    word_ids = {
+        lemmas: np.load(os.path.join(colloc_dir, "attr_lemma_ids.npy" if lemmas else "token_ids.npy"), mmap_mode="r")
+        for lemmas in {count_lemmas, *main_tids}
+    }
+    per_word_ids = word_ids[count_lemmas]
+
+    def is_main(word):
+        """Whether the word at an index of the collocation arrays is the main word, by its form or its lemma"""
+        return any(int(word_ids[lemmas][word]) in tids for lemmas, tids in main_tids.items())
 
     sent_idx, matched = _np_searchsorted_keys(sent_keys_s24, rows[:, :6])
     if not matched.any():
@@ -143,8 +152,8 @@ def get_representative_passages(request, config):
         # Classify by which position is the main word (from cooc-query expansion).
         # The other position is the signature candidate; only score it if its tid
         # carries a sig weight.
-        a_is_main = tid_a in main_tids
-        b_is_main = tid_b in main_tids
+        a_is_main = is_main(sent_start + wpa - 1)
+        b_is_main = is_main(sent_start + wpb - 1)
         if a_is_main and not b_is_main:
             main_byte_i = int(byte_a[i])
             sig_tid = tid_b
@@ -273,36 +282,29 @@ def _np_searchsorted_keys(sent_keys_s24, hit_keys_native):
     return sent_idx.astype(np.int64), matched
 
 
-def _resolve_main_tids(db_path, hitlist_filename, count_lemmas):
+def _resolve_main_tids(db_path, hitlist_filename):
     """Read the cooc query's `.terms` file and resolve group 0 (the main word's
-    expanded forms) to vocab token ids. Returns a frozenset of tids.
+    expanded forms) to vocab token ids: those of its lemmas in the lemma vocab, of its
+    word forms in the word vocab (a key with properties, aimer:pos:VERB, as its word).
+    Returns {True: lemma ids, False: word ids}, without an empty one.
 
     The .terms file is written by `expand_query_not` during db.query(); groups
     are separated by blank lines. We use it directly so case/ASCII/regex
     expansion stays in sync with whatever the cooc engine matched.
     """
     terms_path = f"{hitlist_filename}.terms"
-    main_forms = []
-    if os.path.exists(terms_path):
-        with open(terms_path, "r", encoding="utf-8") as f:
-            current = []
-            groups = []
-            for line in f:
-                line = line.strip()
-                if line:
-                    current.append(line)
-                elif current:
-                    groups.append(current)
-                    current = []
-            if current:
-                groups.append(current)
-            if groups:
-                main_forms = groups[0]
-    if not main_forms:
-        return frozenset()
-    needed = set(main_forms)
-    lookup = _build_sig_tid_lookup(db_path, needed, count_lemmas)
-    return frozenset(lookup.values())
+    groups = get_word_groups(terms_path) if os.path.exists(terms_path) else []
+    if not groups or not groups[0]:
+        return {}
+    names = property_names(os.path.join(db_path, "data"))
+    words = {split_properties(key, names)[0] for key in groups[0]}
+    main = {}
+    for lemmas in (False, True):
+        needed = {word for word in words if word.startswith("lemma:") == lemmas}
+        tids = frozenset(_build_sig_tid_lookup(db_path, needed, lemmas).values()) if needed else frozenset()
+        if tids:
+            main[lemmas] = tids
+    return main
 
 
 def _vocab_files(db_path, count_lemmas):

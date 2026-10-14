@@ -150,105 +150,7 @@
                                         v-if="formData.method == 'proxy' || formData.method == 'exact_cooc'">{{
                                             $t("searchForm.wordsSentence") }}</span>
                                 </div>
-                                <div class="mt-1" id="collocation-params" v-if="currentReport == 'collocation'"
-                                    role="group" aria-labelledby="collocation-params-heading">
-                                    <h2 id="collocation-params-heading">{{ $t("searchForm.collocationParams") }}:</h2>
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="radio" name="colloc_within"
-                                            id="collocSentence" value="sent" checked v-model="formData.colloc_within">
-                                        <label class="form-check-label" for="collocSentence">
-                                            {{ $t("searchForm.collocatesWithinSentence") }}
-                                        </label>
-                                    </div>
-                                    <div class="form-check mt-1">
-                                        <input class="form-check-input" type="radio" name="colloc_within"
-                                            id="collocWithinN" value="n" v-model="formData.colloc_within">
-                                        <label class="form-check-label" for="collocWithinN">
-                                            {{ $t("searchForm.collocatesWithin") }} <input type="number"
-                                                name="method_arg" class="form-control form-control-sm" id="collocNWords"
-                                                :aria-label="$t('searchForm.collocNWordsLabel')" style="display: inline-block; width: 70px; text-align: center; height: 22px !important;
-min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{ $t("searchForm.words") }}
-                                        </label>
-                                    </div>
-                                    <div class="mt-2">
-                                        <button v-if="wordAttributes" type="button" class="btn btn-outline-secondary"
-                                            tabindex="-1"
-                                            style="border-top-right-radius: 0; border-bottom-right-radius: 0">
-                                            {{ $t("searchForm.filterCollocate") }}
-                                        </button>
-                                        <div class="btn-group d-inline-block" role="group">
-                                            <button class="btn btn-secondary dropdown-toggle"
-                                                style="border-top-left-radius: 0; border-bottom-left-radius: 0"
-                                                type="button" id="attribute-selector'" data-bs-toggle="dropdown"
-                                                aria-expanded="false">
-                                                {{ $t(collocFilteringSelected.key || collocationOptions[0].key) }}
-                                            </button>
-                                            <ul class="dropdown-menu" aria-labelledby="attribute-selector">
-                                                <li v-for="option in collocationOptions" :key="option.value">
-                                                    <a class="dropdown-item"
-                                                        @click="collocFilteringSelected = option">{{
-                                                            $t(option.key) }}</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                        <div class="dropdown d-inline-block ms-2"
-                                            v-if="collocFilteringSelected.value == 'attribute'">
-                                            <button class="btn btn-secondary dropdown-toggle"
-                                                style="border-top-left-radius: 0; border-bottom-left-radius: 0"
-                                                type="button" id="attribute-selector'" data-bs-toggle="dropdown"
-                                                aria-expanded="false">
-                                                {{ $philoConfig.word_property_aliases[attributeSelected] ||
-                                                    attributeSelected || $t("searchForm.selectAttributeType") }}
-                                            </button>
-                                            <ul class="dropdown-menu" aria-labelledby="attribute-selector">
-                                                <li v-for="(_, attribute) in wordAttributes" :key="attribute">
-                                                    <a class="dropdown-item" @click="attributeSelected = attribute">
-                                                        {{ $philoConfig.word_property_aliases[attribute] || attribute }}
-                                                    </a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                        <div class="dropdown d-inline-block ms-2"
-                                            v-if="collocFilteringSelected.value == 'attribute' && attributeSelected.length > 0">
-                                            <button class="btn btn-secondary dropdown-toggle" type="button"
-                                                id="attributeValues" data-bs-toggle="dropdown" aria-expanded="false">
-                                                {{ wordAttributeSelected.toUpperCase() ||
-                                                    $t("searchForm.selectAttributeValue")
-                                                }}
-                                            </button>
-                                            <ul class="dropdown-menu" aria-labelledby="attributeValues">
-                                                <li v-for="attributeValue in wordAttributes[attributeSelected]"
-                                                    :key="attributeValue">
-                                                    <a class="dropdown-item"
-                                                        @click="wordAttributeSelected = attributeValue">{{
-                                                            attributeValue }}</a>
-                                                </li>
-                                            </ul>
-                                        </div>
-                                        <div class="d-inline-flex align-items-center ms-2" style="width: fit-content"
-                                            v-if="collocFilteringSelected.value == 'frequency'" role="group"
-                                            aria-labelledby="filter-df-pct-label">
-                                            <label for="filter-df-pct" id="filter-df-pct-label"
-                                                class="btn btn-outline-secondary mb-0" style="height: fit-content">
-                                                {{ $t("searchForm.dfFilterLabel") }}
-                                            </label>
-                                            <input type="range" class="form-range mx-2 df-filter-range"
-                                                id="filter-df-pct" name="filter_df_pct"
-                                                min="0.5" max="5" step="0.1"
-                                                v-model="formData.filter_df_pct"
-                                                :aria-valuetext="$t('searchForm.dfFilterValueText', { pct: formData.filter_df_pct })"
-                                                aria-describedby="filter-df-pct-desc"
-                                                style="width: 110px" />
-                                            <output for="filter-df-pct" aria-hidden="true"
-                                                style="white-space: nowrap">
-                                                {{ formData.filter_df_pct }}{{ $t("searchForm.dfFilterUnit") }}
-                                            </output>
-                                            <span id="filter-df-pct-desc" class="visually-hidden">
-                                                {{ $t("searchForm.dfFilterDescription") }}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
+                                <CollocationOptions v-if="currentReport == 'collocation'" />
                                 <div role="group" aria-labelledby="filter-by-field-heading">
                                     <h2 class="mt-2" id="filter-by-field-heading">{{ $t("searchForm.filterByField") }}:
                                     </h2>
@@ -369,9 +271,10 @@ import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
-import { copyObject, dateRangeHandler, paramsToRoute } from "../utils.js";
+import { copyObject, dateRangeHandler, defaultCommonWords, paramsToRoute } from "../utils.js";
 import { useAutocomplete } from "../composables/useAutocomplete";
 import AutocompleteList from "./AutocompleteList.vue";  // eslint-disable-line no-unused-vars
+import CollocationOptions from "./CollocationOptions.vue";  // eslint-disable-line no-unused-vars
 import MetadataFields from "./MetadataFields.vue";  // eslint-disable-line no-unused-vars
 import SearchTips from "./SearchTips";  // eslint-disable-line no-unused-vars
 import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
@@ -424,7 +327,6 @@ const {
 const dictionary = philoConfig.dictionary;
 const metadataInputStyle = philoConfig.metadata_input_style;
 const reports = philoConfig.search_reports;
-const wordAttributes = philoConfig.word_attributes;
 // Labels as computed, or as message keys, follow the language chosen
 const approximateValues = computed(() => [
     { text: t("searchForm.similarity", { n: 90 }), value: "90" },
@@ -434,10 +336,6 @@ const methodOptions = computed(() => [
     { text: t("searchForm.within"), value: "proxy" },
     { text: t("searchForm.withinExactly"), value: "exact_cooc" },
     { text: t("common.sameSentence"), value: "sentence" },
-]);
-const collocationOptions = ref([
-    { key: "searchForm.commonWordsFilter", value: "frequency" },
-    { key: "searchForm.stopwords", value: "stopwords" },
 ]);
 const aggregationOptions = philoConfig.aggregation_config.map((f) => ({
     text: philoConfig.metadata_aliases[f.field] || f.field.charAt(0).toUpperCase() + f.field.slice(1),
@@ -456,9 +354,6 @@ const selectedSortValues = ref("rowid");  // eslint-disable-line no-unused-vars
 const showTips = ref(false);
 const dateType = reactive({});
 const dateRange = reactive({});
-const attributeSelected = ref("");
-const wordAttributeSelected = ref("");
-const collocFilteringSelected = ref({ key: "", value: "" });
 
 // ── Computed ─────────────────────────────────────────────────────────────────
 const statFieldSelected = computed(() => getLoadedStatField());  // eslint-disable-line no-unused-vars
@@ -549,16 +444,8 @@ function onSubmit() {                  // eslint-disable-line no-unused-vars
     if (currentReport.value === "collocation" && formData.value.colloc_within === "sent") {
         store.updateFormDataField({ key: "method_arg", value: "" });
     }
-    store.updateFormDataField({
-        key: "colloc_filter_choice",
-        value: collocFilteringSelected.value.value,
-    });
-    if (
-        formData.value.colloc_filter_choice === "frequency" ||
-        formData.value.colloc_filter_choice === "stopwords"
-    ) {
-        attributeSelected.value = "";
-        wordAttributeSelected.value = "";
+    if (currentReport.value === "collocation" && !formData.value.colloc_filter_choice) {
+        store.updateFormDataField({ key: "colloc_filter_choice", value: defaultCommonWords(philoConfig) });
     }
 
     router.push(
@@ -573,8 +460,9 @@ function onSubmit() {                  // eslint-disable-line no-unused-vars
             byte: "",
             start_date: formData.value.start_date,
             end_date: formData.value.end_date,
-            q_attribute: attributeSelected.value,
-            q_attribute_value: wordAttributeSelected.value,
+            // the filter of links made before collocate filters could be combined, which the form now has
+            q_attribute: "",
+            q_attribute_value: "",
             method_arg: formData.value.method_arg,
         })
     );
@@ -599,7 +487,7 @@ function reportChange(report) {        // eslint-disable-line no-unused-vars
     if (report === "collocation") {
         store.updateFormDataField({
             key: "colloc_filter_choice",
-            value: philoConfig.stopwords.length > 0 ? "stopwords" : "frequency",
+            value: defaultCommonWords(philoConfig),
         });
     }
     currentReport.value = report;
@@ -691,34 +579,6 @@ for (const m in metadataInputStyle) {
     dateRange[m] = { start: "", end: "" };
 }
 
-if (Object.keys(philoConfig.word_attributes).length > 0) {
-    // Place word attribute option at the second position
-    collocationOptions.value.splice(1, 0, {
-        key: "searchForm.selectAttribute",
-        value: "attribute",
-    });
-}
-
-if (formData.value.colloc_filter_choice && formData.value.colloc_filter_choice.length > 0) {
-    for (const collocFilter of collocationOptions.value) {
-        if (collocFilter.value === formData.value.colloc_filter_choice) {
-            collocFilteringSelected.value = collocFilter;
-            if (collocFilteringSelected.value.value === "attribute") {
-                attributeSelected.value =
-                    philoConfig.word_property_aliases[route.query.q_attribute] ||
-                    route.query.q_attribute;
-                wordAttributeSelected.value = route.query.q_attribute_value;
-            }
-            break;
-        }
-    }
-}
-
-if (collocFilteringSelected.value.value === "") {
-    const fallback = philoConfig.stopwords.length > 0 ? "stopwords" : "frequency";
-    collocFilteringSelected.value = collocationOptions.value.find((o) => o.value === fallback);
-}
-
 searchableMetadata.value = {
     display: metadataDisplay.value,
     choiceValues: metadataChoiceValues,
@@ -729,12 +589,6 @@ searchableMetadata.value = {
 <style scoped>
 input[type="text"] {
     opacity: 1;
-}
-
-/* Visible focus indicator for the document-frequency slider (WCAG 2.4.7). */
-.df-filter-range:focus-visible {
-    outline: 3px solid #0d6efd;
-    outline-offset: 2px;
 }
 
 .input-group,

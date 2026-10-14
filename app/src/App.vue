@@ -56,7 +56,7 @@ import { useI18n } from "vue-i18n";
 import Header from "./components/Header.vue";
 import ProgressSpinner from "./components/ProgressSpinner.vue";
 import { useMainStore } from "./stores/main";
-import { copyObject, debug, paramsToRoute, refusedSearchMessage } from "./utils.js";
+import { copyObject, debug, paramsToRoute, refusedSearchMessage, upgradeCollocationParams } from "./utils.js";
 const SearchForm = defineAsyncComponent(() => import("./components/SearchForm.vue"));
 const AccessControl = defineAsyncComponent(() => import("./components/AccessControl.vue"));
 
@@ -129,7 +129,9 @@ function evaluateRoute() {
 
 function formDataUpdate() {
     const localParams = copyObject(store.defaultFields);
-    store.updateFormData({ ...localParams, ...route.query });
+    const formValues = { ...localParams, ...route.query };
+    if (route.name === "collocation") upgradeCollocationParams(formValues, route.query);
+    store.updateFormData(formValues);
     if (!["textNavigation", "tableOfContents", "home"].includes(route.name)) {
         evaluateRoute();
         urlUpdate.value = route.query;

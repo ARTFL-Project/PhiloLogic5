@@ -309,11 +309,76 @@ export function buildBiblioCriteria(philoConfig, query, formData) {
     return biblio;
 }
 
-export function collocateCleanup(collocate, q) {
+// The request parameter of the values kept of a word property, for collocates (colloc_attr_pos=NOUN | ADJ)
+export const PROPERTY_PARAM = "colloc_attr_";
+
+// The word properties collocates are filtered by, of formData: [name, values] pairs, by name, the values in order
+export function collocateProperties(formData, wordAttributes = {}) {
+    const properties = [];
+    for (const name of Object.keys(wordAttributes).sort()) {
+        const values = splitValues(formData[`${PROPERTY_PARAM}${name}`]);
+        if (values.length > 0) properties.push([name, values.sort()]);
+    }
+    return properties;
+}
+
+// The values of a property parameter: those " | " separates
+export function splitValues(value) {
+    return [...new Set(String(value || "").split("|").map((v) => v.trim()).filter((v) => v))];
+}
+
+// The query of a concordance of a collocate: the hits it was counted in. With word properties, the collocate with
+// one of the kept values of each (as the report's collocate_keys)
+export function collocateCleanup(collocate, q, formData = {}, wordAttributes = {}) {
+    const properties = collocateProperties(formData, wordAttributes);
+    if (properties.length > 0) {
+        let keys = [collocate.surfaceForm];
+        for (const [name, values] of properties) {
+            keys = keys.flatMap((key) => values.map((value) => `${key}:${name}:${value}`));
+        }
+        return `${q} ${keys.join(" | ")}`;
+    }
     if (collocate.surfaceForm.startsWith("lemma:") || collocate.surfaceForm.search(/\w+:.*/) !== -1) {
         return `${q} ${collocate.surfaceForm}`;
     }
     return `${q} "${collocate.surfaceForm}"`;
+}
+
+// The common words a new collocation search leaves out: the database's stopwords, else the most frequent words
+export function defaultCommonWords(philoConfig) {
+    return philoConfig.stopwords?.length > 0 ? "stopwords" : "frequency";
+}
+
+// The collocation parameters of links made before they could be combined, as the form has them now: collocates
+// counted as lemmas when the query has one (without colloc_lemmas), and colloc_filter_choice=attribute as the one
+// value q_attribute_value of q_attribute, without any other filter. Changes formData; the counts are the same.
+export function upgradeCollocationParams(formData, query) {
+    if (!formData.colloc_filter_choice) {  // the most frequent words, as the report has it
+        formData.colloc_filter_choice = "frequency";
+    }
+    if (!("colloc_lemmas" in query)) {
+        formData.colloc_lemmas = String(formData.q || "").includes("lemma:") ? "yes" : "no";
+    }
+    if (formData.colloc_filter_choice === "attribute") {
+        if (formData.q_attribute) {
+            formData[`${PROPERTY_PARAM}${formData.q_attribute}`] = formData.q_attribute_value || "";
+        }
+        formData.colloc_filter_choice = "nofilter";
+    }
+    formData.q_attribute = "";
+    formData.q_attribute_value = "";
+    return formData;
+}
+
+// The parameters of a collocation report of the form's query and filters, with metadata instead of the form's when
+// given (comparing with other metadata)
+export function collocationParams(formData, philoConfig, metadata = null) {
+    const params = paramsFilter({ ...formData, report: "collocation" });
+    if (metadata !== null) {
+        for (const field of philoConfig.metadata) delete params[field];
+        Object.assign(params, paramsFilter({ ...metadata }));
+    }
+    return params;
 }
 
 export function concordanceMethod(collocWithin) {

@@ -13,16 +13,13 @@ from philologic.runtime.reports.collocation import (
 def get_collocate_distribution(request, config):
     """Get collocate distribution for a single field value from a map_field numpy cache."""
     file_path = cache_file_path(config.db_path, request.file_path, ".npz")
-    tids, counts, group_bounds, group_names, count_lemmas, attribute, attribute_value = load_map_field_cache(file_path)
+    tids, counts, group_bounds, group_names, count_lemmas = load_map_field_cache(file_path)
 
     # Find the requested group
     if request.field not in group_names:
         raise NotFound(f"No collocates counted for {request.field!r}")
     group_index = group_names.index(request.field)
-    field_counter = decode_group_collocates(
-        tids, counts, group_bounds, group_index,
-        config.db_path, count_lemmas, attribute, attribute_value,
-    )
+    field_counter = decode_group_collocates(tids, counts, group_bounds, group_index, config.db_path, count_lemmas)
 
     collocates = sorted(field_counter.items(), key=lambda x: x[1], reverse=True)
 
