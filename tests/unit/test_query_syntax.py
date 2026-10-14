@@ -422,7 +422,7 @@ class TestWordsTheIndexHasWhole:
         (tmp_path / "data" / "frequencies").mkdir(parents=True)
         env = lmdb.open(str(tmp_path / "data" / index), map_size=1 << 20)
         with env.begin(write=True) as txn:
-            for word in ("aujourd'hui", "peut-être" if not ascii_conversion else "peut-etre", "l", "homme"):
+            for word in ("aujourd'hui", "peut-être" if not ascii_conversion else "peut-etre", "peut-estre", "l", "homme"):
                 txn.put(word.encode("utf-8"), word.encode("utf-8"))
         env.close()
         return type("Config", (), {
@@ -438,6 +438,7 @@ class TestWordsTheIndexHasWhole:
             ("aujourd'hui", "aujourd'hui"),
             ("Aujourd'hui", "Aujourd'hui"),  # looked up as the index has its words, in lowercase
             ("peut-être", "peut-être"),
+            ("peut-eſtre", "peut-eſtre"),  # looked up with an s, as loads index the long s
             ("l'homme", "l homme"),
             ("aujourd'hui OR demain", "aujourd'hui | demain"),
             ('"aujourd\'hui l\'homme"', '"aujourd\'hui l homme"'),

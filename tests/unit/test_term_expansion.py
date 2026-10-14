@@ -144,6 +144,20 @@ class TestQuotedRegex:
 
 
 @pytest.mark.unit
+class TestLongS:
+    """A word typed with a long s is also looked up with an s, as loads index it, where it isn't normalized."""
+
+    def test_quoted(self, norm_words):
+        with norm_words.begin(buffers=True) as txn:
+            assert _expand_positive("QUOTE", '"ſont"', txn, True, True) == ["ſont", "sont"]
+            assert _expand_positive("QUOTE", '"sont"', txn, True, True) == ["sont"]
+
+    def test_without_ascii_conversion(self, norm_words):
+        with norm_words.begin(buffers=True) as txn:
+            assert _expand_positive("TERM", "chriſtiens", txn, False, True) == ["chriſtiens", "christiens"]
+
+
+@pytest.mark.unit
 class TestExpansionCap:
     """A regex with no literal start expands to REGEX_EXPANSION_CAP forms at most, and says when it left some out:
     the results summary tells the user (.*ez found 946,874 hits of 1,430,547, silently)."""

@@ -376,7 +376,7 @@
   "word\tz\t1 1 1 1 2 1 2 43 0\t{\"start_byte\":43,\"end_byte\":44,\"parent\":\"1 1 1 1 2 1 0\"}",
   "sent\t__philo_virtual\t1 1 1 1 2 1 0 39 0\t{\"start_byte\":39,\"end_byte\":48,\"parent\":\"1 1 1 1 2 0 0\"}",
   "para\t__philo_virtual\t1 1 1 1 2 0 0 39 0\t{\"start_byte\":39,\"end_byte\":48,\"parent\":\"1 1 1 1 0 0 0\"}",
-  "word\tſ\t1 1 1 1 3 1 1 53 0\t{\"start_byte\":53,\"end_byte\":55,\"parent\":\"1 1 1 1 3 1 0\"}",
+  "word\ts\t1 1 1 1 3 1 1 53 0\t{\"start_byte\":53,\"end_byte\":55,\"parent\":\"1 1 1 1 3 1 0\"}",
   "sent\t__philo_virtual\t1 1 1 1 3 1 0 53 0\t{\"start_byte\":53,\"end_byte\":61,\"parent\":\"1 1 1 1 3 0 0\"}",
   "para\tſp\t1 1 1 1 3 0 0 48 0\t{\"start_byte\":48,\"end_byte\":61,\"parent\":\"1 1 1 1 0 0 0\"}",
   "word\tw\t1 1 1 1 4 1 1 66 0\t{\"start_byte\":66,\"end_byte\":67,\"parent\":\"1 1 1 1 4 1 0\"}",

@@ -783,9 +783,10 @@ class IndexedWords:
             from philologic.runtime.term_expansion import _norm_key  # lazy, as in write_terms_file
 
             key = _norm_key(word, self.lowercase)
-        else:
-            key = (word.lower() if self.lowercase else word).encode("utf-8")
-        return bool(key) and self.txn.get(key) is not None
+            return bool(key) and self.txn.get(key) is not None
+        word = word.lower() if self.lowercase else word
+        # with a long s, as an s too, as loads index it (and as it is, as they did before)
+        return any(self.txn.get(form.encode("utf-8")) is not None for form in {word, word.replace("ſ", "s")})
 
     def __exit__(self, *exception):
         if self.txn is not None:

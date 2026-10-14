@@ -138,6 +138,8 @@ class PlainTextParser:
                     # Switch everything to lower case
                     word = word.lower()
                     last_word = word
+                    # The long s is an s, as the XML parser has it
+                    word = word.replace("ſ", "s")
                     # Check to see if the word is longer than we want. More than 235 characters appear to cause problems in the indexer.
                     if len(word_in_utf8) > 200:
                         print(f"Long word in {input_file.name}: {word}", file=sys.stderr)
@@ -204,8 +206,9 @@ class PlainTextParser:
 
     @staticmethod
     def index_form(word):
-        """The form under which a word is indexed: in lowercase, without control characters, "_" and spaces"""
-        word = word.lower()
+        """The form under which a word is indexed: in lowercase, the long s as an s, without control characters, "_" and
+        spaces"""
+        word = word.lower().replace("ſ", "s")
         word = "".join(c for c in word if unicodedata.category(c)[0] != "C")  # remove control characters
         word = word.replace("_", "").strip()
         return word.replace(" ", "")

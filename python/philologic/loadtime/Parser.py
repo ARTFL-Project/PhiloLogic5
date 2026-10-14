@@ -1001,6 +1001,7 @@ class XMLParser:
         word = self.chars_not_to_index.sub("", word)  # characters which don't split words, but aren't indexed
         if self.lowercase_index is True:
             word = word.lower()
+        word = word.replace("ſ", "s")  # the long s is an s, as its entity &s; already is
 
         word = self.remove_control_chars(word)
         word = word.replace("_", "").strip()
