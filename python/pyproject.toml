@@ -25,6 +25,7 @@ dependencies = [
     "black",
     "msgspec",
     "unidecode",
+    "PyICU~=2.16",
     "lz4",
     "lmdb",
     "numpy~=2.3",
