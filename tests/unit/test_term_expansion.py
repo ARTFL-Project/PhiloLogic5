@@ -14,12 +14,14 @@ from philologic.runtime import term_expansion
 from philologic.runtime.QuerySyntax import group_terms, parse_query
 from philologic.runtime.Query import split_terms
 from philologic.runtime.term_expansion import (
+    _expand_exclude,
     _expand_positive,
     _forms_pattern,
     _is_regex_pattern,
     _lmdb_expand_term,
     _normalize_pattern,
     cut_terms,
+    expand_autocomplete,
 )
 
 
@@ -143,9 +145,37 @@ class TestQuotedRegex:
             assert sorted(_expand_positive("TERM", "ÉT.T.*", txn, True, True)) == sorted(["état", "etat", "ètat", "états"])
 
 
+# norm_word.lmdb of a database loaded with the long s as an s, and of one loaded before, with it as it is
+LOADED_WITH_S = {"son": ["son"], "sont": ["sont"]}
+LOADED_BEFORE = {"son": ["son", "ſon"], "sont": ["sont", "ſont"]}
+
+
+def norm_index(tmp_path, forms):
+    """A norm_word.lmdb with the forms of each key, closed: its path without the .lmdb"""
+    import lmdb
+
+    env = lmdb.open(str(tmp_path / "norm_word.lmdb"), map_size=1 << 20)
+    with env.begin(write=True) as txn:
+        for key, values in forms.items():
+            txn.put(key.encode(), "\x00".join(values).encode())
+    env.close()
+    return str(tmp_path / "norm_word")
+
+
+@pytest.fixture
+def long_s_txn(tmp_path, request):
+    import lmdb
+
+    env = lmdb.open(norm_index(tmp_path, request.param) + ".lmdb", readonly=True, lock=False)
+    with env.begin(buffers=True) as txn:
+        yield txn
+    env.close()
+
+
 @pytest.mark.unit
 class TestLongS:
-    """A word typed with a long s is also looked up with an s, as loads index it, where it isn't normalized."""
+    """A word, quoted or not, or a pattern, typed with a long s is looked up with an s, as loads index it, and as it
+    is, as databases loaded before have it."""
 
     def test_quoted(self, norm_words):
         with norm_words.begin(buffers=True) as txn:
@@ -155,6 +185,30 @@ class TestLongS:
     def test_without_ascii_conversion(self, norm_words):
         with norm_words.begin(buffers=True) as txn:
             assert _expand_positive("TERM", "chriſtiens", txn, False, True) == ["chriſtiens", "christiens"]
+
+    @pytest.mark.parametrize(
+        "long_s_txn, forms",
+        [(LOADED_WITH_S, ["son", "sont"]), (LOADED_BEFORE, ["ſon", "ſont", "son", "sont"])],
+        indirect=["long_s_txn"],
+    )
+    def test_quoted_pattern(self, long_s_txn, forms):
+        """Quoted patterns are matched against the forms as they are: ſ in the pattern matches the s of loads too"""
+        assert _expand_positive("QUOTE", '"ſon.*"', long_s_txn, True, True) == forms
+
+    @pytest.mark.parametrize("long_s_txn", [LOADED_BEFORE], indirect=True)
+    def test_excluded(self, long_s_txn):
+        assert _expand_exclude("QUOTE", '"ſon.*"', long_s_txn, True, True) == {"ſon", "ſont", "son", "sont"}
+        assert _expand_exclude("TERM", "ſont", long_s_txn, False, True) == {"ſont", "sont"}
+
+    @pytest.mark.parametrize("long_s_txn", [LOADED_WITH_S], indirect=True)
+    def test_lemmas_as_they_are(self, long_s_txn):
+        """The parser leaves attributes, lemmas among them, as the source has them"""
+        assert _expand_positive("LEMMA", "lemma:ſont", long_s_txn, True, True) == ["lemma:ſont"]
+
+    def test_autocomplete(self, tmp_path):
+        frequency_file = norm_index(tmp_path, LOADED_WITH_S)
+        assert expand_autocomplete("TERM", "ſon", frequency_file, str(tmp_path), False, True) == ["son", "sont"]
+        assert expand_autocomplete("QUOTE", '"ſon"', frequency_file, str(tmp_path), True, True) == ["son", "sont"]
 
 
 @pytest.mark.unit
