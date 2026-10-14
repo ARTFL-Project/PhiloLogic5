@@ -229,11 +229,11 @@ input {
     border-color: rgba($button-color, 0.15);
 }
 
-// Simple checkbox theming
+// Checkboxes, radios and switches in the theme's color. Their state shows (WCAG 1.4.11): an empty box or circle when
+// not ticked, Bootstrap's white tick or dot on the theme's color when ticked; a switch's knob grey and to the left when
+// off (Bootstrap's is too pale to see), white and to the right when on
 .form-check-input {
     border-color: $button-color !important;
-    background-color: $button-color !important;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
 }
 
 .form-check-input:checked {
@@ -248,9 +248,29 @@ input {
     box-shadow: none !important;
 }
 
-.form-check-input:focus:not(:checked) {
-    background-color: $button-color !important;
-    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fff'/%3e%3c/svg%3e") !important;
+.form-switch .form-check-input:not(:checked) {
+    --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%236c757d'/%3e%3c/svg%3e") !important;
+}
+
+// With forced colors (Windows high contrast): the browser's own checkboxes and radios, and borders to the tracks and
+// thumbs of sliders. Bootstrap draws ticks in white images, tracks and thumbs in background colors, which forced
+// colors make invisible
+@media (forced-colors: active) {
+    .form-check-input {
+        appearance: auto !important;
+    }
+    .form-range::-webkit-slider-runnable-track {
+        border: 1px solid CanvasText;
+    }
+    .form-range::-moz-range-track {
+        border: 1px solid CanvasText;
+    }
+    .form-range::-webkit-slider-thumb {
+        border: 3px solid CanvasText !important;
+    }
+    .form-range::-moz-range-thumb {
+        border: 3px solid CanvasText !important;
+    }
 }
 
 .icon-x {
