@@ -10,7 +10,7 @@ from bisect import bisect_right
 import regex as re
 
 from philologic.loadtime.OHCOVector import CompoundStack
-from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words
+from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input, word_breaks
 from philologic.utils import convert_entities, extract_full_date, extract_integer
 
 DEFAULT_TAG_TO_OBJ_MAP = {
@@ -491,6 +491,9 @@ class XMLParser:
         # With a language, words are split by spaCy's tokenizer for it rather than by token_regex (the loader only
         # gives a language spaCy has a tokenizer for). Tag exceptions are then inline tags, which the text it splits
         # leaves out, rather than tags cleanup_content takes out of words (see flush_run).
+        # With a spaCy model, which tags the words as they are in the text (see LoadFilters.spacy_tagger): words keep
+        # their form, before index_form makes it the indexed one, in their spacy_token attribute
+        self.spacy_model = parse_options.get("spacy_model")
         self.tokenizer = None
         self.inline_tags = None
         self.run = []  # with a tokenizer, the text lines and inline tags not indexed yet (see flush_run)
@@ -499,6 +502,7 @@ class XMLParser:
             if tag_exceptions:
                 self.inline_tags = re.compile(rf"(?:{tag_exceptions})", re.I)
             self.tag_exceptions = self.tag_exception_starts = None
+            self.word_breaks = word_breaks(self.break_apost)
 
         if "join_hyphen_in_words" in parse_options:
             self.join_hyphen_in_words = parse_options["join_hyphen_in_words"]
@@ -1240,7 +1244,8 @@ class XMLParser:
                     if self.defined_words_to_index:
                         if word not in self.words_to_index:
                             continue
-                    self.push_word(word, word_pos, self.word_ends.get(current_pos, current_pos))
+                    token = converted_word if self.spacy_model and converted_word != word else None
+                    self.push_word(word, word_pos, self.word_ends.get(current_pos, current_pos), token)
                 is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
             else:
                 is_sentence_breaker = self.is_word_sentence_breaker(word, last_word, next_word)
@@ -1258,9 +1263,11 @@ class XMLParser:
 
     def index_tokens(self, items):
         """Index the items of a run split by the tokenizer (see flush_run), each with its exact bytes in the file:
-        (text, start byte, end byte, whether it's a word, token). A word's token is the tokenizer's, when it has
-        punctuation at its edges which the word leaves out (None otherwise); it's kept in the spacy_token attribute of
-        the word. Between words, items are split as without a tokenizer, and end sentences as they do without one."""
+        (text, start byte, end byte, whether it's a word, token). A word's token is the tokenizer's, as it has it in the
+        text (which a spaCy model tags): when the indexed word isn't that (it's in lowercase, leaves out the punctuation
+        at the edges of the token, or is its first word before a hyphen or apostrophe), the token is kept in the
+        spacy_token attribute of the word, which the later words of the token have empty. Between words, items are
+        split as without a tokenizer, and end sentences as they do without one."""
         last_word = ""
         for number, (text, start_byte, end_byte, is_word, token) in enumerate(items):
             converted = self.convert_entities(text) if "&" in text else text
@@ -1270,8 +1277,6 @@ class XMLParser:
                 if len(text.encode("utf8")) > self.long_word_limit:
                     self.skip_long_word(word)
                 elif word and (not self.defined_words_to_index or word in self.words_to_index):
-                    if token is not None:
-                        token = self.index_form(self.convert_entities(token) if "&" in token else token)
                     end_byte = self.word_ends.get(end_byte, end_byte)  # (joined across an abbreviation)
                     self.push_word(word, start_byte, end_byte, token if token != word else None)
                 continue
@@ -1331,7 +1336,8 @@ class XMLParser:
         print(f"Removing word from for index since over {self.long_word_limit} bytes long...", file=sys.stderr)
 
     def push_word(self, word, start_byte, end_byte, token=None):
-        """Store a word, with the attributes of its <w> tag or its lemma, and its token if the tokenizer's has more"""
+        """Store a word, with the attributes of its <w> tag or its lemma, and its token (as a spaCy model tags it), if
+        given"""
         start_byte, end_byte = self.file_bytes(start_byte, end_byte)
         self.v.push("word", word, start_byte)
         if self.current_tag == "w":
@@ -1423,23 +1429,25 @@ class XMLParser:
                     items.append((item, text_bytes.start(position), text_bytes.end(item_end), False, None))
                     position = item_end
 
-        for token_start, token_end, word_start, word_end in words + [(text_length,) * 4]:  # what's after them too
+        for token_start, token_end, parts, token_text in words + [(text_length, text_length, [], None)]:
             while tag_number < len(tags) and tags[tag_number][0] <= token_start:  # between words: handled there
                 add_items_between_words(tags[tag_number][0])
                 steps += [items, tags[tag_number]]
                 items = []
                 tag_number += 1
             add_items_between_words(token_start)
-            if token_end > token_start:  # a word
+            if token_end > token_start:  # a token, with its words
                 handled_after = []  # tags inside it with a handler, handled after it; the others are dropped
                 while tag_number < len(tags) and tags[tag_number][0] < token_end:
                     tag = tags[tag_number][1]
                     if self.handler_of(tag, tag_matcher.findall(tag)[0]) is not None:
                         handled_after.append(tags[tag_number])
                     tag_number += 1
-                token = None if (word_start, word_end) == (token_start, token_end) else text[token_start:token_end]
-                word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
-                items.append((text[word_start:word_end], *word_bytes, True, token))
+                for number, (word_start, word_end) in enumerate(parts):
+                    # the words of a token after its first: their token is the first's (see index_tokens)
+                    token = "" if number else token_text
+                    word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
+                    items.append((text[word_start:word_end], *word_bytes, True, token))
                 if handled_after:
                     steps += [items, *handled_after]
                     items = []
@@ -1456,10 +1464,12 @@ class XMLParser:
         self.line_count, self.bytes_read_in = line_count, bytes_read_in
 
     def split_words(self, text):
-        """The words the tokenizer finds in text, with letters once their entities are converted (as index_tokens has
-        them): see spacy_tokenizer.split_words"""
-        mapped = self.tokenizer_text(text) if "&" in text or "_" in text else ()
-        return split_words(self.tokenizer, text, self.has_letter, *mapped)
+        """The tokens the tokenizer finds in text, with their words, which have letters once their entities are
+        converted (as index_tokens has them): see spacy_tokenizer.split_words. Characters not to index split words, as
+        token_regex splits them."""
+        separated = tokenizer_input(text, self.chars_not_to_index)
+        mapped = self.tokenizer_text(separated) if "&" in separated or "_" in separated else (separated,)
+        return split_words(self.tokenizer, text, self.has_letter, self.word_breaks, *mapped)
 
     def has_letter(self, word):
         """Whether a word has a letter, once its entities are converted"""

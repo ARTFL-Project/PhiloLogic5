@@ -10,6 +10,22 @@ import regex as re
 # character XMLParser gives the tokenizer for an unknown entity
 WORD_EDGE_CHARACTER = re.compile(rf"[\p{{L}}\p{{M}}\p{{N}}{chr(0xE000)}]")
 
+# Characters at which the words of a token split, as searches split them: hyphens (peut-être, Saint-Just) and
+# apostrophes (aujourd'hui), the "-" and "'" of the query_parser_regex of web configs, and the typographic ones
+# Query.query_parse makes "-" and "'" (tokenizer_input makes the apostrophes ’)
+HYPHENS = "".join(chr(c) for c in (0x2D, 0x2010, 0x2011, 0x2012, 0x2013))
+APOSTROPHE_CHARACTERS = "'" + chr(0x2019)
+
+
+def word_breaks(apostrophes=True):
+    """A regex of the characters at which the words of a token split: hyphens, and apostrophes if they split words (as
+    token_regex splits them, with break_apost)"""
+    return re.compile("[%s]+" % re.escape(HYPHENS + (APOSTROPHE_CHARACTERS if apostrophes else "")))
+
+
+# Typographic apostrophes the tokenizers don't take as one (qu‘il), as the one they do (qu’il)
+APOSTROPHES = str.maketrans({chr(0x2018): chr(0x2019), chr(0x02BC): chr(0x2019)})
+
 
 @functools.cache
 def spacy_tokenizer(language, spacy_model=None):
@@ -84,25 +100,48 @@ class TextBytes:
         return self.byte_at(line, position - self.positions[line])
 
 
-def split_words(tokenizer, text, is_word, tokenizer_text=None, starts=None, ends=None):
-    """The words the tokenizer finds in text, in order: (start, end) of their token, and of the word itself, which
-    leaves out the punctuation at the edges of the token (as l' or -il has), when is_word(word) is true. The tokenizer
-    can split tokenizer_text rather than text, if starts and ends give, for each of its characters, the start and end in
-    text of what it stands for (see XMLParser.tokenizer_text)."""
+def tokenizer_input(text, separators=None):
+    """text as the tokenizer gets it, of the same length: what separators matches (the chars_not_to_index of a load,
+    as [ and ]) as spaces, so that it splits words as token_regex does ([L']Homme), and typographic apostrophes as one
+    the tokenizers take as such"""
+    if separators is not None:
+        text = separators.sub(lambda match: " " * len(match.group()), text)
+    return text.translate(APOSTROPHES)
+
+
+def split_words(tokenizer, text, is_word, breaks, tokenizer_text=None, starts=None, ends=None):
+    """The tokens with words the tokenizer finds in text, in order: (start, end) of each, (start, end) of each of its
+    words, and its text as the tokenizer has it (which a spaCy model tags). Its words are the token without the
+    punctuation at its edges (as l' or -il has), split at what breaks matches (see word_breaks: peut-être and
+    aujourd'hui have two words), those for which is_word(word) is true. The tokenizer splits tokenizer_text rather
+    than text, if given (of the same length, or with starts and ends giving, for each of its characters, the start and
+    end in text of what it stands for: see XMLParser.tokenizer_text)."""
     if tokenizer_text is None:
         tokenizer_text = text
-    words = []
+    tokens = []
     last_end = 0
     for token_start, token_end in token_spans(tokenizer, tokenizer_text):
         word_start, word_end = trimmed_span(tokenizer_text, token_start, token_end)
         if word_start == word_end:  # punctuation, spaces...
             continue
+        token = tokenizer_text[token_start:token_end]
+        parts, part_start = [], word_start
+        for word_break in breaks.finditer(tokenizer_text, word_start, word_end):
+            parts.append(trimmed_span(tokenizer_text, part_start, word_break.start()))
+            part_start = word_break.end()
+        parts.append(trimmed_span(tokenizer_text, part_start, word_end))
         if starts is not None:  # (characters something of several stands for, the first gets)
             token_start, token_end = max(starts[token_start], last_end), ends[token_end - 1]
-            word_start, word_end = max(starts[word_start], token_start), ends[word_end - 1]
-            if word_start >= word_end:
-                continue
-        if is_word(text[word_start:word_end]):
-            words.append((token_start, token_end, word_start, word_end))
+            mapped, last_part_end = [], token_start
+            for start, end in parts:
+                if end > start:
+                    start, end = max(starts[start], last_part_end), ends[end - 1]
+                    if start < end:
+                        mapped.append((start, end))
+                        last_part_end = end
+            parts = mapped
+        words = [(start, end) for start, end in parts if end > start and is_word(text[start:end])]
+        if words:
+            tokens.append((token_start, token_end, words, token))
             last_end = token_end
-    return words
+    return tokens

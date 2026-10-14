@@ -53,12 +53,16 @@ def generate_words_sorted(loader_obj, text):
 
 
 def spacy_tagger(loader_obj, text):
-    """Tag words with Spacy: their token, as the tokenizer split it, when the indexed word leaves out some of it (see
-    XMLParser.index_tokens)"""
+    """Tag words with Spacy: their token, as the tokenizer split it, when the indexed word is less than it (see
+    XMLParser.index_tokens). The words of a token after its first (peut-être has two), whose spacy_token is empty, are
+    tagged with the first: they get no tags of their own."""
     from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
 
     def token(record):
         return record.attrib.get("spacy_token", record.name)
+
+    def tokens(records):
+        return [token(r) for r in records if token(r) != ""]
 
     def process_file():
         with open(text["raw"], encoding="utf8") as fh:
@@ -71,22 +75,25 @@ def spacy_tagger(loader_obj, text):
                     record = Record(philo_type, word, philo_id.split())
                     record.attrib = loads(attrib)
                     if current_sent_id is not None and sent_id != current_sent_id:
-                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [token(r) for r in sentence_records])
+                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, tokens(sentence_records))
                         yield spacy_sentence, sentence_records
                         sentence_records = []
                     sentence_records.append(record)
                     current_sent_id = sent_id
             if sentence_records:
-                spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, [token(r) for r in sentence_records])
+                spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, tokens(sentence_records))
                 yield spacy_sentence, sentence_records
 
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
         for spacy_sentence, sentence_records in loader_obj.nlp.pipe(process_file(), as_tuples=True, batch_size=1024):
-            for record, parsed_word in zip(sentence_records, spacy_sentence):
-                record.attrib["pos"] = parsed_word.pos_
-                record.attrib["tag"] = parsed_word.tag_
-                record.attrib["ent_type"] = parsed_word.ent_type_
-                record.attrib["lemma"] = "_".join((parsed_word.lemma_ or record.name).lower().split())
+            parsed_words = iter(spacy_sentence)
+            for record in sentence_records:
+                if token(record) != "":
+                    parsed_word = next(parsed_words)
+                    record.attrib["pos"] = parsed_word.pos_
+                    record.attrib["tag"] = parsed_word.tag_
+                    record.attrib["ent_type"] = parsed_word.ent_type_
+                    record.attrib["lemma"] = "_".join((parsed_word.lemma_ or record.name).lower().split())
                 print(record, file=tmp_file)
 
             spacy_sentence.tensor = None

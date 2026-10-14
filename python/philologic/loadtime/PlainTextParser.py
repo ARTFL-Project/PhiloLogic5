@@ -8,7 +8,8 @@ from typing import List, Union
 
 import regex as re
 from philologic.loadtime import OHCOVector
-from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words
+from philologic.loadtime.Parser import CHARS_NOT_TO_INDEX
+from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input, word_breaks
 
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 PUNCTUATION = r"""[;,:=+()"]"""
@@ -79,9 +80,15 @@ class PlainTextParser:
 
         # With a language, words are split by spaCy's tokenizer for it rather than by token_regex (the loader only
         # gives a language spaCy has a tokenizer for): see index_tokens
+        # With a spaCy model, which tags the words as they are in the text: words keep their form, before it's made the
+        # indexed one, in their spacy_token attribute
+        self.spacy_model = parse_options.get("spacy_model")
         self.tokenizer = None
         if parse_options.get("language"):
             self.tokenizer = spacy_tokenizer(parse_options["language"], parse_options.get("spacy_model"))
+            # Characters not to index split words for the tokenizer, as they do for token_regex
+            self.chars_not_to_index = re.compile(parse_options.get("chars_not_to_index", CHARS_NOT_TO_INDEX), re.I)
+            self.word_breaks = word_breaks(parse_options.get("break_apost", True))
 
         if words_to_index:
             self.words_to_index = words_to_index
@@ -128,6 +135,7 @@ class PlainTextParser:
                 word_length = len(word_in_utf8)
                 end_byte = start_byte + word_length
                 if check_if_char_word.search(word):
+                    original = word
                     # Switch everything to lower case
                     word = word.lower()
                     last_word = word
@@ -145,7 +153,8 @@ class PlainTextParser:
                         if self.defined_words_to_index is True and word not in self.words_to_index:
                             start_byte += len(word_in_utf8)
                             continue
-                        self.push_word(word, start_byte, end_byte)
+                        token = original if self.spacy_model and original != word else None
+                        self.push_word(word, start_byte, end_byte, token)
                         start_byte += len(word_in_utf8)
                         continue
                 has_next = count + 1 < len(words)
@@ -156,7 +165,7 @@ class PlainTextParser:
         self.v.pull("doc", self.filesize)
 
     def push_word(self, word, start_byte, end_byte, token=None):
-        """Store a word, with its lemma, and its token if the tokenizer's has more"""
+        """Store a word, with its lemma, and its token (as a spaCy model tags it), if given"""
         self.v.push("word", word, start_byte)
         if self.lemmas is not None:
             if word not in self.lemmas:
@@ -205,8 +214,9 @@ class PlainTextParser:
     def index_tokens(self, line, start_byte, input_file):
         """Index the words of a line starting at start_byte, split by the tokenizer, and what's between them split by
         token_regex, each with its exact bytes in the file. Words leave out the punctuation at the edges of their
-        token (as l' or -il has), which they keep in their spacy_token attribute (for the tagger, see
-        LoadFilters.spacy_tagger)."""
+        token (as l' or -il has), and split at its hyphens and apostrophes (with break_apost: peut-être and aujourd'hui
+        have two words). The first keeps the token, as it is in the text, in its spacy_token attribute when it isn't
+        the indexed word, the others have it empty (for the tagger, see LoadFilters.spacy_tagger)."""
         text_bytes = TextBytes([(start_byte, line)])
         items = []  # (text, start byte, end byte, whether it's a word, token)
         position = 0
@@ -218,12 +228,15 @@ class PlainTextParser:
                     items.append((item, text_bytes.start(position), text_bytes.end(position + len(item)), False, None))
                     position += len(item)
 
-        words = split_words(self.tokenizer, line, check_if_char_word.search)
-        for token_start, token_end, word_start, word_end in words:
+        tokenizer_text = tokenizer_input(line, self.chars_not_to_index)
+        for token_start, token_end, parts, token_text in split_words(
+            self.tokenizer, line, check_if_char_word.search, self.word_breaks, tokenizer_text
+        ):
             add_items_between_words(token_start)
-            token = None if (word_start, word_end) == (token_start, token_end) else line[token_start:token_end]
-            word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
-            items.append((line[word_start:word_end], *word_bytes, True, token))
+            for number, (word_start, word_end) in enumerate(parts):
+                token = "" if number else token_text  # the words of a token after its first: their token is the first's
+                word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
+                items.append((line[word_start:word_end], *word_bytes, True, token))
             position = token_end
         add_items_between_words(len(line))
 
@@ -237,7 +250,6 @@ class PlainTextParser:
                     continue
                 word = self.index_form(text)
                 if word and not (self.defined_words_to_index is True and word not in self.words_to_index):
-                    token = token and self.index_form(token)
                     self.push_word(word, start, end, token if token != word else None)
                 continue
             has_next = count + 1 < len(items)

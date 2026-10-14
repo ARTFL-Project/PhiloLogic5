@@ -72,30 +72,80 @@ def test_entities_and_joined_hyphens_dont_split_words():
 
 @pytest.mark.unit
 def test_language_tokens():
-    """Words leave out the punctuation at the edges of their token (kept in spacy_token), not inside it"""
+    """Words leave out the punctuation at the edges of their token, not inside it; spacy_token keeps the token as it
+    is in the text, for the tagger, when the word isn't that"""
     xml = document("L'homme dit-il aujourd'hui, ¶M. Smith")
     tokens = [(name, attrib.get("spacy_token")) for kind, name, attrib in records(xml, language="fr") if kind == "word"]
     assert tokens == [
-        ("l", "l'"),
+        ("l", "L'"),
         ("homme", None),
         ("dit", None),
         ("il", "-il"),
-        ("aujourd'hui", None),
-        ("m", "¶m."),
-        ("smith", None),
+        ("aujourd", "aujourd'hui"),
+        ("hui", ""),
+        ("m", "¶M."),
+        ("smith", "Smith"),
     ]
-    assert [word for word, _ in words(xml, language="fr")] == ["l", "homme", "dit", "il", "aujourd'hui", "m", "smith"]
-    assert [word for word, _ in words(xml)] == ["l", "homme", "dit", "il", "aujourd", "hui", "m", "smith"]
+    assert [word for word, _ in words(xml, language="fr")] == [word for word, _ in tokens]
+    assert [word for word, _ in words(xml)] == [word for word, _ in tokens]  # as token_regex splits them
+
+
+@pytest.mark.unit
+def test_compounds_and_brackets():
+    """A token with hyphens or apostrophes has a word for each of its parts (as searches split them), the first
+    keeping the token, the others an empty one; characters not to index ([ ]) split words, as token_regex splits
+    them"""
+    xml = document("Il est peut-être lui-même, à Saint-Just. [L']Homme qu'[il] vit, pa[r]ole.")
+    tokens = [(name, attrib.get("spacy_token")) for kind, name, attrib in records(xml, language="fr") if kind == "word"]
+    assert tokens == [
+        ("il", "Il"),
+        ("est", None),
+        ("peut", "peut-être"),
+        ("être", ""),
+        ("lui", "lui-même"),
+        ("même", ""),
+        ("à", None),
+        ("saint", "Saint-Just"),
+        ("just", ""),
+        ("l", "L"),
+        ("homme", "Homme"),
+        ("qu", None),
+        ("il", None),
+        ("vit", None),
+        ("pa", None),
+        ("r", None),
+        ("ole", None),
+    ]
+    assert [text for _, text in words(xml, language="fr")][2:6] == ["peut", "être", "lui", "même"]
+    assert [word for word, _ in words(xml)] == [word for word, _ in tokens]  # as token_regex splits them
+
+
+@pytest.mark.unit
+def test_apostrophes_without_break_apost():
+    """Without break_apost, apostrophes inside a token don't split its words, hyphens still do"""
+    xml = document("Aujourd'hui, peut-être, l'homme.")
+    tokens = [
+        (name, attrib.get("spacy_token"))
+        for kind, name, attrib in records(xml, language="fr", break_apost=False)
+        if kind == "word"
+    ]
+    assert tokens == [("aujourd'hui", "Aujourd'hui"), ("peut", "peut-être"), ("être", ""), ("l", "l'"), ("homme", None)]
 
 
 @pytest.mark.unit
 def test_same_records_where_the_tokenizer_agrees():
-    """Words the tokenizer and token_regex split alike give the same records with and without a tokenizer, with exact
-    bytes: those of their text in the document, sentences from their first word to their punctuation (a sentence
-    without punctuation ends with its paragraph)"""
+    """Words the tokenizer and token_regex split alike give the same records with and without a tokenizer (but for the
+    tokens of words in uppercase, kept for the tagger), with exact bytes: those of their text in the document,
+    sentences from their first word to their punctuation (a sentence without punctuation ends with its paragraph)"""
     xml = document("He went home. He left! Did he? Yes, 1.5 times. It is a b cd. End") + "<p>Two «quoted» ; words</p>"
     with_tokenizer = records(xml, language="en")
-    assert with_tokenizer == records(xml)
+
+    def without_tokens(records):
+        return [(kind, name, {k: v for k, v in a.items() if k != "spacy_token"}) for kind, name, a in records]
+
+    assert without_tokens(with_tokenizer) == records(xml)
+    tokens = {attrib["spacy_token"] for kind, _, attrib in with_tokenizer if "spacy_token" in attrib}
+    assert tokens == {"He", "Did", "Yes", "It", "End", "Two"}
     data = xml.encode("utf8")
     text = [
         (kind, data[attrib["start_byte"] : attrib["end_byte"]].decode("utf8"))
@@ -182,6 +232,17 @@ def test_bytes_in_a_real_file():
 
 
 @pytest.mark.unit
+def test_tokens_for_a_model_without_tokenizer():
+    """With a spaCy model but token_regex splitting words, they keep their form in the text, for the tagger, too"""
+    xml = document("L'Homme de Paris est là.")
+    tokens = [
+        (name, attrib.get("spacy_token")) for kind, name, attrib in records(xml, spacy_model="x") if kind == "word"
+    ]
+    assert tokens == [("l", "L"), ("homme", "Homme"), ("de", None), ("paris", "Paris"), ("est", None), ("là", None)]
+    assert all("spacy_token" not in attrib for _, _, attrib in records(xml))  # nothing to tag: as without a model
+
+
+@pytest.mark.unit
 def test_language_without_tokenizer(capsys):
     """The loader splits words with token_regex when spaCy has no tokenizer for the language"""
     assert Loader.spacy_tokenization("not-a-language") is None
@@ -208,16 +269,18 @@ def test_plain_text():
             text_bytes = data[attrib["start_byte"] : attrib["end_byte"]].decode("utf8")
             found.append((kind, name, text_bytes, attrib.get("spacy_token")))
     assert found == [
-        ("word", "l", "L", "l'"),
+        ("word", "l", "L", "L'"),
         ("word", "homme", "homme", None),
         ("word", "dit", "dit", None),
         ("word", "il", "il", "-il"),
         ("punct", ":", ":", None),
         ("punct", "«", "«", None),
         ("word", "oui", "oui", None),
-        ("word", "aujourd'hui", "Aujourd'hui", None),
+        ("word", "aujourd", "Aujourd", "Aujourd'hui"),
+        ("word", "hui", "hui", ""),
         ("punct", ",", ",", None),
-        ("word", "peut-être", "peut-être", None),
+        ("word", "peut", "peut", "peut-être"),
+        ("word", "être", "être", ""),
     ]
 
 
@@ -240,22 +303,27 @@ def test_tagger_gets_tokens(tmp_path):
 
     raw = tmp_path / "raw"
     with open(raw, "w", encoding="utf8") as output:
-        xml = document("L'homme dit-il oui.")
+        xml = document("L'homme dit-il peut-être oui.")
         XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}, language="fr").parse(io.StringIO(xml))
     loader = type("Loader", (), {"nlp": Tagger()})
     spacy_tagger(loader, {"raw": str(raw)})
     assert [word for word in loader.nlp.words if word.isalpha() or "'" in word or "-" in word] == [
-        "l'",
+        "L'",
         "homme",
         "dit",
         "-il",
+        "peut-être",
         "oui",
     ]
     tagged = [line.split("\t") for line in raw.read_text(encoding="utf8").split("\n")[:-1]]
     assert [(name, json.loads(attrib).get("spacy_token")) for kind, name, _, attrib in tagged if kind == "word"] == [
-        ("l", "l'"),
+        ("l", "L'"),
         ("homme", None),
         ("dit", None),
         ("il", "-il"),
+        ("peut", "peut-être"),
+        ("être", ""),
         ("oui", None),
     ]
+    tagged_words = [json.loads(attrib) for kind, _, _, attrib in tagged if kind == "word"]
+    assert "pos" in tagged_words[4] and "pos" not in tagged_words[5]  # the second word of peut-être isn't tagged
