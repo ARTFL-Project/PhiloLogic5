@@ -183,6 +183,35 @@ class TestTagExceptions:
 
 
 @pytest.mark.unit
+@pytest.mark.parametrize(
+    "body, records",
+    [
+        ("Ga<hi/>maliel</hi>; Act", [("word", "Ga<hi/>maliel"), ("punct", ";"), ("word", "Act")]),
+        ('<hi>Laugh<hi rend="x"/>ter;</hi> x', [("word", 'Laugh<hi rend="x"/>ter'), ("punct", ";"), ("word", "x")]),
+        ("Ga<hi/>;</hi> x", [("word", "Ga"), ("punct", ";"), ("word", "x")]),
+        (
+            "in-4<sup>o</sup>. Elle",
+            [("word", "in"), ("punct", "-"), ("word", "4<sup>o"), ("punct", "."), ("word", "Elle")],
+        ),
+    ],
+)
+def test_words_joined_across_tags_before_a_semicolon(body, records):
+    """A word joined across tag exceptions ends where its text does, and a semicolon right after its tags (which the
+    entity alternative of TOKEN_REGEX let the join take) keeps its own bytes"""
+    xml = f"<text><body><div><p>{body}</p></div></body></text>"
+    output = io.StringIO()
+    XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
+    data = xml.encode("utf8")
+    found = []
+    for line in output.getvalue().split("\n")[:-1]:
+        kind, _, _, attrib = line.split("\t")
+        if kind in ("word", "punct"):
+            attrib = json.loads(attrib)
+            found.append((kind, data[attrib["start_byte"] : attrib["end_byte"]].decode("utf8")))
+    assert found == records
+
+
+@pytest.mark.unit
 def test_remove_control_chars():
     """Same as removing them with control_char_re, for every character"""
     parser = plain_parser()

@@ -339,6 +339,7 @@ TAG_HANDLERS = {
 ENDING_PUNCTUATION_CHARS = frozenset(chr(i) for i in range(128) if ending_punctuation.match(chr(i)))
 
 TOKEN_CHAR = re.compile(r"[\p{L}\p{M}\p{N}&;]", re.I)  # a character of a TOKEN_REGEX token
+WORD_CHAR = re.compile(r"[\p{L}\p{M}\p{N}]")  # one of its characters other than those of entities
 
 
 def byte_positions(text):
@@ -651,15 +652,29 @@ class XMLParser:
         # of words broken by tags. The word's text ends in the file after the tags inside it.
         byte = byte_positions(self.content)
 
+        def word_part(token):
+            """The word at the start of a token of the match, as split_with_token_regex splits it: "ter" in the "ter;"
+            the entity alternative of TOKEN_REGEX lets the match have, none in ";"."""
+            match = self.token_regex.match(token)
+            return match.group() if match and WORD_CHAR.search(match.group()) else ""
+
         def replace_tag(match):
             m = match.groups()
+            middle = word_part(m[2])
+            if word_part(m[0]) != m[0] or not middle:  # the tags aren't inside a word
+                return match.group()
             start = byte(match.start())
-            word = f"{m[0]}{m[2]}{m[4] or ''}"
+            if middle != m[2]:  # the word ends before the second tag (Laugh<g/>ter;</hi>): the rest is left as it is
+                word, tags_end = m[0] + middle, m[0] + m[1] + middle
+                text_end = start + len(tags_end.encode("utf8"))
+            else:
+                end = word_part(m[4] or "")
+                word, tags_end = m[0] + m[2] + end, m[0] + m[1] + m[2] + m[3] + end
+                text_end = start + len((tags_end if end else m[0] + m[1] + m[2]).encode("utf8"))
             word_end = start + len(word.encode("utf8"))
-            text_end = start + len((match.group() if m[-1] is not None else m[0] + m[1] + m[2]).encode("utf8"))
             self.word_ends[word_end] = text_end
-            self.placeholders[word_end] = start + len(match.group().encode("utf8"))
-            return word + "_" * (self.placeholders[word_end] - word_end)
+            self.placeholders[word_end] = start + len(tags_end.encode("utf8"))
+            return word + "_" * (self.placeholders[word_end] - word_end) + match.group()[len(tags_end) :]
 
         if self.tag_exception_starts is not None:
             self.content = replace_tag_exceptions(
