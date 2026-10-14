@@ -367,53 +367,28 @@ class XMLParser:
         self.filesize = filesize
         self.known_metadata = known_metadata
 
+        self.defined_words_to_index = bool(words_to_index)
         if words_to_index:
             self.words_to_index = words_to_index
-            self.defined_words_to_index = True
-        else:
-            self.defined_words_to_index = False
 
-        # List of global variables used for the tag handler
-        if "token_regex" in parse_options:
-            self.token_regex = re.compile(r"(%s)" % parse_options["token_regex"], re.I)
-        else:
-            self.token_regex = re.compile(r"(%s)" % TOKEN_REGEX, re.I)
-
-        if "sentence_breakers" in parse_options:
-            self.sentence_breakers = parse_options["sentence_breakers"]
-        else:
-            self.sentence_breakers = []
-
-        if "punctuation" in parse_options:
-            self.punct_regex = re.compile(rf"""{parse_options["punctuation"]}""")
-        else:
-            self.punct_regex = re.compile(rf"{PUNCTUATION}")
+        self.token_regex = re.compile(r"(%s)" % parse_options.get("token_regex", TOKEN_REGEX), re.I)
+        self.sentence_breakers = parse_options.get("sentence_breakers", [])
+        self.punct_regex = re.compile(f"{parse_options.get('punctuation', PUNCTUATION)}")
 
         # Tags in DEFAULT_SUPPRESS_TAGS are always suppressed: load configs can add tags, but not remove these.
         self.suppress_tags = DEFAULT_SUPPRESS_TAGS | {i for i in parse_options.get("suppress_tags", []) if i}
         self.in_suppressed_tag = False
         self.suppressed_tag_stack = []  # suppressed tags and object tags opened inside a suppressed tag
 
-        if "break_apost" in parse_options:
-            self.break_apost = parse_options["break_apost"]
-        else:
-            self.break_apost = True
+        self.break_apost = parse_options.get("break_apost", True)
+        self.chars_not_to_index = re.compile(r"%s" % parse_options.get("chars_not_to_index", CHARS_NOT_TO_INDEX), re.I)
+        self.break_sent_in_line_group = parse_options.get("break_sent_in_line_group", False)
+        self.join_hyphen_in_words = parse_options.get("join_hyphen_in_words", True)
+        self.abbrev_expand = parse_options.get("abbrev_expand", True)
+        self.long_word_limit = parse_options.get("long_word_limit", 200)
+        self.flatten_ligatures = parse_options.get("flatten_ligatures", True)
 
-        if "chars_not_to_index" in parse_options:
-            self.chars_not_to_index = re.compile(r"%s" % parse_options["chars_not_to_index"], re.I)
-        else:
-            self.chars_not_to_index = re.compile(r"%s" % CHARS_NOT_TO_INDEX, re.I)
-
-        if "break_sent_in_line_group" in parse_options:
-            self.break_sent_in_line_group = parse_options["break_sent_in_line_group"]
-        else:
-            self.break_sent_in_line_group = False
-
-        if "tag_exceptions" in parse_options:
-            tag_exceptions = parse_options["tag_exceptions"]
-        else:
-            tag_exceptions = TAG_EXCEPTIONS
-
+        tag_exceptions = parse_options.get("tag_exceptions", TAG_EXCEPTIONS)
         tags_start_with_bracket = all(tag.startswith("<") for tag in tag_exceptions)
         tag_exceptions = "|".join(tag_exceptions)
         tag_token_regex = parse_options.get("token_regex", TOKEN_REGEX)
@@ -447,26 +422,6 @@ class XMLParser:
                 self.inline_tags = re.compile(rf"(?:{tag_exceptions})", re.I)
             self.tag_exceptions = self.tag_exception_starts = None
 
-        if "join_hyphen_in_words" in parse_options:
-            self.join_hyphen_in_words = parse_options["join_hyphen_in_words"]
-        else:
-            self.join_hyphen_in_words = True
-
-        if "abbrev_expand" in parse_options:
-            self.abbrev_expand = parse_options["abbrev_expand"]
-        else:
-            self.abbrev_expand = True
-
-        if "long_word_limit" in parse_options:
-            self.long_word_limit = parse_options["long_word_limit"]
-        else:
-            self.long_word_limit = 200
-
-        if "flatten_ligatures" in parse_options:
-            self.flatten_ligatures = parse_options["flatten_ligatures"]
-        else:
-            self.flatten_ligatures = True
-
         self.lemmas = lemmas
 
         self.metadata_sql_types = parse_options["metadata_sql_types"]
@@ -477,9 +432,7 @@ class XMLParser:
         self.in_a_note = False
         self.no_deeper_objects = False
         self.in_line_group = False
-        self.open_div1 = False
-        self.open_div2 = False
-        self.open_div3 = False
+        self.open_divs = {1: False, 2: False, 3: False}  # div levels
         self.open_para = False
         self.open_sent = False
         self.open_page = False
@@ -547,8 +500,8 @@ class XMLParser:
         if self.open_page:
             self.v.pull("page", self.bytes_read_in)
             self.open_page = False
-        if self.open_div1 is True:
-            self.close_div1(self.bytes_read_in)
+        if self.open_divs[1] is True:
+            self.close_div(1, self.bytes_read_in)
         self.v["doc"].attrib["philo_doc_id"] = str(self.v["doc"].id[0])
         self.v.pull("doc", self.filesize)
 
@@ -959,19 +912,19 @@ class XMLParser:
 
     def handle_front(self, tag, tag_name, start_byte):
         """Front: treated as a div1"""
-        if self.open_div1:
-            self.close_div1(start_byte)
+        if self.open_divs[1]:
+            self.close_div(1, start_byte)
         self.in_front_matter = True
         self.v.push("div1", "front", start_byte)
         self.current_div_id = self.v["div1"].id
         self.get_object_attributes(tag, tag_name, "div1")
         self.context_div_level = 1
-        self.open_div1 = True
+        self.open_divs[1] = True
 
     def handle_front_end(self, tag, tag_name, start_byte):
         self.in_front_matter = False
         self.context_div_level = 0
-        self.close_div1(self.bytes_read_in)
+        self.close_div(1, self.bytes_read_in)
 
     def handle_body(self, tag, tag_name, start_byte):
         """Body: a div1 when the document has no divs"""
@@ -981,7 +934,7 @@ class XMLParser:
         self.current_div_id = self.v["div1"].id
         self.context_div_level = 1
         self.v["div1"].attrib["philo_div1_id"] = " ".join(str(i) for i in self.v["div1"].id[:2])
-        self.open_div1 = True
+        self.open_divs[1] = True
         div_head = self.get_div_head(tag)
         if "[NA]" in div_head or "[na]" in div_head:
             div_head = "Document Body"
@@ -991,27 +944,19 @@ class XMLParser:
         """HyperDiv: a Brown WWP construct, a place to put information related to the body of the text which doesn't
         appear directly within its flow (footnotes, acrostics, castlist information required for the who attribute
         of <speaker>...): a div1"""
-        if self.open_div1:
-            self.close_div1(start_byte)
+        if self.open_divs[1]:
+            self.close_div(1, start_byte)
         self.context_div_level = 1
-        self.open_div1 = True
+        self.open_divs[1] = True
         self.v.push("div1", tag_name, start_byte)
         self.current_div_id = self.v["div1"].id
         self.v["div1"]["head"] = "[HyperDiv]"
 
     def handle_div_end(self, tag, tag_name, start_byte):
-        if "div1" in tag_name:
-            if self.in_front_matter:
-                self.close_div2(self.bytes_read_in)
-            else:
-                self.close_div1(self.bytes_read_in)
-        elif "div2" in tag_name:
-            if self.in_front_matter:
-                self.close_div3(self.bytes_read_in)
-            else:
-                self.close_div2(self.bytes_read_in)
-        elif "div3" in tag_name:
-            self.close_div3(self.bytes_read_in)
+        for level in (1, 2, 3):
+            if f"div{level}" in tag_name:  # in the front matter, a div1, divs are a level deeper
+                self.close_div(level + 1 if self.in_front_matter and level < 3 else level, self.bytes_read_in)
+                break
         self.context_div_level -= 1
         self.no_deeper_objects = False
 
@@ -1019,8 +964,8 @@ class XMLParser:
         """Divs: division levels, from their number (1, 2 or 3) or else their depth, with the <head> found in them"""
         self.context_div_level += 1
         if self.context_div_level > 3:
-            if self.open_div3:
-                self.close_div3(start_byte)
+            if self.open_divs[3]:
+                self.close_div(3, start_byte)
             self.context_div_level = 3
         if self.context_div_level < 1:
             self.context_div_level = 1
@@ -1039,34 +984,17 @@ class XMLParser:
 
         # TODO: ignore divs inside of internal text tags.  Setable
         # from configuration.  But we will bump the para and sent args
-        div_type = "div%d" % div_level
-        if div_type == "div1":
-            if self.open_div1:
-                self.close_div1(start_byte)
-            self.open_div1 = True
-            self.v.push("div1", tag_name, start_byte)
-            self.current_div_id = self.v["div1"].id
-            self.v["div1"]["head"] = self.get_div_head(tag)
-            self.get_object_attributes(tag, tag_name, object_type="div1")
-        elif div_type == "div2":
-            if self.open_div2:
-                self.close_div2(start_byte)
-            self.open_div2 = True
-            self.v.push("div2", tag_name, start_byte)
-            self.current_div_id = self.v["div2"].id
-            self.v["div2"]["head"] = self.get_div_head(tag)
-            self.get_object_attributes(tag, tag_name, object_type="div2")
-        else:
-            if self.open_div3:
-                self.close_div3(start_byte)
-            self.open_div3 = True
-            self.v.push("div3", tag_name, start_byte)
-            self.current_div_id = self.v["div3"].id
-            self.v["div3"]["head"] = self.get_div_head(tag)
-            self.get_object_attributes(tag, tag_name, object_type="div3")
+        div = f"div{div_level}"
+        if self.open_divs[div_level]:
+            self.close_div(div_level, start_byte)
+        self.open_divs[div_level] = True
+        self.v.push(div, tag_name, start_byte)
+        self.current_div_id = self.v[div].id
+        self.v[div]["head"] = self.get_div_head(tag)
+        self.get_object_attributes(tag, tag_name, object_type=div)
 
-        if "type" in self.v[div_type]:
-            if self.v[div_type]["type"] == "notes":
+        if "type" in self.v[div]:
+            if self.v[div]["type"] == "notes":
                 self.no_deeper_objects = True
 
     def handle_index(self, tag, tag_name, start_byte):
@@ -1512,35 +1440,19 @@ class XMLParser:
         self.v.pull("para", end_byte)
         self.open_para = False
 
-    def close_div3(self, end_byte):
-        """Close div3 objects."""
-        if self.open_para:
+    def close_div(self, level, end_byte):
+        """Close the div of a level (1 to 3), and the deeper div, or paragraph, open in it"""
+        if level < 3:
+            if self.open_divs[level + 1]:
+                self.close_div(level + 1, end_byte)
+        elif self.open_para:
             self.close_para(end_byte)
-        if self.open_div3 is True:
-            if "div3" in self.v:
-                self.v["div3"].attrib["philo_div3_id"] = " ".join(str(i) for i in self.v["div3"].id[:4])
-                self.v.pull("div3", end_byte)
-            self.open_div3 = False
-
-    def close_div2(self, end_byte):
-        """Close div2 objects."""
-        if self.open_div3:
-            self.close_div3(end_byte)
-        if self.open_div2 is True:
-            if "div2" in self.v:
-                self.v["div2"].attrib["philo_div2_id"] = " ".join(str(i) for i in self.v["div2"].id[:3])
-                self.v.pull("div2", end_byte)
-            self.open_div2 = False
-
-    def close_div1(self, end_byte):
-        """Close div1 objects."""
-        if self.open_div2:
-            self.close_div2(end_byte)
-        if self.open_div1 is True:
-            if "div1" in self.v:
-                self.v["div1"].attrib["philo_div1_id"] = " ".join(str(i) for i in self.v["div1"].id[:2])
-                self.v.pull("div1", end_byte)
-            self.open_div1 = False
+        if self.open_divs[level] is True:
+            div = f"div{level}"
+            if div in self.v:
+                self.v[div].attrib[f"philo_{div}_id"] = " ".join(str(i) for i in self.v[div].id[: level + 1])
+                self.v.pull(div, end_byte)
+            self.open_divs[level] = False
 
     def camel_case_to_snake_case(self, word):
         word = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", word)
