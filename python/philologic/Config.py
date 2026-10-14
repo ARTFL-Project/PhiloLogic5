@@ -131,6 +131,11 @@ CITATIONS = {
     },
 }
 
+# Word attributes that identify each word (<w xml:id="..."> is xml_id), number it (n: its line, in Folger's TEI) or
+# point to another (sameAs): nearly a value per word, nothing to search or count words by. Loads don't store them;
+# the search form doesn't list those of databases loaded before.
+UNSTORED_WORD_ATTRIBUTES = ("xml_id", "id", "n", "sameAs")
+
 DB_LOCALS_DEFAULTS = {
     "metadata_fields": {"value": [], "comment": ""},
     "metadata_hierarchy": {"value": [[]], "comment": ""},

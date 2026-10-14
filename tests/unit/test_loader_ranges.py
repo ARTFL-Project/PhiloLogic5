@@ -129,7 +129,7 @@ class Corpus:
                 if rng.random() < 0.3:
                     attributes["gender"] = rng.choice(["fem", "masc"])
                 if rng.random() < 0.1:
-                    attributes["n"] = rng.randrange(3)  # not a string
+                    attributes["rank"] = rng.randrange(3)  # not a string
                 attributes = json.dumps(attributes, ensure_ascii=False)
                 word_lines.append(f"word\t{word}\t{philo_id}\t{attributes}\n")
                 lemma_lines.append(f"lemma\t{word.lower()}\t{philo_id}\t{attributes}\n")
@@ -487,7 +487,7 @@ class TestIndexPartsByRanges:
         )
         assert sum(part[0] for part in parts) == whole[0]
         assert sum((part[1] for part in parts), []) == whole[1]
-        assert set().union(*(part[2] for part in parts)) == whole[2] == {"pos", "lemma", "start_byte", "gender", "n"}
+        assert set().union(*(part[2] for part in parts)) == whole[2] == {"pos", "lemma", "start_byte", "gender", "rank"}
 
 
 def word_of(line):
@@ -540,6 +540,49 @@ class TestFrequencyFiles:
         assert key != frequency_file_key(write_lemma_frequencies, (str(path), "output", "", {"a", "b"}))
         path.write_bytes(b"a\nb\n")
         assert key != frequency_file_key(write_unique_word_attributes, (str(path), "output", "", {"a", "b"}))
+
+
+class TestAttributesLeftOut:
+    """Identifiers, numbers and references of words (xml_id, id, n, sameAs) and empty values are neither indexed nor
+    listed as word attributes"""
+
+    def sorted_words(self, tmp_path, attributes):
+        lines = [
+            f"word\t{word}\t1 1 1 0 1 1 {n} 1 {10 * n}\t{json.dumps(attributes(word, n))}\n"
+            for n, word in enumerate(["chien", "chat", "chien"], 1)
+        ]
+        data = gnu_sort("".join(lines).encode("utf-8"), *shlex.split(f"{SORT_BY_WORD} {SORT_BY_ID}"))
+        (tmp_path / "words.lz4").write_bytes(lz4.frame.compress(data))
+        (tmp_path / "overflow").mkdir()
+        return str(tmp_path / "words.lz4")
+
+    def test_left_out(self, tmp_path):
+        words = self.sorted_words(
+            tmp_path,
+            lambda word, n: {
+                "pos": "NOUN" if word == "chien" else "",
+                "ent_type": "",
+                "xml_id": f"w{n}",
+                "id": n,
+                "n": f"1.1.{n}",
+                "sameAs": f"#w{n + 1}",
+            },
+        )
+        _, _, names = index_word_attributes(
+            words, str(tmp_path / "index.lmdb"), str(tmp_path / "overflow"), "", SKIPPED_ATTRIBUTES, 50, True
+        )
+        assert [key for key, _ in lmdb_items(tmp_path / "index.lmdb")] == [b"chien:pos:NOUN"]
+        assert "ent_type" not in names  # no word has a value of it: no collocation arrays either
+        write_unique_word_attributes(words, str(tmp_path / "attributes"), "", SKIPPED_ATTRIBUTES)
+        assert (tmp_path / "attributes").read_text() == "chien:pos:NOUN\n"
+
+    def test_no_attributes(self, tmp_path):
+        """Words with identifiers and empty values only have no word attributes"""
+        words = self.sorted_words(tmp_path, lambda word, n: {"ent_type": "", "xml_id": f"w{n}", "start_byte": n})
+        _, _, has_attributes, _ = index_words(
+            words, str(tmp_path / "index.lmdb"), str(tmp_path / "overflow"), False, SKIPPED_ATTRIBUTES, 50
+        )
+        assert has_attributes is False
 
 
 class TestMergeIndexes:

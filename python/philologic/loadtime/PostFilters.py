@@ -765,7 +765,7 @@ def count_lemma_runs(sorted_file, byte_range=None):
 
 def write_unique_word_attributes(sorted_file, output_path, prefix, attributes_to_skip, byte_range=None):
     """Write each distinct {prefix}{word}:{attribute}:{value} string found in a sorted words or lemmas file (or in a
-    byte range of whole words of it), in order of first occurrence."""
+    byte range of whole words of it), in order of first occurrence. Empty values are left out, as from the index."""
     word_attributes = set()
     with open(output_path, "w", encoding="utf8") as freq_file:
         with open_lz4_lines(sorted_file, byte_range) as input_file:
@@ -778,7 +778,7 @@ def write_unique_word_attributes(sorted_file, output_path, prefix, attributes_to
                     # (attribute, string value) pairs already handled for this word: their stored string is known
                     seen_for_word = set()
                 for attribute, attribute_value in loads(attributes).items():
-                    if attribute in attributes_to_skip:
+                    if attribute in attributes_to_skip or attribute_value == "":
                         continue
                     if type(attribute_value) is str:
                         attribute_pair = (attribute, attribute_value)

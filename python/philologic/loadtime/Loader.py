@@ -33,7 +33,13 @@ from black import FileMode, format_str
 from orjson import loads
 from tqdm import tqdm
 
-from philologic.Config import NEW_WEB_CONFIG_CITATIONS, WEB_CONFIG_DEFAULTS, MakeDBConfig, MakeWebConfig
+from philologic.Config import (
+    NEW_WEB_CONFIG_CITATIONS,
+    WEB_CONFIG_DEFAULTS,
+    UNSTORED_WORD_ATTRIBUTES,
+    MakeDBConfig,
+    MakeWebConfig,
+)
 from philologic.loadtime.PostFilters import (
     count_lemma_runs,
     frequency_file_key,
@@ -324,7 +330,7 @@ def index_words(
         for line_number, line in enumerate(input_file, 1):
             _, word, philo_id, attribs = line.split(b"\t", 3)
             if not has_attributes:  # stop checking once we know
-                if any(k not in attributes_to_skip for k in loads(attribs)):
+                if any(k not in attributes_to_skip and v != "" for k, v in loads(attribs).items()):
                     has_attributes = True
             if word != current_word:
                 if current_word is not None:
@@ -427,8 +433,9 @@ def index_word_attributes(
 ):
     """Store the philo_ids of each word (or lemma) and attribute value found in a sorted words (or lemmas) file (or
     in a byte range of whole words of it) in a new LMDB database, under {key_prefix}{word}:{attribute}:{value} keys.
-    Returns the number of entries, the keys written to overflow files instead, and if collect_attribute_names, the
-    names of all attributes in the file."""
+    Empty values are not stored: a word without a value has no key. Returns the number of entries, the keys written
+    to overflow files instead, and if collect_attribute_names, the names of all attributes some word of the file has
+    a value of."""
     db_env = open_index(index_path)
     overflow_keys = []
     attribute_names = set() if collect_attribute_names else None
@@ -464,7 +471,7 @@ def index_word_attributes(
             _, word, philo_id, attributes = line.split(b"\t", 3)
             attributes = loads(attributes)
             if attribute_names is not None:
-                attribute_names.update(attributes)
+                attribute_names.update(name for name, value in attributes.items() if value != "")
             if word != current_word:
                 if current_word is not None:
                     store(current_word, word_attributes, packed_attributes)
@@ -473,7 +480,7 @@ def index_word_attributes(
                 packed_attributes = {}
                 lines_in_word = 0
             for attribute, attribute_value in attributes.items():
-                if attribute in attributes_to_skip:
+                if attribute in attributes_to_skip or attribute_value == "":
                     continue
                 if attribute not in word_attributes:
                     word_attributes[attribute] = defaultdict(list)
@@ -731,6 +738,7 @@ class Loader:
         "page",
         "lemma",
         "spacy_token",  # the token of a word as the tokenizer split it, when the word leaves out some of it
+        *UNSTORED_WORD_ATTRIBUTES,
     }
     word_count = 0
     lemma_count = 0
@@ -1829,7 +1837,7 @@ class Loader:
                     for line in input_file:
                         line = line.decode("utf-8")
                         _, _, _, attributes = line.split("\t", 3)
-                        word_attributes.update(loads(attributes).keys())
+                        word_attributes.update(name for name, value in loads(attributes).items() if value != "")
         if cls.lemma_count > 0:
             word_attributes.add("lemma")
         cls.word_attributes = list(word_attributes.difference(attributes_to_skip))
@@ -2100,7 +2108,7 @@ class Loader:
                     if attribute not in word_attributes:
                         word_attributes[attribute] = set()
                     word_attributes[attribute].add(attribute_value)
-            config_values["word_attributes"] = {k: list(v) for k, v in word_attributes.items()}
+            config_values["word_attributes"] = {k: sorted(v) for k, v in word_attributes.items()}
             words_facets.extend((word_attributes.keys()))
             config_values["words_facets"] = words_facets
         config_values["ascii_conversion"] = Loader.ascii_conversion
