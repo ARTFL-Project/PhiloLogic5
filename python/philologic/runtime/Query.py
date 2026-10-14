@@ -692,22 +692,44 @@ TYPOGRAPHIC_TWINS = str.maketrans(
 )
 
 
+# Parts of a search the query_parser_regex rules leave alone: the bracket expressions of regexes, whose hyphens make
+# ranges ("[a-z]"), and what follows a colon, the lemma of lemma:peut-être and the attributes of être:pos:VERB (with
+# their own bracket expressions), which only get the rules that don't split words
+BRACKET_EXPRESSION = r"\[[^\]]*\]"
+KEPT_PARTS = re.compile(rf'({BRACKET_EXPRESSION}|:(?:{BRACKET_EXPRESSION}|[^\s|"])+)')
+
+
 def query_parse(query_terms, config):
     """The search terms query_terms with the database's query_parser_regex rules applied, as hyphens and apostrophes
     turned into spaces (where its index splits words). Not inside the bracket expressions of regexes, whose hyphens
-    make ranges ("[a-z]"). (Metadata values have their own grammar: QuerySyntax.parse_metadata_query.)
+    make ranges ("[a-z]"). Lemmas and the attributes of words (what follows a colon: lemma:peut-être, être:pos:VERB)
+    are kept whole, as the index has them: they only get the rules that don't split words (whose replacement has no
+    space). (Metadata values have their own grammar: QuerySyntax.parse_metadata_query.)
 
     With ascii_conversion, typographic apostrophes and hyphens (’, ‐, –) are first made their ASCII twins, so that the
     rules for ' and - apply to them too: aujourd’hui gave 0 where aujourd'hui gives 61,505 in frantext. Without it,
-    the index keeps forms as they are, so they are left alone."""
+    the index keeps forms as they are, so they are left alone, as they are in lemmas and attributes, which the tagger
+    gives as the text has them."""
     db_locals = getattr(config, "db_locals", None)
     twins = db_locals is not None and db_locals["ascii_conversion"] is True
-    parts = re.split(r"(\[[^\]]*\])", query_terms)
-    for i in range(0, len(parts), 2):  # those between the protected ones
-        if twins:
-            parts[i] = parts[i].translate(TYPOGRAPHIC_TWINS)
-        for pattern, replacement in config.query_parser_regex:
-            parts[i] = re.sub(rf"{pattern}", rf"{replacement}", parts[i])
+
+    def rewritten(text, rules, with_twins):
+        if with_twins:
+            text = text.translate(TYPOGRAPHIC_TWINS)
+        for pattern, replacement in rules:
+            text = re.sub(rf"{pattern}", rf"{replacement}", text)
+        return text
+
+    parts = KEPT_PARTS.split(query_terms)
+    for i in range(0, len(parts), 2):  # those between the kept ones
+        parts[i] = rewritten(parts[i], config.query_parser_regex, twins)
+    whole_word_rules = [rule for rule in config.query_parser_regex if not re.search(r"\s", rule[1])]
+    for i in range(1, len(parts), 2):
+        if parts[i].startswith(":"):
+            pieces = re.split(rf"({BRACKET_EXPRESSION})", parts[i])
+            for j in range(0, len(pieces), 2):
+                pieces[j] = rewritten(pieces[j], whole_word_rules, False)
+            parts[i] = "".join(pieces)
     return "".join(parts)
 
 

@@ -90,6 +90,19 @@ class TestParseQuery:
         assert len(result) == 1
         assert result[0][0] == "LEMMA_ATTR"
 
+    @pytest.mark.parametrize(
+        "query, kind",
+        [
+            ("lemma:peut-être", "LEMMA"),
+            ("lemma:aujourd'hui", "LEMMA"),
+            ("lemma:peut-être:pos:ADV", "LEMMA_ATTR"),
+            ("être:pos:PRON-PER", "ATTR"),
+        ],
+    )
+    def test_lemmas_and_attributes_with_hyphens(self, query, kind):
+        """Lemmas and attributes are whole with their hyphens and apostrophes, as the index has them"""
+        assert parse_query(query) == [(kind, query)]
+
     def test_null_query(self):
         """Test parsing NULL value."""
         result = parse_query("NULL")
@@ -334,6 +347,23 @@ class TestQueryParserRules:
     def test_search_terms(self, query, rewritten):
         assert query_parse(query, self.config) == rewritten
 
+    @pytest.mark.parametrize(
+        "query, rewritten",
+        [
+            ("lemma:peut-être", "lemma:peut-être"),
+            ("lemma:aujourd'hui OR lemma:demain", "lemma:aujourd'hui | lemma:demain"),
+            ('"lemma:peut-être pas"', '"lemma:peut-être pas"'),
+            ("lemma:peut-être:pos:ADV", "lemma:peut-être:pos:ADV"),
+            ("lemma:être, avoir", "lemma:être avoir"),  # rules that don't split words apply
+            ("lemma:[a-z]-ci", "lemma:[a-z]-ci"),
+            ("peut-être:pos:ADV", "peut être:pos:ADV"),  # the word of a word's attributes is split, as words are
+            ("dit: oui", "dit: oui"),
+        ],
+    )
+    def test_lemmas_and_attributes(self, query, rewritten):
+        """Lemmas and the attributes of words are kept whole, as the index has them: lemma:peut-être was lemma:peut"""
+        assert query_parse(query, self.config) == rewritten
+
 
 @pytest.mark.unit
 class TestTypographicTwins:
@@ -367,6 +397,11 @@ class TestTypographicTwins:
     def test_rules_of_the_database(self):
         """A database that keeps ' in words keeps ’ as ': the index has made it one."""
         assert query_parse("aujourd\u2019hui", self.config(True, rules=[])) == "aujourd'hui"
+
+    def test_lemmas_as_typed(self):
+        """Lemmas keep the apostrophes of the text, as the tagger gives them"""
+        query = "aujourd\u2019hui lemma:aujourd\u2019hui"
+        assert query_parse(query, self.config(True)) == "aujourd hui lemma:aujourd\u2019hui"
 
     def test_without_ascii_conversion(self):
         assert query_parse("aujourd\u2019hui peut\u2013être", self.config(False)) == "aujourd\u2019hui peut\u2013être"
