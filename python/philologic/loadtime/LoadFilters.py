@@ -54,14 +54,13 @@ def generate_words_sorted(loader_obj, text):
 
 def spacy_tagger(loader_obj, text):
     """Tag words with Spacy, a sentence at a time: their token, as the tokenizer split it, when the indexed word is less
-    than it (see XMLParser.index_tokens), and the punctuation of the sentence. The words of a token after its first
-    (peut-être has two), whose spacy_token is empty, are tagged with the first: they get no tags of their own. A
-    sentence is the words and punctuation up to its sent record, which isn't tagged, and the punctuation after it
-    which ends it (within its bytes: these records don't have the sentence's id)."""
+    than it (see XMLParser.index_tokens), and the punctuation of the sentence. A sentence is the words and punctuation
+    up to its sent record, which isn't tagged, and the punctuation after it which ends it (within its bytes: these
+    records don't have the sentence's id)."""
     from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
 
     def token(record):
-        """What spaCy tags for a record: nothing for a sentence, or a word of a token after its first"""
+        """What spaCy tags for a record: nothing for a sentence"""
         if record.type == "sent":
             return ""
         return record.attrib.get("spacy_token", record.name)

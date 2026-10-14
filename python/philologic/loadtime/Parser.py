@@ -10,7 +10,7 @@ from bisect import bisect_right
 import regex as re
 
 from philologic.loadtime.OHCOVector import CompoundStack
-from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input, word_breaks
+from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input
 from philologic.utils import convert_entities, extract_full_date, extract_integer
 
 DEFAULT_TAG_TO_OBJ_MAP = {
@@ -503,7 +503,6 @@ class XMLParser:
             if tag_exceptions:
                 self.inline_tags = re.compile(rf"(?:{tag_exceptions})", re.I)
             self.tag_exceptions = self.tag_exception_starts = None
-            self.word_breaks = word_breaks(self.break_apost)
 
         if "join_hyphen_in_words" in parse_options:
             self.join_hyphen_in_words = parse_options["join_hyphen_in_words"]
@@ -1279,10 +1278,9 @@ class XMLParser:
     def index_tokens(self, items):
         """Index the items of a run split by the tokenizer (see flush_run), each with its exact bytes in the file:
         (text, start byte, end byte, whether it's a word, token). A word's token is the tokenizer's, as it has it in the
-        text (which a spaCy model tags): when the indexed word isn't that (it's in lowercase, leaves out the punctuation
-        at the edges of the token, or is its first word before a hyphen or apostrophe), the token is kept in the
-        spacy_token attribute of the word, which the later words of the token have empty. Between words, items are
-        split as without a tokenizer, and end sentences as they do without one."""
+        text (which a spaCy model tags): when the indexed word isn't that (it's in lowercase, or leaves out the
+        punctuation at the edges of the token), the token is kept in the spacy_token attribute of the word. Between
+        words, items are split as without a tokenizer, and end sentences as they do without one."""
         last_word = ""
         for number, (text, start_byte, end_byte, is_word, token) in enumerate(items):
             converted = self.convert_entities(text) if "&" in text else text
@@ -1444,25 +1442,22 @@ class XMLParser:
                     items.append((item, text_bytes.start(position), text_bytes.end(item_end), False, None))
                     position = item_end
 
-        for token_start, token_end, parts, token_text in words + [(text_length, text_length, [], None)]:
+        for token_start, token_end, word_start, word_end, token in words + [(text_length,) * 4 + (None,)]:
             while tag_number < len(tags) and tags[tag_number][0] <= token_start:  # between words: handled there
                 add_items_between_words(tags[tag_number][0])
                 steps += [items, tags[tag_number]]
                 items = []
                 tag_number += 1
             add_items_between_words(token_start)
-            if token_end > token_start:  # a token, with its words
+            if token_end > token_start:  # a word
                 handled_after = []  # tags inside it with a handler, handled after it; the others are dropped
                 while tag_number < len(tags) and tags[tag_number][0] < token_end:
                     tag = tags[tag_number][1]
                     if self.handler_of(tag, tag_matcher.findall(tag)[0]) is not None:
                         handled_after.append(tags[tag_number])
                     tag_number += 1
-                for number, (word_start, word_end) in enumerate(parts):
-                    # the words of a token after its first: their token is the first's (see index_tokens)
-                    token = "" if number else token_text
-                    word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
-                    items.append((text[word_start:word_end], *word_bytes, True, token))
+                word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
+                items.append((text[word_start:word_end], *word_bytes, True, token))
                 if handled_after:
                     steps += [items, *handled_after]
                     items = []
@@ -1479,12 +1474,11 @@ class XMLParser:
         self.line_count, self.bytes_read_in = line_count, bytes_read_in
 
     def split_words(self, text):
-        """The tokens the tokenizer finds in text, with their words, which have letters once their entities are
-        converted (as index_tokens has them): see spacy_tokenizer.split_words. Characters not to index split words, as
-        token_regex splits them."""
+        """The words the tokenizer finds in text, with letters once their entities are converted (as index_tokens has
+        them): see spacy_tokenizer.split_words. Characters not to index split words, as token_regex splits them."""
         separated = tokenizer_input(text, self.chars_not_to_index)
         mapped = self.tokenizer_text(separated) if "&" in separated or "_" in separated else (separated,)
-        return split_words(self.tokenizer, text, self.has_letter, self.word_breaks, *mapped)
+        return split_words(self.tokenizer, text, self.has_letter, *mapped)
 
     def has_letter(self, word):
         """Whether a word has a letter, once its entities are converted"""

@@ -9,7 +9,7 @@ from typing import List, Union
 import regex as re
 from philologic.loadtime import OHCOVector
 from philologic.loadtime.Parser import CHARS_NOT_TO_INDEX
-from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input, word_breaks
+from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input
 
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 PUNCTUATION = r"""[;,:=+()"]"""
@@ -88,7 +88,6 @@ class PlainTextParser:
             self.tokenizer = spacy_tokenizer(parse_options["language"], parse_options.get("spacy_model"))
             # Characters not to index split words for the tokenizer, as they do for token_regex
             self.chars_not_to_index = re.compile(parse_options.get("chars_not_to_index", CHARS_NOT_TO_INDEX), re.I)
-            self.word_breaks = word_breaks(parse_options.get("break_apost", True))
 
         if words_to_index:
             self.words_to_index = words_to_index
@@ -214,9 +213,8 @@ class PlainTextParser:
     def index_tokens(self, line, start_byte, input_file):
         """Index the words of a line starting at start_byte, split by the tokenizer, and what's between them split by
         token_regex, each with its exact bytes in the file. Words leave out the punctuation at the edges of their
-        token (as l' or -il has), and split at its hyphens and apostrophes (with break_apost: peut-être and aujourd'hui
-        have two words). The first keeps the token, as it is in the text, in its spacy_token attribute when it isn't
-        the indexed word, the others have it empty (for the tagger, see LoadFilters.spacy_tagger)."""
+        token (as l' or -il has), which they keep, as it is in the text, in their spacy_token attribute when it isn't
+        the indexed word (for the tagger, see LoadFilters.spacy_tagger)."""
         text_bytes = TextBytes([(start_byte, line)])
         items = []  # (text, start byte, end byte, whether it's a word, token)
         position = 0
@@ -229,14 +227,11 @@ class PlainTextParser:
                     position += len(item)
 
         tokenizer_text = tokenizer_input(line, self.chars_not_to_index)
-        for token_start, token_end, parts, token_text in split_words(
-            self.tokenizer, line, check_if_char_word.search, self.word_breaks, tokenizer_text
-        ):
+        words = split_words(self.tokenizer, line, check_if_char_word.search, tokenizer_text)
+        for token_start, token_end, word_start, word_end, token in words:
             add_items_between_words(token_start)
-            for number, (word_start, word_end) in enumerate(parts):
-                token = "" if number else token_text  # the words of a token after its first: their token is the first's
-                word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
-                items.append((line[word_start:word_end], *word_bytes, True, token))
+            word_bytes = (text_bytes.start(word_start), text_bytes.end(word_end))
+            items.append((line[word_start:word_end], *word_bytes, True, token))
             position = token_end
         add_items_between_words(len(line))
 

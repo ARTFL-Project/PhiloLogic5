@@ -81,32 +81,27 @@ def test_language_tokens():
         ("homme", None),
         ("dit", None),
         ("il", "-il"),
-        ("aujourd", "aujourd'hui"),
-        ("hui", ""),
+        ("aujourd'hui", None),
         ("m", "¶M."),
         ("smith", "Smith"),
     ]
     assert [word for word, _ in words(xml, language="fr")] == [word for word, _ in tokens]
-    assert [word for word, _ in words(xml)] == [word for word, _ in tokens]  # as token_regex splits them
+    assert [word for word, _ in words(xml)] == ["l", "homme", "dit", "il", "aujourd", "hui", "m", "smith"]
 
 
 @pytest.mark.unit
 def test_compounds_and_brackets():
-    """A token with hyphens or apostrophes has a word for each of its parts (as searches split them), the first
-    keeping the token, the others an empty one; characters not to index ([ ]) split words, as token_regex splits
-    them"""
+    """Words with hyphens or apostrophes inside them which the tokenizer keeps whole are whole (as searches keep them,
+    see Query.query_parse); characters not to index ([ ]) split words, as token_regex splits them"""
     xml = document("Il est peut-être lui-même, à Saint-Just. [L']Homme qu'[il] vit, pa[r]ole.")
     tokens = [(name, attrib.get("spacy_token")) for kind, name, attrib in records(xml, language="fr") if kind == "word"]
     assert tokens == [
         ("il", "Il"),
         ("est", None),
-        ("peut", "peut-être"),
-        ("être", ""),
-        ("lui", "lui-même"),
-        ("même", ""),
+        ("peut-être", None),
+        ("lui-même", None),
         ("à", None),
-        ("saint", "Saint-Just"),
-        ("just", ""),
+        ("saint-just", "Saint-Just"),
         ("l", "L"),
         ("homme", "Homme"),
         ("qu", None),
@@ -116,20 +111,18 @@ def test_compounds_and_brackets():
         ("r", None),
         ("ole", None),
     ]
-    assert [text for _, text in words(xml, language="fr")][2:6] == ["peut", "être", "lui", "même"]
-    assert [word for word, _ in words(xml)] == [word for word, _ in tokens]  # as token_regex splits them
+    assert [text for _, text in words(xml, language="fr")][2:4] == ["peut-être", "lui-même"]
 
 
 @pytest.mark.unit
-def test_apostrophes_without_break_apost():
-    """Without break_apost, apostrophes inside a token don't split its words, hyphens still do"""
-    xml = document("Aujourd'hui, peut-être, l'homme.")
-    tokens = [
-        (name, attrib.get("spacy_token"))
-        for kind, name, attrib in records(xml, language="fr", break_apost=False)
-        if kind == "word"
-    ]
-    assert tokens == [("aujourd'hui", "Aujourd'hui"), ("peut", "peut-être"), ("être", ""), ("l", "l'"), ("homme", None)]
+def test_words_split_as_on_their_own():
+    """A token the tokenizer keeps whole only where it is (est-ce-, before a dash) is split as the tokenizer splits its
+    word on its own: the index has a word with a hyphen or apostrophe whole only if a search for it would keep it whole
+    (see Query.query_parse)"""
+    xml = document("est-ce- que vous")
+    tokens = [(name, attrib.get("spacy_token")) for kind, name, attrib in records(xml, language="fr") if kind == "word"]
+    assert tokens == [("est", None), ("ce", "-ce-"), ("que", None), ("vous", None)]
+    assert [text for _, text in words(xml, language="fr")] == ["est", "ce", "que", "vous"]
 
 
 @pytest.mark.unit
@@ -276,11 +269,9 @@ def test_plain_text():
         ("punct", ":", ":", None),
         ("punct", "«", "«", None),
         ("word", "oui", "oui", None),
-        ("word", "aujourd", "Aujourd", "Aujourd'hui"),
-        ("word", "hui", "hui", ""),
+        ("word", "aujourd'hui", "Aujourd'hui", "Aujourd'hui"),
         ("punct", ",", ",", None),
-        ("word", "peut", "peut", "peut-être"),
-        ("word", "être", "être", ""),
+        ("word", "peut-être", "peut-être", None),
     ]
 
 
@@ -321,12 +312,10 @@ def test_tagger_gets_tokens(tmp_path):
         ("homme", None),
         ("dit", None),
         ("il", "-il"),
-        ("peut", "peut-être"),
-        ("être", ""),
+        ("peut-être", None),
         ("oui", None),
     ]
-    tagged_words = [json.loads(attrib) for kind, _, _, attrib in tagged if kind == "word"]
-    assert "pos" in tagged_words[4] and "pos" not in tagged_words[5]  # the second word of peut-être isn't tagged
+    assert all("pos" in json.loads(attrib) for kind, _, _, attrib in tagged if kind == "word")
 
 
 @pytest.mark.unit
