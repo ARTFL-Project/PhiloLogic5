@@ -135,6 +135,25 @@ def test_words_split_as_on_their_own():
 
 
 @pytest.mark.unit
+def test_tags_inside_words():
+    """Proper names, glyphs and line breaks marked as inside words don't split words; other line breaks do"""
+    xml = document(
+        'à <pn>Saint</pn>-<pn>Germain</pn>, ex<g ref="char:EOLhyphen"/>ecution, Govern<lb type="hyphenInWord"/>ment, '
+        'pa<lb break="no"/>role, <seg rend="decorInit">W</seg>E, expedient<lb/>demourer'
+    )
+    assert [word for word, _ in words(xml, language="fr")] == [
+        "à",
+        "saint-germain",
+        "execution",
+        "government",
+        "parole",
+        "we",
+        "expedient",
+        "demourer",
+    ]
+
+
+@pytest.mark.unit
 def test_same_records_where_the_tokenizer_agrees():
     """Words the tokenizer and token_regex split alike give the same records with and without a tokenizer (but for the
     tokens of words in uppercase, kept for the tagger), with exact bytes: those of their text in the document,

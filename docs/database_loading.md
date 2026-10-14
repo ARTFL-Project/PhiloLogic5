@@ -274,6 +274,22 @@ tag_exceptions = [
     r"</i>",
     r"<sup>",
     r"</sup>",
+    r"<sub(?:\s[^>]*)?>",
+    r"<\/sub>",
+    r"<sc(?:\s[^>]*)?>",
+    r"<\/sc>",
+    r"<b(?:\s[^>]*)?>",
+    r"<\/b>",
+    r"<seg(?:\s[^>]*)?>",
+    r"<\/seg>",
+    r"<supplied(?:\s[^>]*)?>",
+    r"<\/supplied>",
+    r"<pn(?:\s[^>]*)?>",
+    r"<\/pn>",
+    r"<g(?:\s[^>]*)?>",
+    r"<\/g>",
+    r"<lb\s[^>]*(?:break=[\"']no|hyphenInWord|rend=[\"']hyphen)[^>]*>",
+    r"<pc\s[^>]*force=[\"']weak[^>]*>",
 ]
 
 # Define a list of word attributes to ingore at parse time. These will not be stored.

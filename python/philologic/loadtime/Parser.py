@@ -142,6 +142,22 @@ TAG_EXCEPTIONS = [
     r"</i>",
     r"<sup>",
     r"</sup>",
+    r"<sub(?:\s[^>]*)?>",
+    r"<\/sub>",
+    r"<sc(?:\s[^>]*)?>",
+    r"<\/sc>",
+    r"<b(?:\s[^>]*)?>",
+    r"<\/b>",
+    r"<seg(?:\s[^>]*)?>",  # as the decorated initials of EEBO: <seg rend="decorInit">W</seg>E
+    r"<\/seg>",
+    r"<supplied(?:\s[^>]*)?>",
+    r"<\/supplied>",
+    r"<pn(?:\s[^>]*)?>",  # proper names, as frantext marks them: <pn>Saint</pn>-<pn>Germain</pn>
+    r"<\/pn>",
+    r"<g(?:\s[^>]*)?>",  # glyphs, as EEBO's end-of-line hyphens: ex<g ref="char:EOLhyphen"/>ecution
+    r"<\/g>",
+    r"<lb\s[^>]*(?:break=[\"']no|hyphenInWord|rend=[\"']hyphen)[^>]*>",  # line breaks inside words, not the others
+    r"<pc\s[^>]*force=[\"']weak[^>]*>",  # punctuation which doesn't split words (<pc type="hyphen" force="weak"/>)
 ]
 
 # For Asian script, try using this slightly-modified regex: r"[\p{L}\p{M}\p{N}\p{Po}]+|[&\p{L};]+"
