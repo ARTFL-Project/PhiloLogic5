@@ -17,6 +17,7 @@ from philologic.loadtime.parser_defaults import (  # (which other modules import
     DEFAULT_METADATA_TO_PARSE,
     DEFAULT_SUPPRESS_TAGS,
     DEFAULT_TAG_TO_OBJ_MAP,
+    IN_WORD_LINE_BREAK,
     PUNCTUATION,
     TAG_EXCEPTIONS,
     TOKEN_REGEX,
@@ -71,6 +72,8 @@ cap_char_or_num = re.compile(r"[A-Z0-9]")  # Capitals
 ending_punctuation = re.compile(r"[%s]$" % string.punctuation.replace(")", "").replace("]", ""))
 abbreviation_tag = re.compile(r"""<abbr\b[^>]*?\bexpan=(["'])(.*?)\1[^>]*>(.*?)</abbr>""", re.I | re.S)
 any_tag = re.compile(r"<[^>]*>")
+# A line break inside a word, with the whitespace around it, which TEI ignores
+in_word_line_break = rf"\s*{IN_WORD_LINE_BREAK}\s*"
 semi_colon_strip = re.compile(r"\A;?(\w+);?\Z")
 # What the text the tokenizer splits leaves out or changes (see XMLParser.tokenizer_text): entities, and the "_"
 # of cleanup_content
@@ -243,6 +246,8 @@ class XMLParser:
 
         tag_exceptions = parse_options.get("tag_exceptions", TAG_EXCEPTIONS)
         tags_start_with_bracket = all(tag.startswith("<") for tag in tag_exceptions)
+        # Tags which don't break words, which div heads lose without a space (see remove_head_tags)
+        self.in_word_tags = re.compile("|".join([in_word_line_break, *tag_exceptions]), re.I)
         tag_exceptions = "|".join(tag_exceptions)
         tag_token_regex = parse_options.get("token_regex", TOKEN_REGEX)
         self.tag_exceptions = self.tag_runs = None  # none: every match would be replaced by itself
@@ -1273,6 +1278,8 @@ class XMLParser:
                 break  # don't go past an open or close <div
             if not head_tag.search(line):
                 continue
+            if div_head:
+                div_head += " "  # between heads, such as "Chapitre I" and its title
             for line in lines:  # the lines of the head, up to its closing tag
                 head_lines += 1
                 if closed_head_tag.search(line) or head_lines > 50:  # (in case </head> is missing)
@@ -1282,7 +1289,7 @@ class XMLParser:
                 break
         if div_head:
             div_head = self.convert_entities(self.clear_char_ents(div_head))
-            div_head = re.sub(r"\n?<[^>]*>\n?", "", div_head)
+            div_head = self.remove_head_tags(div_head)
             div_head = div_head.replace("_", "")
             div_head = div_head.replace("\t", "")
             div_head = " ".join(div_head.split())  # remove double or more spaces
@@ -1305,6 +1312,11 @@ class XMLParser:
         div_head = convert_entities(div_head)
         div_head = div_head.replace('"', "")
         return div_head
+
+    def remove_head_tags(self, div_head):
+        """Remove the tags of a div head, putting a space for those which break words, as in the word index:
+        "HISTOIRE<lb/>DES" was "HISTOIREDES"."""
+        return any_tag.sub(" ", self.in_word_tags.sub("", div_head))
 
     def clear_char_ents(self, text):
         """text with the entities standing for punctuation and symbols as spaces (see entities.clear_char_ents)"""

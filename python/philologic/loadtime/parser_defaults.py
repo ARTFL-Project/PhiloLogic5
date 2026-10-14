@@ -116,6 +116,9 @@ DEFAULT_DOC_XPATHS = {
     "idno": [".//publicationStmt/idno/", ".//seriesStmt/idno/"],
 }
 
+# Line breaks inside words, not the others
+IN_WORD_LINE_BREAK = r"<lb\s[^>]*(?:break=[\"']no|hyphenInWord|rend=[\"']hyphen)[^>]*>"
+
 TAG_EXCEPTIONS = [
     r"<hi[^>]*>",
     r"<emph[^>]*>",
@@ -145,7 +148,7 @@ TAG_EXCEPTIONS = [
     r"<\/pn>",
     r"<g(?:\s[^>]*)?>",  # glyphs, as EEBO's end-of-line hyphens: ex<g ref="char:EOLhyphen"/>ecution
     r"<\/g>",
-    r"<lb\s[^>]*(?:break=[\"']no|hyphenInWord|rend=[\"']hyphen)[^>]*>",  # line breaks inside words, not the others
+    IN_WORD_LINE_BREAK,
     r"<pc\s[^>]*force=[\"']weak[^>]*>",  # punctuation which doesn't split words (<pc type="hyphen" force="weak"/>)
 ]
 
