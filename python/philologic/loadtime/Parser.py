@@ -69,6 +69,8 @@ type_attrib = re.compile(r'type="([^"]*)"', re.I)
 char_ents = re.compile(r"\&[a-zA-Z0-9\#][a-zA-Z0-9]*;", re.I)
 check_if_char_word = re.compile(r"\p{L}", re.I)
 cap_char_or_num = re.compile(r"[A-Z0-9]")  # Capitals
+spaced_virgule = re.compile(r"\s/\s")
+first_letter = re.compile(r"\p{L}")
 ending_punctuation = re.compile(r"[%s]$" % string.punctuation.replace(")", "").replace("]", ""))
 abbreviation_tag = re.compile(r"""<abbr\b[^>]*?\bexpan=(["'])(.*?)\1[^>]*>(.*?)</abbr>""", re.I | re.S)
 any_tag = re.compile(r"<[^>]*>")
@@ -122,6 +124,7 @@ TAG_HANDLERS = {
     "/l": (re.compile(r"</l\W", re.I), "handle_line_end"),
     "ab": (re.compile(r"<ab\W", re.I), "handle_ab"),
     "/ab": (re.compile(r"</ab\W", re.I), "handle_ab_end"),
+    "/item": (re.compile(r"</item\W", re.I), "handle_item_end"),
     "s": (re.compile(r"<s\W", re.I), "handle_sentence"),
     "/s": (re.compile(r"</s\W", re.I), "handle_sentence_end"),
     "front": (re.compile(r"<front\W", re.I), "handle_front"),
@@ -179,6 +182,22 @@ def replace_tag_exceptions(content, tag_exceptions, tag_exception_starts, replac
         tag_start = tag_exception_starts.search(content, max(tag_position + 1, pos))
     output.append(content[pos:])
     return "".join(output)
+
+
+def virgule_ends_sentence(between, last_word, next_word):
+    """Whether a virgule between two words ends a sentence, as in early prints, whose virgules (/) do what later commas
+    and full stops do: when it has spaces around it, after a word in lowercase and before one starting with a capital
+    (And, For, Thenne...). Slashes joining words (and/or, I/O) don't."""
+    if not next_word or not last_word.islower() or not spaced_virgule.search(between):
+        return False
+    letter = first_letter.search(next_word)
+    return letter is not None and letter.group().isupper()
+
+
+def pilcrow_between(between, next_token):
+    """Whether there is a pilcrow (¶, the paragraph mark of manuscripts and early prints, which starts something new)
+    between two words, or at the start of the token of the second one (spaCy's tokenizers keep it with the word)"""
+    return "¶" in between or (next_token or "").startswith("¶")
 
 
 class XMLParser:
@@ -734,6 +753,11 @@ class XMLParser:
     def handle_ab_end(self, tag, tag_name, start_byte):
         self.v.pull("line", self.bytes_read_in)
 
+    def handle_item_end(self, tag, tag_name, start_byte):
+        """List items end sentences: those of tables of contents and the like seldom end with punctuation"""
+        if not self.in_tagged_sentence:
+            self.v.pull("sent", self.bytes_read_in)
+
     def handle_sentence(self, tag, tag_name, start_byte):
         """Sentence tags: a new sentence, which turns off automatic sentence tagging. The last one ends where it starts."""
         if self.open_sent or self.in_tagged_sentence:
@@ -977,10 +1001,15 @@ class XMLParser:
             # The bytes of what's between words, without the spaces around it
             start_byte, end_byte = self.text_bytes(text, start_byte, end_byte)
             next_word = items[number + 1][0] if number + 1 < len(items) else ""
-            if self.is_word_sentence_breaker(converted, last_word, next_word):
+            next_token = items[number + 1][4] if number + 1 < len(items) else None
+            if self.is_word_sentence_breaker(converted, last_word, next_word, next_token):
                 sentence_name = converted.replace("\t", " ").strip()
+                sentence_end = end_byte
+                # Spaces before a pilcrow starting the next word: the sentence ends with its last word
+                if not sentence_name:
+                    sentence_name, sentence_end = "¶", start_byte
                 if not self.in_line_group and not self.in_tagged_sentence:
-                    self.end_sentence(sentence_name, start_byte, end_byte)
+                    self.end_sentence(sentence_name, start_byte, sentence_end)
                 self.last_sentence_marker = sentence_name
             if self.punct_regex.search(converted):
                 self.push_punct(converted, start_byte, end_byte)
@@ -1182,7 +1211,9 @@ class XMLParser:
             characters = UNKNOWN_ENTITY_CHARACTER
         return characters
 
-    def is_word_sentence_breaker(self, word, last_word, next_word):
+    def is_word_sentence_breaker(self, word, last_word, next_word, next_token=None):
+        """Whether word (what's between two words) ends a sentence, after last_word and before next_word (whose token
+        is next_token, if the tokenizer's isn't the word)"""
         is_sent = False
         # Break on ! and ?, unless a word in lowercase follows, which goes on with the sentence: an interjection
         # (Ah! mon Dieu!) or the words introducing what was said (« Viens-tu ? » dit-il)
@@ -1201,6 +1232,11 @@ class XMLParser:
             if next_word.islower() or next_word.isdigit():
                 is_sent = False
 
+        elif virgule_ends_sentence(word, last_word, next_word):
+            is_sent = True
+        # A pilcrow ends the sentence before it, if it has words: at the start of a paragraph or head, it doesn't
+        elif pilcrow_between(word, next_token or next_word) and "sent" in self.v:
+            is_sent = True
         elif word in self.sentence_breakers:
             is_sent = True
         return is_sent

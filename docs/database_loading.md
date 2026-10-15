@@ -321,7 +321,8 @@ abbrev_expand = True
 flatten_ligatures = True
 
 # Define a list of strings which mark the end of a sentence.
-# Note that this list will be added to the current one which is [".", "?", "!"]
+# Note that this list will be added to the current one which is [".", "?", "!"]. A virgule (/) between a
+# lowercase and a capitalized word, a pilcrow (¶) and the end of a list item end sentences too.
 sentence_breakers = []
 
 # Define which punctuation should be flagged as such. This should NOT include

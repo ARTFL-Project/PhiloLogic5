@@ -217,7 +217,8 @@ OPTIONS = [
         "list",
         [],
         "tokenization",
-        'Strings which end a sentence, besides ".", "?" and "!".',
+        'Strings which end a sentence, besides ".", "?", "!", a virgule (/) between a lowercase and a capitalized word, '
+        "a pilcrow (paragraph sign) and the end of a list item.",
     ),
     Option(
         "break_sent_in_line_group",

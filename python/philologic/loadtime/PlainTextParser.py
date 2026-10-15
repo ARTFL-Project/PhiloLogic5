@@ -8,7 +8,7 @@ from typing import List, Union
 
 import regex as re
 from philologic.loadtime import OHCOVector
-from philologic.loadtime.Parser import CHARS_NOT_TO_INDEX
+from philologic.loadtime.Parser import CHARS_NOT_TO_INDEX, pilcrow_between, virgule_ends_sentence
 from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input
 
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
@@ -124,7 +124,7 @@ class PlainTextParser:
                 bytes_read_in += len(line.encode("utf8"))
                 continue
             start_byte = bytes_read_in
-            last_word = ""
+            last_word = previous_word = ""
             words: List[Union[str, None]] = self.token_regex.split(line)
             for count, word in enumerate(words):
                 is_sent = False
@@ -134,7 +134,7 @@ class PlainTextParser:
                 word_length = len(word_in_utf8)
                 end_byte = start_byte + word_length
                 if check_if_char_word.search(word):
-                    original = word
+                    original = previous_word = word
                     # Switch everything to lower case
                     word = word.lower()
                     last_word = word
@@ -159,7 +159,8 @@ class PlainTextParser:
                         start_byte += len(word_in_utf8)
                         continue
                 has_next = count + 1 < len(words)
-                is_sent = self.is_sentence_end(word, last_word, has_next, words[count + 1] if has_next else None)
+                next_word = words[count + 1] if has_next else None
+                is_sent = self.is_sentence_end(word, last_word, has_next, next_word, previous_word)
                 self.index_between_words(word, start_byte, end_byte, is_sent)
                 start_byte += len(word_in_utf8)
             bytes_read_in += len(line.encode("utf8"))
@@ -181,8 +182,9 @@ class PlainTextParser:
             self.v["word"]["spacy_token"] = token
         self.v.pull("word", end_byte)
 
-    def is_sentence_end(self, word, last_word, has_next, next_word):
-        """Whether what's between two words ends a sentence, after last_word and before next_word, if it has_next"""
+    def is_sentence_end(self, word, last_word, has_next, next_word, previous_word="", next_token=None):
+        """Whether what's between two words ends a sentence, after last_word (in lowercase; previous_word is as in the
+        text) and before next_word (whose token is next_token, if the tokenizer's isn't the word), if it has_next"""
         is_sent = False
         # Break on ! and ?, unless a word in lowercase follows, which goes on with the sentence: an interjection
         # (Ah! mon Dieu!) or the words introducing what was said (« Viens-tu ? » dit-il)
@@ -200,6 +202,11 @@ class PlainTextParser:
             # Periods in numbers don't break sentences.
             if has_next and (next_word is None or next_word.islower() or next_word.isdigit()):
                 is_sent = False
+        elif has_next and virgule_ends_sentence(word, previous_word, next_word):
+            is_sent = True
+        # A pilcrow ends the sentence before it, if it has words: at the start of a paragraph, it doesn't
+        elif pilcrow_between(word, next_token or next_word) and "sent" in self.v:
+            is_sent = True
         elif word in self.sentence_breakers:
             is_sent = True
         return is_sent
@@ -238,9 +245,10 @@ class PlainTextParser:
             position = token_end
         add_items_between_words(len(line))
 
-        last_word = ""
+        last_word = previous_word = ""
         for count, (text, start, end, is_word, token) in enumerate(items):
             if is_word:
+                previous_word = text
                 last_word = text.lower()
                 if len(text.encode("utf8")) > 200:
                     print(f"Long word in {input_file.name}: {last_word}", file=sys.stderr)
@@ -251,7 +259,9 @@ class PlainTextParser:
                     self.push_word(word, start, end, token if token != word else None)
                 continue
             has_next = count + 1 < len(items)
-            is_sent = self.is_sentence_end(text, last_word, has_next, items[count + 1][0] if has_next else None)
+            next_word = items[count + 1][0] if has_next else None
+            next_token = items[count + 1][4] if has_next else None
+            is_sent = self.is_sentence_end(text, last_word, has_next, next_word, previous_word, next_token)
             self.index_between_words(text, start, end, is_sent)
 
     def index_between_words(self, text, start_byte, end_byte, is_sent):
@@ -259,6 +269,10 @@ class PlainTextParser:
         each with the exact bytes of its characters in the file, without the spaces around them"""
         stripped = text.strip()
         if not stripped:
+            # Spaces before a pilcrow starting the next word (see pilcrow_between): the sentence ends with its last word
+            if is_sent:
+                self.v["sent"].name = "¶"
+                self.v.pull("sent", start_byte)
             return
         start_byte += len(text[: len(text) - len(text.lstrip())].encode("utf8"))
         end_byte -= len(text[len(text.rstrip()) :].encode("utf8"))
