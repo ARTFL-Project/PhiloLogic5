@@ -164,7 +164,7 @@ The web app caches search results (hitlists) as files, and they are the only fil
 hitlist_dir = "/var/cache/philologic5/hitlists/"
 ```
 
-This is also the default when it isn't set (`/Library/Caches/philologic5/hitlists/` on macOS). `install.sh` creates it for the web server's user (`www-data` on Linux); if you change it, create the new directory for that user too (or rerun `install.sh`), and restart the web app. Each database's hitlists go in a subdirectory named after the database, created when first needed. Don't point two PhiloLogic installs that could have databases with the same name at the same `hitlist_dir`.
+This is also the default when it isn't set (`/Library/Caches/philologic5/hitlists/` on macOS). `install.sh` creates it for the web server's user (`www-data` on Linux); if you change it, create the new directory for that user too (or rerun `install.sh`), and restart the web app. Each database's hitlists go in a subdirectory named after the database, created when first needed, with one subdirectory for each load of the database, so that a reload never gets results cached for the database it replaced (the web app removes the old ones). Don't point two PhiloLogic installs that could have databases with the same name at the same `hitlist_dir`.
 
 A database can also set `hitlist_dir` in its own `data/db.locals.py`, which then comes first for that database (its hitlists go in a subdirectory named after it there too). Reloading the database rewrites `db.locals.py`, so set it again after a reload.
 

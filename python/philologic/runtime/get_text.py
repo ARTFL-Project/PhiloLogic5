@@ -15,22 +15,31 @@ from .ObjectFormatter import adjust_bytes, format_concordance, format_text_objec
 
 # Module-level bounded mmap cache. Keyed by absolute file path so entries
 # are unique across different databases served by the same worker process.
-_mmap_cache = OrderedDict()  # path -> mmap object
+_mmap_cache = OrderedDict()  # path -> (file's inode, modification time and size, mmap object)
 _MMAP_CACHE_MAX = 64
 
 
+def _file_stamp(stat):
+    return stat.st_ino, stat.st_mtime_ns, stat.st_size
+
+
 def _get_mmap(file_path):
-    """Return a read-only mmap for *file_path*, using a bounded LRU cache."""
-    if file_path in _mmap_cache:
+    """Return a read-only mmap for *file_path*, using a bounded LRU cache. A file replaced since it was mapped (by a
+    reload of its database) is mapped again."""
+    cached = _mmap_cache.get(file_path)
+    if cached is not None and cached[0] == _file_stamp(os.stat(file_path)):
         _mmap_cache.move_to_end(file_path)
-        return _mmap_cache[file_path]
+        return cached[1]
     fh = open(file_path, "rb")
+    stamp = _file_stamp(os.fstat(fh.fileno()))
     mm = mmap.mmap(fh.fileno(), 0, access=mmap.ACCESS_READ)
     fh.close()  # mmap keeps its own reference to the fd
-    if len(_mmap_cache) >= _MMAP_CACHE_MAX:
-        _, old_mm = _mmap_cache.popitem(last=False)
+    if cached is None and len(_mmap_cache) >= _MMAP_CACHE_MAX:
+        _, (_, old_mm) = _mmap_cache.popitem(last=False)
         old_mm.close()
-    _mmap_cache[file_path] = mm
+    # The mmap of a replaced file isn't closed: a search thread may still read it, and it closes once unused
+    _mmap_cache[file_path] = (stamp, mm)
+    _mmap_cache.move_to_end(file_path)
     return mm
 
 

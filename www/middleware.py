@@ -15,8 +15,9 @@ from random import randint
 
 import falcon
 
+from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
 from philologic.runtime import WebConfig, WSGIHandler, access_control
-from philologic.runtime.hitlist_dir import get_hitlist_dir
+from philologic.runtime.hitlist_dir import database_hitlist_dir, get_hitlist_dir
 from philologic.runtime.HitWrapper import SHARED_CACHE
 from wsgi_helpers import resolve
 
@@ -135,7 +136,8 @@ class CORSMiddleware:
 
 
 class CleanupMiddleware:
-    """Opportunistic hitlist cleanup (1-in-10 chance per request)."""
+    """Opportunistic hitlist cleanup (1-in-10 chance per request): files more than 10 minutes old, and the directories
+    of the database's earlier loads (see philologic.runtime.hitlist_dir) once they are left empty."""
 
     def process_response(self, req, resp, resource, req_succeeded):
         if randint(0, 10) != 1:
@@ -143,19 +145,38 @@ class CleanupMiddleware:
         db_path = getattr(req.context, "db_path", None)
         if db_path is None:
             return
-        hitlist_dir = get_hitlist_dir(os.path.join(db_path, "data"))
-        if not os.path.isdir(hitlist_dir):
+        data_path = os.path.join(db_path, "data")
+        db_locals = Config(os.path.join(data_path, "db.locals.py"), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
+        hitlist_dir = get_hitlist_dir(data_path, db_locals)
+        cutoff = datetime.datetime.now() - datetime.timedelta(minutes=10)
+        remove_old_files(hitlist_dir, cutoff)
+        database_dir = database_hitlist_dir(data_path, db_locals)
+        if database_dir == hitlist_dir:
             return
-        now = datetime.datetime.now()
-        cutoff = datetime.timedelta(minutes=10)
         try:
-            for entry in os.scandir(hitlist_dir):
-                if entry.is_file():
-                    mtime = datetime.datetime.fromtimestamp(os.path.getmtime(entry.path))
-                    if now - mtime > cutoff:
-                        try:
-                            os.remove(entry.path)
-                        except OSError:
-                            pass
+            entries = list(os.scandir(database_dir))
         except OSError:
-            pass
+            return
+        remove_old_files(entries, cutoff)  # files from before each load had its own directory
+        for entry in entries:
+            if entry.is_dir() and entry.path != hitlist_dir:  # an earlier load's
+                remove_old_files(entry.path, cutoff)
+                try:
+                    os.rmdir(entry.path)  # only once empty: a request still running on the old load may write in it
+                except OSError:
+                    pass
+
+
+def remove_old_files(directory, cutoff):
+    """Removes the files of directory (a path, or entries of os.scandir) last modified before cutoff"""
+    try:
+        for entry in os.scandir(directory) if isinstance(directory, str) else directory:
+            if entry.is_file():
+                mtime = datetime.datetime.fromtimestamp(os.path.getmtime(entry.path))
+                if mtime < cutoff:
+                    try:
+                        os.remove(entry.path)
+                    except OSError:
+                        pass
+    except OSError:
+        pass

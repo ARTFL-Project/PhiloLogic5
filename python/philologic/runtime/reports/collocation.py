@@ -32,10 +32,6 @@ from philologic.runtime.word_properties import (
     split_properties,
 )
 
-# Per-worker cache of corpus-wide sentence document-frequency arrays.
-# Keyed by (db_path, count_lemmas) -> (df_array, n_sentences).
-_SENTENCE_DF_CACHE: dict = {}
-
 # Default and bounds for the document-frequency stopword filter (percent of
 # sentences a word must exceed to be dropped).
 DEFAULT_DF_PCT = 1.0
@@ -935,16 +931,14 @@ def decode_group_collocates(tids, counts, group_bounds, group_index, db_path, co
     return Counter(dict(zip(nz_names, nz_counts)))
 
 
-# Per-worker cache of corpus-wide token counts, keyed by (db_path, count_lemmas)
-_TOKEN_COUNTS_CACHE: dict = {}
-
-
 def _corpus_counts(db_path, counts, count_lemmas):
     """The corpus counts (sentence_df: the sentences each word or lemma is in; token_counts: the times it occurs) the
-    loader wrote next to the collocation arrays (PostFilters.write_corpus_counts)."""
+    loader wrote next to the collocation arrays (PostFilters.write_corpus_counts). Mapped, not read, for each
+    request: nothing kept in a worker outlives a reload of the database, and that's faster than reading them for large
+    corpora."""
     path = os.path.join(db_path, "collocations", f"{counts}_{'lemma' if count_lemmas else 'word'}.npy")
     try:
-        return np.load(path)
+        return np.load(path, mmap_mode="r")
     except FileNotFoundError:
         raise FileNotFoundError(
             f"No {path}: the database was loaded before its corpus counts were. "
@@ -953,21 +947,15 @@ def _corpus_counts(db_path, counts, count_lemmas):
 
 
 def _load_token_counts(db_path, count_lemmas):
-    """How many times each word (or lemma) occurs in the corpus, cached per worker."""
-    key = (db_path, bool(count_lemmas))
-    if key not in _TOKEN_COUNTS_CACHE:
-        _TOKEN_COUNTS_CACHE[key] = _corpus_counts(db_path, "token_counts", count_lemmas)
-    return _TOKEN_COUNTS_CACHE[key]
+    """How many times each word (or lemma) occurs in the corpus."""
+    return _corpus_counts(db_path, "token_counts", count_lemmas)
 
 
 def _load_sentence_df(db_path, count_lemmas):
-    """Return ``(df_array, n_sentences)`` for the corpus, cached per worker: the number of sentences each word (or
-    lemma) is in, and of sentences."""
-    key = (db_path, bool(count_lemmas))
-    if key not in _SENTENCE_DF_CACHE:
-        sent_offsets = np.load(os.path.join(db_path, "collocations", "sent_offsets.npy"), mmap_mode="r")
-        _SENTENCE_DF_CACHE[key] = (_corpus_counts(db_path, "sentence_df", count_lemmas), len(sent_offsets) - 1)
-    return _SENTENCE_DF_CACHE[key]
+    """Return ``(df_array, n_sentences)`` for the corpus: the number of sentences each word (or lemma) is in, and of
+    sentences."""
+    sent_offsets = np.load(os.path.join(db_path, "collocations", "sent_offsets.npy"), mmap_mode="r")
+    return _corpus_counts(db_path, "sentence_df", count_lemmas), len(sent_offsets) - 1
 
 
 def _df_threshold_pct(request):

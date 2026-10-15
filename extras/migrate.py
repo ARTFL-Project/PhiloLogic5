@@ -135,10 +135,13 @@ def migrate_collocation(db_path):
     words_dir = os.path.join(data_path, "words_and_philo_ids")
     colloc_dir = os.path.join(data_path, "collocations")
 
-    # Clear all cached hitlists (stale formats, old search results): the database's, and any from before hitlist_dir
-    from philologic.runtime.hitlist_dir import get_hitlist_dir
+    # Clear all cached hitlists (stale formats, old search results): the database's (of each of its loads), and any
+    # from before hitlist_dir
+    from philologic.runtime.hitlist_dir import database_hitlist_dir
 
-    for hitlists_dir in (get_hitlist_dir(data_path, create=False), os.path.join(data_path, "hitlists")):
+    database_dir = database_hitlist_dir(data_path)
+    loads = [entry.path for entry in os.scandir(database_dir) if entry.is_dir()] if os.path.isdir(database_dir) else []
+    for hitlists_dir in (database_dir, *loads, os.path.join(data_path, "hitlists")):
         if os.path.isdir(hitlists_dir):
             removed = 0
             for entry in os.scandir(hitlists_dir):

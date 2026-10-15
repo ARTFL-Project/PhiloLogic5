@@ -59,6 +59,24 @@ class TestReaders:
         df, n_sentences = _load_sentence_df(str(data), True)
         assert df.tolist() == [3, 1, 1] and n_sentences == 3
 
+    def test_a_reloaded_database_s_counts_are_read(self, tmp_path):
+        """Nothing read for a database is kept: a reload at the same path, with another vocabulary, is read anew."""
+        data, colloc_dir = database(tmp_path)
+        write_corpus_counts(str(colloc_dir))
+        assert _load_token_counts(str(data), False).tolist() == [2, 3, 1, 1, 0]
+        assert _load_sentence_df(str(data), False)[0].tolist() == [2, 2, 1, 1, 0]
+        reloaded = tmp_path / "reloaded"
+        _, reloaded_colloc_dir = database(reloaded, lemmas=False)
+        np.save(reloaded_colloc_dir / "token_ids.npy", np.array([0, 0, 1], dtype=np.uint32))
+        np.save(reloaded_colloc_dir / "vocab_offsets.npy", np.arange(3, dtype=np.uint64))  # 2 words
+        np.save(reloaded_colloc_dir / "sent_offsets.npy", np.array([0, 3], dtype=np.uint64))
+        write_corpus_counts(str(reloaded_colloc_dir))
+        os.rename(data, tmp_path / "old_data")
+        os.rename(reloaded / "data", data)
+        assert _load_token_counts(str(data), False).tolist() == [2, 1]
+        df, n_sentences = _load_sentence_df(str(data), False)
+        assert df.tolist() == [1, 1] and n_sentences == 1
+
     def test_a_database_without_them_names_the_script_that_writes_them(self, tmp_path):
         data, _ = database(tmp_path)
         with pytest.raises(FileNotFoundError, match="philologic.utils.write_corpus_counts"):

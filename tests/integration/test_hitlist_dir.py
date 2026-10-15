@@ -1,10 +1,10 @@
 """hitlist_dir, in the global config or a database's db.locals.py: every file cached at request time goes there,
-none in the databases.
+none in the databases. Each load of a database has its own subdirectory there.
 
 The web app serves a read-only copy of the test corpus (directories that can't be written, with the corpus's files
 through symlinks), and every kind of request that caches something must still succeed, with its cache files in
-hitlist_dir/<database>/. Neither the copy nor the corpus may change: that also shows that no temporary file (claims,
-sorts in progress) was written in the database. Run as root, which can write read-only directories, only that
+hitlist_dir/<database>/<load>/. Neither the copy nor the corpus may change: that also shows that no temporary file
+(claims, sorts in progress) was written in the database. Run as root, which can write read-only directories, only that
 comparison shows writes.
 """
 
@@ -20,7 +20,7 @@ from urllib.parse import urlencode
 import pytest
 
 from philologic.runtime import hitlist_dir as resolver
-from philologic.runtime.hitlist_dir import get_hitlist_dir, global_hitlist_root
+from philologic.runtime.hitlist_dir import database_hitlist_dir, get_hitlist_dir, global_hitlist_root, load_name
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 HELPER = REPO_ROOT / "python" / "philologic" / "runtime" / "hitlist_dir.py"
@@ -89,8 +89,28 @@ def test_database_setting_first(global_config, tmp_path, global_setting, databas
     (data / "db.locals.py").write_text(f"metadata_fields = []\n{lines[database_setting]}", encoding="utf8")
     root = "own" if database_setting == "own" else "global" if global_setting else "default"
     db_locals = Config(str(data / "db.locals.py"), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
-    assert get_hitlist_dir(str(data) + "/") == get_hitlist_dir(str(data), db_locals) == str(tmp_path / root / "mydb")
+    expected = str(tmp_path / root / "mydb" / load_name(str(data)))
+    assert get_hitlist_dir(str(data) + "/") == get_hitlist_dir(str(data), db_locals) == expected
     assert [p.name for p in tmp_path.iterdir() if p.name in ("own", "global", "default")] == [root]
+
+
+def test_each_load_has_its_own_directory(global_config, tmp_path):
+    """A reload writes db.locals.py anew: the hitlists cached for the database it replaced aren't used for it. Without
+    db.locals.py, there is no load to tell apart."""
+    global_config(f'hitlist_dir = "{tmp_path}/cache/"\n')
+    data = tmp_path / "dbs" / "mydb" / "data"
+    data.mkdir(parents=True)
+    assert get_hitlist_dir(str(data)) == database_hitlist_dir(str(data)) == str(tmp_path / "cache" / "mydb")
+    (data / "db.locals.py").write_text("metadata_fields = []\n", encoding="utf8")
+    first = get_hitlist_dir(str(data))
+    assert os.path.dirname(first) == database_hitlist_dir(str(data)) and os.path.basename(first).startswith("load-")
+    assert get_hitlist_dir(str(data)) == first
+    replacement = tmp_path / "db.locals.py"  # a new file, as a load writes, with the same content
+    replacement.write_text("metadata_fields = []\n", encoding="utf8")
+    os.replace(replacement, data / "db.locals.py")
+    second = get_hitlist_dir(str(data))
+    assert second != first and os.path.dirname(second) == os.path.dirname(first)
+    assert sorted(os.listdir(tmp_path / "cache" / "mydb")) == sorted(os.path.basename(p) for p in (first, second))
 
 
 @pytest.mark.integration
@@ -228,6 +248,7 @@ class ReadOnlyService:
 
         self.root.mkdir()
         read_only_copy(self.corpus, self.root / self.corpus.name, self.db_locals_extra)
+        self.load_cache = self.cache / load_name(str(self.root / self.corpus.name / "data"))  # the copy's load's
         self.before = tree_state(self.root), tree_state(self.corpus)
         self.server = Server(self.root, self.corpus.name, self.tmp_path)
 
@@ -310,10 +331,12 @@ def test_everything_cached_in_hitlist_dir(served_read_only):
     get_json(server, "scripts/get_similar_collocate_distributions.py", {"primary_file_path": whole, "file_path": by_author})
     get_json(server, "scripts/collocation_time_series.py", {"file_path": by_year, "year_interval": "10", "period_number": "0"})
 
+    load_cache = served_read_only.load_cache
     for file_path in (whole, by_author, by_year, distribution):
-        assert os.path.dirname(file_path) == str(cache)
+        assert os.path.dirname(file_path) == str(load_cache)
     assert sorted(os.listdir(cache.parent)) == [corpus.name]
-    cached = os.listdir(cache)
+    assert os.listdir(cache) == [load_cache.name]
+    cached = os.listdir(load_cache)
     for kind in (".hitlist", ".hitlist.done", ".hitlist.terms", ".sorted.title", ".kwic.sorted", ".pickle",
                  ".npz", ".approximate_terms"):
         assert any(name.endswith(kind) for name in cached), f"no {kind} file in {cache}"
@@ -326,20 +349,26 @@ def test_everything_cached_in_hitlist_dir(served_read_only):
 
 @pytest.mark.integration
 def test_cleanup_in_hitlist_dir(served_read_only):
-    """The hitlist cleanup removes old files from the database's hitlist_dir directory, and only from there."""
-    server, cache = served_read_only.server, served_read_only.cache
+    """The hitlist cleanup removes old files from the database's hitlist_dir directory, and only from there: the
+    current load's, files from before each load had its own directory, and earlier loads' directories once emptied."""
+    server, cache, load_cache = served_read_only.server, served_read_only.cache, served_read_only.load_cache
     other_database = cache.parent / "other_database"
-    other_database.mkdir()
+    earlier_load, recent_load = cache / "load-1-1", cache / "load-2-2"
+    for directory in (other_database, load_cache, earlier_load, recent_load):
+        directory.mkdir(parents=True, exist_ok=True)
     old = time.time() - 3600
-    for path in (cache / "old.hitlist", cache / "new.hitlist", other_database / "old.hitlist"):
+    old_files = (load_cache / "old.hitlist", cache / "old.hitlist", earlier_load / "old.hitlist")
+    kept = (load_cache / "new.hitlist", cache / "new.hitlist", recent_load / "new.hitlist")
+    kept += (other_database / "old.hitlist",)
+    for path in (*old_files, *kept):
         path.write_bytes(b"")
-    os.utime(cache / "old.hitlist", (old, old))
-    os.utime(other_database / "old.hitlist", (old, old))
+    for path in (*old_files, other_database / "old.hitlist"):
+        os.utime(path, (old, old))
     for _ in range(500):  # the cleanup runs after one request in eleven
         assert fetch(server, "scripts/get_web_config.py", {})[0] == 200
-        if not (cache / "old.hitlist").exists():
+        if not earlier_load.exists():
             break
-    assert not (cache / "old.hitlist").exists()
-    assert (cache / "new.hitlist").exists()
-    assert (other_database / "old.hitlist").exists()
+    assert not any(path.exists() for path in old_files)
+    assert not earlier_load.exists()
+    assert all(path.exists() for path in kept)
     served_read_only.assert_databases_unchanged()
