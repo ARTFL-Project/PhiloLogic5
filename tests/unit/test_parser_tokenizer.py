@@ -315,10 +315,10 @@ def test_tagger_gets_tokens(tmp_path):
         vocab = spacy.blank("fr").vocab
         words = []
 
-        def pipe(self, documents, as_tuples, batch_size):
-            for document, context in documents:
+        def pipe(self, documents, batch_size):
+            for document in documents:
                 self.words.extend(token.text for token in document)
-                yield document, context
+                yield document
 
     raw = tmp_path / "raw"
     with open(raw, "w", encoding="utf8") as output:
@@ -360,10 +360,10 @@ def test_tagger_gets_sentences(tmp_path, language):
         vocab = spacy.blank("fr").vocab
         sentences = []
 
-        def pipe(self, documents, as_tuples, batch_size):
-            for document, context in documents:
+        def pipe(self, documents, batch_size):
+            for document in documents:
                 self.sentences.append([token.text for token in document])
-                yield document, context
+                yield document
 
     raw = tmp_path / "raw"
     xml = "<text><body><div><p>Il vient. « Elle part ! » Oui, dit-il.</p><p>Sans point</p></div></body></text>"
@@ -381,3 +381,49 @@ def test_tagger_gets_sentences(tmp_path, language):
     kept = [record[:2] for record in parsed if record[0] in ("word", "sent", "punct")]
     assert [record[:2] for record in tagged] == kept  # in the same order
     assert all(("pos" in json.loads(attrib)) == (kind != "sent") for kind, _, _, attrib in tagged)
+
+
+@pytest.mark.unit
+def test_tagger_tags_in_halves_what_the_gpu_has_no_memory_for(tmp_path, monkeypatch):
+    """When a batch is too much for the GPU, its halves are tagged, down to halves of a sentence's words: every word is
+    still tagged, in its place"""
+    import spacy
+    from philologic.loadtime import LoadFilters
+
+    class OutOfMemory(Exception):
+        pass
+
+    class Tagger:
+        """A pipeline which tags each word with its position in its document, and has memory for limit words"""
+
+        vocab = spacy.blank("en").vocab
+
+        def __init__(self, limit):
+            self.limit = limit
+
+        def pipe(self, documents, batch_size):
+            if sum(len(document) for document in documents) > self.limit:
+                raise OutOfMemory
+            for document in documents:
+                for position, token in enumerate(document):
+                    token.tag_ = token.text.upper()
+                    token.pos_ = "NOUN" if position % 2 else "VERB"
+                yield document
+
+    monkeypatch.setattr(LoadFilters, "gpu_out_of_memory_errors", lambda: (OutOfMemory,))
+    monkeypatch.setattr(LoadFilters, "free_gpu_memory", lambda: None)
+    xml = document(" ".join(f"word{i}" for i in range(40)) + ". Short one. " + " ".join(f"last{i}" for i in range(7)))
+    tagged = {}
+    for limit in (1000, 6):
+        raw = tmp_path / f"raw{limit}"
+        with open(raw, "w", encoding="utf8") as output:
+            XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
+        LoadFilters.spacy_tagger(type("Loader", (), {"nlp": Tagger(limit)}), {"raw": str(raw)})
+        tagged[limit] = [(line.split("\t")[1], json.loads(line.split("\t")[3]).get("tag")) for line in raw.open()]
+    assert tagged[6] == tagged[1000]
+    assert ("word39", "WORD39") in tagged[6]
+    with pytest.raises(OutOfMemory):  # not even for one word
+        raw = tmp_path / "raw0"
+        with open(raw, "w", encoding="utf8") as output:
+            XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
+        LoadFilters.spacy_tagger(type("Loader", (), {"nlp": Tagger(0)}), {"raw": str(raw)})
