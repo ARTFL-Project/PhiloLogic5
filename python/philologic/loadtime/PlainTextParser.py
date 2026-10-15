@@ -124,7 +124,7 @@ class PlainTextParser:
                 bytes_read_in += len(line.encode("utf8"))
                 continue
             start_byte = bytes_read_in
-            last_word = previous_word = ""
+            last_word = ""
             words: List[Union[str, None]] = self.token_regex.split(line)
             for count, word in enumerate(words):
                 is_sent = False
@@ -134,10 +134,9 @@ class PlainTextParser:
                 word_length = len(word_in_utf8)
                 end_byte = start_byte + word_length
                 if check_if_char_word.search(word):
-                    original = previous_word = word
+                    original = last_word = word
                     # Switch everything to lower case
                     word = word.lower()
-                    last_word = word
                     # The long s is an s, as the XML parser has it
                     word = word.replace("ſ", "s")
                     # Check to see if the word is longer than we want. More than 235 characters appear to cause problems in the indexer.
@@ -160,7 +159,7 @@ class PlainTextParser:
                         continue
                 has_next = count + 1 < len(words)
                 next_word = words[count + 1] if has_next else None
-                is_sent = self.is_sentence_end(word, last_word, has_next, next_word, previous_word)
+                is_sent = self.is_sentence_end(word, last_word, has_next, next_word)
                 self.index_between_words(word, start_byte, end_byte, is_sent)
                 start_byte += len(word_in_utf8)
             bytes_read_in += len(line.encode("utf8"))
@@ -182,9 +181,9 @@ class PlainTextParser:
             self.v["word"]["spacy_token"] = token
         self.v.pull("word", end_byte)
 
-    def is_sentence_end(self, word, last_word, has_next, next_word, previous_word="", next_token=None):
-        """Whether what's between two words ends a sentence, after last_word (in lowercase; previous_word is as in the
-        text) and before next_word (whose token is next_token, if the tokenizer's isn't the word), if it has_next"""
+    def is_sentence_end(self, word, last_word, has_next, next_word, next_token=None):
+        """Whether what's between two words ends a sentence, after last_word (as in the text) and before next_word (whose
+        token is next_token, if the tokenizer's isn't the word), if it has_next"""
         is_sent = False
         # Break on ! and ?, unless a word in lowercase follows, which goes on with the sentence: an interjection
         # (Ah! mon Dieu!) or the words introducing what was said (« Viens-tu ? » dit-il)
@@ -202,7 +201,7 @@ class PlainTextParser:
             # Periods in numbers don't break sentences.
             if has_next and (next_word is None or next_word.islower() or next_word.isdigit()):
                 is_sent = False
-        elif has_next and virgule_ends_sentence(word, previous_word, next_word):
+        elif has_next and virgule_ends_sentence(word, last_word, next_word):
             is_sent = True
         # A pilcrow ends the sentence before it, if it has words: at the start of a paragraph, it doesn't
         elif pilcrow_between(word, next_token or next_word) and "sent" in self.v:
@@ -245,13 +244,12 @@ class PlainTextParser:
             position = token_end
         add_items_between_words(len(line))
 
-        last_word = previous_word = ""
+        last_word = ""
         for count, (text, start, end, is_word, token) in enumerate(items):
             if is_word:
-                previous_word = text
-                last_word = text.lower()
+                last_word = text
                 if len(text.encode("utf8")) > 200:
-                    print(f"Long word in {input_file.name}: {last_word}", file=sys.stderr)
+                    print(f"Long word in {input_file.name}: {text.lower()}", file=sys.stderr)
                     print("Removing word from for index since over 200 bytes long...", file=sys.stderr)
                     continue
                 word = self.index_form(text)
@@ -261,7 +259,7 @@ class PlainTextParser:
             has_next = count + 1 < len(items)
             next_word = items[count + 1][0] if has_next else None
             next_token = items[count + 1][4] if has_next else None
-            is_sent = self.is_sentence_end(text, last_word, has_next, next_word, previous_word, next_token)
+            is_sent = self.is_sentence_end(text, last_word, has_next, next_word, next_token)
             self.index_between_words(text, start, end, is_sent)
 
     def index_between_words(self, text, start_byte, end_byte, is_sent):

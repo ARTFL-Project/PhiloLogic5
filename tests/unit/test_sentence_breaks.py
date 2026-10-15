@@ -116,3 +116,13 @@ def test_the_rules():
     assert not virgule_ends_sentence(" / ", "1483", "And")
     assert not virgule_ends_sentence(" / ", "rome", None)
     assert pilcrow_between(" ¶ ", "For") and pilcrow_between(" ", "¶Thirdly") and not pilcrow_between(" ", "For")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("options", MODES)
+def test_plain_text_full_stops_as_in_xml(options):
+    """A full stop after a word of one or two letters with a capital or a digit (M., St., 12.) doesn't end a sentence"""
+    text = "M. Dupont vint le 12. mai. St. Paul le vit. Il partit. Ensuite il revint."
+    words = [w for w, _, _ in sentences(PlainTextParser, text + "\n", **options)]
+    assert words == ["M Dupont vint le mai", "St Paul le vit", "Il partit", "Ensuite il revint"]  # (12: no word)
+    assert [w for w, _ in xml_sentences(f"<p>{text}</p>", **options)] == words
