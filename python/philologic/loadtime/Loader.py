@@ -2104,7 +2104,8 @@ class Loader:
             with open(f"{self.destination}/frequencies/word_attributes", "r", encoding="utf8") as freq_file:
                 for line in freq_file:
                     line = line.strip()
-                    _, attribute, attribute_value = line.split(":")
+                    # From the end: words split by spaCy's tokenizer can have colons (3:16)
+                    _, attribute, attribute_value = line.rsplit(":", 2)
                     if attribute not in word_attributes:
                         word_attributes[attribute] = set()
                     word_attributes[attribute].add(attribute_value)
