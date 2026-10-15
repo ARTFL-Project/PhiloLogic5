@@ -50,12 +50,13 @@
                                             @input="onChange('q')" @keyup.down="onArrowDown('q')"
                                             @keyup.up="onArrowUp('q')" @keydown.enter="onEnter('q', $event)"
                                             @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
-                                            autocomplete="off" />
+                                            autocomplete="off" v-bind="comboboxAttributes('q', 'autocomplete-q')" />
 
                                         <ul id="autocomplete-q" class="autocomplete-results shadow"
                                             :style="autoCompletePosition('q')" v-if="autoCompleteResults.q.length > 0"
                                             role="listbox" :aria-label="$t('searchForm.autocompleteResults')">
                                             <li tabindex="-1" v-for="(result, i) in autoCompleteResults.q" :key="result"
+                                                :id="'autocomplete-q-' + i"
                                                 @click="setResult(result, 'q')" class="autocomplete-result"
                                                 :class="{ 'is-active': i === arrowCounters.q }" v-html="result"
                                                 role="option" :aria-selected="i === arrowCounters.q"></li>
@@ -83,7 +84,9 @@
                                     @keydown.up="onArrowUp(metadataDisplay[headIndex].value)"
                                     @keydown.enter="onEnter(metadataDisplay[headIndex].value, $event)"
                                     @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
-                                    autocomplete="off" />
+                                    autocomplete="off"
+                                    v-bind="comboboxAttributes(metadataDisplay[headIndex].value,
+                                        'autocomplete-' + metadataDisplay[headIndex].value)" />
                                 <ul :id="'autocomplete-' + metadataDisplay[headIndex].value"
                                     class="autocomplete-results shadow"
                                     :style="autoCompletePosition(metadataDisplay[headIndex].value)"
@@ -91,6 +94,7 @@
                                     role="listbox" :aria-label="$t('searchForm.autocompleteResults')">
                                     <li tabindex="-1"
                                         v-for="(result, i) in autoCompleteResults[metadataDisplay[headIndex].value]"
+                                        :id="'autocomplete-' + metadataDisplay[headIndex].value + '-' + i"
                                         :key="result" @click="setResult(result, metadataDisplay[headIndex].value)"
                                         class="autocomplete-result" :class="{
                                             'is-active': i === arrowCounters[metadataDisplay[headIndex].value],
@@ -281,17 +285,21 @@ min-height: initial; min-height: fit-content;" v-model="formData.method_arg"> {{
                                                 @keydown.up="onArrowUp(field.value)"
                                                 @keydown.enter="onEnter(field.value, $event)"
                                                 @keyup.escape="clearAutoCompletePopup"
-                                                @keydown.tab="clearAutoCompletePopup" autocomplete="off" />
+                                                @keydown.tab="clearAutoCompletePopup" autocomplete="off"
+                                                v-bind="comboboxAttributes(field.value, 'autocomplete-' + field.value)" />
                                             <ul :id="'autocomplete-' + field.value"
                                                 class="autocomplete-results shadow"
                                                 :style="autoCompletePosition(field.value)"
-                                                v-if="autoCompleteResults[field.value].length > 0">
+                                                v-if="autoCompleteResults[field.value].length > 0"
+                                                role="listbox" :aria-label="$t('searchForm.autocompleteResults')">
                                                 <li tabindex="-1"
                                                     v-for="(result, i) in autoCompleteResults[field.value]"
+                                                    :id="'autocomplete-' + field.value + '-' + i"
                                                     :key="result" @click="setResult(result, field.value)"
                                                     class="autocomplete-result"
                                                     :class="{ 'is-active': i === arrowCounters[field.value] }"
-                                                    v-html="result"></li>
+                                                    v-html="result" role="option"
+                                                    :aria-selected="i === arrowCounters[field.value]"></li>
                                             </ul>
                                         </template>
                                     </MetadataFields>
@@ -427,6 +435,7 @@ const {
     onArrowDown,
     onArrowUp,
     clearAutoCompletePopup,
+    comboboxAttributes,
     onChange: metadataOnChange,
     setMetadataResult,
 } = autocomplete;

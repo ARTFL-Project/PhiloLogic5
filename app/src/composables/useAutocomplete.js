@@ -101,6 +101,20 @@ export function useAutocomplete({ http, dbUrl, philoConfig, metadataValues, rout
         }
     }
 
+    // ARIA of a field's input, as a combobox of its list of suggestions (listId, its options listId-0, listId-1...):
+    // focus stays in the input, so a screen reader reads the suggestion highlighted only as its active descendant
+    function comboboxAttributes(field, listId) {
+        const results = autoCompleteResults[field];
+        const active = arrowCounters[field];
+        return {
+            role: "combobox",
+            "aria-autocomplete": "list",
+            "aria-controls": listId,
+            "aria-expanded": results.length > 0,
+            "aria-activedescendant": active >= 0 && active < results.length ? `${listId}-${active}` : undefined,
+        };
+    }
+
     function autoCompletePosition(field) {
         let parent = document.getElementById(`${field}-group`);
         if (parent) {
@@ -119,6 +133,7 @@ export function useAutocomplete({ http, dbUrl, philoConfig, metadataValues, rout
         onEnter,
         setMetadataResult,
         clearAutoCompletePopup,
+        comboboxAttributes,
         autoCompletePosition,
     };
 }

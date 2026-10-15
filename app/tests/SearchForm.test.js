@@ -33,7 +33,7 @@ function mountSearchForm(overrides = {}) {
         aggregation: new Set(["q", "method", "cooc_order", "method_arg", "group_by", ...webConfig.metadata]),
     };
 
-    return mount(SearchForm, { global });
+    return mount(SearchForm, { global, attachTo: overrides.attachTo });
 }
 
 describe("SearchForm", () => {
@@ -160,6 +160,36 @@ describe("SearchForm", () => {
         await input.trigger("input");
         await nextTick();
         // Should have called autocomplete endpoint
+    });
+
+    // --- the input as a combobox: what a screen reader reads as the suggestions are arrowed through ---
+    it("makes the suggestion highlighted the input's active descendant", async () => {
+        vi.useFakeTimers();
+        const http = createMockHttp({
+            "autocomplete_term.py": ['<span class="highlight">giov</span>a', '<span class="highlight">giov</span>acchimo'],
+        });
+        const wrapper = mountSearchForm({ http, attachTo: document.body });
+        const input = wrapper.find("#query-term-input");
+        expect(input.attributes("role")).toBe("combobox");
+        expect(input.attributes("aria-controls")).toBe("autocomplete-q");
+        expect(input.attributes("aria-expanded")).toBe("false");
+        input.element.focus();
+        await input.setValue("giov");
+        vi.advanceTimersByTime(200);
+        await flushPromises();
+        vi.useRealTimers();
+        expect(input.attributes("aria-expanded")).toBe("true");
+        expect(input.attributes("aria-activedescendant")).toBeUndefined();
+        await input.trigger("keyup.down");
+        await input.trigger("keyup.down");
+        const active = input.attributes("aria-activedescendant");
+        expect(active).toBe("autocomplete-q-1");
+        expect(document.getElementById(active).textContent).toBe("giovacchimo");
+        expect(document.getElementById(active).getAttribute("aria-selected")).toBe("true");
+        await input.trigger("keyup.escape");
+        expect(input.attributes("aria-expanded")).toBe("false");
+        expect(input.attributes("aria-activedescendant")).toBeUndefined();
+        wrapper.unmount();
     });
 
     // --- @keyup.escape="clearAutoCompletePopup" ---

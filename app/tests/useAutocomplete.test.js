@@ -4,10 +4,10 @@ import { useAutocomplete } from "../src/composables/useAutocomplete.js";
 
 function autocomplete() {
     const metadataValues = reactive({ title: "" });
-    const { setMetadataResult } = useAutocomplete({
+    const { autoCompleteResults, arrowCounters, setMetadataResult, comboboxAttributes } = useAutocomplete({
         http: {}, dbUrl: "", philoConfig: { metadata: ["title"], autocomplete: ["title"] }, metadataValues, route: { query: {} },
     });
-    return { metadataValues, setMetadataResult };
+    return { metadataValues, autoCompleteResults, arrowCounters, setMetadataResult, comboboxAttributes };
 }
 
 describe("setMetadataResult", () => {
@@ -21,5 +21,35 @@ describe("setMetadataResult", () => {
         const { metadataValues, setMetadataResult } = autocomplete();
         setMetadataResult('"Lady Audley\'s Secret" | <last/>Folle-Farine', "title");
         expect(metadataValues.title).toBe('"Lady Audley\'s Secret" | "Folle-Farine"');
+    });
+});
+
+describe("comboboxAttributes", () => {
+    it("names the list collapsed while it has no suggestions, with no active descendant", () => {
+        const { comboboxAttributes } = autocomplete();
+        expect(comboboxAttributes("title", "autocomplete-title")).toEqual({
+            role: "combobox",
+            "aria-autocomplete": "list",
+            "aria-controls": "autocomplete-title",
+            "aria-expanded": false,
+            "aria-activedescendant": undefined,
+        });
+    });
+
+    it("names the suggestion highlighted as the active descendant", () => {
+        const { autoCompleteResults, arrowCounters, comboboxAttributes } = autocomplete();
+        autoCompleteResults.title = ["Candide", "Zadig"];
+        expect(comboboxAttributes("title", "autocomplete-title")["aria-activedescendant"]).toBeUndefined();
+        arrowCounters.title = 1;
+        const attributes = comboboxAttributes("title", "autocomplete-title");
+        expect(attributes["aria-expanded"]).toBe(true);
+        expect(attributes["aria-activedescendant"]).toBe("autocomplete-title-1");
+    });
+
+    it("names none once the suggestions are fewer than the one highlighted", () => {
+        const { autoCompleteResults, arrowCounters, comboboxAttributes } = autocomplete();
+        autoCompleteResults.title = ["Candide"];
+        arrowCounters.title = 3;
+        expect(comboboxAttributes("title", "autocomplete-title")["aria-activedescendant"]).toBeUndefined();
     });
 });

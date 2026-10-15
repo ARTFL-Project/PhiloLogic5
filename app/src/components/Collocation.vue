@@ -93,14 +93,18 @@
                                     @keydown.up="onArrowUp(field.value)" @keyup.enter="onEnter(field.value)"
                                     @keyup.escape="clearAutoCompletePopup" @keydown.tab="clearAutoCompletePopup"
                                     autocomplete="off"
-                                    :aria-label="`${$t('collocation.filterBy')} ${field.label}`" />
+                                    :aria-label="`${$t('collocation.filterBy')} ${field.label}`"
+                                    v-bind="comboboxAttributes(field.value, 'compare-autocomplete-' + field.value)" />
                                 <ul :id="'compare-autocomplete-' + field.value" class="autocomplete-results shadow"
                                     :style="autoCompletePosition(field.value)"
-                                    v-if="autoCompleteResults[field.value].length > 0">
+                                    v-if="autoCompleteResults[field.value].length > 0"
+                                    role="listbox" :aria-label="$t('searchForm.autocompleteResults')">
                                     <li tabindex="-1" v-for="(result, i) in autoCompleteResults[field.value]"
+                                        :id="'compare-autocomplete-' + field.value + '-' + i"
                                         :key="result" @click="setMetadataResult(result, field.value)"
                                         class="autocomplete-result"
-                                        :class="{ 'is-active': i === arrowCounters[field.value] }" v-html="result"></li>
+                                        :class="{ 'is-active': i === arrowCounters[field.value] }" v-html="result"
+                                        role="option" :aria-selected="i === arrowCounters[field.value]"></li>
                                 </ul>
                             </template>
                         </MetadataFields>
@@ -412,6 +416,7 @@ const {
     onChange: autocompleteOnChange,
     setMetadataResult,
     clearAutoCompletePopup,
+    comboboxAttributes,
 } = autocomplete;
 
 //  Shared state ─
