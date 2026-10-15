@@ -1,6 +1,6 @@
 <template>
     <div class="mt-1" id="collocation-params" role="group" aria-labelledby="collocation-params-heading">
-        <h2 id="collocation-params-heading">{{ $t("searchForm.collocationParams") }}:</h2>
+        <h2 id="collocation-params-heading" class="colloc-heading">{{ $t("searchForm.collocationParams") }}:</h2>
 
         <div class="input-group colloc-row">
             <label class="btn btn-outline-secondary" for="colloc-within">{{ $t("searchForm.collocCount") }}</label>
@@ -27,9 +27,13 @@
                 v-model="formData.colloc_lemmas" />
             <label class="btn btn-outline-secondary" for="collocForms">{{ $t("searchForm.collocWordForms") }}</label>
         </div>
+    </div>
+
+    <div class="mt-3" id="collocate-filters" role="group" aria-labelledby="collocate-filters-heading">
+        <h2 id="collocate-filters-heading" class="colloc-heading">{{ $t("searchForm.collocateFilters") }}:</h2>
 
         <div class="input-group colloc-row">
-            <label class="btn btn-outline-secondary" for="colloc-common">{{ $t("searchForm.collocLeaveOut") }}</label>
+            <label class="btn btn-outline-secondary" for="colloc-common">{{ $t("searchForm.collocExclude") }}</label>
             <select class="form-select colloc-select" id="colloc-common" v-model="common">
                 <option value="nofilter">{{ $t("searchForm.collocLeaveNothing") }}</option>
                 <option value="frequency">{{ $t("searchForm.collocLeaveFrequent") }}</option>
@@ -201,7 +205,7 @@ function onFocusOut(name, event) {
 <style lang="scss" scoped>
 @use "../assets/styles/theme.module.scss" as theme;
 
-#collocation-params-heading {
+.colloc-heading {
     width: fit-content;
     font-variant: small-caps;
     font-weight: 700;

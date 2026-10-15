@@ -30,11 +30,15 @@ describe("CollocationOptions", () => {
         const { wrapper } = mountOptions();
         for (const [id, text] of [
             ["colloc-within", "Count collocates"],
-            ["colloc-common", "Leave out"],
+            ["colloc-common", "Exclude"],
         ]) {
             expect(wrapper.find(`label[for="${id}"]`).text()).toBe(text);
             expect(wrapper.find(`select#${id}`).exists()).toBe(true);
         }
+        // the filters, under a heading of their own
+        const filters = wrapper.find("#collocate-filters");
+        expect(document.getElementById(filters.attributes("aria-labelledby")).textContent.trim()).toBe("Collocate Filters:");
+        expect(filters.find("#colloc-common").exists() && filters.find(".colloc-properties").exists()).toBe(true);
         const group = wrapper.find(".colloc-properties");
         expect(group.attributes("role")).toBe("group");
         expect(document.getElementById(group.attributes("aria-labelledby")).textContent.trim()).toBe(
