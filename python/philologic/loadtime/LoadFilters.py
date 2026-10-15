@@ -2,6 +2,8 @@
 """Load Filters used in Loader"""
 
 import os
+import sys
+from itertools import chain
 
 import lz4.frame
 from orjson import dumps, loads
@@ -58,6 +60,7 @@ def spacy_tagger(loader_obj, text):
     up to its sent record, which isn't tagged, and the punctuation after it which ends it (within its bytes: these
     records don't have the sentence's id)."""
     from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
+    from spacy.util import minibatch
 
     def token(record):
         """What spaCy tags for a record: nothing for a sentence"""
@@ -67,6 +70,24 @@ def spacy_tagger(loader_obj, text):
 
     def tokens(records):
         return [token(r) for r in records if token(r) != ""]
+
+    def tagged(sentences):
+        """The docs spaCy tagged for each of these sentences (lists of words): tagged at once, as nlp.pipe tags a
+        batch, unless the GPU runs out of memory for them (sentences of tens of thousands of words, as lists and tables
+        without full stops make). They are then tagged in halves, and a sentence alone in halves of its words."""
+        docs = [SpacyDoc(loader_obj.nlp.vocab, words) for words in sentences]
+        try:
+            return [[doc] for doc in loader_obj.nlp.pipe(docs, batch_size=len(docs))]
+        except gpu_out_of_memory_errors():
+            if len(sentences) == 1 and len(sentences[0]) < 2:
+                raise
+        del docs  # and what the failed batch left on them: freed once out of the except clause, which keeps it
+        free_gpu_memory()
+        if len(sentences) > 1:
+            half = len(sentences) // 2
+            return tagged(sentences[:half]) + tagged(sentences[half:])
+        half = len(sentences[0]) // 2
+        return [[*tagged([sentences[0][:half]])[0], *tagged([sentences[0][half:]])[0]]]
 
     def process_file():
         with open(text["raw"], encoding="utf8") as fh:
@@ -80,35 +101,53 @@ def spacy_tagger(loader_obj, text):
                     if sentence_end is not None and (
                         philo_type == "word" or (philo_type == "punct" and record.attrib["end_byte"] > sentence_end)
                     ):
-                        spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, tokens(sentence_records))
-                        yield spacy_sentence, sentence_records
+                        yield sentence_records
                         sentence_records = []
                         sentence_end = None
                     sentence_records.append(record)
                     if philo_type == "sent":
                         sentence_end = record.attrib["end_byte"]
             if sentence_records:
-                spacy_sentence = SpacyDoc(loader_obj.nlp.vocab, tokens(sentence_records))
-                yield spacy_sentence, sentence_records
+                yield sentence_records
 
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
-        for spacy_sentence, sentence_records in loader_obj.nlp.pipe(process_file(), as_tuples=True, batch_size=1024):
-            parsed_words = iter(spacy_sentence)
-            for record in sentence_records:
-                if token(record) != "":
-                    parsed_word = next(parsed_words)
-                    record.attrib["pos"] = parsed_word.pos_
-                    record.attrib["tag"] = parsed_word.tag_
-                    record.attrib["ent_type"] = parsed_word.ent_type_
-                    record.attrib["lemma"] = "_".join((parsed_word.lemma_ or record.name).lower().split())
-                print(record, file=tmp_file)
+        for batch in minibatch(process_file(), 1024):  # the batches of nlp.pipe(..., batch_size=1024)
+            for sentence_records, spacy_sentence in zip(batch, tagged([tokens(records) for records in batch])):
+                parsed_words = chain.from_iterable(spacy_sentence)
+                for record in sentence_records:
+                    if token(record) != "":
+                        parsed_word = next(parsed_words)
+                        record.attrib["pos"] = parsed_word.pos_
+                        record.attrib["tag"] = parsed_word.tag_
+                        record.attrib["ent_type"] = parsed_word.ent_type_
+                        record.attrib["lemma"] = "_".join((parsed_word.lemma_ or record.name).lower().split())
+                    print(record, file=tmp_file)
 
-            spacy_sentence.tensor = None
-            del spacy_sentence
-            del sentence_records
+                for doc in spacy_sentence:
+                    doc.tensor = None
+                del spacy_sentence
+                del sentence_records
 
     os.remove(text["raw"])
     os.rename(text["raw"] + ".tmp", text["raw"])
+
+
+def gpu_out_of_memory_errors():
+    """The errors of the GPU libraries loaded when the GPU runs out of memory"""
+    errors = []
+    if "torch" in sys.modules:
+        errors.append(sys.modules["torch"].OutOfMemoryError)
+    if "cupy" in sys.modules:
+        errors.append(sys.modules["cupy"].cuda.memory.OutOfMemoryError)
+    return tuple(errors)
+
+
+def free_gpu_memory():
+    """Gives the memory the GPU libraries loaded keep for later back to the GPU"""
+    if "torch" in sys.modules and sys.modules["torch"].cuda.is_initialized():
+        sys.modules["torch"].cuda.empty_cache()
+    if "cupy" in sys.modules:
+        sys.modules["cupy"].get_default_memory_pool().free_all_blocks()
 
 
 def get_lemmas(_, text):
