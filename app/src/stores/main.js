@@ -89,7 +89,8 @@ export const useMainStore = defineStore("main", {
                 end: "",
                 colloc_filter_choice: "",
                 colloc_within: "sent",
-                colloc_lemmas: "no",
+                // collocates counted as lemmas where the database has them
+                colloc_lemmas: philoConfig.collocation_lemmas ? "yes" : "no",
                 filter_frequency: 100,
                 filter_df_pct: "1",
                 approximate: "no",

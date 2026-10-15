@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect } from "vitest";
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createGlobalConfig } from "./helpers.js";
@@ -6,88 +6,106 @@ import { useMainStore } from "../src/stores/main.js";
 import CollocationOptions from "../src/components/CollocationOptions.vue";
 
 const WORD_ATTRIBUTES = { pos: ["ADJ", "NOUN", "VERB"], tag: ["NC", "VINF"] };
+const mounted = [];
 
-function mountOptions(philoConfig = {}) {
+// Each form is unmounted, even after a failure: one left in the page would answer for the next one's ids
+afterEach(() => {
+    while (mounted.length) mounted.pop().unmount();
+});
+
+function mountOptions(philoConfig = {}, formData = {}) {
     const global = createGlobalConfig({
         philoConfig: { word_attributes: WORD_ATTRIBUTES, collocation_lemmas: true, stopwords: "stop.txt", ...philoConfig },
     });
     const store = useMainStore();
     store.initFromConfig(global.provide.$philoConfig);
-    store.formData = { ...store.defaultFields, report: "collocation", colloc_filter_choice: "frequency" };
+    store.formData = { ...store.defaultFields, report: "collocation", colloc_filter_choice: "frequency", ...formData };
     const wrapper = mount(CollocationOptions, { global, attachTo: document.body });
+    mounted.push(wrapper);
     return { wrapper, store };
 }
 
 describe("CollocationOptions", () => {
-    it("groups each choice in a fieldset with its legend", () => {
+    it("labels each choice, as the other rows of the form", () => {
         const { wrapper } = mountOptions();
-        const legends = wrapper.findAll("fieldset > legend").map((l) => l.text());
-        expect(legends).toEqual(expect.arrayContaining([
-            "Count collocates within", "Count collocates as", "Leave out common words",
-            "Keep only collocates with these word properties",
-        ]));
-        wrapper.unmount();
+        for (const [id, text] of [
+            ["colloc-within", "Count collocates"],
+            ["colloc-common", "Leave out"],
+        ]) {
+            expect(wrapper.find(`label[for="${id}"]`).text()).toBe(text);
+            expect(wrapper.find(`select#${id}`).exists()).toBe(true);
+        }
+        const group = wrapper.find(".colloc-properties");
+        expect(group.attributes("role")).toBe("group");
+        expect(document.getElementById(group.attributes("aria-labelledby")).textContent.trim()).toBe(
+            "Keep only collocates with"
+        );
     });
 
     it("shows the lemma choice, the stopwords and the properties only when the database has them", () => {
         const { wrapper } = mountOptions({ collocation_lemmas: false, stopwords: "", word_attributes: {} });
         expect(wrapper.find("#collocLemmas").exists()).toBe(false);
-        expect(wrapper.find("#collocStopwords").exists()).toBe(false);
+        expect(wrapper.find('#colloc-common option[value="stopwords"]').exists()).toBe(false);
         expect(wrapper.find(".colloc-properties").exists()).toBe(false);
-        wrapper.unmount();
     });
 
-    it("counts collocates as lemmas when picked", async () => {
+    it("counts collocates as lemmas where the database has them, as word forms when picked", async () => {
         const { wrapper, store } = mountOptions();
-        expect(wrapper.find("#collocForms").element.checked).toBe(true);
-        await wrapper.find("#collocLemmas").setValue(true);
+        const group = wrapper.find(".colloc-choice");
+        expect(group.attributes("role")).toBe("radiogroup");
+        expect(document.getElementById(group.attributes("aria-labelledby")).textContent.trim()).toBe(
+            "Count collocates as"
+        );
         expect(store.formData.colloc_lemmas).toBe("yes");
-        wrapper.unmount();
+        expect(wrapper.find("#collocLemmas").element.checked).toBe(true);
+        await wrapper.find("#collocForms").setValue(true);
+        expect(store.formData.colloc_lemmas).toBe("no");
     });
 
-    it("leaves out either list of common words, both, or none", async () => {
+    it("counts within n words, the number shown only then, 5 until another is typed", async () => {
         const { wrapper, store } = mountOptions();
-        await wrapper.find("#collocStopwords").setValue(true);
-        expect(store.formData.colloc_filter_choice).toBe("frequency | stopwords");
-        await wrapper.find("#collocFrequent").setValue(false);
-        expect(store.formData.colloc_filter_choice).toBe("stopwords");
-        await wrapper.find("#collocStopwords").setValue(false);
-        expect(store.formData.colloc_filter_choice).toBe("nofilter");
-        await wrapper.find("#filter-df-pct").setValue("2");
-        expect(store.formData.colloc_filter_choice).toBe("frequency");
-        wrapper.unmount();
-    });
-
-    it("names the controls next to their inputs by what they hold", () => {
-        const { wrapper } = mountOptions();
-        for (const control of ["#collocWithinN", "#collocFrequent"]) {
-            const ids = wrapper.find(control).attributes("aria-labelledby").split(" ");
-            for (const id of ids) expect(document.getElementById(id)).not.toBeNull();
-        }
-        wrapper.unmount();
-    });
-
-    it("selects within n words when a number is typed, not when tabbing through", async () => {
-        const { wrapper, store } = mountOptions();
-        await wrapper.find("#collocNWords").trigger("focus");
-        expect(store.formData.colloc_within).toBe("sent");
-        await wrapper.find("#collocNWords").setValue("5");
+        expect(wrapper.find("#collocNWords").exists()).toBe(false);
+        await wrapper.find("#colloc-within").setValue("n");
+        expect(wrapper.find("#collocNWords").element.value).toBe("5");
+        await wrapper.find("#collocNWords").setValue("8");
         expect(store.formData.colloc_within).toBe("n");
-        wrapper.unmount();
+        expect(String(store.formData.method_arg)).toBe("8");
+        await wrapper.find("#colloc-within").setValue("sent");
+        await wrapper.find("#colloc-within").setValue("n");
+        expect(String(store.formData.method_arg)).toBe("8");
+    });
+
+    it("leaves out either list of common words, both, or none, the threshold shown with the most frequent", async () => {
+        const { wrapper, store } = mountOptions();
+        expect(wrapper.find("#filter-df-pct").exists()).toBe(true);
+        await wrapper.find("#colloc-common").setValue("frequency | stopwords");
+        expect(store.formData.colloc_filter_choice).toBe("frequency | stopwords");
+        await wrapper.find("#colloc-common").setValue("stopwords");
+        expect(wrapper.find("#filter-df-pct").exists()).toBe(false);
+        await wrapper.find("#colloc-common").setValue("nofilter");
+        expect(store.formData.colloc_filter_choice).toBe("nofilter");
+    });
+
+    it("shows a new search's common words, and those of links in any order", () => {
+        const fresh = mountOptions({}, { colloc_filter_choice: "" });
+        expect(fresh.wrapper.find("#colloc-common").element.value).toBe("stopwords");
+        const old = mountOptions({}, { colloc_filter_choice: "stopwords | frequency" });
+        expect(old.wrapper.find("#colloc-common").element.value).toBe("frequency | stopwords");
     });
 
     it("keeps the values ticked of each property, its button saying which", async () => {
         const { wrapper, store } = mountOptions();
         const toggle = wrapper.find("#colloc-property-pos-toggle");
-        const panel = wrapper.find("#colloc-property-pos");
+        const popup = wrapper.find("#colloc-property-pos");
         expect(toggle.attributes("aria-expanded")).toBe("false");
         expect(toggle.attributes("aria-controls")).toBe("colloc-property-pos");
-        expect(panel.attributes("hidden")).toBeDefined();
+        expect(popup.attributes("hidden")).toBeDefined();
         expect(toggle.text()).toContain("any");
         await toggle.trigger("click");
         expect(toggle.attributes("aria-expanded")).toBe("true");
-        await wrapper.find("#colloc-property-pos-2").setValue(true);  // VERB
-        await wrapper.find("#colloc-property-pos-0").setValue(true);  // ADJ
+        expect(popup.attributes("hidden")).toBeUndefined();
+        await wrapper.find("#colloc-property-pos-2").setValue(true); // VERB
+        await wrapper.find("#colloc-property-pos-0").setValue(true); // ADJ
         expect(store.formData.colloc_attr_pos).toBe("ADJ | VERB");
         expect(toggle.text()).toContain("ADJ, VERB");
         const [selectAll, clear] = wrapper.findAll("#colloc-property-pos .colloc-value-actions button");
@@ -97,6 +115,24 @@ describe("CollocationOptions", () => {
         expect(store.formData.colloc_attr_pos).toBe("");
         await nextTick();
         expect(toggle.text()).toContain("any");
-        wrapper.unmount();
+    });
+
+    it("shows one property's values at a time, until Escape (back on its button) or the focus going elsewhere", async () => {
+        const { wrapper } = mountOptions();
+        const pos = wrapper.find("#colloc-property-pos-toggle");
+        const tag = wrapper.find("#colloc-property-tag-toggle");
+        await pos.trigger("click");
+        await tag.trigger("click");
+        expect(pos.attributes("aria-expanded")).toBe("false");
+        expect(tag.attributes("aria-expanded")).toBe("true");
+        const value = wrapper.find("#colloc-property-tag-0");
+        value.element.focus();
+        await value.trigger("keydown", { key: "Escape" });
+        await nextTick();
+        expect(tag.attributes("aria-expanded")).toBe("false");
+        expect(document.activeElement).toBe(tag.element);
+        await tag.trigger("click");
+        await tag.trigger("focusout", { relatedTarget: wrapper.find("#colloc-common").element });
+        expect(tag.attributes("aria-expanded")).toBe("false");
     });
 });

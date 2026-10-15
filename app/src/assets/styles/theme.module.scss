@@ -271,6 +271,13 @@ input {
     .form-range::-moz-range-thumb {
         border: 3px solid CanvasText !important;
     }
+    // the choice made of buttons picked one of: in the highlight colors, as forced colors draw every button alike
+    .btn-check:checked + .btn {
+        forced-color-adjust: none;
+        background-color: Highlight !important;
+        border-color: Highlight !important;
+        color: HighlightText !important;
+    }
 }
 
 .icon-x {
