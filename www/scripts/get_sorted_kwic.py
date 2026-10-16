@@ -34,11 +34,18 @@ def _nb_build_ranks(
     hit_indices, left_ranks, right_ranks, query_ranks,
     start_index, n_total,
 ):
-    """Classify sentence words and output sort rank arrays. Returns (n_written, new_index)."""
+    """Classify sentence words and output sort rank arrays. Returns (n_written, new_index). The hits in no sentence of
+    the collocation index have the ranks of no word."""
     ri = 0
     index = start_index
     for i in range(n_total):
         if not hit_matched[i]:
+            hit_indices[ri] = index
+            for j in range(10):
+                left_ranks[ri, j] = zzz_rank
+                right_ranks[ri, j] = zzz_rank
+                query_ranks[ri, j] = zzz_rank
+            ri += 1
             index += 1
             continue
         si = hit_sent_idx[i]
@@ -206,13 +213,49 @@ def _numpy_sort(bin_path, request, metadata_fields=None):
     return hit_indices[sorted_idx]
 
 
-def _collect_vectorized(hits, bin_path, colloc_dir, db):
-    """Vectorized data collection: rank records of the hits, appended to bin_path as the search finds them."""
+def _prefix_keys(ids, depth):
+    """The first depth columns of rows of object ids, as byte strings that compare like the id tuples."""
+    return np.ascontiguousarray(ids[:, :depth], dtype=">u4").view(f"S{4 * depth}").ravel()
+
+
+def _metadata_rank_tables(db, metadata_fields, zzz_rank):
+    """For each metadata field, (prefix_len, the sorted id keys of its objects, the rank of their values). The values
+    are ranked in the order the concordance sorts them (regardless of case, and of accents with ascii_conversion):
+    values sorting alike share a rank, missing ones (zzz_rank) come last."""
+    metadata_caches = bulk_load_metadata(db, metadata_fields, inherit=True)
+    tables = []
+    for field in metadata_fields:
+        prefix_len, cache = metadata_caches.get(field, (1, {}))
+        value_rank = sort_ranks(cache.values(), db.locals.ascii_conversion)
+        keys = _prefix_keys(np.array(list(cache), dtype=np.uint32).reshape(-1, prefix_len), prefix_len)
+        ranks = np.array([value_rank.get(value, zzz_rank) for value in cache.values()], dtype=np.uint32)
+        order = np.argsort(keys, kind="stable")
+        tables.append((prefix_len, keys[order], ranks[order]))
+    return tables
+
+
+def _metadata_ranks(all_hits, metadata_tables, zzz_rank):
+    """The ranks of the metadata values of hits (rows of a hitlist), a column per field: zzz_rank for the hits in no
+    object of the field."""
+    columns = np.full((len(all_hits), len(metadata_tables)), zzz_rank, dtype=np.uint32)
+    for column, (prefix_len, keys, ranks) in enumerate(metadata_tables):
+        if len(keys):
+            hit_keys = _prefix_keys(all_hits, prefix_len)
+            found = np.minimum(np.searchsorted(keys, hit_keys), len(keys) - 1)
+            matched = keys[found] == hit_keys
+            columns[matched, column] = ranks[found[matched]]
+    return columns
+
+
+def _collect_vectorized(hits, bin_path, colloc_dir, db, metadata_fields=()):
+    """Vectorized data collection: a rank record for each hit, appended to bin_path as the search finds them. With
+    metadata_fields, the records end with the ranks of the hits' values of these fields."""
     token_ids_mmap, sent_offsets, has_number, sent_flat, vocab_sort_rank = _get_kwic_arrays(
         colloc_dir, db.locals.ascii_conversion
     )
     n_sents = len(sent_flat)
     zzz_rank = np.uint32(len(vocab_sort_rank))
+    metadata_tables = _metadata_rank_tables(db, metadata_fields, zzz_rank)
 
     index = 0
 
@@ -249,11 +292,10 @@ def _collect_vectorized(hits, bin_path, colloc_dir, db):
                 last_pos_arr = np.max(all_positions, axis=1).astype(np.int64)
 
             # Build sort rank arrays via numba
-            n_matched = int(matched.sum())
-            hit_indices = np.empty(n_matched, dtype=np.uint32)
-            left_ranks = np.empty((n_matched, 10), dtype=np.uint32)
-            right_ranks = np.empty((n_matched, 10), dtype=np.uint32)
-            query_ranks = np.empty((n_matched, 10), dtype=np.uint32)
+            hit_indices = np.empty(n_total, dtype=np.uint32)
+            left_ranks = np.empty((n_total, 10), dtype=np.uint32)
+            right_ranks = np.empty((n_total, 10), dtype=np.uint32)
+            query_ranks = np.empty((n_total, 10), dtype=np.uint32)
 
             n_written, index = _nb_build_ranks(
                 token_ids_mmap, sent_offsets, has_number,
@@ -264,11 +306,13 @@ def _collect_vectorized(hits, bin_path, colloc_dir, db):
             )
 
             if n_written > 0:
-                records = np.empty((n_written, 31), dtype=np.uint32)
+                records = np.empty((n_written, 31 + len(metadata_tables)), dtype=np.uint32)
                 records[:, 0] = hit_indices[:n_written]
                 records[:, 1:11] = left_ranks[:n_written]
                 records[:, 11:21] = right_ranks[:n_written]
                 records[:, 21:31] = query_ranks[:n_written]
+                if metadata_tables:
+                    records[:, 31:] = _metadata_ranks(all_hits, metadata_tables, zzz_rank)
                 with open(bin_path, "ab") as f:
                     f.write(records.tobytes())
 
@@ -277,90 +321,6 @@ def _collect_vectorized(hits, bin_path, colloc_dir, db):
 
         if not raw:
             time.sleep(0.05)
-
-
-def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
-    """Metadata sort collection producing binary records with word + metadata ranks."""
-    colloc_dir = os.path.join(db.path, "collocations")
-    token_ids, sent_offsets, has_number, sent_flat, vocab_sort_rank = _get_kwic_arrays(
-        colloc_dir, db.locals.ascii_conversion
-    )
-    n_sents = len(sent_flat)
-    zzz_rank = int(len(vocab_sort_rank))
-
-    # Bulk-load metadata and rank its values in the order the concordance sorts them (regardless of case, and of
-    # accents with ascii_conversion): values sorting alike share a rank, missing ones come last
-    metadata_caches = bulk_load_metadata(db, metadata_fields, inherit=True)
-    meta_rank_maps = {}
-    for field in metadata_fields:
-        prefix_len, cache = metadata_caches.get(field, (1, {}))
-        meta_rank_maps[field] = (prefix_len, cache, sort_ranks(cache.values(), db.locals.ascii_conversion))
-
-    n_meta = len(metadata_fields)
-    record_width = 31 + n_meta
-
-    buffer = []
-    index = 0
-
-    for hit in hits:
-        # Sentence lookup via big-endian S24 key
-        hit_key = np.array(hit.hit[:6], dtype=">u4").tobytes()
-        si = int(np.searchsorted(sent_flat, hit_key))
-
-        positions = sorted(word.philo_id[-1] for word in hit.words)
-
-        # Classify sentence words and collect sort ranks
-        left_buf = []
-        right_buf = []
-        query_buf = []
-        if si < n_sents and sent_flat[si] == hit_key:
-            s_start = int(sent_offsets[si])
-            s_end = int(sent_offsets[si + 1])
-            pos = 1
-            for k in range(s_start, s_end):
-                tid = int(token_ids[k])
-                if has_number[tid]:
-                    pos += 1
-                    continue
-                rank = int(vocab_sort_rank[tid])
-                if positions[0] > pos:
-                    left_buf.append(rank)
-                elif pos > positions[-1]:
-                    right_buf.append(rank)
-                else:
-                    query_buf.append(rank)
-                pos += 1
-
-        # Build record: [index, left(10), right(10), query(10), meta_ranks...]
-        record = np.full(record_width, zzz_rank, dtype=np.uint32)
-        record[0] = index
-        left_slice = left_buf[-10:]
-        left_slice.reverse()
-        for j, r in enumerate(left_slice):
-            record[1 + j] = r
-        for j, r in enumerate(right_buf[:10]):
-            record[11 + j] = r
-        for j, r in enumerate(query_buf[:10]):
-            record[21 + j] = r
-
-        # Metadata sort ranks
-        hit_tuple = tuple(hit.hit)
-        for mi, field in enumerate(metadata_fields):
-            prefix_len, cache, value_rank = meta_rank_maps[field]
-            record[31 + mi] = value_rank.get(cache.get(hit_tuple[:prefix_len]), zzz_rank)
-
-        buffer.append(record.tobytes())
-        if len(buffer) >= 1000:
-            with open(bin_path, "ab") as f:
-                f.write(b"".join(buffer))
-            buffer.clear()
-
-        index += 1
-
-    if buffer:
-        with open(bin_path, "ab") as f:
-            f.write(b"".join(buffer))
-
 
 
 @contextmanager
@@ -450,14 +410,9 @@ def get_sorted_kwic(request, config):
                 and request.third_kwic_sorting_option in ("left", "right", "q", "")
             )
             colloc_dir = os.path.join(db.path, "collocations")
+            metadata_fields = list(config.kwic_metadata_sorting_fields) if metadata_search else []
 
-            # Data collection
-            if metadata_search:
-                metadata_fields = list(config.kwic_metadata_sorting_fields)
-                _collect_metadata_sort(hits, bin_path, metadata_fields, config, db)
-            else:
-                metadata_fields = []
-                _collect_vectorized(hits, bin_path, colloc_dir, db)
+            _collect_vectorized(hits, bin_path, colloc_dir, db, metadata_fields)
 
             _sort_cache(bin_path, sorted_path, request, metadata_fields)
     return _paginate(sorted_path, hits, request, config, db)
