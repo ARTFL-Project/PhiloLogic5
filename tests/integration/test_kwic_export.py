@@ -65,6 +65,24 @@ class TestSortedKwic:
         assert [heads.get(div, "") for div in divs] == [hit["head"] for hit in hits]
         assert any(heads.get(div) and not own_heads.get(div) for div in divs)  # some of them inherited
 
+    @pytest.mark.usefixtures("web")  # for the web app's scripts
+    def test_metadata_sort_ranks_words_as_the_word_sort(self, eltec_db, tmp_path):
+        """Sorted by metadata, each hit has a record, with the ranks of its words that the sorts by words give it: the
+        hits of the sentences numbered by a multiple of 256 had those of no word (numpy left the trailing NULs out of
+        their keys)."""
+        import numpy as np
+        from scripts.get_sorted_kwic import _collect_vectorized
+
+        hits = eltec_db.query("love", "single_term", "0")
+        hits.finish()
+        colloc_dir = os.path.join(eltec_db.path, "collocations")
+        _collect_vectorized(hits, str(tmp_path / "words.bin"), colloc_dir, eltec_db)
+        _collect_vectorized(hits, str(tmp_path / "title.bin"), colloc_dir, eltec_db, ["title"])
+        words = np.fromfile(tmp_path / "words.bin", dtype=np.uint32).reshape(-1, 31)
+        title = np.fromfile(tmp_path / "title.bin", dtype=np.uint32).reshape(-1, 32)
+        assert list(title[:, 0]) == list(range(len(hits)))
+        assert (title[words[:, 0], :31] == words).all()
+
     def test_waits_for_the_sort_under_way(self, web, eltec_db, eltec_db_path):
         """A request for a sort that another request is making waits for its .sorted, and pages through it: both
         collected into the same .bin, and the cached sort kept part of the hits."""
