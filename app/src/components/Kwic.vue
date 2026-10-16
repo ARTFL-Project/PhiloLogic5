@@ -50,21 +50,6 @@
                         </div>
                     </div>
 
-                    <div class="progress mt-3" v-if="runningTotal != resultsLength" role="progressbar"
-                        :aria-valuenow="runningTotal" :aria-valuemin="0" :aria-valuemax="resultsLength">
-                        <div class="progress-bar"
-                            :style="`width: ${((runningTotal / resultsLength) * 100).toFixed(2)}%`" :aria-hidden="true">
-                            {{ Math.floor((runningTotal / resultsLength) * 100) }}%
-                        </div>
-                        <span class="visually-hidden">
-                            {{ $t('kwic.progressDescription', {
-                                current: runningTotal,
-                                total: resultsLength,
-                                percent: Math.floor((runningTotal / resultsLength) * 100)
-                            }) }}
-                        </span>
-                    </div>
-
                     <!-- KWIC results -->
                     <div id="kwic-concordance">
                         <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
@@ -150,16 +135,21 @@ const {
 
 const results = ref({ description: { end: 0 } });
 const searchParams = ref({});
-const runningTotal = ref(0);
 
 const { beforeEnter: onBeforeEnter, enter: onEnter } = useFadeTransition(0.0075);
 
 provide("results", computed(() => results.value.results));
 
-// AbortController for the streaming sorted-KWIC fetch. Held as a module-scope
-// `let` (not a ref) since its identity isn't needed reactively — we just need
-// to keep a handle to abort on unmount or query change.
+// AbortController for the sorted-KWIC request in flight, which can take a while.
+// Held as a module-scope `let` (not a ref) since its identity isn't needed
+// reactively — we just need to keep a handle to abort on unmount or query change.
 let abortController = null;
+
+// Abort the sorted-KWIC request in flight, if any: its results are no longer wanted
+function abortSortedFetch() {
+    if (abortController) abortController.abort();
+    abortController = null;
+}
 
 // ── Sort options (writable computeds proxy formData) ─────────────────────────
 const first_kwic_sorting_option = computed({
@@ -290,55 +280,25 @@ function sortResults() {
 // ── Fetch path ───────────────────────────────────────────────────────────────
 async function fetchSortedResults() {
     searching.value = true;
-    runningTotal.value = 0;
-
-    const params = new URLSearchParams(paramsFilter({ ...formData.value }));
-    const url = `${$dbUrl}/scripts/get_sorted_kwic.py?${params}`;
-
-    if (abortController) abortController.abort();
-    abortController = new AbortController();
-
-    const applyData = (data) => {
-        if (data.progress) {
-            runningTotal.value = data.progress.hits_done;
-            resultsLength.value = data.progress.total;
-        } else {
-            results.value = data;
-            resultsLength.value = data.results_length;
-            runningTotal.value = data.results_length;
-        }
-    };
+    abortSortedFetch();
+    const controller = new AbortController();
+    abortController = controller;
 
     try {
-        const response = await fetch(url, { signal: abortController.signal });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        // eslint-disable-next-line no-constant-condition
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop();
-
-            for (const line of lines) {
-                if (!line.trim()) continue;
-                applyData(JSON.parse(line));
-            }
-        }
-
-        if (buffer.trim()) applyData(JSON.parse(buffer));
+        const response = await $http.get(`${$dbUrl}/scripts/get_sorted_kwic.py`, {
+            params: paramsFilter({ ...formData.value }),
+            signal: controller.signal,
+        });
+        results.value = response.data;
+        resultsLength.value = response.data.results_length;
     } catch (e) {
-        if (e.name === "AbortError") return;
-        debug({ $options: { name: "kwic-report" } }, e);
+        if (!controller.signal.aborted) debug({ $options: { name: "kwic-report" } }, e);
     } finally {
-        searching.value = false;
-        abortController = null;
+        // Not when aborted: a newer request is searching, or the component is gone
+        if (abortController === controller) {
+            searching.value = false;
+            abortController = null;
+        }
     }
 }
 
@@ -366,7 +326,6 @@ function fetchResults() {
         .then((response) => {
             results.value = response.data;
             resultsLength.value = response.data.results_length;
-            runningTotal.value = response.data.results_length;
             results.value.description = response.data.description;
             if (response.data.query_done) totalResultsDone.value = true;
             searching.value = false;
@@ -379,13 +338,14 @@ function fetchResults() {
 
 watch(urlUpdate, (newUrl, oldUrl) => {
     if (!isOnlyFacetChange(newUrl, oldUrl)) {
-        if (abortController) abortController.abort();
+        abortSortedFetch();
         fetchResults();
     }
 });
 
 onBeforeUnmount(() => {
-    if (abortController) abortController.abort();
+    if (abortController) searching.value = false;
+    abortSortedFetch();
 });
 
 formData.value.report = "kwic";
@@ -522,15 +482,6 @@ fetchResults();
     outline: 2px solid rgba(255, 255, 255, 0.5);
     outline-offset: 2px;
     box-shadow: 0 0 0 0.2rem rgba(255, 255, 255, 0.25);
-}
-
-.progress {
-    border-radius: 0.375rem;
-    overflow: hidden;
-}
-
-.progress-bar {
-    background-color: theme.$button-color !important;
 }
 
 .dropdown-item:focus {

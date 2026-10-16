@@ -1,10 +1,9 @@
-"""Falcon resources for the 4 raw-WSGI PhiloLogic5 endpoints.
+"""Falcon resources for the 3 raw-WSGI PhiloLogic5 endpoints.
 
-These endpoints couldn't use @json_endpoint because they need streaming,
-custom headers (Set-Cookie), or non-JSON responses (302 redirect).
+These endpoints couldn't use @json_endpoint because they need custom
+headers (Set-Cookie), or non-JSON responses (CSV, 302 redirect).
 """
 
-import os
 import sqlite3
 
 import falcon
@@ -213,73 +212,3 @@ class ResolveCiteResource:
                     best_url = home.rstrip("/") + make_absolute_object_link(config, short_id)
                     break
         raise falcon.HTTPFound(best_url)
-
-
-# ---------------------------------------------------------------------------
-# get_sorted_kwic — streaming NDJSON with progress updates
-# ---------------------------------------------------------------------------
-
-class SortedKWICResource:
-    """Streaming sorted KWIC: collect sort data, sort, paginate over one connection."""
-
-    def on_get(self, req, resp, db_name):
-        config = req.context.config
-        request = req.context.request
-
-        # Before the stream starts, so that a bad request gets its 400: once streaming, it cut the response short
-        if not request.q:
-            raise BadRequest("A search term (q) is required to sort a KWIC")
-        db = DB(config.db_path + "/data/")
-        hits = db.query(request["q"], request["method"], request["arg"], **request.metadata)
-
-        resp.content_type = "application/x-ndjson; charset=UTF-8"
-        resp.set_header("X-Accel-Buffering", "no")
-        resp.set_header("Cache-Control", "no-cache")
-        resp.stream = self._generate(request, config, db, hits)
-
-    def _generate(self, request, config, db, hits):
-        """Yield NDJSON progress lines and final result."""
-        from scripts.get_sorted_kwic import (
-            _collect_metadata_sort,
-            _collect_vectorized,
-            _get_cache_path,
-            _paginate,
-            _sort_cache,
-        )
-
-        cache_path = _get_cache_path(request, db)
-        sorted_path = f"{cache_path}.sorted"
-        bin_path = cache_path + ".bin"
-
-        # Phase 1: Fast pagination shortcut
-        if os.path.exists(sorted_path):
-            yield orjson.dumps(_paginate(sorted_path, hits, request, config, db)) + b"\n"
-            return
-
-        # Phase 2: Clean stale partial caches
-        if os.path.exists(bin_path):
-            os.remove(bin_path)
-        if os.path.exists(cache_path):
-            os.remove(cache_path)
-
-        # Determine sort mode
-        metadata_search = not (
-            request.first_kwic_sorting_option in ("left", "right", "q", "")
-            and request.second_kwic_sorting_option in ("left", "right", "q", "")
-            and request.third_kwic_sorting_option in ("left", "right", "q", "")
-        )
-        colloc_dir = os.path.join(db.path, "collocations")
-
-        # Phase 3: Data collection (streams progress lines)
-        if metadata_search:
-            metadata_fields = list(config.kwic_metadata_sorting_fields)
-            yield from _collect_metadata_sort(hits, bin_path, metadata_fields, config, db)
-        else:
-            metadata_fields = []
-            yield from _collect_vectorized(hits, bin_path, colloc_dir, db)
-
-        # Phase 4: Sort
-        _sort_cache(bin_path, sorted_path, request, metadata_fields)
-
-        # Phase 5: Paginate and yield final result
-        yield orjson.dumps(_paginate(sorted_path, hits, request, config, db)) + b"\n"

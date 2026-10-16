@@ -3,8 +3,8 @@
 Handles all JSON and HTML scripts via a single resource class, dispatching
 to plain (request, config) -> result functions in the scripts package.
 
-The 4 special scripts (access_request, export_results, resolve_cite,
-get_sorted_kwic) are handled by dedicated resources in streaming.py.
+The 3 special scripts (access_request, export_results, resolve_cite) are
+handled by dedicated resources in streaming.py.
 """
 
 import falcon
@@ -31,6 +31,7 @@ JSON_SCRIPTS = {
     "get_query_terms",
     "get_similar_collocate_distributions",
     "get_sorted_frequency",
+    "get_sorted_kwic",
     "get_table_of_contents",
     "get_term_groups",
     "get_text_object",

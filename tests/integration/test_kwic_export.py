@@ -1,8 +1,10 @@
 """Integration tests, through the web app, of the KWIC sorted by metadata and of the export of results."""
 
-import json
+import os
 import re
+import threading
 from pathlib import Path
+from urllib.parse import urlencode
 
 import pytest
 
@@ -22,9 +24,9 @@ def web(eltec_db_path):
         yield lambda path, **params: client.simulate_get(f"/philologic5/{corpus.name}/{path}", params=params)
 
 
-def last_json(response):
+def ok_json(response):
     assert response.status_code == 200, response.text[:300]
-    return json.loads(response.text.splitlines()[-1])  # streamed responses end with the result, after progress lines
+    return response.json
 
 
 @pytest.mark.integration
@@ -34,7 +36,7 @@ class TestSortedKwic:
         hits = eltec_db.query("love", "single_term", "0")  # what the web app resolves proxy to for one word
         hits.finish()
         params = {**QUERY, "first_kwic_sorting_option": "title", "start": "1", "end": str(len(hits))}
-        titles = [r["metadata_fields"]["title"] for r in last_json(web("scripts/get_sorted_kwic.py", **params))["results"]]
+        titles = [r["metadata_fields"]["title"] for r in ok_json(web("scripts/get_sorted_kwic.py", **params))["results"]]
         assert len(titles) == len(hits) and len(set(titles)) > 1
         assert titles == sorted(titles, key=lambda title: sort_key(title, eltec_db.locals.ascii_conversion))
 
@@ -48,7 +50,7 @@ class TestSortedKwic:
             Config, "__getitem__", lambda self, item: ["head"] if item == "kwic_metadata_sorting_fields" else real(self, item)
         )
         params = {**QUERY, "q": "lover", "first_kwic_sorting_option": "head", "start": "1", "end": "1000"}
-        heads = [r["metadata_fields"]["head"] for r in last_json(web("scripts/get_sorted_kwic.py", **params))["results"]]
+        heads = [r["metadata_fields"]["head"] for r in ok_json(web("scripts/get_sorted_kwic.py", **params))["results"]]
         assert len(set(heads)) > 10
         assert heads == sorted(heads, key=lambda head: sort_key(head, eltec_db.locals.ascii_conversion))
 
@@ -62,6 +64,39 @@ class TestSortedKwic:
         divs = [tuple(hit.hit[:prefix_len]) for hit in hits]
         assert [heads.get(div, "") for div in divs] == [hit["head"] for hit in hits]
         assert any(heads.get(div) and not own_heads.get(div) for div in divs)  # some of them inherited
+
+    def test_waits_for_the_sort_under_way(self, web, eltec_db, eltec_db_path):
+        """A request for a sort that another request is making waits for its .sorted, and pages through it: both
+        collected into the same .bin, and the cached sort kept part of the hits."""
+        import falcon.testing
+        import numpy as np
+        from philologic.runtime import WebConfig, WSGIHandler
+        from scripts.get_sorted_kwic import _get_cache_path, _sort_lock
+
+        params = {**QUERY, "first_kwic_sorting_option": "left", "start": "1", "end": "25"}
+        config = WebConfig(str(Path(eltec_db_path).parent))
+        request = WSGIHandler(falcon.testing.create_environ(query_string=urlencode(params)), config)
+        cache_path = _get_cache_path(request, eltec_db)
+        hits = eltec_db.query("love", "single_term", "0")
+        hits.finish()
+        order = np.arange(len(hits), dtype=np.uint32)[::-1]  # the other request's sort: the last hit first
+        responses = []
+        try:
+            for suffix in (".sorted", ".bin"):
+                if os.path.exists(cache_path + suffix):
+                    os.remove(cache_path + suffix)
+            with _sort_lock(cache_path):
+                waiting = threading.Thread(target=lambda: responses.append(web("scripts/get_sorted_kwic.py", **params)))
+                waiting.start()
+                waiting.join(1)
+                assert waiting.is_alive() and not os.path.exists(cache_path + ".bin")
+                order.tofile(cache_path + ".sorted")
+            waiting.join(60)
+            ids = [r["philo_id"] for r in ok_json(responses[0])["results"]]
+            assert ids == [list(hits[int(i)].philo_id) for i in order[:25]]
+        finally:
+            if os.path.exists(cache_path + ".sorted"):
+                os.remove(cache_path + ".sorted")  # not the sort of the words to the left
 
 
 @pytest.mark.integration
