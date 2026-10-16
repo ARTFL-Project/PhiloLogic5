@@ -209,6 +209,7 @@
         "frequentCollocates": "Most frequent collocates",
         "overRepresentedCollocates": "Distinctive collocates",
         "emptySearch": "Note that an empty search will run a comparison against the rest of the corpus",
+        "nothingToCompare": "Nothing to compare: give at least one of the two subcorpora some criteria.",
         "metadataFilter": "Filter by the following metadata fields",
         "primaryCorpusCriteria": "Primary subcorpus (current search)",
         "comparisonCorpusCriteria": "Comparison subcorpus (compare against)",

@@ -5,6 +5,7 @@ import { createGlobalConfig, createMockHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
 import collocationFixture from "./fixtures/collocation.json";
 import Collocation from "../src/components/Collocation.vue";
+import Compare from "../src/components/collocation/Compare.vue";
 
 function mountCollocation(overrides = {}) {
     const http = overrides.http || createMockHttp({
@@ -193,7 +194,8 @@ describe("Collocation", () => {
     // Helper: mount with a settled route. mountCollocation can't do this
     // because createTestRouter doesn't await isReady(), and Collocation reads
     // $route.query in created() — which runs synchronously at mount time.
-    async function mountCollocationWithRoute(http, query) {
+    // asApp: the store's form follows the URL, as App sets it on each route
+    async function mountCollocationWithRoute(http, query, { asApp = false } = {}) {
         const global = createGlobalConfig({
             http,
             route: { name: "collocation", path: "/collocation", query },
@@ -210,6 +212,10 @@ describe("Collocation", () => {
 
         const store = useMainStore();
         store.formData = { ...store.formData, q: "liberty", report: "collocation", colloc_within: "sent", colloc_filter_choice: "frequency", filter_frequency: 100 };
+        if (asApp) {
+            store.formData = { ...store.formData, ...query };
+            router.afterEach((to) => { store.formData = { ...store.formData, ...to.query }; });
+        }
         store.searchableMetadata = {
             display: [{ value: "author", label: "Author", example: "Voltaire" }],
             inputStyle: { author: "text" },
@@ -300,5 +306,82 @@ describe("Collocation", () => {
             // Should have made an additional HTTP call
             expect(http.get.mock.calls.length).toBeGreaterThan(1);
         }
+    });
+
+    function compareHttp() {
+        return createMockHttp({
+            "collocation.py": collocationFixture,
+            "comparative_collocations.py": { top: [["power", 1.5]], bottom: [["own", 2.5]] },
+        });
+    }
+    const searchesOf = (http) => http.get.mock.calls
+        .filter((c) => c[0].includes("/reports/collocation.py")).map((c) => c[1].params);
+    const comparisonsOf = (http) => http.get.mock.calls.filter((c) => c[0].includes("comparative_collocations.py"));
+    const runButton = (wrapper) => wrapper.findAll("button").find((b) => b.text().includes("Run comparison"));
+
+    it("runs the comparison the form gives from the URL, searching the primary subcorpus anew", async () => {
+        const http = compareHttp();
+        const wrapper = await mountCollocationWithRoute(http, {
+            q: "liberty", report: "collocation", collocation_method: "compare", compare_title: "Candide",
+        }, { asApp: true });
+        await flushPromises();
+        const compare = wrapper.findComponent(Compare);
+        compare.props("primaryMetadataValues").author = '"Hugo"';
+        compare.props("comparedMetadataValues").author = '"Zola"';
+        compare.props("comparedMetadataValues").title = "";  // erased: no longer compared
+        http.get.mockClear();
+        await runButton(wrapper).trigger("click");
+        await flushPromises();
+
+        const query = wrapper.vm.$router.currentRoute.value.query;
+        expect(query).toMatchObject({ author: '"Hugo"', compare_author: '"Zola"', collocation_method: "compare" });
+        expect(query).not.toHaveProperty("compare_title");
+        // the primary subcorpus, then the one compared with, which keeps none of the comparison's parameters
+        expect(searchesOf(http).map((p) => p.author)).toEqual(['"Hugo"', '"Zola"']);
+        expect(searchesOf(http)[1]).not.toHaveProperty("compare_title");
+        expect(comparisonsOf(http).length).toBe(1);
+    });
+
+    it("compares with other metadata without searching the primary subcorpus again", async () => {
+        const http = compareHttp();
+        const wrapper = await mountCollocationWithRoute(http, {
+            q: "liberty", report: "collocation", collocation_method: "compare", author: '"Hugo"', compare_author: '"Sand"',
+        }, { asApp: true });
+        await flushPromises();
+        await runButton(wrapper).trigger("click");  // the URL as the form makes it
+        await flushPromises();
+        wrapper.findComponent(Compare).props("comparedMetadataValues").author = '"Zola"';
+        http.get.mockClear();
+        await runButton(wrapper).trigger("click");
+        await flushPromises();
+
+        expect(wrapper.vm.$router.currentRoute.value.query).toMatchObject({ author: '"Hugo"', compare_author: '"Zola"' });
+        expect(searchesOf(http).map((p) => p.author)).toEqual(['"Zola"']);
+        expect(comparisonsOf(http).length).toBe(1);
+    });
+
+    it("restores both subcorpora from the URL, as on a reload, and compares them", async () => {
+        const http = compareHttp();
+        const wrapper = await mountCollocationWithRoute(http, {
+            q: "liberty", report: "collocation", collocation_method: "compare", author: '"Hugo"', compare_author: '"Zola"',
+        }, { asApp: true });
+        await flushPromises();
+        const compare = wrapper.findComponent(Compare);
+
+        expect(compare.props("primaryMetadataValues").author).toBe('"Hugo"');
+        expect(compare.props("comparedMetadataValues").author).toBe('"Zola"');
+        expect(searchesOf(http).map((p) => p.author)).toEqual(['"Hugo"', '"Zola"']);
+        expect(comparisonsOf(http).length).toBe(1);
+    });
+
+    it("says there is nothing to compare when both subcorpora are the whole corpus", async () => {
+        const http = compareHttp();
+        const wrapper = await mountCollocationWithRoute(http, {
+            q: "liberty", report: "collocation", collocation_method: "compare",
+        }, { asApp: true });
+        await flushPromises();
+
+        expect(comparisonsOf(http).length).toBe(0);
+        expect(wrapper.text()).toContain("Nothing to compare");
     });
 });

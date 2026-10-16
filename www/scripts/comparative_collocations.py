@@ -38,7 +38,7 @@ def get_relative_proportions(all_collocates, other_collocates, whole_corpus):
         z = round(float(zscores[idx]), 4)
         if z > 0:
             top.append((words[idx], z))
-        else:
+        elif z < 0:  # as frequent in both: neither over- nor under-represented
             bottom.append((words[idx], abs(z)))
     bottom.reverse()
 

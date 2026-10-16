@@ -100,10 +100,13 @@
                 :collocates-file-path="collocatesFilePath"
                 :compared-metadata-values="comparedMetadataValues"
                 :date-type="dateType" :date-range="dateRange"
+                :primary-metadata-values="primaryMetadataValues"
+                :primary-date-type="primaryDateType" :primary-date-range="primaryDateRange"
+                :primary-choice-selected="primaryChoiceSelected"
                 :metadata-display="metadataDisplay" :metadata-input-style="metadataInputStyle"
                 :metadata-choice-values="metadataChoiceValues"
                 :metadata-choice-checked="metadataChoiceChecked"
-                :metadata-choice-selected="metadataChoiceSelected" />
+                :metadata-choice-selected="metadataChoiceSelected" @run="runComparison" />
 
             <Similar v-if="mode === 'similar'" ref="similarRef"
                 :biblio="biblio" :results-length="resultsLength"
@@ -134,6 +137,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useMainStore } from "../stores/main";
 import {
     buildBiblioCriteria,
+    dateRangeHandler,
     debug,
     extractSurfaceFromCollocate,
     paramsFilter,
@@ -199,6 +203,11 @@ const collocatesFilePath = ref("");
 const comparedMetadataValues = reactive({});
 const dateType = reactive({});
 const dateRange = reactive({});
+// The primary subcorpus as the compare form edits it: the search's until a comparison is run with it
+const primaryMetadataValues = reactive({});
+const primaryDateType = reactive({});
+const primaryDateRange = reactive({});
+const primaryChoiceSelected = reactive({});
 
 //  Metadata helpers (built from searchableMetadata, used by Compare's MetadataFields)
 const metadataDisplay = ref([]);
@@ -214,6 +223,8 @@ function buildMetadata(metadata) {
     for (const field in metadataInputStyle.value) {
         dateType[field] = "exact";
         dateRange[field] = { start: "", end: "" };
+        primaryDateType[field] = "exact";
+        primaryDateRange[field] = { start: "", end: "" };
     }
 }
 
@@ -257,11 +268,61 @@ function restoreComparedMetadataFromUrl() {
             comparedMetadataValues[key.substring(8)] = value;
         }
     }
+    restoreInputs(comparedMetadataValues, dateType, dateRange, metadataChoiceSelected.value);
+}
+
+function restorePrimaryMetadataFromUrl() {
+    for (const field of philoConfig.metadata) {
+        primaryMetadataValues[field] = route.query[field] || "";
+    }
+    restoreInputs(primaryMetadataValues, primaryDateType, primaryDateRange, primaryChoiceSelected);
+}
+
+// The inputs of metadata values as the URL gave them: a dropdown's choice, and a date in the exact input unless it is
+// a range, which MetadataFields shows in the range inputs
+function restoreInputs(values, types, ranges, selected) {
+    for (const [field, style] of Object.entries(metadataInputStyle.value)) {
+        if (style === "dropdown") {
+            selected[field] = values[field] || "";
+        } else if (["date", "int"].includes(style)
+            && !String(values[field] || "").includes(style === "date" ? "<=>" : "-")) {
+            types[field] = "exact";
+            ranges[field] = { start: "", end: "" };
+        }
+    }
+}
+
+// The search's parameters without the comparison's: those of the URL it came from may have been erased since
+function searchParams() {
+    return Object.fromEntries(Object.entries(formData.value).filter(([key]) => !key.startsWith("compare_")));
+}
+
+// Run the comparison the form gives: both subcorpora go in the URL, which a reload keeps. A new primary subcorpus is
+// searched first, by the route watcher, which then runs the comparison.
+function runComparison() {
+    for (const [values, types, ranges, selected] of [
+        [primaryMetadataValues, primaryDateType, primaryDateRange, primaryChoiceSelected],
+        [comparedMetadataValues, dateType, dateRange, metadataChoiceSelected.value],
+    ]) {
+        dateRangeHandler(metadataInputStyle.value, ranges, types, values);
+        for (const [field, style] of Object.entries(metadataInputStyle.value)) {
+            if (style === "dropdown") values[field] = selected[field] || "";
+        }
+    }
+    const location = paramsToRoute({
+        ...searchParams(),
+        ...primaryMetadataValues,
+        collocation_method: "compare",
+        ...getNonEmptyComparedMetadata(),
+    });
+    const searchChanged = shouldRefetchOnQueryChange(router.resolve(location).query, route.query);
+    router.push(location);
+    if (!searchChanged) compareRef.value?.runFromMetadata();
 }
 
 function updateCollocationUrl() {
     const urlParams = {
-        ...formData.value,
+        ...searchParams(),
         collocation_method: mode.value,
     };
     if (mode.value === "similar" && similarFieldForUrl.value) {
@@ -393,6 +454,7 @@ watch(
         const modeChanged = newMode !== oldMode;
         if (newMode !== mode.value) mode.value = newMode;
         if (newMode === "compare") restoreComparedMetadataFromUrl();
+        restorePrimaryMetadataFromUrl();
         biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
 
         // The senses tabs run on tab switch (no Detect button).
@@ -454,7 +516,12 @@ watch(
     }
 );
 
-watch(searchableMetadata, (newVal) => buildMetadata(newVal), { deep: true });
+watch(searchableMetadata, (newVal) => {
+    buildMetadata(newVal);
+    // On a page load, the input styles come after the values were restored from the URL
+    restoreInputs(comparedMetadataValues, dateType, dateRange, metadataChoiceSelected.value);
+    restoreInputs(primaryMetadataValues, primaryDateType, primaryDateRange, primaryChoiceSelected);
+}, { deep: true });
 
 //  Initial dispatch (before first render so the right child mounts)
 formData.value.report = "collocation";
@@ -463,6 +530,7 @@ buildMetadata(searchableMetadata.value);
 biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
 mode.value = methodOf(route.query);
 if (mode.value === "compare") restoreComparedMetadataFromUrl();
+restorePrimaryMetadataFromUrl();
 if (mode.value === "similar" && route.query.similarity_by) {
     similarFieldForUrl.value = route.query.similarity_by;
 }

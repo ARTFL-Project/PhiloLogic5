@@ -4,7 +4,10 @@
         <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" role="region"
             :aria-label="$t('collocation.compareTo')">
             <!-- for the fields with autocomplete: their description, and the number of suggestions shown -->
-            <span :id="instructionsId" class="visually-hidden">{{ $t("searchForm.autocompleteInstructions") }}</span>
+            <span :id="primary.instructionsId" class="visually-hidden">
+                {{ $t("searchForm.autocompleteInstructions") }}</span>
+            <span :id="compare.instructionsId" class="visually-hidden">
+                {{ $t("searchForm.autocompleteInstructions") }}</span>
             <span class="visually-hidden" role="status">{{ openList
                 ? $t("searchForm.autocompleteCount", { term: openList.term }, openList.count) : "" }}</span>
             <div class="row">
@@ -16,8 +19,28 @@
                     <div class="alert alert-info p-1 mb-2 d-none d-md-block invisible" aria-hidden="true">&nbsp;
                     </div>
                     <MetadataFields :fields="metadataDisplay" :input-styles="metadataInputStyle"
-                        :choice-values="metadataChoiceValues" :model-value="formData" :checked-values="{}"
-                        :selected-values="{}" id-prefix="primary-" />
+                        :choice-values="metadataChoiceValues" :model-value="primaryMetadataValues"
+                        :checked-values="{}" :selected-values="primaryChoiceSelected"
+                        :date-type="primaryDateType" :date-range="primaryDateRange" id-prefix="primary-">
+                        <template #text-input="{ field }">
+                            <label class="btn btn-outline-secondary"
+                                :for="'primary-' + field.value + '-input-filter'">
+                                {{ field.label }}
+                            </label>
+                            <input type="text" class="form-control" :id="'primary-' + field.value + '-input-filter'"
+                                :name="field.value" :placeholder="field.example"
+                                v-model="primaryMetadataValues[field.value]"
+                                v-bind="primary.comboboxAttrs(field.value)"
+                                @input="primary.onChange(field.value)" @keydown="primary.onKeydown(field.value, $event)"
+                                @blur="primary.closeAutocomplete(field.value)" autocomplete="off"
+                                :aria-label="`${$t('collocation.filterBy')} ${field.label}`" />
+                            <AutocompleteList v-if="primary.autoCompleteResults[field.value].length > 0"
+                                :id="primary.listId(field.value)" :results="primary.autoCompleteResults[field.value]"
+                                :active-index="primary.arrowCounters[field.value]"
+                                :style="primary.autoCompletePosition(field.value)"
+                                @toggle="primary.toggle(field.value, $event)" />
+                        </template>
+                    </MetadataFields>
                 </div>
                 <!-- Comparison corpus criteria -->
                 <div class="col-12 col-md-6 compare-divider" role="region"
@@ -36,23 +59,29 @@
                             </label>
                             <input type="text" class="form-control" :id="'compare-' + field.value + '-input-filter'"
                                 :name="field.value" :placeholder="field.example"
-                                v-model="comparedMetadataValues[field.value]" v-bind="comboboxAttrs(field.value)"
-                                @input="autocompleteOnChange(field.value)" @keydown="onKeydown(field.value, $event)"
-                                @blur="closeAutocomplete(field.value)" autocomplete="off"
+                                v-model="comparedMetadataValues[field.value]"
+                                v-bind="compare.comboboxAttrs(field.value)"
+                                @input="compare.onChange(field.value)" @keydown="compare.onKeydown(field.value, $event)"
+                                @blur="compare.closeAutocomplete(field.value)" autocomplete="off"
                                 :aria-label="`${$t('collocation.filterBy')} ${field.label}`" />
-                            <AutocompleteList v-if="autoCompleteResults[field.value].length > 0"
-                                :id="listId(field.value)" :results="autoCompleteResults[field.value]"
-                                :active-index="arrowCounters[field.value]"
-                                :style="autoCompletePosition(field.value)" @toggle="toggle(field.value, $event)" />
+                            <AutocompleteList v-if="compare.autoCompleteResults[field.value].length > 0"
+                                :id="compare.listId(field.value)" :results="compare.autoCompleteResults[field.value]"
+                                :active-index="compare.arrowCounters[field.value]"
+                                :style="compare.autoCompletePosition(field.value)"
+                                @toggle="compare.toggle(field.value, $event)" />
                         </template>
                     </MetadataFields>
                 </div>
             </div>
             <div class="mt-1">
                 <button type="button" class="btn btn-secondary" style="width: fit-content"
-                    @click="runFromMetadata()">{{
+                    @click="emit('run')">{{
                         $t('collocation.runComparison') }}
                 </button>
+            </div>
+            <div role="status">
+                <div class="alert alert-info p-1 mt-2 mb-0" style="width: fit-content" v-if="nothingToCompare">
+                    {{ $t('collocation.nothingToCompare') }}</div>
             </div>
         </div>
 
@@ -130,7 +159,7 @@
 <script setup>
 import { Tab } from "bootstrap";
 import { storeToRefs } from "pinia";
-import { inject, nextTick, ref } from "vue";
+import { computed, inject, nextTick, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useAutocomplete } from "../../composables/useAutocomplete";
 import { useMainStore } from "../../stores/main";
@@ -158,6 +187,10 @@ const props = defineProps({
     comparedMetadataValues: { type: Object, required: true },
     dateType: { type: Object, required: true },
     dateRange: { type: Object, required: true },
+    primaryMetadataValues: { type: Object, required: true },
+    primaryDateType: { type: Object, required: true },
+    primaryDateRange: { type: Object, required: true },
+    primaryChoiceSelected: { type: Object, default: () => ({}) },
     metadataDisplay: { type: Array, required: true },
     metadataInputStyle: { type: [Array, Object], required: true },
     metadataChoiceValues: { type: Array, required: true },
@@ -173,20 +206,18 @@ const router = useRouter();
 const store = useMainStore();
 const { formData } = storeToRefs(store);
 
-// Autocomplete composable bound to the parent's comparedMetadataValues
-const {
-    autoCompleteResults,
-    arrowCounters,
-    autoCompletePosition,
-    onChange: autocompleteOnChange,
-    onKeydown,
-    toggle,
-    closeAutocomplete,
-    comboboxAttrs,
-    listId,
-    instructionsId,
-    openList,
-} = useAutocomplete({
+const emit = defineEmits(["run"]);
+
+// Autocomplete of each side, bound to the parent's metadata values of that side
+const primary = useAutocomplete({
+    http: $http,
+    dbUrl: $dbUrl,
+    philoConfig,
+    metadataValues: props.primaryMetadataValues,
+    route,
+    idPrefix: "primary-",
+});
+const compare = useAutocomplete({
     http: $http,
     dbUrl: $dbUrl,
     philoConfig,
@@ -194,6 +225,7 @@ const {
     route,
     idPrefix: "compare-",
 });
+const openList = computed(() => primary.openList.value || compare.openList.value);
 
 const otherCollocates = ref([]);
 const otherBiblio = ref({});
@@ -202,6 +234,8 @@ const underRepresented = ref([]);
 const compareSearching = ref(false);
 const comparativeSearchStarted = ref(false);
 const wholeCorpus = ref(false);
+// Both subcorpora the whole corpus: the rest of the corpus, compared with, is empty
+const nothingToCompare = ref(false);
 
 function onCollocateClick(item) {
     router.push(
@@ -237,10 +271,16 @@ function focusDistinctiveTab() {
 }
 
 function runFromMetadata(opts = {}) {
-    // Fields typed in, then erased, are still keys: whole corpus if none has a value
-    wholeCorpus.value = !Object.values(props.comparedMetadataValues).some((value) => value);
     // dateRangeHandler mutates comparedMetadataValues in place
     dateRangeHandler(props.metadataInputStyle, props.dateRange, props.dateType, props.comparedMetadataValues);
+    // Fields typed in, then erased, are still keys: whole corpus if none has a value
+    wholeCorpus.value = !Object.values(props.comparedMetadataValues).some((value) => value);
+    // The primary subcorpus is the URL's search
+    nothingToCompare.value = wholeCorpus.value && !philoConfig.metadata.some((field) => route.query[field]);
+    if (nothingToCompare.value) {
+        reset();
+        return;
+    }
     // Refresh the right-hand biblio criteria up front -- comparativeCollocations
     // would otherwise only update it after the round-trip, and not at all when
     // the new filter has zero hits.
@@ -274,6 +314,7 @@ function runFromMetadata(opts = {}) {
 function runFromFilePath(otherFilePath, otherCollocs = null) {
     if (otherCollocs) otherCollocates.value = otherCollocs;
     wholeCorpus.value = false;
+    nothingToCompare.value = false;
     runComparativeCollocations(otherFilePath);
 }
 

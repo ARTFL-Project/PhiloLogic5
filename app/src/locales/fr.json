@@ -209,6 +209,7 @@
         "frequentCollocates": "Collocations les plus fréquentes",
         "overRepresentedCollocates": "Collocations distinctives",
         "emptySearch": "Notez qu'une recherche vide lancera une comparaison avec le reste du corpus",
+        "nothingToCompare": "Rien à comparer : donnez des critères à l'un des deux sous-corpus au moins.",
         "metadataFilter": "Filtrez par les métadonnées suivantes",
         "primaryCorpusCriteria": "Sous-corpus principal (recherche actuelle)",
         "comparisonCorpusCriteria": "Sous-corpus de comparaison (comparer avec)",

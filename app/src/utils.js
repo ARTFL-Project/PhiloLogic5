@@ -371,9 +371,12 @@ export function upgradeCollocationParams(formData, query) {
 }
 
 // The parameters of a collocation report of the form's query and filters, with metadata instead of the form's when
-// given (comparing with other metadata)
+// given (comparing with other metadata). Not the comparison's, which the form keeps from the URL.
 export function collocationParams(formData, philoConfig, metadata = null) {
     const params = paramsFilter({ ...formData, report: "collocation" });
+    for (const key of Object.keys(params)) {
+        if (key.startsWith("compare_")) delete params[key];
+    }
     if (metadata !== null) {
         for (const field of philoConfig.metadata) delete params[field];
         Object.assign(params, paramsFilter({ ...metadata }));

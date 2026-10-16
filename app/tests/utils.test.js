@@ -470,10 +470,13 @@ describe("collocate filters", () => {
         const formData = {
             report: "collocation", q: "liberté", author: "Hugo", method_arg: "5", colloc_within: "n",
             colloc_lemmas: "yes", colloc_filter_choice: "frequency | stopwords", colloc_attr_pos: "NOUN",
+            compare_author: "Zola",  // the comparison's, from the URL: in neither
         };
         expect(collocationParams(formData, config)).toMatchObject({ author: "Hugo", method_arg: "5", colloc_attr_pos: "NOUN" });
+        expect(collocationParams(formData, config)).not.toHaveProperty("compare_author");
         const compared = collocationParams(formData, config, { author: "", title: "Les Misérables" });
         expect(compared).toMatchObject({ title: "Les Misérables", colloc_lemmas: "yes", method_arg: "5" });
         expect(compared).not.toHaveProperty("author");
+        expect(compared).not.toHaveProperty("compare_author");
     });
 });
