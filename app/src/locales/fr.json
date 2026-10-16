@@ -452,7 +452,6 @@
         "resultsPerPageControl": "Contrôle des résultats par page",
         "resultNumber": "Numéro de résultat",
         "contextDescription": "Contexte : {context}...",
-        "progressDescription": "Tri des résultats...",
         "firstSortingCriteria": "Premier critère de tri : {current}",
         "secondSortingCriteria": "Deuxième critère de tri : {current}",
         "thirdSortingCriteria": "Troisième critère de tri : {current}",

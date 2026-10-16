@@ -221,7 +221,7 @@ def fetch(server, path, params, timeout=300):
 def get_json(server, path, params):
     status, body = fetch(server, path, params)
     assert status == 200, f"{path} {params}: {status} {body[:300]!r}"
-    return json.loads(body.splitlines()[-1])  # streamed responses end with the result, after progress lines
+    return json.loads(body)
 
 
 class ReadOnlyService:

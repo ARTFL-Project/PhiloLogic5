@@ -23,7 +23,6 @@ from resources.streaming import (
     AccessRequestResource,
     ExportResultsResource,
     ResolveCiteResource,
-    SortedKWICResource,
 )
 
 
@@ -80,8 +79,7 @@ def create_app():
     # Reports: /{db_name}/reports/{report_name}.py
     falcon_app.add_route("/{db_name}/reports/{report_name}.py", ReportResource())
 
-    # Special scripts (streaming, auth, redirect)
-    falcon_app.add_route("/{db_name}/scripts/get_sorted_kwic.py", SortedKWICResource())
+    # Special scripts (export, auth, redirect)
     falcon_app.add_route("/{db_name}/scripts/export_results.py", ExportResultsResource())
     falcon_app.add_route("/{db_name}/scripts/access_request.py", AccessRequestResource())
     falcon_app.add_route("/{db_name}/scripts/resolve_cite.py", ResolveCiteResource())

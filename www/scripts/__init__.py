@@ -20,6 +20,7 @@ from .get_sense_passages import get_sense_passages
 from .get_sense_periods import get_sense_periods
 from .get_similar_collocate_distributions import get_similar_collocate_distributions
 from .get_sorted_frequency import get_sorted_frequency
+from .get_sorted_kwic import get_sorted_kwic
 from .get_table_of_contents import get_table_of_contents
 from .get_term_groups import get_term_groups
 from .get_text_object import get_text_object

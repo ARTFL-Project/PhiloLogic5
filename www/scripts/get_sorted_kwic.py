@@ -1,13 +1,13 @@
+import fcntl
 import hashlib
 import os
 import time
-import timeit
+from contextlib import contextmanager
 import numba
 import numpy as np
-import orjson
-from wsgi_helpers import resolve
-from philologic.runtime import WebConfig, WSGIHandler, kwic_hit_object, page_interval
+from philologic.runtime import kwic_hit_object, page_interval
 from philologic.runtime.DB import DB
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.HitList import sort_ranks
 from philologic.runtime.MetadataQuery import bulk_load_metadata
 
@@ -207,7 +207,7 @@ def _numpy_sort(bin_path, request, metadata_fields=None):
 
 
 def _collect_vectorized(hits, bin_path, colloc_dir, db):
-    """Vectorized data collection with streaming progress. Generator yields NDJSON lines."""
+    """Vectorized data collection: rank records of the hits, appended to bin_path as the search finds them."""
     token_ids_mmap, sent_offsets, has_number, sent_flat, vocab_sort_rank = _get_kwic_arrays(
         colloc_dir, db.locals.ascii_conversion
     )
@@ -215,7 +215,6 @@ def _collect_vectorized(hits, bin_path, colloc_dir, db):
     zzz_rank = np.uint32(len(vocab_sort_rank))
 
     index = 0
-    last_progress = timeit.default_timer()
 
     while True:
         hits.update()
@@ -273,23 +272,15 @@ def _collect_vectorized(hits, bin_path, colloc_dir, db):
                 with open(bin_path, "ab") as f:
                     f.write(records.tobytes())
 
-        # Check exit condition
         if hits.done and index >= total:
-            yield orjson.dumps({"progress": {"hits_done": index, "total": total}}) + b"\n"
             break
-
-        # Yield progress (throttled to ~0.5s)
-        now = timeit.default_timer()
-        if now - last_progress >= 0.5:
-            yield orjson.dumps({"progress": {"hits_done": index, "total": total}}) + b"\n"
-            last_progress = now
 
         if not raw:
             time.sleep(0.05)
 
 
 def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
-    """Metadata sort collection producing binary records with word + metadata ranks. Yields NDJSON."""
+    """Metadata sort collection producing binary records with word + metadata ranks."""
     colloc_dir = os.path.join(db.path, "collocations")
     token_ids, sent_offsets, has_number, sent_flat, vocab_sort_rank = _get_kwic_arrays(
         colloc_dir, db.locals.ascii_conversion
@@ -310,7 +301,6 @@ def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
 
     buffer = []
     index = 0
-    last_progress = timeit.default_timer()
 
     for hit in hits:
         # Sentence lookup via big-endian S24 key
@@ -366,30 +356,46 @@ def _collect_metadata_sort(hits, bin_path, metadata_fields, config, db):
             buffer.clear()
 
         index += 1
-        now = timeit.default_timer()
-        if now - last_progress >= 0.5:
-            hits.update()
-            yield orjson.dumps({"progress": {"hits_done": index, "total": len(hits)}}) + b"\n"
-            last_progress = now
 
     if buffer:
         with open(bin_path, "ab") as f:
             f.write(b"".join(buffer))
 
-    hits.update()
-    yield orjson.dumps({"progress": {"hits_done": index, "total": len(hits)}}) + b"\n"
 
+
+@contextmanager
+def _sort_lock(cache_path):
+    """Hold the exclusive flock of a KWIC sort, so that one request at a time collects and sorts it: the others for the
+    same sort wait for its .sorted, instead of collecting into the same .bin. The kernel releases the flock of a worker
+    that dies, and the next request sorts again."""
+    lock_path = cache_path + ".lock"
+    while True:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        try:
+            if os.path.samestat(os.fstat(fd), os.stat(lock_path)):
+                break
+        except FileNotFoundError:  # removed by the hitlist cleanup while we waited: lock the new one
+            pass
+        os.close(fd)
+    try:
+        os.utime(lock_path)  # recent, so that the hitlist cleanup leaves it while it is held
+        yield
+    finally:
+        os.close(fd)
 
 
 def _sort_cache(bin_path, sorted_path, request, metadata_fields=None):
-    """Sort collected binary cache and write .sorted file."""
+    """Sort collected binary cache and write .sorted file, whole: requests page through it without the lock."""
     if os.path.exists(bin_path):
         sorted_indices = _numpy_sort(bin_path, request, metadata_fields)
-        sorted_indices.tofile(sorted_path)
-        os.remove(bin_path)
     else:
         # No data collected (zero results) — write empty sentinel
-        np.array([], dtype=np.uint32).tofile(sorted_path)
+        sorted_indices = np.array([], dtype=np.uint32)
+    sorted_indices.tofile(sorted_path + ".tmp")
+    os.replace(sorted_path + ".tmp", sorted_path)
+    if os.path.exists(bin_path):
+        os.remove(bin_path)
 
 
 def _paginate(sorted_path, hits, request, config, db):
@@ -413,59 +419,45 @@ def _paginate(sorted_path, hits, request, config, db):
     kwic_object["query_done"] = hits.done
     return kwic_object
 
-def get_sorted_kwic(environ, start_response):
-    """Streaming sorted KWIC: collect sort data, sort, paginate — all over one connection."""
-    headers = [
-        ("Content-Type", "application/x-ndjson; charset=UTF-8"),
-        ("Access-Control-Allow-Origin", "*"),
-        ("X-Accel-Buffering", "no"),
-        ("Cache-Control", "no-cache"),
-    ]
-    start_response("200 OK", headers)
-
-    db_path = environ.get("PHILOLOGIC_DBPATH", os.path.abspath(os.path.dirname(__file__)).replace("scripts", ""))
-    _WebConfig = resolve(db_path, "WebConfig", WebConfig)
-    _WSGIHandler = resolve(db_path, "WSGIHandler", WSGIHandler)
-    config = _WebConfig(db_path)
+def get_sorted_kwic(request, config):
+    """A page of the KWIC sorted by the words around its hits or by metadata. The sort is cached: the other pages
+    come from the cache."""
+    if not request.q:
+        raise BadRequest("A search term (q) is required to sort a KWIC")
     db = DB(config.db_path + "/data/")
-    request = _WSGIHandler(environ, config)
-
     hits = db.query(request["q"], request["method"], request["arg"], **request.metadata)
 
     cache_path = _get_cache_path(request, db)
     sorted_path = f"{cache_path}.sorted"
     bin_path = cache_path + ".bin"
 
-    # Phase 1: Fast pagination shortcut — .sorted already exists
+    # Fast pagination shortcut: .sorted already exists
     if os.path.exists(sorted_path):
-        yield orjson.dumps(_paginate(sorted_path, hits, request, config, db)) + b"\n"
-        return
+        return _paginate(sorted_path, hits, request, config, db)
 
-    # Phase 2: Clean stale partial caches from interrupted requests
-    if os.path.exists(bin_path):
-        os.remove(bin_path)
-    if os.path.exists(cache_path):
-        os.remove(cache_path)
+    with _sort_lock(cache_path):
+        if not os.path.exists(sorted_path):  # else sorted by the request that held the lock before
+            # Clean stale partial caches from interrupted requests
+            if os.path.exists(bin_path):
+                os.remove(bin_path)
+            if os.path.exists(cache_path):
+                os.remove(cache_path)
 
-    # Determine sort mode: metadata sort if any sort option is a metadata field
-    metadata_search = not (
-        request.first_kwic_sorting_option in ("left", "right", "q", "")
-        and request.second_kwic_sorting_option in ("left", "right", "q", "")
-        and request.third_kwic_sorting_option in ("left", "right", "q", "")
-    )
-    colloc_dir = os.path.join(db.path, "collocations")
+            # Determine sort mode: metadata sort if any sort option is a metadata field
+            metadata_search = not (
+                request.first_kwic_sorting_option in ("left", "right", "q", "")
+                and request.second_kwic_sorting_option in ("left", "right", "q", "")
+                and request.third_kwic_sorting_option in ("left", "right", "q", "")
+            )
+            colloc_dir = os.path.join(db.path, "collocations")
 
-    # Phase 3: Data collection (streams progress lines)
-    if metadata_search:
-        metadata_fields = list(config.kwic_metadata_sorting_fields)
-        yield from _collect_metadata_sort(hits, bin_path, metadata_fields, config, db)
-    else:
-        metadata_fields = []
-        yield from _collect_vectorized(hits, bin_path, colloc_dir, db)
+            # Data collection
+            if metadata_search:
+                metadata_fields = list(config.kwic_metadata_sorting_fields)
+                _collect_metadata_sort(hits, bin_path, metadata_fields, config, db)
+            else:
+                metadata_fields = []
+                _collect_vectorized(hits, bin_path, colloc_dir, db)
 
-    # Phase 4: Sort
-    _sort_cache(bin_path, sorted_path, request, metadata_fields)
-
-    # Phase 5: Paginate and yield final result
-    yield orjson.dumps(_paginate(sorted_path, hits, request, config, db)) + b"\n"
-
+            _sort_cache(bin_path, sorted_path, request, metadata_fields)
+    return _paginate(sorted_path, hits, request, config, db)

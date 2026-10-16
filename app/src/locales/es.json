@@ -452,7 +452,6 @@
         "resultsPerPageControl": "Cantidad de resultados por página",
         "resultNumber": "Número resultante",
         "contextDescription": "Contexto: {context}...",
-        "progressDescription": "Ordenando resultado...",
         "firstSortingCriteria": "Primer criterio de ordenación: {current}",
         "secondSortingCriteria": "Segundo criterio de ordenación: {current}",
         "thirdSortingCriteria": "Tercer criterio de ordenación: {current}",

@@ -103,7 +103,7 @@ describe("Kwic", () => {
     it("triggers sort on sort button click", async () => {
         const http = createMockHttp({
             "kwic.py": kwicFixture,
-            "get_sorted_kwic.py": JSON.stringify(kwicFixture) + "\n",
+            "get_sorted_kwic.py": kwicFixture,
         });
         const wrapper = mountKwic({ http });
         await flushPromises();
@@ -159,33 +159,66 @@ describe("Kwic", () => {
         }
     });
 
-    // --- Lifecycle cleanup: AbortController on streaming fetch ---
-    // The sorted-kwic path uses native fetch with an AbortController. On
-    // unmount (and on query change), beforeUnmount must call abort() so the
-    // streaming reader stops reading from the response body. This guards
-    // against the Composition API migration losing the abort wiring.
-    it("aborts the streaming fetch on unmount", async () => {
-        let capturedSignal;
-        const fetchSpy = vi.spyOn(global, "fetch").mockImplementation((_url, opts) => {
-            capturedSignal = opts.signal;
-            return new Promise(() => {}); // never resolves — keeps the controller alive
-        });
-
-        // first_kwic_sorting_option triggers the streaming code path
-        const wrapper = mountKwic({
-            formData: { first_kwic_sorting_option: "author" },
-        });
+    // --- Sorted KWIC: one JSON request, aborted when its results are no longer wanted ---
+    it("fetches the sorted kwic as JSON and renders it", async () => {
+        const http = createMockHttp({ "get_sorted_kwic.py": kwicFixture });
+        const wrapper = mountKwic({ http, formData: { first_kwic_sorting_option: "author" } });
         await flushPromises();
         await nextTick();
 
-        expect(fetchSpy).toHaveBeenCalled();
-        expect(capturedSignal).toBeDefined();
-        expect(capturedSignal.aborted).toBe(false);
+        const [url, config] = http.get.mock.calls[0];
+        expect(url).toContain("scripts/get_sorted_kwic.py");
+        expect(config.params.first_kwic_sorting_option).toBe("author");
+        expect(wrapper.findAll(".kwic-line.visual-kwic").length).toBe(kwicFixture.results.length);
+        expect(useMainStore().searching).toBe(false);
+    });
+
+    // An $http whose sorted-KWIC requests stay pending, until their signal aborts them as axios does
+    function pendingSortedHttp(signals) {
+        return {
+            get: vi.fn((url, config) => {
+                if (!url.includes("get_sorted_kwic.py")) return Promise.resolve({ data: kwicFixture });
+                signals.push(config.signal);
+                return new Promise((_resolve, reject) => {
+                    config.signal.addEventListener("abort", () => {
+                        reject(Object.assign(new Error("canceled"), { name: "CanceledError" }));
+                    });
+                });
+            }),
+        };
+    }
+
+    it("aborts the sorted request on unmount", async () => {
+        const signals = [];
+        const wrapper = mountKwic({
+            http: pendingSortedHttp(signals),
+            formData: { first_kwic_sorting_option: "author" },
+        });
+        await flushPromises();
+        const store = useMainStore();
+        expect(signals).toHaveLength(1);
+        expect(store.searching).toBe(true);
 
         wrapper.unmount();
+        await flushPromises();
 
-        expect(capturedSignal.aborted).toBe(true);
+        expect(signals[0].aborted).toBe(true);
+        expect(store.searching).toBe(false);
+    });
 
-        fetchSpy.mockRestore();
+    it("keeps searching when a new query aborts the sorted request", async () => {
+        const signals = [];
+        mountKwic({ http: pendingSortedHttp(signals), formData: { first_kwic_sorting_option: "author" } });
+        await flushPromises();
+        const store = useMainStore();
+
+        store.formData.first_kwic_sorting_option = "title";
+        store.urlUpdate = { q: "liberty", report: "kwic", first_kwic_sorting_option: "title" };
+        await flushPromises();
+
+        expect(signals).toHaveLength(2);
+        expect(signals[0].aborted).toBe(true);
+        expect(signals[1].aborted).toBe(false);
+        expect(store.searching).toBe(true); // the aborted request didn't end the search of the new one
     });
 });

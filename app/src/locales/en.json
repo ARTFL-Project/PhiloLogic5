@@ -452,7 +452,6 @@
         "resultsPerPageControl": "Results per page control",
         "resultNumber": "Result number",
         "contextDescription": "Context: {context}...",
-        "progressDescription": "Sorting results...",
         "firstSortingCriteria": "First sorting criteria: {current}",
         "secondSortingCriteria": "Second sorting criteria: {current}",
         "thirdSortingCriteria": "Third sorting criteria: {current}",
