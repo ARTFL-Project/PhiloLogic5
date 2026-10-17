@@ -31,8 +31,8 @@
 
             <!-- Start date -->
             <div class="biblio-criteria d-inline-block">
-                <div class="metadata-args rounded-pill"
-                    :aria-label="`${$t('biblioCriteria.startDate')}: ${start_date}`">
+                <div class="metadata-args rounded-pill">
+                    <span class="visually-hidden">{{ $t("biblioCriteria.startDate") }}: </span>
                     <span class="metadata-value" id="start-date-value">{{ start_date }}</span>
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata('start_date')"
                         :aria-label="`${$t('biblioCriteria.removeStartDate')}`" aria-describedby="start-date-value">
@@ -45,7 +45,8 @@
 
             <!-- End date -->
             <div class="biblio-criteria d-inline-block">
-                <div class="metadata-args rounded-pill" :aria-label="`${$t('biblioCriteria.endDate')}: ${end_date}`">
+                <div class="metadata-args rounded-pill">
+                    <span class="visually-hidden">{{ $t("biblioCriteria.endDate") }}: </span>
                     <span class="metadata-value" id="end-date-value">{{ end_date }}</span>
                     <button type="button" class="remove-metadata" v-if="removable" @click="removeMetadata('end_date')"
                         :aria-label="`${$t('biblioCriteria.removeEndDate')}`" aria-describedby="end-date-value">

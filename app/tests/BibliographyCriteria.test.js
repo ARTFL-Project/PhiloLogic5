@@ -91,3 +91,13 @@ describe("BibliographyCriteria", () => {
         expect(wrapper.text()).toContain("1900");
     });
 });
+
+describe("BibliographyCriteria's dates", () => {
+    it("names the dates in text, not in labels a plain element can't have", () => {
+        const wrapper = mountBiblio({ queryReport: "time_series", start_date: 1150, end_date: 1992 });
+        const pills = wrapper.findAll("[role='group'] .metadata-args");
+        expect(pills.map((p) => p.text().replace(/\s+/g, " "))).toEqual(["Start date: 1150", "End date: 1992"]);
+        expect(pills.map((p) => p.find(".visually-hidden").exists())).toEqual([true, true]);
+        expect(pills.some((p) => p.attributes("aria-label"))).toBe(false);
+    });
+});
