@@ -83,7 +83,7 @@ cd PhiloLogic5-*/   # or PhiloLogic5/ if you cloned via git
 
 | Flag | Description |
 |------|-------------|
-| `-t` | Install transformer support (includes spacy-transformers with CUDA) |
+| `-t` | Install transformer support: spacy-transformers, and on Linux torch for CUDA 12 and FlashAttention (see below) |
 
 Example:
 
@@ -91,6 +91,21 @@ Example:
 # Install with transformer support
 ./install.sh -t
 ```
+
+On Linux, `-t` installs torch 2.8 for CUDA 12.9, which NVIDIA drivers from 525 on run (CUDA 13 builds need 580),
+and cupy, with which spaCy runs models on the GPU. Transformer models like ModernBERT run faster with
+[FlashAttention](https://github.com/Dao-AILab/flash-attention), which `-t` also installs when the GPU is an Ampere or
+newer one (compute capability 8.0): torch 2.8 is the last version it has prebuilt wheels for. Elsewhere, it can be
+installed by hand, after the transformer support, as the `flash-attn` extra of the package `install.sh` built:
+
+```bash
+source /var/lib/philologic5/philologic_env/bin/activate
+uv pip install wheel
+uv pip install --no-build-isolation-package flash-attn "$(ls python/dist/philologic-*.tar.gz)[flash-attn]"
+```
+
+It downloads a prebuilt wheel when one matches the installed torch, CUDA and Python (torch 2.5 to 2.8 for flash-attn
+2.8.3 with Python 3.13); otherwise it compiles, which needs the CUDA toolkit of torch's CUDA version and takes hours.
 
 ### What the Installer Does
 

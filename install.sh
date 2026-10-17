@@ -12,7 +12,7 @@ while getopts "t" opt; do
     t) INSTALL_TRANSFORMERS=true
     ;;
     *) echo "Usage: $0 [-t]"
-       echo "  -t: Install transformers support (includes CUDA)"
+       echo "  -t: Install transformers support (on Linux: CUDA 12, and FlashAttention for GPUs from Ampere on)"
        exit 1
     ;;
   esac
@@ -132,9 +132,23 @@ uv build --sdist
 PACKAGE_FILE=$(ls dist/*.tar.gz)
 
 if [ "$INSTALL_TRANSFORMERS" = true ]; then
+    if [ "$IS_MACOS" = false ]; then
+        # torch for CUDA 12.9, which drivers from 525 on run (CUDA 13 needs 580): 2.8 is the last torch FlashAttention
+        # has prebuilt wheels for
+        echo "Installing torch for CUDA 12..."
+        uv pip install "torch>=2.5,<2.9" --extra-index-url https://download.pytorch.org/whl/cu129 \
+            --index-strategy unsafe-best-match
+    fi
     # Install with transformers extra - this uses the optional dependency from pyproject.toml
-    echo "Installing with transformers support (CUDA enabled)..."
+    echo "Installing with transformers support..."
     uv pip install "${PACKAGE_FILE}[transformers]"
+    # FlashAttention, which models like ModernBERT use, for NVIDIA GPUs from Ampere on (compute capability 8.0)
+    COMPUTE_CAPABILITY=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | sort -n | head -1)
+    if [ "$IS_MACOS" = false ] && [ "${COMPUTE_CAPABILITY%%.*}" -ge 8 ] 2>/dev/null; then
+        echo "Installing FlashAttention..."
+        uv pip install wheel --quiet  # imported by its build, which downloads its prebuilt wheel
+        uv pip install --no-build-isolation-package flash-attn "${PACKAGE_FILE}[flash-attn]"
+    fi
 else
     # Install without transformers
     echo "Installing without transformers support..."
