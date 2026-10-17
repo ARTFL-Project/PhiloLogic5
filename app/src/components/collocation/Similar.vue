@@ -40,7 +40,6 @@
             <GroupRanking :title="$t('collocation.similarUsagePattern')" :items="similarDistributions"
                 :explainer-label="$t('collocation.sharedCollocates')"
                 :select-aria-label-prefix="$t('collocation.compareTo')"
-                :score-aria-label="$t('collocation.count')"
                 :region-aria-label="$t('collocation.similarUsageResults')"
                 :hidden-header="$t('collocation.similarUsageResults')" @select="onSimilarSelect" />
         </div>

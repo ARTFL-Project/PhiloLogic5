@@ -36,7 +36,8 @@
         "forResult": "for result",
         "textNotFound": "There is no such text in this database.",
         "textLoadFailed": "This text could not be loaded.",
-        "pageNotFound": "There is no such page."
+        "pageNotFound": "There is no such page.",
+        "opensInNewTab": "(opens in new tab)"
     },
     "header": {
         "toggleNavigation": "Toggle navigation menu",
@@ -45,7 +46,9 @@
         "goHome": "Go to home page",
         "citeUs": "Cite us",
         "contactUs": "Contact Us",
-        "accessedOn": "Accessed on {date}"
+        "accessedOn": "Accessed on {date}",
+        "mainNavigation": "Main navigation",
+        "contactTitle": "Contact information for the ARTFL Project"
     },
     "searchForm": {
         "searchInterface": "Search Interface",
@@ -232,7 +235,6 @@
         "compareBy": "Compare by",
         "selectField": "Select a field",
         "distinctiveCollocates": "Distinctive collocates",
-        "score": "Score",
         "gatheringOutliers": "Identifying distinctive {field}",
         "outlierResults": "Distinctive {field} results",
         "minHitsLabel": "Min. occurrences per {field}",
@@ -418,9 +420,7 @@
         "selectSortCriteria": "Select sorting criteria: {criteria}",
         "showResults": "Show {count} results per page",
         "resultsRegion": "KWIC search results",
-        "applySorting": "Apply sorting",
         "resultsPerPageControl": "Results per page control",
-        "contextDescription": "Context: {context}...",
         "firstSortingCriteria": "First sorting criteria: {current}",
         "secondSortingCriteria": "Second sorting criteria: {current}",
         "thirdSortingCriteria": "Third sorting criteria: {current}",

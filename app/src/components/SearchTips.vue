@@ -18,25 +18,25 @@
                     <ul>
                         <li>
                             {{ $t('searchTips.plainToken') }}
-                            <code class="code-block" aria-label="code example">token</code>
+                            <code class="code-block">token</code>
                         </li>
                         <li>
                             {{ $t('searchTips.quotedToken') }}
-                            <code class="code-block" aria-label="code example">"token"</code>
+                            <code class="code-block">"token"</code>
                         </li>
                         <li>
                             {{ $t('searchTips.range') }}
-                            <code class="code-block" aria-label="code example">1700-1750</code>
+                            <code class="code-block">1700-1750</code>
                         </li>
                         <li>
                             {{ $t('searchTips.booleanOr') }}
-                            <code class="code-block" aria-label="code example">|</code>, {{ $t('common.example') }}
-                            <code class="code-block" aria-label="code example">token | word</code>
+                            <code class="code-block">|</code>, {{ $t('common.example') }}
+                            <code class="code-block">token | word</code>
                         </li>
                         <li>
                             {{ $t('searchTips.booleanNot') }}
-                            <code class="code-block" aria-label="code example">NOT</code>, {{ $t('common.example') }}
-                            <code class="code-block" aria-label="code example">token.* NOT tokens</code>
+                            <code class="code-block">NOT</code>, {{ $t('common.example') }}
+                            <code class="code-block">token.* NOT tokens</code>
                         </li>
                     </ul>
                 </section>
@@ -52,15 +52,15 @@
                         <li>{{ $t('searchTips.quotedTerms') }}</li>
                         <li>{{ $t('searchTips.rangeNote') }}</li>
                         <li>
-                            <code class="code-block" aria-label="code example">OR</code> {{
+                            <code class="code-block">OR</code> {{
                                 $t('searchTips.orDescription') }}
                         </li>
                         <li>
-                            <code class="code-block" aria-label="code example">NOT</code> {{
+                            <code class="code-block">NOT</code> {{
                                 $t('searchTips.notDescription') }}
-                            <code class="code-block" aria-label="code example">a.* NOT abalone</code> {{
+                            <code class="code-block">a.* NOT abalone</code> {{
                                 $t('searchTips.isLegal') }},
-                            <code class="code-block" aria-label="code example">NOT a.*</code> {{
+                            <code class="code-block">NOT a.*</code> {{
                                 $t('searchTips.isIllegal') }}
                         </li>
                     </ol>
@@ -71,29 +71,29 @@
                     <ol>
                         <li>
                             {{ $t('searchTips.lemmaSearch') }}
-                            <code class="code-block" aria-label="code example">lemma:</code>
+                            <code class="code-block">lemma:</code>
                             {{ $t('searchTips.lemmaExample') }}
-                            <code class="code-block" aria-label="code example">lemma:have</code>.
+                            <code class="code-block">lemma:have</code>.
                             {{ $t('searchTips.regexPermitted') }}
-                            <code class="code-block" aria-label="code example">lemma:constitut.*</code>.
+                            <code class="code-block">lemma:constitut.*</code>.
                         </li>
                         <li>
                             {{ $t('searchTips.wordAttribute') }}
-                            <code class="code-block" aria-label="code example">word:attribute:attribute</code>
+                            <code class="code-block">word:attribute:attribute</code>
                             {{ $t('searchTips.wordAttributeExample') }}
-                            <code class="code-block" aria-label="code example">love:pos:NOUN</code>.
+                            <code class="code-block">love:pos:NOUN</code>.
                         </li>
                         <li>
                             {{ $t('searchTips.combineLemma') }}
-                            <code class="code-block" aria-label="code example">lemma:love:pos:NOUN</code>.
+                            <code class="code-block">lemma:love:pos:NOUN</code>.
                         </li>
                         <li>
                             {{ $t('searchTips.multipleAttributes') }}
-                            <code class="code-block" aria-label="code example">charles:pos:PROPN:ner:PERS</code>.
+                            <code class="code-block">charles:pos:PROPN:ner:PERS</code>.
                         </li>
                         <li>
                             {{ $t('searchTips.multiWordLemma') }}
-                            <code class="code-block" aria-label="code example">lemma:parce_que</code>.
+                            <code class="code-block">lemma:parce_que</code>.
                         </li>
                     </ol>
                 </section>
@@ -108,18 +108,18 @@
                         <li>{{ $t('searchTips.metadataQuotedTokens') }}</li>
                         <li>{{ $t('searchTips.metadataRange') }}</li>
                         <li>
-                            <code class="code-block" aria-label="code example">OR</code> {{ $t('searchTips.metadataOr')
+                            <code class="code-block">OR</code> {{ $t('searchTips.metadataOr')
                             }}
                         </li>
                         <li>
-                            <code class="code-block" aria-label="code example">NOT</code> {{
+                            <code class="code-block">NOT</code> {{
                                 $t('searchTips.metadataNot') }}
-                            <code class="code-block" aria-label="code example">contrat NOT social</code> {{
+                            <code class="code-block">contrat NOT social</code> {{
                                 $t('searchTips.isLegal') }},
-                            <code class="code-block" aria-label="code example">NOT rousseau</code>
+                            <code class="code-block">NOT rousseau</code>
                         </li>
                         <li>
-                            <code class="code-block" aria-label="code example">NULL</code> {{ $t('searchTips.metadataNull') }}
+                            <code class="code-block">NULL</code> {{ $t('searchTips.metadataNull') }}
                         </li>
                     </ol>
                 </section>
@@ -132,33 +132,33 @@
                     <ol>
                         <li>
                             {{ $t('searchTips.dotCharacter') }}
-                            <code class="code-block" aria-label="code example">.</code> {{
+                            <code class="code-block">.</code> {{
                                 $t('searchTips.dotDescription') }}
                         </li>
                         <li>
                             {{ $t('searchTips.bracketExpressions') }}
-                            <code class="code-block" aria-label="code example">[aeiou]</code> {{ $t('common.or') }}
-                            <code class="code-block" aria-label="code example">[a-z]</code>, {{
+                            <code class="code-block">[aeiou]</code> {{ $t('common.or') }}
+                            <code class="code-block">[a-z]</code>, {{
                                 $t('searchTips.bracketNote') }}
                         </li>
                         <li>
-                            <code class="code-block" aria-label="code example">*</code> {{
+                            <code class="code-block">*</code> {{
                                 $t('searchTips.asteriskDescription') }}
                         </li>
                         <li>
-                            <code class="code-block" aria-label="code example">+</code> {{
+                            <code class="code-block">+</code> {{
                                 $t('searchTips.plusDescription') }}
                         </li>
                         <li>
-                            <code class="code-block" aria-label="code example">?</code> {{
+                            <code class="code-block">?</code> {{
                                 $t('searchTips.questionDescription') }}
                         </li>
                     </ol>
                     <p class="mb-0">
                         {{ $t('searchTips.wildcardNote') }}
-                        <code class="code-block" aria-label="code example">.*</code> {{
+                        <code class="code-block">.*</code> {{
                             $t('searchTips.wildcardDescription') }}
-                        <code class="code-block" aria-label="code example">*</code> {{
+                        <code class="code-block">*</code> {{
                             $t('searchTips.traditionalWildcard') }}
                     </p>
                 </section>

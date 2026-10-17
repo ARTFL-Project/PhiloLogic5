@@ -1,6 +1,6 @@
 <template>
     <div id="facet-search">
-        <div class="card shadow-sm" title="Title" header-tag="header" id="facet-panel-wrapper">
+        <div class="card shadow-sm" id="facet-panel-wrapper">
             <div class="card-header text-center">
                 <h2 class="h6 mb-0">{{ $t("facets.browseByFacet") }}</h2>
             </div>

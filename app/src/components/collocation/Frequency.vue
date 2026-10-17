@@ -94,7 +94,6 @@
                         <GroupRanking v-else embedded :items="panel.items"
                             :explainer-label="$t('collocation.distinctiveCollocates')"
                             :select-aria-label-prefix="$t('collocation.compareTo')"
-                            :score-aria-label="$t('collocation.score')"
                             :region-aria-label="$t('collocation.outlierResults', { field: panel.label })"
                             :format-score="(n) => n.toFixed(1)"
                             :enable-view-passages="true"

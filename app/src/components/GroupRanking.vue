@@ -10,18 +10,15 @@
                     style="text-align: justify"
                     @click="$emit('select', item[0])"
                     @keydown.enter="$emit('select', item[0])"
-                    @keydown.space.prevent="$emit('select', item[0])"
-                    :aria-label="buildAriaLabel(item)">
-                    <span class="group-name">{{ item[0] }}</span>
-                    <span class="badge text-bg-secondary position-absolute"
-                        style="right: 1rem; top: 0.5rem" aria-hidden="true">
-                        {{ formatScore(item[1]) }}
-                    </span>
-                    <br v-if="item[2] && item[2].length > 0">
-                    <small v-if="item[2] && item[2].length > 0" class="explainer-line"
-                        aria-hidden="true">
-                        <strong>{{ explainerLabel }}:</strong> {{ item[2].join(', ') }}
-                    </small>
+                    @keydown.space.prevent="$emit('select', item[0])">
+                    <!-- its name: what choosing it does, then what it shows (the spaces between, on their lines) -->
+                    <span v-if="selectAriaLabelPrefix" class="visually-hidden">{{ selectAriaLabelPrefix }}</span> <span
+                        class="group-name">{{ item[0] }}</span> <span class="badge text-bg-secondary position-absolute"
+                        style="right: 1rem; top: 0.5rem">{{ formatScore(item[1]) }}</span>
+                    <template v-if="item[2] && item[2].length > 0">
+                        <br> <small class="explainer-line"><strong>{{ explainerLabel }}:</strong> {{ item[2].join(', ')
+                        }}</small>
+                    </template>
                 </button>
                 <button v-if="enableViewPassages" type="button" class="view-passages-link"
                     @click.stop="$emit('view-passages', item)"
@@ -36,12 +33,11 @@
 </template>
 
 <script setup>
-const props = defineProps({
+defineProps({
     title: { type: String, default: "" },
     items: { type: Array, required: true },
     explainerLabel: { type: String, default: "" },
     selectAriaLabelPrefix: { type: String, default: "" },
-    scoreAriaLabel: { type: String, default: "score" },
     regionAriaLabel: { type: String, default: "" },
     hiddenHeader: { type: String, default: "" },
     formatScore: { type: Function, default: (n) => n },
@@ -51,17 +47,6 @@ const props = defineProps({
 });
 
 defineEmits(["select", "view-passages"]);
-
-function buildAriaLabel(item) {
-    const [name, score, explainers] = item;
-    const parts = [];
-    parts.push(props.selectAriaLabelPrefix ? `${props.selectAriaLabelPrefix} ${name}` : name);
-    parts.push(`${props.scoreAriaLabel}: ${props.formatScore(score)}`);
-    if (explainers && explainers.length > 0 && props.explainerLabel) {
-        parts.push(`${props.explainerLabel}: ${explainers.join(', ')}`);
-    }
-    return parts.join(', ');
-}
 </script>
 
 <style lang="scss" scoped>

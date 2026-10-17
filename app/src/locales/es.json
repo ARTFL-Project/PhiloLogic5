@@ -36,7 +36,8 @@
         "forResult": "para el resultado",
         "textNotFound": "Este texto no existe en esta base de datos.",
         "textLoadFailed": "No se pudo cargar este texto.",
-        "pageNotFound": "Esta página no existe."
+        "pageNotFound": "Esta página no existe.",
+        "opensInNewTab": "(se abre en una pestaña nueva)"
     },
     "header": {
         "toggleNavigation": "Conmutar menú de navegación",
@@ -45,7 +46,9 @@
         "goHome": "Ir a página principal",
         "citeUs": "Citadnos",
         "contactUs": "Contactad con nosotros",
-        "accessedOn": "Consultado el {date}"
+        "accessedOn": "Consultado el {date}",
+        "mainNavigation": "Navegación principal",
+        "contactTitle": "Información de contacto del ARTFL Project"
     },
     "searchForm": {
         "searchInterface": "Interfaz de búsqueda",
@@ -232,7 +235,6 @@
         "compareBy": "Comparar con",
         "selectField": "Seleccionar un campo",
         "distinctiveCollocates": "Colocaciones distintivas",
-        "score": "Puntuación",
         "gatheringOutliers": "Identificando {field} distintivos",
         "outlierResults": "Resultados: {field} distintivos",
         "minHitsLabel": "Ocurrencias mín. por {field}",
@@ -418,9 +420,7 @@
         "selectSortCriteria": "Seleccionar criterio de ordenación: {criteria}",
         "showResults": "Mostrar {count} resultados por página",
         "resultsRegion": "Resultado de la búsqueda de KWIC",
-        "applySorting": "Aplicar orden",
         "resultsPerPageControl": "Cantidad de resultados por página",
-        "contextDescription": "Contexto: {context}...",
         "firstSortingCriteria": "Primer criterio de ordenación: {current}",
         "secondSortingCriteria": "Segundo criterio de ordenación: {current}",
         "thirdSortingCriteria": "Tercer criterio de ordenación: {current}",

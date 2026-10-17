@@ -1,7 +1,7 @@
 <template>
     <div class="container-fluid mt-4">
         <div id="access-control-container" class="mt-4">
-            <div class="card mt-4 shadow" sub-title="Please read the following below">
+            <div class="card mt-4 shadow">
                 <div class="card-body">
                     <h3 class="card-title text-center">Access Restricted to ARTFL subscribing institutions</h3>
                     <h6 class="card-subtitle mb-2 text-muted text-center">Please read the following below</h6>

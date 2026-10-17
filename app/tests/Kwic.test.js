@@ -59,12 +59,18 @@ describe("Kwic", () => {
         expect(kwicLines.length).toBe(kwicFixture.results.length);
     });
 
-    it("renders accessible kwic version for screen readers", async () => {
+    it("shows screen readers the lines it shows, each link described by its full citation", async () => {
         const wrapper = mountKwic();
         await flushPromises();
         await nextTick();
-        const accessibleLines = wrapper.findAll(".accessible-kwic");
-        expect(accessibleLines.length).toBe(kwicFixture.results.length);
+        const lines = wrapper.findAll(".kwic-line");
+        expect(lines).toHaveLength(kwicFixture.results.length); // no copy of them
+        expect(lines.some((line) => line.attributes("aria-hidden"))).toBe(false);
+        const link = lines[0].find(".kwic-biblio");
+        const full = wrapper.find(`#${link.attributes("aria-describedby")}`);
+        const short = link.find(".short-biblio").text();
+        expect(short.length).toBeGreaterThan(0);
+        expect(full.text().startsWith(short)).toBe(true);
     });
 
     // --- Sorting controls ---

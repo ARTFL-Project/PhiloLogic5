@@ -770,7 +770,7 @@ const WordList = defineComponent({
 }
 
 :deep(.hidden-chip) {
-    opacity: 0.6;
+    color: #595959;
     border-style: dashed;
 }
 
@@ -780,8 +780,9 @@ const WordList = defineComponent({
     color: #495057;
 }
 
+/* 5.2:1 or more on every chip's background, the found word's yellow too */
 :deep(.chip-ratio) {
-    color: #6c757d;
+    color: #595959;
     font-size: 0.75rem;
 }
 

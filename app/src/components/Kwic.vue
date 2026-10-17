@@ -44,7 +44,7 @@
                                 </div>
                             </div>
                             <button type="button" class="btn btn-secondary btn-sm" id="sort-button"
-                                @click="sortResults()" :aria-label="$t('kwic.applySorting')">
+                                @click="sortResults()">
                                 {{ $t("kwic.sort") }}
                             </button>
                         </div>
@@ -56,12 +56,13 @@
                             <div v-for="(result, kwicIndex) in kwicResults"
                                 :key="result.philo_id.join('-')" class="result-fade-in" :style="{ '--i': kwicIndex }">
 
-                                <!-- Default KWIC view -->
-                                <div class="kwic-line visual-kwic" aria-hidden="true">
+                                <!-- the line, for everyone: its link named by the short citation, described by the full one -->
+                                <div class="kwic-line visual-kwic">
                                     <span v-html="initializePos(kwicIndex)"></span>
                                     <div class="kwic-biblio-container"
                                         style="display: inline-block; position: relative;">
-                                        <router-link :to="result.citation_links.div1" class="kwic-biblio">
+                                        <router-link :to="result.citation_links.div1" class="kwic-biblio"
+                                            :aria-describedby="`full-biblio-${kwicIndex}`">
                                             <span class="short-biblio" v-html="result.shortBiblio"></span>
                                             <div :id="`full-biblio-${kwicIndex}`" class="full-biblio" role="tooltip"
                                                 :aria-hidden="true">
@@ -70,23 +71,6 @@
                                         </router-link>
                                     </div>
                                     <div class="kwic-context">
-                                        <span v-html="result.context"></span>
-                                    </div>
-                                </div>
-
-                                <!-- Accessible version for screen readers -->
-                                <div class="kwic-line accessible-kwic visually-hidden">
-                                    <span>{{ results.description.start + kwicIndex }}.</span>
-                                    <router-link :to="result.citation_links.div1" class="kwic-biblio" tabindex="-1"
-                                        :aria-describedby="`kwic-context-${kwicIndex}`">
-                                        {{ result.fullBiblio }}
-                                    </router-link>
-                                    <span :id="`kwic-context-${kwicIndex}`">
-                                        {{ $t('kwic.contextDescription', {
-                                            context: result.context.replace(/<[^>]*>/g, '').trim().substring(0, 60)
-                                        }) }}
-                                    </span>
-                                    <div class="accessible-context">
                                         <span v-html="result.context"></span>
                                     </div>
                                 </div>
@@ -323,22 +307,6 @@ fetchResults();
     position: absolute;
 }
 
-/* Accessible version for screen readers */
-.accessible-kwic {
-    white-space: normal;
-    line-height: 1.6;
-    padding: 0.5rem 0;
-}
-
-.accessible-kwic .accessible-context {
-    margin-top: 0.25rem;
-}
-
-.accessible-kwic .kwic-biblio {
-    font-weight: bold;
-    margin: 0 0.5rem;
-}
-
 .kwic-biblio {
     font-weight: 400 !important;
     z-index: 10;
@@ -386,10 +354,6 @@ fetchResults();
     opacity: 1;
     left: 0;
     transition: all 0.2s ease;
-}
-
-.full-biblio[aria-hidden="false"] {
-    display: block !important;
 }
 
 :deep(.highlight) {

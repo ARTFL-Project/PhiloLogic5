@@ -1,7 +1,7 @@
 <template>
     <header>
         <nav class="navbar navbar-expand-lg navbar-light bg-light shadow px-1"
-            aria-label="Main navigation">
+            :aria-label="$t('header.mainNavigation')">
             <!-- Row 1: navigation links + brand -->
             <div class="header-main">
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse"
@@ -27,35 +27,30 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="https://artfl-project.uchicago.edu"
-                                aria-label="Visit ARTFL Project website">
+                            <a class="nav-link" href="https://artfl-project.uchicago.edu">
                                 ARTFL Project
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="https://textual-optics-lab.uchicago.edu"
-                                aria-label="Visit Textual Optics Lab website">
+                            <a class="nav-link" href="https://textual-optics-lab.uchicago.edu">
                                 Textual Optics Lab
                             </a>
                         </li>
                         <!-- Right side items - only shown in hamburger menu -->
                         <li class="nav-item d-lg-none">
-                            <a class="nav-link" href="https://www.uchicago.edu"
-                                aria-label="Visit University of Chicago website">
+                            <a class="nav-link" href="https://www.uchicago.edu">
                                 University of Chicago
                             </a>
                         </li>
                         <li class="nav-item d-lg-none">
-                            <a class="nav-link" href="https://www.atilf.fr/"
-                                aria-label="Visit ATILF-CNRS website">
+                            <a class="nav-link" href="https://www.atilf.fr/">
                                 ATILF-CNRS
                             </a>
                         </li>
                         <li class="nav-item d-lg-none">
                             <a class="nav-link"
                                 href="https://artfl-project.uchicago.edu/content/contact-us"
-                                title="Contact information for the ARTFL Project"
-                                aria-label="Contact us">
+                                :title="$t('header.contactTitle')">
                                 {{ $t("header.contactUs") }}
                             </a>
                         </li>
@@ -72,21 +67,19 @@
                 <!-- Right side items - only shown on desktop -->
                 <ul class="navbar-nav ml-auto top-links d-none d-lg-flex">
                     <li class="nav-item">
-                        <a class="nav-link" href="https://www.uchicago.edu"
-                            aria-label="Visit University of Chicago website">
+                        <a class="nav-link" href="https://www.uchicago.edu">
                             University of Chicago
                         </a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="https://www.atilf.fr/"
-                            aria-label="Visit ATILF-CNRS website">
+                        <a class="nav-link" href="https://www.atilf.fr/">
                             ATILF-CNRS
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link"
                             href="https://artfl-project.uchicago.edu/content/contact-us"
-                            title="Contact information for the ARTFL Project" aria-label="Contact us">
+                            :title="$t('header.contactTitle')">
                             {{ $t("header.contactUs") }}
                         </a>
                     </li>
@@ -107,7 +100,7 @@
 
                 <a id="report-error-link" class="nav-link" :href="philoConfig.report_error_link"
                     target="_blank" rel="noopener noreferrer"
-                    :aria-label="$t('common.reportError') + ' (opens in new tab)'"
+                    :aria-label="`${$t('common.reportError')} ${$t('common.opensInNewTab')}`"
                     v-if="philoConfig.report_error_link.length > 0">
                     {{ $t("common.reportError") }}
                 </a>

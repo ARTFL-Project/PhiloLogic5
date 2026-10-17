@@ -60,7 +60,6 @@
                     <!-- The senses shown, each on its row: a click (or Enter) shows its words -->
                     <g v-for="row in tree.rows" :key="`row-${row.node.id}`" class="row-label" role="button" tabindex="0"
                         :class="{ picked: selected && selected.id === row.node.id, found: isFound(row.node) }"
-                        :aria-label="title(row.node)"
                         :aria-pressed="Boolean(selected && selected.id === row.node.id)" @click="select(row.node)"
                         @keydown.enter.prevent="select(row.node)" @keydown.space.prevent="select(row.node)">
                         <rect v-if="isFound(row.node)" class="found-row" :x="RIGHT + 4" :y="row.y - ROW / 2 + 3"
