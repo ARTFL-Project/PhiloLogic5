@@ -65,14 +65,16 @@ describe("SearchForm", () => {
     });
 
     // --- @click="reportChange(searchReport)" ---
-    it("changes report type on button click", async () => {
+    it("changes report type on button click, the report shown staying until the search runs", async () => {
         const wrapper = mountSearchForm();
         const store = useMainStore();
         const buttons = wrapper.findAll("#report .btn");
         // Click on the second report type
         await buttons[1].trigger("click");
         await nextTick();
-        expect(store.currentReport).toBe(webConfig.search_reports[1]);
+        expect(buttons[1].attributes("aria-pressed")).toBe("true");
+        expect(store.currentReport).toBe("concordance");
+        expect(store.formData.report).toBe("concordance");
     });
 
     // --- @change on mobile dropdown ---
@@ -81,8 +83,8 @@ describe("SearchForm", () => {
         const select = wrapper.find("#report-type-mobile-select");
         await select.setValue("kwic");
         await nextTick();
-        const store = useMainStore();
-        expect(store.currentReport).toBe("kwic");
+        expect(wrapper.find("#kwic").attributes("aria-pressed")).toBe("true");
+        expect(useMainStore().currentReport).toBe("concordance");
     });
 
     // --- @click="onSubmit()" ---
@@ -215,6 +217,63 @@ describe("SearchForm", () => {
         await wrapper.find("#show-search-form").trigger("click");
         await nextTick();
         expect(wrapper.find("#time-series-params").exists()).toBe(true);
+    });
+});
+
+describe("SearchForm and the search shown", () => {
+    const methodSelect = (wrapper) => wrapper.findAll("select").find((s) => s.find("option[value='exact_cooc']").exists());
+
+    // What the form is set to, its options open: another report, co-occurrence method and order
+    async function edited() {
+        const wrapper = mountSearchForm();
+        await flushPromises();
+        await wrapper.find("#query-term-input").setValue("liberty");
+        await wrapper.findAll("#report .btn")[1].trigger("click"); // KWIC, which opens the options
+        await nextTick();
+        await methodSelect(wrapper).setValue("sentence");
+        await wrapper.find("#co-occurrence-order-input").trigger("change");
+        await nextTick();
+        return wrapper;
+    }
+
+    it("leaves the search shown as it is until the form's runs", async () => {
+        const wrapper = await edited();
+        const store = useMainStore();
+        expect(store.formData).toMatchObject({ report: "concordance", method: "proxy", cooc_order: "yes" });
+        expect(store.currentReport).toBe("concordance");
+
+        await wrapper.find("form").trigger("submit");
+        await flushPromises();
+        const route = wrapper.vm.$router.currentRoute.value;
+        expect(route.path).toBe("/kwic");
+        expect(route.query).toMatchObject({ q: "liberty", method: "sentence", cooc_order: "no" });
+    });
+
+    it("clears the form, not the search shown", async () => {
+        const wrapper = await edited();
+        const store = useMainStore();
+        store.defaultFields = { ...store.formData, method: "proxy", cooc_order: "yes" }; // as initFromConfig gives them
+        store.formData.method = "exact_cooc"; // a search shown with values other than the defaults
+        await nextTick();
+        await wrapper.find("form").trigger("reset");
+        await nextTick();
+        expect(methodSelect(wrapper).element.value).toBe("proxy");
+        expect(store.formData.method).toBe("exact_cooc");
+    });
+
+    it("shows the search shown again when the URL changes, and what the page sets in it", async () => {
+        const wrapper = await edited();
+        const store = useMainStore();
+        store.formData = { ...store.formData, method: "exact_cooc", method_arg: "3" }; // as App sets it from the URL
+        await wrapper.vm.$router.push("/concordance?q=liberty&method=exact_cooc&method_arg=3");
+        await flushPromises();
+        expect(methodSelect(wrapper).element.value).toBe("exact_cooc");
+        expect(wrapper.find("#method-arg").element.value).toBe("3");
+        expect(wrapper.find("#co-occurrence-order-input").element.checked).toBe(true);
+
+        store.formData.method_arg = "4"; // the page settling on a value of the search shown
+        await nextTick();
+        expect(wrapper.find("#method-arg").element.value).toBe("4");
     });
 });
 

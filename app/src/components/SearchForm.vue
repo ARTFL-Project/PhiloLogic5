@@ -14,8 +14,8 @@
                             <label for="report-type-mobile-select" class="form-label fw-bold">
                                 {{ $t('searchForm.selectReportType') }}
                             </label>
-                            <select class="form-select" id="report-type-mobile-select" v-model="currentReport"
-                                @change="reportChange(currentReport)"
+                            <select class="form-select" id="report-type-mobile-select" v-model="selectedReport"
+                                @change="reportChange(selectedReport)"
                                 :aria-label="$t('searchForm.selectReportType')">
                                 <option v-for="searchReport in reports" :key="searchReport" :value="searchReport">
                                     {{ $t(`searchForm.${searchReport}`) }}
@@ -27,8 +27,8 @@
                         <div class="btn-group d-none d-sm-flex" role="group" id="report" style="width: 100%; top: -1px">
                             <button type="button" :id="searchReport" v-for="searchReport in reports"
                                 @click="reportChange(searchReport)" :key="searchReport"
-                                class="btn btn-secondary rounded-0" :class="{ active: currentReport == searchReport }"
-                                :aria-pressed="currentReport == searchReport">
+                                class="btn btn-secondary rounded-0" :class="{ active: selectedReport == searchReport }"
+                                :aria-pressed="selectedReport == searchReport">
                                 <span v-if="searchReport != 'kwic'">{{ $t(`searchForm.${searchReport}`) }}</span>
                                 <span v-else><span class="d-md-inline d-sm-none">{{ $t(`searchForm.${searchReport}`)
                                         }}</span><span class="d-md-none">{{ $t("searchForm.shortKwic") }}</span></span>
@@ -114,7 +114,7 @@
 
                                 <select class="form-select form-select-sm d-inline-block"
                                     style="max-width: fit-content; margin-left: 0.5rem"
-                                    v-model="formData.approximate_ratio" :disabled="!approximateSelected"
+                                    v-model="draft.approximate_ratio" :disabled="!approximateSelected"
                                     :aria-label="$t('searchForm.approximateMatchLabel')">
                                     <option v-for="value in approximateValues" :key="value.value" :value="value.value">
                                         {{ value.text }}
@@ -122,16 +122,16 @@
                                 </select>
                                 <!-- Checkbox to determine if we follow co-occurrence word order -->
                                 <div class="form-check form-switch" id="co-occurrence-order" style="height: 31px"
-                                    v-if="currentReport != 'collocation'">
+                                    v-if="selectedReport != 'collocation'">
                                     <input class="form-check-input" type="checkbox" id="co-occurrence-order-input"
                                         :checked="coocOrder" @change="toggleCoocOrder" />
                                     <label class=" form-check-label" for="co-occurrence-order-input">{{
                                         $t("searchForm.coOccurrenceWordOrder") }}</label>
                                 </div>
-                                <div class="input-group mb-4" v-if="currentReport != 'collocation'">
+                                <div class="input-group mb-4" v-if="selectedReport != 'collocation'">
                                     <button class="btn btn-outline-secondary" type="button" tabindex="-1">
                                         {{ $t("searchForm.searchCoOccurrences") }}</button><select class="form-select"
-                                        style="width: fit-content; max-width: fit-content" v-model="formData.method"
+                                        style="width: fit-content; max-width: fit-content" v-model="draft.method"
                                         :aria-label="$t('searchForm.coOccurrenceMethodLabel')">
                                         <option v-for="value in methodOptions" :key="value.value" :value="value.value">
                                             {{ value.text }}
@@ -139,18 +139,18 @@
                                     </select>
                                     <button class="btn btn-outline-secondary" type="button" id="method-arg-label"
                                         tabindex="-1"
-                                        v-if="formData.method == 'proxy' || formData.method == 'exact_cooc'">
+                                        v-if="draft.method == 'proxy' || draft.method == 'exact_cooc'">
                                         {{ $t("searchForm.howMany") }}?
                                     </button>
                                     <input class="form-control" type="text" name="method_arg" id="method-arg"
                                         aria-labelledby="method-arg-label"
-                                        v-if="formData.method == 'proxy' || formData.method == 'exact_cooc'"
-                                        v-model="formData.method_arg" />
+                                        v-if="draft.method == 'proxy' || draft.method == 'exact_cooc'"
+                                        v-model="draft.method_arg" />
                                     <span class="input-group-text ms-0"
-                                        v-if="formData.method == 'proxy' || formData.method == 'exact_cooc'">{{
+                                        v-if="draft.method == 'proxy' || draft.method == 'exact_cooc'">{{
                                             $t("searchForm.wordsSentence") }}</span>
                                 </div>
-                                <CollocationOptions v-if="currentReport == 'collocation'" />
+                                <CollocationOptions v-if="selectedReport == 'collocation'" :form="draft" />
                                 <div role="group" aria-labelledby="filter-by-field-heading">
                                     <h2 class="mt-2" id="filter-by-field-heading">{{ $t("searchForm.filterByField") }}:
                                     </h2>
@@ -184,7 +184,7 @@
                                         </template>
                                     </MetadataFields>
                                 </div>
-                                <div class="mt-1" id="time-series-params" v-if="currentReport === 'time_series'"
+                                <div class="mt-1" id="time-series-params" v-if="selectedReport === 'time_series'"
                                     role="group" aria-labelledby="time-series-params-heading">
                                     <h2 id="time-series-params-heading">{{ $t("searchForm.timeSeriesParams") }}:</h2>
                                     <div class="input-group mt-1 pb-2">
@@ -194,11 +194,11 @@
                                         <label for="start_date" class="d-inline-flex align-self-center mx-2">{{
                                             $t("searchForm.dateFrom") }}</label>
                                         <input type="text" class="form-control" name="start_date" id="start_date"
-                                            style="max-width: 65px; text-align: center" v-model="formData.start_date" />
+                                            style="max-width: 65px; text-align: center" v-model="draft.start_date" />
                                         <label for="end_date" class="d-inline-flex align-self-center mx-2">{{
                                             $t("searchForm.dateTo") }}</label>
                                         <input type="text" class="form-control" name="end_date" id="end_date"
-                                            style="max-width: 65px; text-align: center" v-model="formData.end_date" />
+                                            style="max-width: 65px; text-align: center" v-model="draft.end_date" />
                                     </div>
                                     <div class="input-group">
                                         <button type="button" class="btn btn-outline-secondary" id="year-interval-label"
@@ -210,17 +210,17 @@
                                         <input type="text" class="form-control" name="year_interval" id="year_interval"
                                             aria-labelledby="year-interval-label"
                                             style="max-width: 50px; text-align: center"
-                                            v-model="formData.year_interval" />
+                                            v-model="draft.year_interval" />
                                         <span class="d-inline-flex align-self-center mx-2">{{ $t("searchForm.years")
                                             }}</span>
                                     </div>
                                 </div>
-                                <div class="input-group mt-4" v-if="currentReport === 'aggregation'">
+                                <div class="input-group mt-4" v-if="selectedReport === 'aggregation'">
                                     <button type="button" class="btn btn-outline-secondary">{{
                                         $t("searchForm.groupResultsBy")
                                         }}</button>
                                     <select class="form-select" :aria-label="$t('searchForm.groupResultsByLabel')"
-                                        style="max-width: fit-content" v-model="formData.group_by">
+                                        style="max-width: fit-content" v-model="draft.group_by">
                                         <option v-for="aggregationOption in aggregationOptions"
                                             :key="aggregationOption.text" :value="aggregationOption.value">
                                             {{ aggregationOption.text }}
@@ -228,18 +228,18 @@
                                     </select>
                                 </div>
                                 <div role="group" aria-labelledby="display-options-heading"
-                                    v-if="['concordance', 'bibliography'].includes(currentReport)">
+                                    v-if="['concordance', 'bibliography'].includes(selectedReport)">
                                     <h2 class="mt-3" id="display-options-heading">
                                         {{ $t("searchForm.displayOptions") }}:
                                     </h2>
                                     <div class="input-group pb-2"
-                                        v-if="['concordance', 'bibliography'].includes(currentReport)">
+                                        v-if="['concordance', 'bibliography'].includes(selectedReport)">
                                         <label class="btn btn-outline-secondary" for="sort-results-select">
                                             {{ $t("searchForm.sortResultsBy") }}
                                         </label>
                                         <select class="form-select" style="max-width: fit-content"
                                             id="sort-results-select" :aria-label="$t('searchForm.sortResultsByLabel')"
-                                            v-model="formData.sort_by">
+                                            v-model="draft.sort_by">
                                             <option v-for="sortValue in sortValues" :key="sortValue.value"
                                                 :value="sortValue.value">
                                                 {{ sortValue.text }}
@@ -317,9 +317,36 @@ const {
     metadataValues,
     route,
     queryTerm: queryTermTyped,
-    onSelect(field, value) {
-        store.updateFormDataField({ key: field, value });
+});
+
+// ── The form's search ────────────────────────────────────────────────────────
+// The form edits a search of its own until it is run: the search shown (the store's formData, from the URL) stays as
+// it is, for the results and their links. The form shows it again when the URL changes, as the values the page sets
+// in it (a time series' dates).
+const draft = reactive({ ...formData.value });
+const selectedReport = ref(currentReport.value); // the report the form runs, the one shown until another is picked
+let shown = { ...formData.value };
+
+function showSearch() {
+    for (const key of Object.keys(draft)) {
+        if (!(key in formData.value)) delete draft[key];
+    }
+    Object.assign(draft, formData.value);
+    shown = { ...formData.value };
+}
+
+watch(
+    formData,
+    (search) => {
+        for (const [key, value] of Object.entries(search)) {
+            if (shown[key] !== value) draft[key] = value;
+        }
+        shown = { ...search };
     },
+    { deep: true }
+);
+watch(currentReport, (report) => {
+    selectedReport.value = report;
 });
 
 // ── Local state ──────────────────────────────────────────────────────────────
@@ -343,8 +370,19 @@ const aggregationOptions = philoConfig.aggregation_config.map((f) => ({
 
 const headIndex = ref(0);
 const formOpen = ref(false);
-const approximateSelected = ref(false);
-const coocOrder = ref(true);
+// The switches, as the search has them ("yes", "no")
+const approximateSelected = computed({
+    get: () => draft.approximate === "yes",
+    set: (on) => {
+        draft.approximate = on ? "yes" : "no";
+    },
+});
+const coocOrder = computed({
+    get: () => draft.cooc_order === "yes",
+    set: (on) => {
+        draft.cooc_order = on ? "yes" : "no";
+    },
+});
 const metadataDisplay = ref([]);
 const metadataChoiceValues = reactive({});
 const metadataChoiceChecked = reactive({});
@@ -365,7 +403,7 @@ const sortValues = computed(() => {
 
 const metadataDisplayFiltered = computed(() => {
     let metadataInForm;
-    if (currentReport.value === "time_series") {
+    if (selectedReport.value === "time_series") {
         metadataInForm = metadataDisplay.value.filter(
             (f) => philoConfig.time_series_year_field !== f.value
         );
@@ -380,6 +418,7 @@ const metadataDisplayFiltered = computed(() => {
 
 // ── Form sync helpers ────────────────────────────────────────────────────────
 function updateInputData() {
+    showSearch();
     queryTermTyped.value = formData.value.q || "";
     for (const field of philoConfig.metadata) {
         const style = philoConfig.metadata_input_style[field];
@@ -400,10 +439,7 @@ function toggleCoocOrder() {
 
 function toggleApproximate() {
     approximateSelected.value = !approximateSelected.value;
-    store.updateFormDataField({
-        key: "approximate_ratio",
-        value: approximateSelected.value ? "90" : "",
-    });
+    draft.approximate_ratio = approximateSelected.value ? "90" : "";
 }
 
 function toggleForm() {
@@ -412,7 +448,7 @@ function toggleForm() {
 
 // ── Submit / reset / report change ───────────────────────────────────────────
 function onSubmit() {
-    formData.value.report = currentReport.value;
+    draft.report = selectedReport.value;
     formOpen.value = false;
     const metadataChoices = Object.fromEntries(
         Object.entries(metadataChoiceChecked).map(([key, val]) => [key, val.join(" | ")])
@@ -424,16 +460,16 @@ function onSubmit() {
     dateRangeHandler(metadataInputStyle, dateRange, dateType, metadataValues);
     clearAutoCompletePopup();
 
-    if (currentReport.value === "collocation" && formData.value.colloc_within === "sent") {
-        store.updateFormDataField({ key: "method_arg", value: "" });
+    if (selectedReport.value === "collocation" && draft.colloc_within === "sent") {
+        draft.method_arg = "";
     }
-    if (currentReport.value === "collocation" && !formData.value.colloc_filter_choice) {
-        store.updateFormDataField({ key: "colloc_filter_choice", value: defaultCommonWords(philoConfig) });
+    if (selectedReport.value === "collocation" && !draft.colloc_filter_choice) {
+        draft.colloc_filter_choice = defaultCommonWords(philoConfig);
     }
 
     router.push(
         paramsToRoute({
-            ...formData.value,
+            ...draft,
             ...metadataValues,
             ...metadataChoices,
             ...metadataSelected,
@@ -441,18 +477,18 @@ function onSubmit() {
             start: "",
             end: "",
             byte: "",
-            start_date: formData.value.start_date,
-            end_date: formData.value.end_date,
+            start_date: draft.start_date,
+            end_date: draft.end_date,
             // the filter of links made before collocate filters could be combined, which the form now has
             q_attribute: "",
             q_attribute_value: "",
-            method_arg: formData.value.method_arg,
+            method_arg: draft.method_arg,
         })
     );
 }
 
 function onReset() {
-    store.resetFormDataToDefaults();
+    Object.assign(draft, store.defaultFields);
     for (const field of philoConfig.metadata) {
         metadataValues[field] = "";
     }
@@ -466,38 +502,16 @@ function onReset() {
 }
 
 function reportChange(report) {
-    formData.value.report = report === "landing_page" ? philoConfig.search_reports[0] : report;
+    draft.report = report === "landing_page" ? philoConfig.search_reports[0] : report;
     if (report === "collocation") {
-        store.updateFormDataField({
-            key: "colloc_filter_choice",
-            value: defaultCommonWords(philoConfig),
-        });
+        draft.colloc_filter_choice = defaultCommonWords(philoConfig);
     }
-    currentReport.value = report;
+    selectedReport.value = report;
     if (!formOpen.value) toggleForm();
 }
 
 // ── Watchers ─────────────────────────────────────────────────────────────────
 watch(() => route.fullPath, updateInputData);
-
-// Two-way sync for cooc_order / approximate between local UI state and store
-watch(coocOrder, (newValue) => {
-    store.updateFormDataField({ key: "cooc_order", value: newValue ? "yes" : "no" });
-});
-watch(
-    () => formData.value.cooc_order,
-    (newValue) => { coocOrder.value = newValue === "yes"; },
-    { immediate: true }
-);
-
-watch(approximateSelected, (newValue) => {
-    store.updateFormDataField({ key: "approximate", value: newValue ? "yes" : "no" });
-});
-watch(
-    () => formData.value.approximate,
-    (newValue) => { approximateSelected.value = newValue === "yes"; },
-    { immediate: true }
-);
 
 // ── Lifecycle ────────────────────────────────────────────────────────────────
 onMounted(() => {

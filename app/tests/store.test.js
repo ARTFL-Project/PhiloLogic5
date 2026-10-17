@@ -56,16 +56,6 @@ describe("Main Store", () => {
         expect(store.reportValues.aggregation.has("group_by")).toBe(true);
     });
 
-    it("resetFormDataToDefaults applies defaultFields onto formData", () => {
-        store.initFromConfig(minimalConfig);
-        // Mutate formData away from defaults
-        store.formData.q = "something";
-        store.formData.method = "exact_cooc";
-        store.resetFormDataToDefaults();
-        expect(store.formData.q).toBe("");
-        expect(store.formData.method).toBe("proxy");
-    });
-
     it("updateStartEndDate updates both date fields", () => {
         store.updateStartEndDate({ startDate: "1800", endDate: "1900" });
         expect(store.formData.start_date).toBe("1800");

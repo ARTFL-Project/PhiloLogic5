@@ -4,13 +4,13 @@
 
         <div class="input-group colloc-row">
             <label class="btn btn-outline-secondary" for="colloc-within">{{ $t("searchForm.collocCount") }}</label>
-            <select class="form-select colloc-select" id="colloc-within" v-model="formData.colloc_within">
+            <select class="form-select colloc-select" id="colloc-within" v-model="form.colloc_within">
                 <option value="sent">{{ $t("searchForm.collocInSentence") }}</option>
                 <option value="n">{{ $t("searchForm.within") }}</option>
             </select>
-            <template v-if="formData.colloc_within === 'n'">
+            <template v-if="form.colloc_within === 'n'">
                 <input type="number" min="1" class="form-control colloc-n-words" id="collocNWords" name="method_arg"
-                    :aria-label="$t('searchForm.collocNWordsLabel')" v-model="formData.method_arg" />
+                    :aria-label="$t('searchForm.collocNWordsLabel')" v-model="form.method_arg" />
                 <span class="input-group-text">{{ $t("searchForm.words") }}</span>
             </template>
         </div>
@@ -21,10 +21,10 @@
                 {{ $t("searchForm.collocCountAs") }}
             </span>
             <input type="radio" class="btn-check" name="colloc_lemmas" id="collocLemmas" value="yes"
-                v-model="formData.colloc_lemmas" />
+                v-model="form.colloc_lemmas" />
             <label class="btn btn-outline-secondary" for="collocLemmas">{{ $t("searchForm.collocLemmas") }}</label>
             <input type="radio" class="btn-check" name="colloc_lemmas" id="collocForms" value="no"
-                v-model="formData.colloc_lemmas" />
+                v-model="form.colloc_lemmas" />
             <label class="btn btn-outline-secondary" for="collocForms">{{ $t("searchForm.collocWordForms") }}</label>
         </div>
     </div>
@@ -46,13 +46,13 @@
                 <span class="input-group-text">{{ $t("searchForm.collocInOver") }}</span>
                 <div class="form-control colloc-range">
                     <input type="range" class="form-range df-filter-range" id="filter-df-pct" name="filter_df_pct"
-                        min="0.5" max="5" step="0.1" v-model="formData.filter_df_pct"
+                        min="0.5" max="5" step="0.1" v-model="form.filter_df_pct"
                         :aria-label="$t('searchForm.dfFilterLabel')"
-                        :aria-valuetext="$t('searchForm.dfFilterValueText', { pct: formData.filter_df_pct })"
+                        :aria-valuetext="$t('searchForm.dfFilterValueText', { pct: form.filter_df_pct })"
                         aria-describedby="filter-df-pct-desc" />
                 </div>
                 <span class="input-group-text colloc-pct" aria-hidden="true">
-                    {{ formData.filter_df_pct }}{{ $t("searchForm.dfFilterUnit") }}
+                    {{ form.filter_df_pct }}{{ $t("searchForm.dfFilterUnit") }}
                 </span>
                 <span id="filter-df-pct-desc" class="visually-hidden">{{ $t("searchForm.dfFilterDescription") }}</span>
             </template>
@@ -110,15 +110,14 @@
 // The collocation parameters of the search form: where collocates are counted (in the sentence, within n words), as
 // word forms or lemmas, without the common words (the most frequent, the stopwords: either or both), and only with
 // some values of word properties (any of a property's ticked values, for each property with values ticked)
-import { storeToRefs } from "pinia";
 import { computed, inject, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { useMainStore } from "../stores/main";
 import { PROPERTY_PARAM, defaultCommonWords, splitValues } from "../utils.js";
 
+// The form's search, which these options edit until it is run
+const props = defineProps({ form: { type: Object, required: true } });
+
 const philoConfig = inject("$philoConfig");
-const store = useMainStore();
-const { formData } = storeToRefs(store);
 const { t } = useI18n();
 
 const propertyNames = Object.keys(philoConfig.word_attributes || {});
@@ -126,10 +125,10 @@ const propertyNames = Object.keys(philoConfig.word_attributes || {});
 const DEFAULT_WORDS = 5;
 
 watch(
-    () => formData.value.colloc_within,
+    () => props.form.colloc_within,
     (within) => {
-        if (within === "n" && !String(formData.value.method_arg ?? "").trim()) {
-            store.updateFormDataField({ key: "method_arg", value: String(DEFAULT_WORDS) });
+        if (within === "n" && !String(props.form.method_arg ?? "").trim()) {
+            props.form.method_arg = String(DEFAULT_WORDS);
         }
     },
     { immediate: true }
@@ -142,12 +141,12 @@ const wrappers = {};
 // onSubmit).
 const common = computed({
     get() {
-        const chosen = splitValues(formData.value.colloc_filter_choice || defaultCommonWords(philoConfig));
+        const chosen = splitValues(props.form.colloc_filter_choice || defaultCommonWords(philoConfig));
         const value = ["frequency", "stopwords"].filter((choice) => chosen.includes(choice)).join(" | ");
         return value || "nofilter";
     },
     set(value) {
-        store.updateFormDataField({ key: "colloc_filter_choice", value });
+        props.form.colloc_filter_choice = value;
     },
 });
 
@@ -158,12 +157,12 @@ function values(name) {
     return philoConfig.word_attributes[name] || [];
 }
 function kept(name) {
-    return splitValues(formData.value[`${PROPERTY_PARAM}${name}`]);
+    return splitValues(props.form[`${PROPERTY_PARAM}${name}`]);
 }
 function setKept(name, kept) {
     const order = values(name);
     const sorted = [...kept].sort((a, b) => order.indexOf(a) - order.indexOf(b));
-    store.updateFormDataField({ key: `${PROPERTY_PARAM}${name}`, value: sorted.join(" | ") });
+    props.form[`${PROPERTY_PARAM}${name}`] = sorted.join(" | ");
 }
 function toggleValue(name, value, event) {
     const now = kept(name).filter((v) => v !== value);

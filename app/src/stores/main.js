@@ -144,14 +144,6 @@ export const useMainStore = defineStore("main", {
             };
         },
 
-        // Reset formData fields to the previously-computed defaults (used by
-        // SearchForm's "reset" action).
-        resetFormDataToDefaults() {
-            for (const field in this.defaultFields) {
-                this.formData[field] = this.defaultFields[field];
-            }
-        },
-
         updateFormDataField(payload) {
             this.formData[payload.key] = payload.value;
         },
