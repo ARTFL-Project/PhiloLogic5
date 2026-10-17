@@ -12,8 +12,6 @@ const i18n = createI18n({
             wordCloud: {
                 ariaLabel: "Word cloud containing {count} words",
                 instructions: "Use arrow keys",
-                tableCaption: "Word cloud data",
-                word: "Word", frequency: "Frequency", significance: "Significance",
                 wordAriaLabel: "{word}, appears {frequency} times, {significance} significance",
                 wordTooltip: "{word} (appears {frequency} times)",
                 noWords: "No words available",
@@ -32,7 +30,7 @@ const sampleWords = [
 
 async function mountWordCloud(props = {}) {
     const wrapper = mount(WordCloud, {
-        props: { wordWeights: [], clickHandler: vi.fn(), label: "test", ...props },
+        props: { wordWeights: [], clickHandler: vi.fn(), ...props },
         global: { plugins: [i18n] },
         attachTo: document.body,  // required for focus management to be observable
     });
@@ -60,6 +58,29 @@ describe("WordCloud", () => {
     it("sets aria-label on word buttons", async () => {
         const wrapper = await mountWordCloud({ wordWeights: sampleWords });
         expect(wrapper.find(".cloud-word").attributes("aria-label")).toBeTruthy();
+    });
+
+    it("is described by its own instructions, each cloud on a page by its own", async () => {
+        const Two = { components: { WordCloud }, template: "<word-cloud v-for='i in 2' :key='i' :word-weights='words' :click-handler='() => {}' />", data: () => ({ words: sampleWords }) };
+        const host = document.body.appendChild(document.createElement("div"));
+        const wrapper = mount(Two, { global: { plugins: [i18n] }, attachTo: host });
+        await nextTick();
+        const ids = wrapper.findAll(".word-cloud-container").map((c) => c.attributes("aria-describedby"));
+        expect(ids.map((id) => document.getElementById(id)?.textContent.trim())).toEqual(["Use arrow keys", "Use arrow keys"]);
+        expect(ids[0]).not.toBe(ids[1]);
+        const all = [...host.querySelectorAll("[id]")].map((e) => e.id);
+        expect(new Set(all).size).toBe(all.length);
+        wrapper.unmount();
+    });
+
+    it("leaves the word focused to be read out, adding no announcement of its own", async () => {
+        const wrapper = await mountWordCloud({ wordWeights: sampleWords });
+        const regions = () => document.querySelectorAll("[aria-live]").length;
+        const before = regions();
+        await wrapper.findAll(".cloud-word")[0].trigger("keydown", { key: "ArrowRight" });
+        await nextTick();
+        expect(regions()).toBe(before);
+        wrapper.unmount();
     });
 
     // --- @click="clickHandler(word)" ---

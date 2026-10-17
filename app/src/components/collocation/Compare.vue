@@ -121,7 +121,7 @@
                     :aria-label="$t('collocation.frequentCollocatesPanel')">
                     <div class="row gx-5">
                         <div class="col-6" role="region" :aria-label="$t('collocation.primaryCorpusResults')">
-                            <word-cloud :word-weights="sortedList" label="primary"
+                            <word-cloud :word-weights="sortedList"
                                 :click-handler="onCollocateClick"></word-cloud>
                         </div>
                         <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
@@ -130,7 +130,7 @@
                                 <progress-spinner :lg="true" />
                             </div>
                             <word-cloud v-if="otherCollocates.length > 0" :word-weights="otherCollocates"
-                                label="secondary" :click-handler="onOtherCollocateClick"></word-cloud>
+                                :click-handler="onOtherCollocateClick"></word-cloud>
                         </div>
                     </div>
                 </div>
@@ -139,7 +139,7 @@
                     <div class="row gx-5">
                         <div class="col-6" role="region" :aria-label="$t('collocation.overRepresentedResults')">
                             <word-cloud v-if="overRepresented.length > 0" :word-weights="overRepresented"
-                                :click-handler="onCollocateClick" label="over" :scores="true"></word-cloud>
+                                :click-handler="onCollocateClick" :scores="true"></word-cloud>
                         </div>
                         <div class="col-6" style="border-left: solid 1px rgba(0, 0, 0, 0.176)" role="region"
                             :aria-label="$t('collocation.underRepresentedResults')">
@@ -147,7 +147,7 @@
                                 <progress-spinner :lg="true" />
                             </div>
                             <word-cloud v-if="underRepresented.length > 0" :word-weights="underRepresented"
-                                :click-handler="onOtherCollocateClick" label="under" :scores="true"></word-cloud>
+                                :click-handler="onOtherCollocateClick" :scores="true"></word-cloud>
                         </div>
                     </div>
                 </div>

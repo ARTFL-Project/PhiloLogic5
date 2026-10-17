@@ -34,7 +34,7 @@
             :class="outlierPanels.length > 0 ? 'col-md-5 col-xl-6' : 'col-md-8 col-xl-9'">
             <div class="card shadow-sm">
                 <word-cloud v-if="sortedList.length > 0" :word-weights="sortedList"
-                    label="frequency" :click-handler="onCollocateClick"></word-cloud>
+                    :click-handler="onCollocateClick"></word-cloud>
             </div>
         </div>
 

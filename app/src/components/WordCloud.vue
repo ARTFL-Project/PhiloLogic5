@@ -1,8 +1,8 @@
 <template>
     <div ref="rootRef" class="word-cloud-container" role="region" :aria-label="wordCloudAriaLabel"
-        aria-describedby="word-cloud-instructions">
+        :aria-describedby="instructionsId">
         <!-- Instructions for screen readers -->
-        <div :id="`word-cloud-instructions-${label}`" class="visually-hidden">
+        <div :id="instructionsId" class="visually-hidden">
             {{ $t("wordCloud.instructions") }}
         </div>
 
@@ -14,26 +14,26 @@
         </button>
 
         <!-- Status for screen readers -->
-        <div class="visually-hidden" aria-live="polite" aria-atomic="true" id="word-cloud-status">
+        <div class="visually-hidden" aria-live="polite" aria-atomic="true">
             {{ statusMessage }}
         </div>
     </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, useId, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import variables from "../assets/styles/theme.module.scss";
 
 const props = defineProps({
     wordWeights: { type: Array, required: true, default: () => [] },
     clickHandler: { type: Function, required: true },
-    label: { type: String, required: false, default: "default" },
     scores: { type: Boolean, required: false, default: false }, // weights are z-scores, not counts
 });
 
 const { t } = useI18n();
 
+const instructionsId = `word-cloud-instructions-${useId()}`; // Compare shows up to four clouds
 const rootRef = ref(null);
 const collocCloudWords = ref([]);
 const cloudColor = ref(variables.color || "#8e3232");
@@ -148,25 +148,6 @@ function getWordTitle(word) {
     });
 }
 
-function announceToScreenReader(message) {
-    const announcer = document.createElement("div");
-    announcer.setAttribute("aria-live", "assertive");
-    announcer.setAttribute("aria-atomic", "true");
-    announcer.className = "visually-hidden";
-    announcer.textContent = message;
-    document.body.appendChild(announcer);
-
-    setTimeout(() => {
-        if (document.body.contains(announcer)) {
-            document.body.removeChild(announcer);
-        }
-    }, 1000);
-}
-
-function announceWordSelection(word) {
-    announceToScreenReader(getWordAriaLabel(word));
-}
-
 function handleKeydown(event, word, index) {
     const words = collocCloudWords.value;
     let newIndex = index;
@@ -205,15 +186,10 @@ function handleKeydown(event, word, index) {
             return;
     }
 
+    // the word focused is read out, as its label says
     if (newIndex !== index) {
         selectedWordIndex.value = newIndex;
-        nextTick(() => {
-            const wordButtons = rootRef.value?.querySelectorAll(".cloud-word");
-            if (wordButtons && wordButtons[newIndex]) {
-                wordButtons[newIndex].focus();
-                announceWordSelection(words[newIndex]);
-            }
-        });
+        nextTick(() => rootRef.value?.querySelectorAll(".cloud-word")[newIndex]?.focus());
     }
 }
 
