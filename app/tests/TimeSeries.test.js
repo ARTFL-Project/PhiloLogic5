@@ -102,6 +102,7 @@ describe("TimeSeries", () => {
         expect(bars).toHaveLength(7); // 1500 to 1800 by 50
         expect(bars[0].attributes("aria-label")).toBe("1500-1549: 165 occurrences");
         expect(bars[6].attributes("aria-label")).toMatch(/^1800: /); // the last period stops at the end date
+        expect(wrapper.findAll("table tbody tr td")[1].text()).toBe("165 occurrences");
         expect(wrapper.find("table tbody tr td").text()).toBe("1500-1549");
         expect(wrapper.find(".ts-hint").text()).toContain("move between periods");
     });

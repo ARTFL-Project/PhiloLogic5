@@ -528,8 +528,8 @@
     "timeSeries": {
         "chartTitle": "Time Series Chart",
         "year": "Year",
-        "occurrences": "occurrences",
-        "per10000Words": "per 10,000 words",
+        "occurrences": "{n} occurrence | {n} occurrences",
+        "per10000Words": "{n} per 10,000 words",
         "chartAriaLabel": "{type} time series chart showing {count} data points from {range}",
         "frequencyTypeSelection": "Frequency type selection",
         "dataTable": "Time series data table",

@@ -11,7 +11,7 @@ function mountChart(props = {}) {
             values: [3, 0, 17, 8],
             labels: [1500, 1550, 1600, 1650],
             ranges: ["1500-1549", "1550-1599", "1600-1649", "1650"],
-            unit: "occurrences",
+            valueText: (value) => `${value} occurrence${value === 1 ? "" : "s"}`,
             xTitle: "Year",
             yTitle: "Absolute Frequency",
             label: "The chart",

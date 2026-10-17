@@ -30,7 +30,7 @@
                         </h3>
 
                         <time-series-chart id="time-series-chart" :values="counts" :labels="dateLabels"
-                            :ranges="dateRanges" :unit="unit" :x-title="$t('timeSeries.year')"
+                            :ranges="dateRanges" :value-text="valueText" :x-title="$t('timeSeries.year')"
                             :y-title="currentFrequencyLabel" :label="chartAriaLabel" describedby="chart-instructions"
                             :hint="$t('timeSeries.keyboardHint')" @select="navigateToYear" />
 
@@ -51,7 +51,7 @@
                                 <tbody>
                                     <tr v-for="(label, index) in dateLabels" :key="label">
                                         <td>{{ dateRanges[index] }}</td>
-                                        <td>{{ counts[index] }} {{ unit }}</td>
+                                        <td>{{ valueText(counts[index]) }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -81,7 +81,7 @@ const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const philoConfig = inject("$philoConfig");
 const router = useRouter();
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const store = useMainStore();
 const { formData, searching } = storeToRefs(store);
 
@@ -114,9 +114,13 @@ const chartAriaLabel = computed(() => {
 });
 
 const counts = computed(() => (frequencyType.value === "absolute_time" ? absoluteCounts.value : relativeCounts.value));
-const unit = computed(() =>
-    frequencyType.value === "absolute_time" ? t("timeSeries.occurrences") : t("timeSeries.per10000Words")
-);
+// A count as said: "1 occurrence", "1,234 occurrences", "1.3 per 10,000 words"
+function valueText(value) {
+    const n = value.toLocaleString(locale.value, { maximumFractionDigits: 2 });
+    return frequencyType.value === "absolute_time"
+        ? t("timeSeries.occurrences", { n }, value)
+        : t("timeSeries.per10000Words", { n });
+}
 
 // The periods' years, the last one's stopping at the end date
 const dateRanges = computed(() =>

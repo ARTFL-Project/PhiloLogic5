@@ -528,8 +528,8 @@
     "timeSeries": {
         "chartTitle": "Gráfico de Series Temporales",
         "year": "Año",
-        "occurrences": "ocurrencias",
-        "per10000Words": "por cada 10 000 palabras",
+        "occurrences": "{n} ocurrencia | {n} ocurrencias",
+        "per10000Words": "{n} por cada 10 000 palabras",
         "chartAriaLabel": "Gráfico de series temporales {type}  muestra {count} de datos para  {range}",
         "frequencyTypeSelection": "Selección del tipo de frecuencia",
         "dataTable": "Tabla de datos de la serie temporal",

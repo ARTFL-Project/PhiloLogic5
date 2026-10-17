@@ -19,7 +19,7 @@
                 :style="{ '--bar-width': barWidth }">
                 <button v-for="(value, index) in values" :key="index" type="button" class="ts-column"
                     :class="{ active: index === active }" :tabindex="index === current ? 0 : -1"
-                    :aria-label="`${ranges[index]}: ${format(value)} ${unit}`" :ref="(el) => (columns[index] = el)"
+                    :aria-label="`${ranges[index]}: ${valueText(value)}`" :ref="(el) => (columns[index] = el)"
                     @click="emit('select', index)" @focus="onFocus(index)" @blur="onBlur(index)"
                     @keydown="onKeydown(index, $event)" @pointerenter="onPointerEnter(index)"
                     @pointerleave="onPointerLeave">
@@ -31,7 +31,7 @@
             <div v-if="tip !== null" class="ts-tooltip" ref="tooltip" aria-hidden="true" :style="tipStyle"
                 @pointerenter="keepTip" @pointerleave="onPointerLeave" @click="emit('select', tip)">
                 <div class="ts-tooltip-title">{{ ranges[tip] }}</div>
-                <div class="ts-tooltip-value">{{ format(values[tip]) }} {{ unit }}</div>
+                <div class="ts-tooltip-value">{{ valueText(values[tip]) }}</div>
             </div>
         </div>
 
@@ -57,7 +57,7 @@ const props = defineProps({
     values: { type: Array, required: true },
     labels: { type: Array, required: true }, // the periods' starts
     ranges: { type: Array, required: true }, // the periods' names
-    unit: { type: String, required: true },
+    valueText: { type: Function, required: true }, // a value as said: "1 occurrence"
     xTitle: { type: String, required: true },
     yTitle: { type: String, required: true },
     label: { type: String, required: true }, // the chart's accessible name
@@ -136,7 +136,7 @@ const tipStyle = computed(() => {
     };
 });
 watch(
-    () => tip.value !== null && [props.ranges[tip.value], props.values[tip.value], props.unit],
+    () => tip.value !== null && [props.ranges[tip.value], props.valueText(props.values[tip.value])],
     () => (tipWidth.value = tooltip.value?.offsetWidth ?? 0),
     { flush: "post" }
 );
