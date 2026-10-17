@@ -597,7 +597,7 @@ def build_metadata_word_index(db_path: str) -> int:
                     if len(index[key]) < 10000:
                         index[key].add(orig_val)
 
-    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024,
+    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024 * 1024,  # 2TB limit: sparse with writemap
                         writemap=True, sync=False, metasync=False)
     with tmp_env.begin(write=True) as txn:
         for (field, word), originals in index.items():
@@ -766,7 +766,9 @@ def _write_prefix_table(entries, lmdb_path, min_length):
     tmp_path, new_path = lmdb_path + ".tmp", lmdb_path + ".new"
     for path in (tmp_path, new_path):
         shutil.rmtree(path, ignore_errors=True)
-    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024, writemap=True, sync=False, metasync=False)
+    tmp_env = lmdb.open(  # 2TB limit: sparse with writemap
+        tmp_path, map_size=2 * 1024 * 1024 * 1024 * 1024, writemap=True, sync=False, metasync=False
+    )
     with tmp_env.begin(write=True) as txn:
         for prefix in sorted(table):
             txn.put(prefix, table[prefix], append=True)

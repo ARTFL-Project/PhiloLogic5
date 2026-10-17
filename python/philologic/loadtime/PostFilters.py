@@ -643,7 +643,7 @@ def build_norm_word_lmdb(loader_obj):
 
     # Write to a temp LMDB (large map_size for writemap), then compact-copy to
     # the final location so disk usage reflects actual data size, not map_size.
-    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024,
+    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024 * 1024,  # 2TB limit: sparse with writemap
                         writemap=True, sync=False, metasync=False)
     with tmp_env.begin(write=True) as txn:
         for norm, originals in mapping.items():
@@ -812,7 +812,7 @@ def build_word_forms_lmdb(loader_obj):
     print("%s: Building word_forms LMDB index..." % time.ctime(), flush=True)
 
     count = 0
-    tmp_env = lmdb.open(tmp_path, map_size=512 * 1024 * 1024,
+    tmp_env = lmdb.open(tmp_path, map_size=2 * 1024 * 1024 * 1024 * 1024,  # 2TB limit: sparse with writemap
                         writemap=True, sync=False, metasync=False)
     with tmp_env.begin(write=True) as txn:
         for fname in present:
