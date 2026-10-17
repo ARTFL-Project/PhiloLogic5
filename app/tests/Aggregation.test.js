@@ -38,7 +38,6 @@ async function mountAggregation(overrides = {}) {
                 Citations: { template: "<span class='citations-stub' />", props: ["citation", "resultNumber"] },
             },
             mocks: { $philoConfig: config, $dbUrl: "/testdb" },
-            directives: { scroll: { mounted() {}, unmounted() {} } },
         },
     });
 }
@@ -151,8 +150,7 @@ describe("Aggregation by title", () => {
                     Citations: CitationsStub,
                 },
                 mocks: { $philoConfig: config, $dbUrl: "/testdb" },
-                directives: { scroll: { mounted() {}, unmounted() {} } },
-            },
+                },
         });
         await flushPromises();
         await nextTick();

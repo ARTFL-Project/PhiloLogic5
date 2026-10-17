@@ -10,9 +10,10 @@
             </div>
         </header>
         <section class="row text-center mt-4" id="toc-wrapper" v-if="navBar === true || loading === false"
-            :aria-label="$t('textNav.navigationControls')">
-            <div id="toc-top-bar">
-                <div id="nav-buttons" v-scroll="handleScroll">
+            :aria-label="$t('textNav.navigationControls')" :style="navBarVisible ? { top: '31px' } : null">
+            <div id="toc-top-bar" :class="{ visible: navBarVisible, shadow: navBarVisible }"
+                :style="navBarVisible ? { top: 0 } : null">
+                <div id="nav-buttons" :class="{ visible: navBarVisible }">
                     <button type="button" class="btn btn-secondary btn-sm" id="back-to-top" @click="backToTop()"
                         :aria-label="$t('textNav.backToTop')" v-show="navBarVisible">
                         <span class="d-none d-sm-inline-block">{{ $t("textNav.backToTop") }}</span>
@@ -24,7 +25,8 @@
                             <span aria-hidden="true">&lt;</span>
                             <span class="visually-hidden">{{ $t('textNav.previous') }}</span>
                         </button>
-                        <button type="button" class="btn btn-secondary" id="show-toc" @click="toggleTableOfContents()"
+                        <button type="button" class="btn btn-secondary" id="show-toc" ref="tocButton"
+                            @click="toggleTableOfContents()"
                             :aria-expanded="tocOpen" :aria-controls="tocOpen ? 'toc-content' : null"
                             :aria-label="$t('textNav.toggleToc')">
                             {{ $t("textNav.toc") }}
@@ -36,6 +38,7 @@
                         </button>
                     </div>
                     <a id="report-error" class="btn btn-secondary btn-sm position-absolute" target="_blank"
+                        :class="{ visible: navBarVisible }"
                         rel="noopener noreferrer" :href="philoConfig.report_error_link"
                         v-if="philoConfig.report_error_link != ''" :aria-label="$t('common.reportError')">{{
                             $t("common.reportError")
@@ -43,7 +46,8 @@
                 </div>
                 <nav id="toc" role="navigation" :aria-label="$t('textNav.tableOfContents')">
                     <transition name="slide-fade">
-                        <div class="card py-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"
+                        <div class="card py-3 shadow" id="toc-content" ref="tocContent" v-if="tocOpen" role="region"
+                            @scroll.passive="handleTocScroll"
                             :aria-label="$t('textNav.tocContent')">
                             <TocTree :nodes="processedTocElements">
                                 <template #default="{ element }">
@@ -115,9 +119,8 @@ import { Popover } from "bootstrap";
 import GLightbox from "glightbox";
 import "glightbox/dist/css/glightbox.css";
 import { storeToRefs } from "pinia";
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import vueScrollTo from "vue-scrollto";
 import { useMainStore } from "../stores/main";
 import { buildTocTree, debug, deepEqual, paramsToUrlString } from "../utils.js";
 import citations from "./Citations";
@@ -156,6 +159,8 @@ const end = ref(0);
 const tocPosition = ref(0);
 const navButtonPosition = ref(0);
 const navBarVisible = ref(false);
+const tocButton = useTemplateRef("tocButton");
+const tocPanel = useTemplateRef("tocContent");
 const gallery = ref(null);
 const images = ref([]);
 const loading = ref(false);
@@ -166,7 +171,6 @@ const textObjectURL = ref("");
 const processedTocElements = computed(() =>
     buildTocTree(tocElements.value.elements.slice(start.value, end.value))
 );
-const tocHeight = computed(() => `max-height: ${window.innerHeight - 200}px`);
 const whiteSpace = computed(() =>
     philoConfig.respect_text_line_breaks ? "pre" : "normal"
 );
@@ -332,34 +336,28 @@ function setUpInternalLinks() {
     });
 }
 
+// The window scrolled to an element, offset pixels below the top, the element focused after (a note, whose popover
+// shows), when the scrolling is done
+function scrollToElement(element, offset, focus = false) {
+    if (!element) return;
+    window.scrollTo({ top: element.getBoundingClientRect().top + window.scrollY - offset, behavior: "smooth" });
+    if (focus) setTimeout(() => element.focus({ preventScroll: true }), 750);
+}
+
 function scrollToTarget() {
     if (byte.value !== "") {
         const element = document.getElementsByClassName("highlight")[0];
         if (!element) return;
         const parent = element.parentElement;
         if (parent.classList.contains("note-content")) {
-            const note = parent.previousSibling;
-            vueScrollTo.scrollTo(note, 250, {
-                easing: "ease-out",
-                offset: -150,
-                onDone: () => setTimeout(() => note.focus(), 500),
-            });
+            scrollToElement(parent.previousSibling, 150, true);
         } else {
-            vueScrollTo.scrollTo(element, 250, { easing: "ease-out", offset: -150 });
+            scrollToElement(element, 150);
         }
     } else if (formData.value.start_byte !== "") {
-        vueScrollTo.scrollTo(document.querySelector(".passage-marker"), 250, {
-            easing: "ease-out",
-            offset: -150,
-        });
+        scrollToElement(document.querySelector(".passage-marker"), 150);
     } else if (route.hash) {
-        const note = document.getElementById(route.hash.slice(1));
-        if (!note) return;
-        vueScrollTo.scrollTo(note, 250, {
-            easing: "ease-out",
-            offset: -250,
-            onDone: () => setTimeout(() => note.focus(), 500),
-        });
+        scrollToElement(document.getElementById(route.hash.slice(1)), 250, true);
     }
 }
 
@@ -446,11 +444,6 @@ function fetchToC() {
                 start: start.value,
                 end: end.value,
             };
-            const tocButton = document.querySelector("#show-toc");
-            if (tocButton) {
-                tocButton.removeAttribute("disabled");
-                tocButton.classList.remove("disabled");
-            }
         }).catch(logError);
     } else {
         // the entries around the current one, as on a first load
@@ -461,13 +454,6 @@ function fetchToC() {
         }
         start.value = tocElements.value.start;
         end.value = tocElements.value.end;
-        nextTick(() => {
-            const tocButton = document.querySelector("#show-toc");
-            if (tocButton) {
-                tocButton.removeAttribute("disabled");
-                tocButton.classList.remove("disabled");
-            }
-        });
     }
 }
 
@@ -483,9 +469,12 @@ function loadAfter() {
     end.value += 200;
 }
 
+// Whether the open panel has settled on the current section: its scrolling there loads no more sections
+let tocSettled = false;
+
 function handleTocScroll() {
-    const tocContent = document.getElementById("toc-content");
-    if (!tocContent || !tocElements.value.elements) return;
+    const tocContent = tocPanel.value;
+    if (!tocSettled || !tocContent || !tocElements.value.elements) return;
 
     const scrollTop = tocContent.scrollTop;
     const scrollHeight = tocContent.scrollHeight;
@@ -507,27 +496,19 @@ function handleTocScroll() {
 
 function toggleTableOfContents() {
     tocOpen.value = !tocOpen.value;
-    if (tocOpen.value) {
-        nextTick(() => {
-            const currentElement = document.querySelector(".current-obj");
-            if (currentElement) {
-                currentElement.scrollIntoView({ behavior: "smooth", block: "center" });
-                currentElement.focus();
-            }
-            // Slight delay so the panel finishes rendering before we attach
-            setTimeout(() => {
-                const tocContent = document.getElementById("toc-content");
-                if (tocContent) {
-                    tocContent.addEventListener("scroll", handleTocScroll, { passive: true });
-                }
-            }, 100);
-        });
-    } else {
-        const tocContent = document.getElementById("toc-content");
-        if (tocContent) {
-            tocContent.removeEventListener("scroll", handleTocScroll);
+    if (!tocOpen.value) return;
+    tocSettled = false;
+    nextTick(() => {
+        const currentElement = tocPanel.value?.querySelector(".current-obj");
+        if (currentElement) {
+            currentElement.scrollIntoView({ behavior: "smooth", block: "center" });
+            currentElement.focus();
         }
-    }
+        // Slight delay so the panel finishes rendering before its scrolling loads more sections
+        setTimeout(() => {
+            tocSettled = true;
+        }, 100);
+    });
 }
 
 //  Navigation handlers
@@ -546,33 +527,11 @@ function textObjectSelection(philoId, event) {
     goToTextObject(philoId);
 }
 
+// The navigation bar stays at the top of the window once the page is scrolled past it
 function handleScroll() {
-    if (!navBarVisible.value) {
-        if (window.scrollY > navButtonPosition.value) {
-            navBarVisible.value = true;
-            const topBar = document.getElementById("toc-top-bar");
-            topBar.style.top = 0;
-            topBar.classList.add("visible", "shadow");
-            const tocWrapper = document.getElementById("toc-wrapper");
-            tocWrapper.style.top = "31px";
-            const navButtons = document.getElementById("nav-buttons");
-            navButtons.classList.add("visible");
-            const reportError = document.getElementById("report-error");
-            if (reportError != null) reportError.classList.add("visible");
-        }
-    } else if (window.scrollY < navButtonPosition.value) {
-        navBarVisible.value = false;
-        const topBar = document.getElementById("toc-top-bar");
-        topBar.style.top = "initial";
-        topBar.classList.remove("visible", "shadow");
-        const tocWrapper = document.getElementById("toc-wrapper");
-        tocWrapper.style.top = "0px";
-        const navButtons = document.getElementById("nav-buttons");
-        navButtons.style.top = "initial";
-        navButtons.classList.remove("visible");
-        const reportError = document.getElementById("report-error");
-        if (reportError != null) reportError.classList.remove("visible");
-    }
+    navBarVisible.value = navBarVisible.value
+        ? window.scrollY >= navButtonPosition.value
+        : window.scrollY > navButtonPosition.value;
 }
 
 function dicoLookup(event) {
@@ -662,19 +621,16 @@ watch(
 
 //  Lifecycle
 onMounted(() => {
-    const tocButton = document.querySelector("#show-toc");
-    if (tocButton) {
-        navButtonPosition.value = tocButton.getBoundingClientRect().top;
+    if (tocButton.value) {
+        navButtonPosition.value = tocButton.value.getBoundingClientRect().top;
     }
+    window.addEventListener("scroll", handleScroll, { passive: true });
 });
 
 onBeforeUnmount(() => {
+    window.removeEventListener("scroll", handleScroll);
     if (gallery.value) gallery.value.close();
     destroyPopovers();
-    const tocContent = document.getElementById("toc-content");
-    if (tocContent) {
-        tocContent.removeEventListener("scroll", handleTocScroll);
-    }
 });
 
 //  Initial dispatch ─
@@ -695,7 +651,7 @@ fetchText();
 #toc-content {
     display: inline-block;
     position: relative;
-    max-height: 90vh;
+    max-height: calc(100vh - 200px);
     min-width: 250px;
     max-width: 66.667%;
     overflow: scroll;

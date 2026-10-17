@@ -34,10 +34,11 @@
                             </div>
                             <div class="col-2 col-md-1">
                                 <button type="button" class="btn btn-secondary more-context"
-                                    @click="moreContext(index, $event)"
+                                    @click="moreContext(index)" :aria-expanded="Boolean(expanded[index])"
                                     :aria-label="`${$t('concordance.showMoreContext')} ${$t('common.forResult')} ${results.description.start + index}`">
-                                    <span class="more-text">{{ $t("concordance.more") }}</span>
-                                    <i class="bi bi-plus-square more-icon" aria-hidden="true"></i>
+                                    <span class="more-text">{{ expanded[index] ? $t("concordance.less") : $t("concordance.more") }}</span>
+                                    <i class="bi more-icon" :class="expanded[index] ? 'bi-dash-square' : 'bi-plus-square'"
+                                        aria-hidden="true"></i>
                                 </button>
                             </div>
                         </div>
@@ -46,8 +47,8 @@
                         <div class="row">
                             <div class="col m-2 concordance-text" :position="results.description.start + index"
                                 @keyup="dicoLookup($event, result.metadata_fields.year)">
-                                <div class="default-length" v-html="result.context"></div>
-                                <div class="more-length"></div>
+                                <div class="default-length" v-show="!expanded[index]" v-html="result.context"></div>
+                                <div class="more-length" v-show="expanded[index]" v-html="moreContexts[index]"></div>
                             </div>
                         </div>
                     </article>
@@ -64,7 +65,6 @@
 <script setup>
 import { computed, inject, provide, ref } from "vue";
 import { storeToRefs } from "pinia";
-import { useI18n } from "vue-i18n";
 import { useReport } from "../composables/useReport";
 import { useMainStore } from "../stores/main";
 import { debug, paramsFilter } from "../utils.js";
@@ -75,18 +75,22 @@ import ResultsSummary from "./ResultsSummary";
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
-const { t } = useI18n();
 const store = useMainStore();
 const { formData, showFacets, totalResultsDone } = storeToRefs(store);
 
 const results = ref({ description: { end: 0 }, results: [] });
 const searchParams = ref({});
+// The results' longer contexts, by index, fetched when first asked for, and the results showing theirs
+const moreContexts = ref({});
+const expanded = ref({});
 
 provide("results", computed(() => results.value.results));
 
 const { run: fetchResults } = useReport("concordance", async (signal) => {
     totalResultsDone.value = false;
     results.value = { description: { end: 0 } };
+    moreContexts.value = {};
+    expanded.value = {};
     searchParams.value = { ...formData.value };
     const { data } = await $http.get(`${$dbUrl}/reports/concordance.py`, {
         params: paramsFilter(searchParams.value),
@@ -97,51 +101,25 @@ const { run: fetchResults } = useReport("concordance", async (signal) => {
     if (data.query_done) totalResultsDone.value = true;
 });
 
-function moreContext(index, event) {
-    const button = event.target.closest("button");
-    const textSpan = button.querySelector(".more-text");
-    const icon = button.querySelector(".more-icon");
-    const defaultNode = document.getElementsByClassName("default-length")[index];
-    const moreNode = document.getElementsByClassName("more-length")[index];
-    const resultNumber = results.value.description.start + index - 1;
-    const localParams = { hit_num: resultNumber, ...searchParams.value };
-
-    const isExpanded =
-        textSpan.innerHTML === t("concordance.less") ||
-        icon.classList.contains("bi-dash-square");
-
-    if (isExpanded) {
-        defaultNode.style.display = "block";
-        moreNode.style.display = "none";
-        textSpan.innerHTML = t("concordance.more");
-        icon.classList.remove("bi-dash-square");
-        icon.classList.add("bi-plus-square");
+function moreContext(index) {
+    if (expanded.value[index]) {
+        expanded.value[index] = false;
         return;
     }
-
-    const showMore = () => {
-        defaultNode.style.display = "none";
-        moreNode.style.display = "block";
-        textSpan.innerHTML = t("concordance.less");
-        icon.classList.remove("bi-plus-square");
-        icon.classList.add("bi-dash-square");
-    };
-
-    if (moreNode.innerHTML.length === 0) {
-        $http
-            .get(`${$dbUrl}/scripts/get_more_context.py`, {
-                params: paramsFilter(localParams),
-            })
-            .then((response) => {
-                moreNode.innerHTML = response.data;
-                showMore();
-            })
-            .catch((error) => {
-                debug({ $options: { name: "concordance-report" } }, error);
-            });
-    } else {
-        showMore();
+    if (moreContexts.value[index]) {
+        expanded.value[index] = true;
+        return;
     }
+    const localParams = { hit_num: results.value.description.start + index - 1, ...searchParams.value };
+    $http
+        .get(`${$dbUrl}/scripts/get_more_context.py`, { params: paramsFilter(localParams) })
+        .then((response) => {
+            moreContexts.value[index] = response.data;
+            expanded.value[index] = true;
+        })
+        .catch((error) => {
+            debug({ $options: { name: "concordance-report" } }, error);
+        });
 }
 
 // Template binds @keyup="dicoLookup(...)" but the original implementation was

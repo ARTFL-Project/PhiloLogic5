@@ -165,8 +165,5 @@ export function createGlobalConfig(overrides = {}) {
             $dbUrl: "/testdb",
             ...(overrides.mocks || {}),
         },
-        directives: {
-            scroll: { mounted() {}, unmounted() {} },
-        },
     };
 }

@@ -60,10 +60,8 @@
                                 <div class="kwic-line visual-kwic" aria-hidden="true">
                                     <span v-html="initializePos(kwicIndex)"></span>
                                     <div class="kwic-biblio-container"
-                                        style="display: inline-block; position: relative;"
-                                        @mouseover="showFullBiblio($event)" @mouseleave="hideFullBiblio($event)">
-                                        <router-link :to="result.citation_links.div1" class="kwic-biblio"
-                                            @focus="showFullBiblio($event)" @blur="hideFullBiblio($event)">
+                                        style="display: inline-block; position: relative;">
+                                        <router-link :to="result.citation_links.div1" class="kwic-biblio">
                                             <span class="short-biblio" v-html="result.shortBiblio"></span>
                                             <div :id="`full-biblio-${kwicIndex}`" class="full-biblio" role="tooltip"
                                                 :aria-hidden="true">
@@ -213,14 +211,6 @@ const kwicResults = computed(() => {
         return { ...resultObject, fullBiblio, shortBiblio: fullBiblio.slice(0, 30) };
     });
 });
-
-function showFullBiblio(event) {
-    event.currentTarget.querySelector(".full-biblio").classList.add("show");
-}
-
-function hideFullBiblio(event) {
-    event.currentTarget.querySelector(".full-biblio").classList.remove("show");
-}
 
 function initializePos(index) {
     const start = results.value.description.start;
@@ -385,7 +375,8 @@ fetchResults();
     cursor: pointer;
 }
 
-.full-biblio.show {
+.kwic-biblio-container:hover .full-biblio,
+.kwic-biblio-container:focus-within .full-biblio {
     position: absolute;
     background-color: theme.$button-color;
     color: #fff;

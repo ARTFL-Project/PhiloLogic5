@@ -51,17 +51,6 @@ async function mountTextNavigation(overrides = {}) {
     consoleWarnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
-    // Create stub DOM elements that mounted() expects
-    const stubIds = ["show-toc", "toc-top-bar", "toc-wrapper", "nav-buttons"];
-    for (const id of stubIds) {
-        if (!document.getElementById(id)) {
-            const el = document.createElement("div");
-            el.id = id;
-            el.getBoundingClientRect = () => ({ top: 100, left: 0, width: 100, height: 30 });
-            document.body.appendChild(el);
-        }
-    }
-
     const wrapper = mount(TextNavigation, {
         global: {
             plugins: [pinia, i18n, router],
@@ -71,7 +60,6 @@ async function mountTextNavigation(overrides = {}) {
                 ProgressSpinner: { template: "<div class='spinner-stub' />" },
             },
             mocks: { $philoConfig: config, $dbUrl: "/testdb" },
-            directives: { scroll: { mounted() {}, unmounted() {} } },
         },
     });
 
@@ -217,25 +205,25 @@ describe("TextNavigation", () => {
         expect(tocPanel.text()).toContain("Chapter 2");
     });
 
-    // --- Lifecycle cleanup (load-bearing for the Composition API migration) ---
-    // The TOC scroll listener is added via setTimeout when the panel opens, and
-    // must be removed on unmount. Under <script setup>, the same cleanup needs
-    // to be wired through onBeforeUnmount/onUnmounted; this test guards against
-    // a regression where the listener is leaked.
-    it("removes the TOC scroll listener on unmount", async () => {
-        const removeSpy = vi.spyOn(Element.prototype, "removeEventListener");
-        const { wrapper } = await mountTextNavigation();
-
-        // Open the TOC — the listener is attached on a 100ms setTimeout
+    // --- The open panel loads more sections as it scrolls, once it settled on the current one ---
+    it("loads the sections before when the open panel is scrolled to its top, once it settled", async () => {
+        const toc = Array.from({ length: 400 }, (_, i) => ({
+            philo_type: "div1", philo_id: `1 ${i + 1} 0 0 0 0 0`, label: `Chapter ${i + 1}`,
+        }));
+        const http = createMockHttp({ "navigation.py": navFixture, "get_table_of_contents.py": { toc, current_obj_position: 300 } });
+        const { wrapper } = await mountTextNavigation({ http });
         await wrapper.find("#show-toc").trigger("click");
-        await new Promise(resolve => setTimeout(resolve, 120));
+        await nextTick();
+        const sections = () => wrapper.findAll("#toc-content .toc-link").length;
+        expect(sections()).toBe(200); // the 100 before the current one, and after
 
-        removeSpy.mockClear();
-        wrapper.unmount();
+        await wrapper.find("#toc-content").trigger("scroll"); // scrolling to the current section
+        await nextTick();
+        expect(sections()).toBe(200);
 
-        const scrollRemovals = removeSpy.mock.calls.filter(c => c[0] === "scroll");
-        expect(scrollRemovals.length).toBeGreaterThan(0);
-
-        removeSpy.mockRestore();
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        await wrapper.find("#toc-content").trigger("scroll"); // at its top (jsdom scrolls nothing)
+        await nextTick();
+        expect(sections()).toBe(400);
     });
 });

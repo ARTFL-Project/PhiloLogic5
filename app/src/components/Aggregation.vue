@@ -1,7 +1,7 @@
 <template>
     <div class="container-fluid mt-4">
         <results-summary :groupLength="aggregationResults.length"></results-summary>
-        <div class="card shadow mt-4 ms-2 me-2" v-if="resultsLength" v-scroll="handleFullResultsScroll">
+        <div class="card shadow mt-4 ms-2 me-2" v-if="resultsLength">
             <div id="aggregation-results" class="list-group" role="region"
                 :aria-label="$t('aggregation.resultsRegion')">
                 <article class="list-group-item pt-3 pb-3" role="article"
@@ -64,14 +64,16 @@
                     </div>
                 </article>
             </div>
+            <div ref="listEnd"></div>
         </div>
     </div>
 </template>
 <script setup>
-import { computed, inject, provide, ref } from "vue";
+import { computed, inject, provide, ref, useTemplateRef } from "vue";
 import { useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
+import { useLoadOnScroll } from "../composables/useLoadOnScroll";
 import { useReport } from "../composables/useReport";
 import { useMainStore } from "../stores/main";
 import { paramsFilter, paramsToRoute, quoteMetadataValue } from "../utils.js";
@@ -121,13 +123,11 @@ const { run: fetchResults } = useReport("aggregation", async (signal) => {
     resultsLength.value = data.total_results;
 });
 
-function handleFullResultsScroll() {
-    const scrollPosition =
-        document.getElementById("aggregation-results").getBoundingClientRect().bottom - 200;
-    if (scrollPosition < window.innerHeight) {
-        lastResult.value += 50;
-    }
-}
+// The groups shown, 50 more as the page scrolls to their end
+useLoadOnScroll(useTemplateRef("listEnd"), () => {
+    if (lastResult.value >= aggregationResults.value.length) return false;
+    lastResult.value += 50;
+});
 
 function buildStatResults(results) {
     return results.map((result) => {

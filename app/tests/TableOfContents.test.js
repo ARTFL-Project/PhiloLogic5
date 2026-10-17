@@ -41,7 +41,6 @@ async function mountTableOfContents(overrides = {}) {
                 ProgressSpinner: { template: "<div class='spinner-stub' />" },
             },
             mocks: { $philoConfig: config, $dbUrl: "/testdb" },
-            directives: { scroll: { mounted() {}, unmounted() {} } },
         },
     });
 }

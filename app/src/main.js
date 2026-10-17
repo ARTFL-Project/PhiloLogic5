@@ -24,19 +24,6 @@ axios
         app.provide("$philoConfig", response.data);
         app.use(router);
         app.use(pinia);
-        app.directive("scroll", {
-            mounted: function (el, binding) {
-                el.scrollHandler = function (evt) {
-                    if (binding.value(evt, el)) {
-                        window.removeEventListener("scroll", el.scrollHandler);
-                    }
-                };
-                window.addEventListener("scroll", el.scrollHandler);
-            },
-            unmounted: function (el) {
-                window.removeEventListener("scroll", el.scrollHandler);
-            },
-        });
 
         router.isReady().then(() => app.mount("#app"));
     })

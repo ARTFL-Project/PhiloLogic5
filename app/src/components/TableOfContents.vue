@@ -26,7 +26,7 @@
 
                         <nav id="toc-report" class="text-content-area" role="navigation"
                             :aria-label="$t('toc.navigationLabel')">
-                            <div id="toc-content" v-scroll="handleScroll" ref="tocContent" tabindex="0">
+                            <div id="toc-content" tabindex="0">
                                 <TocTree :nodes="processedTocElements.slice(0, displayLimit)">
                                     <template #default="{ element }">
                                         <router-link :to="element.href" class="toc-section">
@@ -46,6 +46,7 @@
                                     class="text-center mt-3 text-muted" role="status" aria-live="polite">
                                     {{ $t('toc.endOfContent') }}
                                 </div>
+                                <div ref="tocEnd"></div>
                             </div>
                         </nav>
                     </div>
@@ -59,6 +60,7 @@ import { computed, inject, ref, useTemplateRef } from "vue";
 import { useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
+import { useLoadOnScroll } from "../composables/useLoadOnScroll";
 import { useMainStore } from "../stores/main";
 import { buildTocTree, debug } from "../utils.js";
 import Citations from "./Citations";
@@ -73,7 +75,6 @@ const { t } = useI18n();
 const store = useMainStore();
 const { textNavigationCitation, searching } = storeToRefs(store);
 
-const tocContent = useTemplateRef("tocContent");
 const displayLimit = ref(200);
 const teiHeader = ref("");
 const tocObject = ref({});
@@ -130,21 +131,18 @@ function toggleHeader() {
     }
 }
 
-function handleScroll() {
-    if (!tocContent.value) return;
-    const scrollPosition = tocContent.value.getBoundingClientRect().bottom - 200;
-    if (
-        scrollPosition < window.innerHeight &&
-        !isLoading.value &&
-        displayLimit.value < processedTocElements.value.length
-    ) {
-        isLoading.value = true;
+// The sections shown, 200 more as the page scrolls to their end
+useLoadOnScroll(useTemplateRef("tocEnd"), () => {
+    if (isLoading.value || displayLimit.value >= processedTocElements.value.length) return false;
+    isLoading.value = true;
+    return new Promise((resolve) => {
         setTimeout(() => {
             displayLimit.value += 200;
             isLoading.value = false;
+            resolve();
         }, 100);
-    }
-}
+    });
+});
 
 fetchToC();
 </script>
