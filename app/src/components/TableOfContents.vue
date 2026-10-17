@@ -27,52 +27,13 @@
                         <nav id="toc-report" class="text-content-area" role="navigation"
                             :aria-label="$t('toc.navigationLabel')">
                             <div id="toc-content" v-scroll="handleScroll" ref="tocContent" tabindex="0">
-                                <ul class="toc-tree">
-                                    <li v-for="(element, elIndex) in processedTocElements.slice(0, displayLimit)"
-                                        :key="elIndex" :class="'toc-item toc-' + element.philo_type">
-
-                                        <!-- Section content -->
-                                        <div class="toc-content-wrapper">
-                                            <span v-if="element.philo_type === 'div1'" class="div1-marker"
-                                                aria-hidden="true">※</span>
-                                            <span v-else :class="'bullet-point-' + element.philo_type"
-                                                aria-hidden="true"></span>
-                                            <router-link :to="element.href" class="toc-section">
-                                                {{ element.label }}
-                                            </router-link>
-                                        </div>
-
-                                        <!-- Child sections -->
-                                        <ul v-if="element.children && element.children.length > 0" class="toc-children">
-                                            <li v-for="(child, childIndex) in element.children" :key="childIndex"
-                                                :class="'toc-item toc-child toc-' + child.philo_type">
-                                                <div class="toc-content-wrapper">
-                                                    <span :class="'bullet-point-' + child.philo_type"
-                                                        aria-hidden="true"></span>
-                                                    <router-link :to="child.href" class="toc-section">
-                                                        {{ child.label }}
-                                                    </router-link>
-                                                </div>
-
-                                                <!-- Grandchildren (div3 level) -->
-                                                <ul v-if="child.children && child.children.length > 0"
-                                                    class="toc-children">
-                                                    <li v-for="(grandchild, grandchildIndex) in child.children"
-                                                        :key="grandchildIndex"
-                                                        :class="'toc-item toc-child toc-' + grandchild.philo_type">
-                                                        <div class="toc-content-wrapper">
-                                                            <span :class="'bullet-point-' + grandchild.philo_type"
-                                                                aria-hidden="true"></span>
-                                                            <router-link :to="grandchild.href" class="toc-section">
-                                                                {{ grandchild.label }}
-                                                            </router-link>
-                                                        </div>
-                                                    </li>
-                                                </ul>
-                                            </li>
-                                        </ul>
-                                    </li>
-                                </ul>
+                                <TocTree :nodes="processedTocElements.slice(0, displayLimit)">
+                                    <template #default="{ element }">
+                                        <router-link :to="element.href" class="toc-section">
+                                            {{ element.label }}
+                                        </router-link>
+                                    </template>
+                                </TocTree>
 
                                 <!-- Loading indicator for infinite scroll -->
                                 <div v-if="isLoading" class="text-center mt-3" role="status"
@@ -102,6 +63,7 @@ import { useMainStore } from "../stores/main";
 import { buildTocTree, debug } from "../utils.js";
 import Citations from "./Citations";
 import ProgressSpinner from "./ProgressSpinner";
+import TocTree from "./TocTree.vue";
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");

@@ -45,63 +45,17 @@
                     <transition name="slide-fade">
                         <div class="card py-3 shadow" id="toc-content" :style="tocHeight" v-if="tocOpen" role="region"
                             :aria-label="$t('textNav.tocContent')">
-                            <ul class="toc-tree">
-                                <li v-for="(element, elIndex) in processedTocElements" :key="elIndex"
-                                    :class="'toc-item toc-' + element.philo_type">
-
-                                    <!-- Section content -->
-                                    <div class="toc-content-wrapper">
-                                        <span v-if="element.philo_type === 'div1'" class="div1-marker"
-                                            aria-hidden="true">※</span>
-                                        <span v-else :class="'bullet-point-' + element.philo_type"
-                                            aria-hidden="true"></span>
-                                        <button type="button"
-                                            :class="{ 'current-obj': element.philo_id === currentPhiloId }"
-                                            class="btn btn-link toc-link"
-                                            @click="textObjectSelection(element.philo_id, $event)"
-                                            :aria-current="element.philo_id === currentPhiloId ? 'page' : null">
-                                            {{ element.label }}
-                                        </button>
-                                    </div>
-
-                                    <!-- Child sections -->
-                                    <ul v-if="element.children && element.children.length > 0" class="toc-children">
-                                        <li v-for="(child, childIndex) in element.children" :key="childIndex"
-                                            :class="'toc-item toc-child toc-' + child.philo_type">
-                                            <div class="toc-content-wrapper">
-                                                <span :class="'bullet-point-' + child.philo_type"
-                                                    aria-hidden="true"></span>
-                                                <button type="button"
-                                                    :class="{ 'current-obj': child.philo_id === currentPhiloId }"
-                                                    class="btn btn-link toc-link"
-                                                    @click="textObjectSelection(child.philo_id, $event)"
-                                                    :aria-current="child.philo_id === currentPhiloId ? 'page' : null">
-                                                    {{ child.label }}
-                                                </button>
-                                            </div>
-
-                                            <!-- Grandchildren (div3 level) -->
-                                            <ul v-if="child.children && child.children.length > 0" class="toc-children">
-                                                <li v-for="(grandchild, grandchildIndex) in child.children"
-                                                    :key="grandchildIndex"
-                                                    :class="'toc-item toc-child toc-' + grandchild.philo_type">
-                                                    <div class="toc-content-wrapper">
-                                                        <span :class="'bullet-point-' + grandchild.philo_type"
-                                                            aria-hidden="true"></span>
-                                                        <button type="button"
-                                                            :class="{ 'current-obj': grandchild.philo_id === currentPhiloId }"
-                                                            class="btn btn-link toc-link"
-                                                            @click="textObjectSelection(grandchild.philo_id, $event)"
-                                                            :aria-current="grandchild.philo_id === currentPhiloId ? 'page' : null">
-                                                            {{ grandchild.label }}
-                                                        </button>
-                                                    </div>
-                                                </li>
-                                            </ul>
-                                        </li>
-                                    </ul>
-                                </li>
-                            </ul>
+                            <TocTree :nodes="processedTocElements">
+                                <template #default="{ element }">
+                                    <button type="button"
+                                        :class="{ 'current-obj': element.philo_id === currentPhiloId }"
+                                        class="btn btn-link toc-link"
+                                        @click="textObjectSelection(element.philo_id, $event)"
+                                        :aria-current="element.philo_id === currentPhiloId ? 'page' : null">
+                                        {{ element.label }}
+                                    </button>
+                                </template>
+                            </TocTree>
                         </div>
                     </transition>
                 </nav>
@@ -167,6 +121,7 @@ import vueScrollTo from "vue-scrollto";
 import { useMainStore } from "../stores/main";
 import { buildTocTree, debug, deepEqual, paramsToUrlString } from "../utils.js";
 import citations from "./Citations";
+import TocTree from "./TocTree.vue";
 
 //  Injects, route, router, store
 const $http = inject("$http");
@@ -846,7 +801,7 @@ fetchText();
     margin-left: 1rem;
 }
 
-.div1-marker {
+:deep(.div1-marker) {
     margin-left: -1.25rem;
 }
 
