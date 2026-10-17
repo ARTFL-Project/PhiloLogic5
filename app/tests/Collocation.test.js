@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createGlobalConfig, createMockHttp } from "./helpers.js";
@@ -296,7 +296,6 @@ describe("Collocation", () => {
         await wrapper.find("#compare-tab").trigger("click");
         await nextTick();
 
-        const runBtn = wrapper.find("button.btn-secondary");
         // Find the "Run comparison" button specifically
         const buttons = wrapper.findAll("button.btn-secondary");
         const comparisonBtn = buttons.find(b => b.text().includes("Run comparison") || b.text().includes("runComparison"));

@@ -116,7 +116,7 @@ import {
     paramsFilter,
     paramsToRoute,
 } from "../utils.js";
-import BibliographyCriteria from "./BibliographyCriteria"; // eslint-disable-line no-unused-vars
+import BibliographyCriteria from "./BibliographyCriteria";
 
 const props = defineProps(["resultStart", "resultEnd"]);
 

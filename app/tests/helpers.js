@@ -69,7 +69,6 @@ export function createTestConfig(overrides = {}) {
         stopwords: "",
         search_examples: {},
         results_summary: [{ field: "author", object_level: "doc" }],
-        concordance_citation: [],
         navigation_citation: [],
         table_of_contents_citation: [],
         default_landing_page_browsing: [],

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
-import { mount, flushPromises } from "@vue/test-utils";
+import { describe, it, expect } from "vitest";
+import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createGlobalConfig, createMockHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
@@ -68,7 +68,7 @@ describe("ResultsSummary", () => {
     });
 
     it("shows no results message when resultsLength is 0", () => {
-        const wrapper = mountResultsSummary();
+        mountResultsSummary();
         const store = useMainStore();
         store.resultsLength = 0;
         // Wait for reactivity (sync since it's just a store update)
@@ -140,15 +140,12 @@ describe("ResultsSummary", () => {
 
     // --- @click="toggleFacets()" ---
     it("shows facets toggle button when facets are hidden", async () => {
-        const wrapper = mountResultsSummary({
+        mountResultsSummary({
             philoConfig: { facets: ["author", "title"] },
         });
         const store = useMainStore();
         store.showFacets = false;
         await nextTick();
-        const facetsBtn = wrapper.findAll("button").find(b =>
-            b.text().includes("Facets") || b.text().includes("facet") || b.text().includes("Show")
-        );
         // Button may render depending on philoConfig.facets
     });
 

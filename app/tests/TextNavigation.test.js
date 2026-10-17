@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createTestPinia, createTestI18n, createTestConfig, createTestRouter, createMockHttp } from "./helpers.js";
@@ -76,7 +76,7 @@ async function mountTextNavigation(overrides = {}) {
     });
 
     // Let async operations settle (ignore DOM errors)
-    try { await flushPromises(); } catch {}
+    try { await flushPromises(); } catch { /* as above */ }
     await nextTick();
 
     return { wrapper, http, router };

@@ -112,9 +112,9 @@ import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import { debug, isOnlyFacetChange, paramsFilter, paramsToRoute } from "../utils.js";
-import Facets from "./Facets";  // eslint-disable-line no-unused-vars
-import Pages from "./Pages";  // eslint-disable-line no-unused-vars
-import ResultsSummary from "./ResultsSummary";  // eslint-disable-line no-unused-vars
+import Facets from "./Facets";
+import Pages from "./Pages";
+import ResultsSummary from "./ResultsSummary";
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");

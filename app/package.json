@@ -12,27 +12,19 @@
         "build": "npm i && vite build && rm -rf node_modules",
         "host": "npm i && vite --host",
         "test": "vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "lint": "eslint src tests"
     },
     "dependencies": {
         "@intlify/unplugin-vue-i18n": "^6.0.8",
         "@popperjs/core": "^2.9.2",
-        "@sigma/edge-curve": "^3.1.0",
-        "@sigma/node-border": "^3.0.0",
         "axios": "^1.7.0",
         "bootstrap": "^5.3.0",
         "bootstrap-icons": "^1.13.1",
         "chart.js": "^4.4.9",
-        "core-js": "^3.13.1",
         "dompurify": "^3.1.7",
         "glightbox": "^3.2.0",
-        "graphology": "^0.26.0",
-        "graphology-layout-forceatlas2": "^0.10.1",
-        "graphology-layout-noverlap": "^0.4.2",
-        "gsap": "^3.12.0",
         "pinia": "^2.2.0",
-        "sigma": "^3.0.3",
-        "unplugin": "^2.3.6",
         "vue": "^3.5.0",
         "vue-chartjs": "^5.3.2",
         "vue-i18n": "^11.0.0",
@@ -40,43 +32,17 @@
         "vue-scrollto": "^2.17.1"
     },
     "devDependencies": {
-        "@originjs/vite-plugin-commonjs": "^1.0.3",
+        "@eslint/js": "^10.0.1",
         "@vitejs/plugin-vue": "^6.0.0",
-        "@vue/compiler-sfc": "^3.1.0",
         "@vue/test-utils": "^2.4.6",
-        "eslint": "^7.5.0",
-        "eslint-plugin-vue": "^8.5.0",
+        "eslint": "^10.13.0",
+        "eslint-plugin-vue": "^10.11.1",
+        "globals": "^17.13.0",
         "jsdom": "^29.0.2",
         "sass": "^1.80.0",
         "vite": "^7.1.2",
         "vite-plugin-compression2": "^2.2.0",
         "vitest": "^4.1.4"
-    },
-    "eslintConfig": {
-        "root": true,
-        "env": {
-            "node": true
-        },
-        "extends": [
-            "plugin:vue/essential",
-            "eslint:recommended"
-        ],
-        "globals": {
-            "defineProps": "readonly",
-            "defineEmits": "readonly",
-            "defineExpose": "readonly",
-            "defineOptions": "readonly"
-        },
-        "rules": {
-            "no-console": "off",
-            "vue/multi-word-component-names": "off",
-            "vue/no-multiple-template-root": "off",
-            "vue/no-use-v-if-with-v-for": "off"
-        },
-        "parserOptions": {
-            "ecmaVersion": 12,
-            "sourceType": "module"
-        }
     },
     "browserslist": [
         "> 0.5%, last 2 versions, not dead, not IE 11"

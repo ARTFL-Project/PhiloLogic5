@@ -65,8 +65,8 @@
                     </ul>
                 </div>
 
-                <router-link class="navbar-brand" :class="{ 'has-actions': hasActionsRow }" to="/" :aria-label="stripHtmlTags(philoConfig.dbname)"
-                    v-html="philoConfig.dbname">
+                <router-link class="navbar-brand" :class="{ 'has-actions': hasActionsRow }" to="/" :aria-label="stripHtmlTags(philoConfig.dbname)">
+                    <span v-html="philoConfig.dbname"></span>
                 </router-link>
 
                 <!-- Right side items - only shown on desktop -->

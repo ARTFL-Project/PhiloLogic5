@@ -124,7 +124,6 @@ import {
     collocateCleanup,
     concordanceMethod,
     debug,
-    extractSurfaceFromCollocate,
     paramsFilter,
     paramsToRoute,
     quoteMetadataValue,

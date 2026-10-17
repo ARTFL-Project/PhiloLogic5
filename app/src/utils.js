@@ -25,7 +25,7 @@ export function refusedSearchMessage(error) {
 
 export function paramsFilter(formValues) {
     let localFormData = {};
-    let validFields = [];
+    let validFields;
     const store = useMainStore();
 
     if ("report" in formValues && formValues.report in store.reportValues) {
@@ -140,13 +140,13 @@ export function saveToLocalStorage(urlString, results) {
     try {
         sessionStorage[urlString] = JSON.stringify(results);
         console.log("saved results to localStorage");
-    } catch (e) {
+    } catch {
         sessionStorage.clear();
         console.log("Clearing sessionStorage for space...");
         try {
             sessionStorage[urlString] = JSON.stringify(results);
             console.log("saved results to localStorage");
-        } catch (e) {
+        } catch {
             sessionStorage.clear();
             console.log("Quota exceeded error: the JSON object is too big...");
         }

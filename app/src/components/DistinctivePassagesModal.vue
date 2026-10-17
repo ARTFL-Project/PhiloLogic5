@@ -79,8 +79,8 @@
 <script setup>
 import { Modal } from "bootstrap";
 import { onBeforeUnmount } from "vue";
-import Citations from "./Citations";  // eslint-disable-line no-unused-vars
-import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
+import Citations from "./Citations";
+import ProgressSpinner from "./ProgressSpinner";
 
 defineProps({
     groupName: { type: String, default: "" },

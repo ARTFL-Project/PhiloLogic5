@@ -1,6 +1,5 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { mount } from "@vue/test-utils";
-import { nextTick } from "vue";
 import { createGlobalConfig } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
 import ResultsBibliography from "../src/components/ResultsBibliography.vue";

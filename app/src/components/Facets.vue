@@ -194,7 +194,7 @@ import {
     quoteMetadataValue,
     saveToLocalStorage,
 } from "../utils.js";
-import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
+import ProgressSpinner from "./ProgressSpinner";
 
 const { t } = useI18n();
 

@@ -83,7 +83,7 @@ import {
     Title,
     Tooltip,
 } from "chart.js";
-import { Bar } from "vue-chartjs";  // eslint-disable-line no-unused-vars
+import { Bar } from "vue-chartjs";
 
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, useTemplateRef, watch } from "vue";
 import { useRouter } from "vue-router";
@@ -92,7 +92,7 @@ import { useI18n } from "vue-i18n";
 import cssVariables from "../assets/styles/theme.module.scss";
 import { useMainStore } from "../stores/main";
 import { copyObject, debug, mergeResults, paramsFilter, paramsToRoute } from "../utils.js";
-import ResultsSummary from "./ResultsSummary";  // eslint-disable-line no-unused-vars
+import ResultsSummary from "./ResultsSummary";
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
 

@@ -149,7 +149,7 @@ import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import { debug, paramsToRoute, quoteMetadataValue } from "../utils.js";
-import Citations from "./Citations";  // eslint-disable-line no-unused-vars
+import Citations from "./Citations";
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");

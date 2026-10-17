@@ -91,7 +91,6 @@ describe("Kwic", () => {
 
         const dropdownItems = wrapper.findAll(".dropdown-item");
         if (dropdownItems.length > 0) {
-            const initialText = wrapper.findAll(".sort-toggle")[0].text();
             await dropdownItems[0].trigger("click");
             await nextTick();
             // Sorting selection should update (text may change)

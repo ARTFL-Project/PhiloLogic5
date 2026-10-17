@@ -224,10 +224,10 @@
 import { computed, inject, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
-import ExportResults from "./ExportResults";  // eslint-disable-line no-unused-vars
-import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
-import ResultsBibliography from "./ResultsBibliography";  // eslint-disable-line no-unused-vars
-import SearchArguments from "./SearchArguments";  // eslint-disable-line no-unused-vars
+import ExportResults from "./ExportResults";
+import ProgressSpinner from "./ProgressSpinner";
+import ResultsBibliography from "./ResultsBibliography";
+import SearchArguments from "./SearchArguments";
 import { useMainStore } from "../stores/main";
 import {
     debug,

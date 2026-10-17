@@ -273,11 +273,11 @@ import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
 import { copyObject, dateRangeHandler, defaultCommonWords, paramsToRoute } from "../utils.js";
 import { useAutocomplete } from "../composables/useAutocomplete";
-import AutocompleteList from "./AutocompleteList.vue";  // eslint-disable-line no-unused-vars
-import CollocationOptions from "./CollocationOptions.vue";  // eslint-disable-line no-unused-vars
-import MetadataFields from "./MetadataFields.vue";  // eslint-disable-line no-unused-vars
-import SearchTips from "./SearchTips";  // eslint-disable-line no-unused-vars
-import ProgressSpinner from "./ProgressSpinner";  // eslint-disable-line no-unused-vars
+import AutocompleteList from "./AutocompleteList.vue";
+import CollocationOptions from "./CollocationOptions.vue";
+import MetadataFields from "./MetadataFields.vue";
+import SearchTips from "./SearchTips";
+import ProgressSpinner from "./ProgressSpinner";
 
 // ── Injects, route, router, store, i18n ──────────────────────────────────────
 const $http = inject("$http");
@@ -394,11 +394,11 @@ function updateInputData() {
 }
 
 // ── Toggle handlers ──────────────────────────────────────────────────────────
-function toggleCoocOrder() {           // eslint-disable-line no-unused-vars
+function toggleCoocOrder() {
     coocOrder.value = !coocOrder.value;
 }
 
-function toggleApproximate() {         // eslint-disable-line no-unused-vars
+function toggleApproximate() {
     approximateSelected.value = !approximateSelected.value;
     store.updateFormDataField({
         key: "approximate_ratio",
@@ -411,7 +411,7 @@ function toggleForm() {
 }
 
 // ── Submit / reset / report change ───────────────────────────────────────────
-function onSubmit() {                  // eslint-disable-line no-unused-vars
+function onSubmit() {
     formData.value.report = currentReport.value;
     formOpen.value = false;
     const metadataChoices = Object.fromEntries(
@@ -451,7 +451,7 @@ function onSubmit() {                  // eslint-disable-line no-unused-vars
     );
 }
 
-function onReset() {                   // eslint-disable-line no-unused-vars
+function onReset() {
     store.resetFormDataToDefaults();
     for (const field of philoConfig.metadata) {
         metadataValues[field] = "";
@@ -465,7 +465,7 @@ function onReset() {                   // eslint-disable-line no-unused-vars
     }
 }
 
-function reportChange(report) {        // eslint-disable-line no-unused-vars
+function reportChange(report) {
     formData.value.report = report === "landing_page" ? philoConfig.search_reports[0] : report;
     if (report === "collocation") {
         store.updateFormDataField({
