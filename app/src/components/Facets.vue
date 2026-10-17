@@ -183,6 +183,7 @@ import { useI18n } from "vue-i18n";
 import { computed, inject, onScopeDispose, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
+import { useLatestRequest } from "../composables/useLatestRequest";
 import { useMainStore } from "../stores/main";
 import {
     copyObject,
@@ -257,21 +258,19 @@ const wordFacets = ref(populateWordFacets());
 
 // The facet's request in flight: another facet, a new search, or hiding the facets aborts it, as leaving the page,
 // its answer no longer wanted
-let inFlight = null;
+const facetRequest = useLatestRequest();
 
 function abortRequest() {
-    inFlight?.abort();
-    inFlight = null;
+    facetRequest.abort();
     loading.value = false;
 }
 onScopeDispose(abortRequest);
 
 function fetchFacet(script, queryParams, cacheKey) {
-    abortRequest();
-    const controller = (inFlight = new AbortController());
+    const signal = facetRequest.start();
     loading.value = true;
     $http
-        .get(`${$dbUrl}/scripts/${script}`, { params: paramsFilter(queryParams), signal: controller.signal })
+        .get(`${$dbUrl}/scripts/${script}`, { params: paramsFilter(queryParams), signal })
         .then((response) => {
             fullResults.value =
                 selectedFacet.value.type === "facet"
@@ -281,13 +280,10 @@ function fetchFacet(script, queryParams, cacheKey) {
             saveToLocalStorage(cacheKey, fullResults.value);
         })
         .catch((error) => {
-            if (!controller.signal.aborted) debug({ $options: { name: "facets-report" } }, error);
+            if (!signal.aborted) debug({ $options: { name: "facets-report" } }, error);
         })
         .finally(() => {
-            if (inFlight === controller) {
-                inFlight = null;
-                loading.value = false;
-            }
+            if (facetRequest.finish(signal)) loading.value = false;
         });
 }
 

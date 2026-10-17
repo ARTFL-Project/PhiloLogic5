@@ -2,6 +2,7 @@ import { storeToRefs } from "pinia";
 import { onScopeDispose, watch } from "vue";
 import { useMainStore } from "../stores/main";
 import { debug, isOnlyFacetChange } from "../utils.js";
+import { useLatestRequest } from "./useLatestRequest";
 
 /**
  * The search of a report's page, one at a time. The report is the one the form and the store's currentReport say;
@@ -21,22 +22,18 @@ import { debug, isOnlyFacetChange } from "../utils.js";
 export function useReport(report, fetch, { watchUrl = true } = {}) {
     const store = useMainStore();
     const { formData, currentReport, searching, urlUpdate } = storeToRefs(store);
-    let inFlight = null; // the AbortController of the search in flight
+    const search = useLatestRequest();
 
     async function run() {
-        inFlight?.abort();
-        const controller = (inFlight = new AbortController());
+        const signal = search.start();
         searching.value = true;
         try {
-            await fetch(controller.signal);
+            await fetch(signal);
         } catch (error) {
-            if (!controller.signal.aborted) debug({ $options: { name: `${report}-report` } }, error);
+            if (!signal.aborted) debug({ $options: { name: `${report}-report` } }, error);
         } finally {
             // Not when aborted: a newer search is in flight, or the page is gone
-            if (inFlight === controller) {
-                inFlight = null;
-                searching.value = false;
-            }
+            if (search.finish(signal)) searching.value = false;
         }
     }
 
@@ -48,10 +45,7 @@ export function useReport(report, fetch, { watchUrl = true } = {}) {
 
     // Leaving the page, its search in flight ends: the next page's starts after
     onScopeDispose(() => {
-        if (!inFlight) return;
-        inFlight.abort();
-        inFlight = null;
-        searching.value = false;
+        if (search.abort()) searching.value = false;
     });
 
     formData.value.report = report;

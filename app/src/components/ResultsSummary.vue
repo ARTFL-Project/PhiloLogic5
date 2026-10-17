@@ -228,6 +228,7 @@ import ExportResults from "./ExportResults";
 import ProgressSpinner from "./ProgressSpinner";
 import ResultsBibliography from "./ResultsBibliography";
 import SearchArguments from "./SearchArguments";
+import { useLatestRequest } from "../composables/useLatestRequest";
 import { useMainStore } from "../stores/main";
 import {
     debug,
@@ -327,18 +328,9 @@ function queryOf(data) {
 
 // The requests for the search shown (its total, its statistics): a new search aborts them, as leaving the page,
 // their answers no longer its own. The pages of one search share them.
-let requests = new AbortController();
-let requestsQuery = queryOf(formData.value);
-function searchSignal() {
-    const query = queryOf(formData.value);
-    if (!deepEqual(query, requestsQuery)) {
-        requests.abort();
-        requests = new AbortController();
-        requestsQuery = query;
-    }
-    return requests.signal;
-}
-onScopeDispose(() => requests.abort());
+const searchRequests = useLatestRequest();
+const searchSignal = () => searchRequests.start(queryOf(formData.value));
+onScopeDispose(searchRequests.abort);
 
 function updateTotalResults() {
     // If the report response already provided the final count, skip the extra request
