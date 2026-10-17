@@ -529,4 +529,22 @@ span.note {
     margin-right: 5px;
     border-radius: 0.25rem;
 }
+
+/* Results fade in as they arrive, one after another: the --i-th (its index) --fade-step after the first */
+.result-fade-in {
+    animation: result-fade-in 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) calc(var(--i, 0) * var(--fade-step, 15ms))
+        backwards;
+}
+
+@keyframes result-fade-in {
+    from {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .result-fade-in {
+        animation: none;
+    }
+}
 </style>

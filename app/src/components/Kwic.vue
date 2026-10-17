@@ -52,9 +52,9 @@
 
                     <!-- KWIC results -->
                     <div id="kwic-concordance">
-                        <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
+                        <div>
                             <div v-for="(result, kwicIndex) in filteredKwic(results.results)"
-                                :key="result.philo_id.join('-')" :data-index="kwicIndex">
+                                :key="result.philo_id.join('-')" class="result-fade-in" :style="{ '--i': kwicIndex }">
 
                                 <!-- Default KWIC view -->
                                 <div class="kwic-line visual-kwic" aria-hidden="true">
@@ -93,7 +93,7 @@
                                     </div>
                                 </div>
                             </div>
-                        </transition-group>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -111,7 +111,6 @@ import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
-import { useFadeTransition } from "../composables/useFadeTransition";
 import { debug, isOnlyFacetChange, paramsFilter, paramsToRoute } from "../utils.js";
 import Facets from "./Facets";  // eslint-disable-line no-unused-vars
 import Pages from "./Pages";  // eslint-disable-line no-unused-vars
@@ -135,8 +134,6 @@ const {
 
 const results = ref({ description: { end: 0 } });
 const searchParams = ref({});
-
-const { beforeEnter: onBeforeEnter, enter: onEnter } = useFadeTransition(0.0075);
 
 provide("results", computed(() => results.value.results));
 
@@ -377,6 +374,7 @@ fetchResults();
 
 #kwic-concordance {
     font-family: monospace;
+    --fade-step: 7.5ms; /* the lines follow each other twice as fast as concordance cards */
 }
 
 /* Visual KWIC layout for sighted users */

@@ -13,9 +13,10 @@
             <div role="region" class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('concordance.resultsRegion')">
 
-                <transition-group tag="div" :css="false" v-on:before-enter="onBeforeEnter" v-on:enter="onEnter">
-                    <article class="card philologic-occurrence text-view mb-3 shadow-sm"
-                        v-for="(result, index) in results.results" :key="result.philo_id.join('-')" :data-index="index">
+                <div>
+                    <article class="card philologic-occurrence text-view mb-3 shadow-sm result-fade-in"
+                        v-for="(result, index) in results.results" :key="result.philo_id.join('-')"
+                        :style="{ '--i': index }">
 
                         <!-- Citation header -->
                         <div class="row citation-container g-0">
@@ -50,7 +51,7 @@
                             </div>
                         </div>
                     </article>
-                </transition-group>
+                </div>
             </div>
 
             <div class="pages-wrapper">
@@ -65,7 +66,6 @@ import { computed, inject, provide, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
-import { useFadeTransition } from "../composables/useFadeTransition";
 import { debug, isOnlyFacetChange, paramsFilter } from "../utils.js";
 import Citations from "./Citations";  // eslint-disable-line no-unused-vars
 import Facets from "./Facets";  // eslint-disable-line no-unused-vars
@@ -87,8 +87,6 @@ const {
 
 const results = ref({ description: { end: 0 }, results: [] });
 const searchParams = ref({});
-
-const { beforeEnter: onBeforeEnter, enter: onEnter } = useFadeTransition();
 
 provide("results", computed(() => results.value.results));
 

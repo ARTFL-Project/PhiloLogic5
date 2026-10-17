@@ -13,8 +13,8 @@
             <div role="region" class="col-12" :class="{ 'col-md-9': showFacets, 'col-xl-9': showFacets }"
                 :aria-label="$t('bibliography.bibliographyResultsRegion')"
                 v-if="!philoConfig.dictionary_bibliography || results.result_type == 'doc'">
-                <transition-group tag="div" :css="false" v-on:before-enter="beforeEnter" v-on:enter="enter">
-                    <article class="card philologic-occurrence mx-2 mb-4 shadow-sm"
+                <div>
+                    <article class="card philologic-occurrence mx-2 mb-4 shadow-sm result-fade-in"
                         v-for="(result, index) in results.results" :key="result.philo_id.join('-')" role="article">
                         <div class="row citation-container">
                             <div class="col-12">
@@ -30,7 +30,7 @@
                             </div>
                         </div>
                     </article>
-                </transition-group>
+                </div>
             </div>
 
             <!-- Results column for dictionary bibliography -->
@@ -68,7 +68,6 @@
 import { computed, inject, provide, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useMainStore } from "../stores/main";
-import { useFadeTransition } from "../composables/useFadeTransition";
 import { debug, isOnlyFacetChange, paramsFilter } from "../utils.js";
 import citations from "./Citations";
 import facets from "./Facets";
@@ -141,8 +140,6 @@ function dictionaryBibliography(data) {
     data.results = groupedResults;
     return data;
 }
-
-const { beforeEnter, enter } = useFadeTransition();
 
 watch(urlUpdate, (newUrl, oldUrl) => {
     if (!isOnlyFacetChange(newUrl, oldUrl)) {
