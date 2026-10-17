@@ -90,7 +90,6 @@ const { formData, resultsLength } = storeToRefs(store);
 
 const aggregationResults = ref([]);
 const lastResult = ref(50);
-const infiniteId = ref(0);
 const groupedByField = ref(route.query.group_by);
 const breakUpFields = ref([]);
 const breakUpFieldName = ref("");
@@ -110,7 +109,6 @@ const { run: fetchResults } = useReport("aggregation", async (signal) => {
         params: paramsFilter({ ...formData.value }),
         signal,
     });
-    infiniteId.value += 1;
     aggregationResults.value = Object.freeze(buildStatResults(data.results));
     lastResult.value = 50;
     breakUpFields.value = aggregationResults.value.map((r) => ({

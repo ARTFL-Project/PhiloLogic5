@@ -156,7 +156,6 @@ const currentPhiloId = ref("");
 const highlight = ref(false);
 const start = ref(0);
 const end = ref(0);
-const tocPosition = ref(0);
 const navButtonPosition = ref(0);
 const navBarVisible = ref(false);
 const tocButton = useTemplateRef("tocButton");
@@ -426,7 +425,6 @@ function fetchText() {
 
 //  TOC fetch + scroll ─
 function fetchToC() {
-    tocPosition.value = "";
     const philoId = route.params.pathInfo.split("/").join(" ");
     const docId = philoId.split(" ")[0];
     currentPhiloId.value = philoId;
@@ -458,10 +456,6 @@ function fetchToC() {
 }
 
 function loadBefore() {
-    if (tocElements.value.elements && start.value < tocElements.value.elements.length) {
-        const firstElement = tocElements.value.elements[start.value]?.philo_id;
-        if (firstElement) tocPosition.value = firstElement;
-    }
     start.value = Math.max(0, start.value - 200);
 }
 

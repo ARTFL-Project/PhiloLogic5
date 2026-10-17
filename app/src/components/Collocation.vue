@@ -81,7 +81,7 @@
             </ul>
         </div>
 
-        <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
+        <results-summary :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
             v-if="['frequency', 'senses', 'senseTree', 'sensePeriods', 'senseOverview'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
@@ -216,7 +216,6 @@ function methodOf(query) {
     const method = query.collocation_method || "frequency";
     return method === "timeSeries" || method === "wordMap" ? "senses" : method;
 }
-const results = ref({});
 const filterList = ref([]);
 const stopwordsMissing = ref(false);
 // Whether the primary collocation fetch has run for the current query. False
