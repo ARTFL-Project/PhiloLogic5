@@ -2100,15 +2100,9 @@ class Loader:
         if self.has_attributes is True:
             if "words_facets" not in config_values:
                 config_values["words_facets"] = []
-            word_attributes = {}
-            with open(f"{self.destination}/frequencies/word_attributes", "r", encoding="utf8") as freq_file:
-                for line in freq_file:
-                    line = line.strip()
-                    # From the end: words split by spaCy's tokenizer can have colons (3:16)
-                    _, attribute, attribute_value = line.rsplit(":", 2)
-                    if attribute not in word_attributes:
-                        word_attributes[attribute] = set()
-                    word_attributes[attribute].add(attribute_value)
+            word_attributes = word_attribute_values(
+                f"{self.destination}/frequencies/word_attributes", set(self.word_attributes)
+            )
             config_values["word_attributes"] = {k: sorted(v) for k, v in word_attributes.items()}
             words_facets.extend((word_attributes.keys()))
             config_values["words_facets"] = words_facets
@@ -2121,6 +2115,20 @@ class Loader:
             print(format_str(str(web_config), mode=FileMode()), file=output_file)
         print(f"wrote Web application info to {filename}")
 
+
+def word_attribute_values(frequency_file, names):
+    """The values of each word attribute of a word_attributes frequency file (word:attribute:value lines), whose
+    attributes are among names. Words split by spaCy's tokenizer (3:16) and values (the tag ":") can have colons: the
+    attribute is the last part which is one of names."""
+    values = {}
+    with open(frequency_file, encoding="utf8") as file:
+        for line in file:
+            parts = line.strip().split(":")
+            for position in range(len(parts) - 2, 0, -1):
+                if parts[position] in names:
+                    values.setdefault(parts[position], set()).add(":".join(parts[position + 1 :]))
+                    break
+    return values
 
 def setup_db_dir(db_destination, force_delete=False):
     """Setup database directory"""
