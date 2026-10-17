@@ -57,12 +57,7 @@
                                 </span>
 
                                 <div :id="`breakdown-item-${resultIndex}-${key}`" class="breakdown-citation">
-                                    <citations :citation="buildCitationObject(
-                                        statsConfig.break_up_field,
-                                        statsConfig.break_up_field_citation,
-                                        value.metadata_fields,
-                                        true
-                                    )"></citations>
+                                    <citations :citation="breakUpCitations[resultIndex][key]"></citations>
                                 </div>
                             </div>
                         </article>
@@ -195,6 +190,23 @@ function buildCitationObject(fieldToLink, citationObject, metadataFields, single
     }
     return out;
 }
+
+// The citations of the rows of each open breakdown (none for the closed ones): made when one opens, not again at each
+// render, as when scrolling shows more groups
+const breakUpCitations = computed(() =>
+    breakUpFields.value.map((breakUp) =>
+        breakUp.show
+            ? breakUp.results.slice(0, breakUp.limit).map((value) =>
+                buildCitationObject(
+                    statsConfig.value.break_up_field,
+                    statsConfig.value.break_up_field_citation,
+                    value.metadata_fields,
+                    true
+                )
+            )
+            : []
+    )
+);
 
 function toggleBreakUp(resultIndex) {
     breakUpFields.value[resultIndex].show = !breakUpFields.value[resultIndex].show;

@@ -53,7 +53,7 @@
                     <!-- KWIC results -->
                     <div id="kwic-concordance">
                         <div>
-                            <div v-for="(result, kwicIndex) in filteredKwic(results.results)"
+                            <div v-for="(result, kwicIndex) in kwicResults"
                                 :key="result.philo_id.join('-')" class="result-fade-in" :style="{ '--i': kwicIndex }">
 
                                 <!-- Default KWIC view -->
@@ -227,14 +227,15 @@ function buildFullCitation(metadataField) {
     return out.length > 0 ? out.join(", ") : "NA";
 }
 
-function filteredKwic(rawResults) {
+// The lines with their citations, whole and cut short: made once per response, not at each render
+const kwicResults = computed(() => {
+    const rawResults = results.value.results;
     if (typeof rawResults === "undefined" || !Object.keys(rawResults).length) return [];
     return rawResults.map((resultObject) => {
-        resultObject.fullBiblio = buildFullCitation(resultObject.metadata_fields);
-        resultObject.shortBiblio = resultObject.fullBiblio.slice(0, 30);
-        return resultObject;
+        const fullBiblio = buildFullCitation(resultObject.metadata_fields);
+        return { ...resultObject, fullBiblio, shortBiblio: fullBiblio.slice(0, 30) };
     });
-}
+});
 
 function showFullBiblio(event) {
     event.currentTarget.querySelector(".full-biblio").classList.add("show");
