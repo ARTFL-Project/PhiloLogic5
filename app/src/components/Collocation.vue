@@ -512,6 +512,9 @@ watch(
 
         // Real search params changed — the primary results are now stale.
         primaryFetched.value = false;
+        // A senses tab doesn't fetch them again: their collocates go, or Frequency, shown next, would fetch its
+        // outliers as it mounts with them, and again once runPostFetchModeAction has the new ones
+        if (["senses", "senseTree", "sensePeriods", "senseOverview"].includes(newMode)) sortedList.value = [];
 
         // Refetch the right path for the active mode.
         if (newMode === "senses") {

@@ -457,6 +457,19 @@ describe("Collocation", () => {
         expect(sensesOf(http).length).toBe(1);
     });
 
+    it("fetches Frequency's outliers once, shown after a search made on a senses tab", async () => {
+        const http = keptTabsHttp();
+        const wrapper = await searched(http);
+        await showTab(wrapper, "#word-senses-tab");
+        await newSearch(wrapper, "freedom");
+        http.get.mockClear();
+        await showTab(wrapper, "#frequency-tab");
+
+        const outliers = http.get.mock.calls.filter((c) => c[0].includes("get_outlier_groups.py"));
+        expect(outliers.length).toBe(2); // one for each field compared (author, title)
+        expect(searchesOf(http).every((p) => p.q === "freedom")).toBe(true);
+    });
+
     it("gives the summary a kept tab's words left out when it is shown, not when its result comes later", async () => {
         const http = keptTabsHttp();
         const respond = http.get.getMockImplementation();
