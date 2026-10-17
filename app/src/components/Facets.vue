@@ -74,7 +74,7 @@
             <div class="btn-group btn-group-sm shadow-sm" role="group" :aria-label="$t('facets.frequencyTypeToggle')"
                 v-if="showFacetResults && formData.report !== 'bibliography' && selectedFacet.type === 'facet'">
                 <button type="button" class="btn btn-light" :class="{ active: showingRelativeFrequencies === false }"
-                    @click="toggleFrequencies()" :aria-pressed="showingRelativeFrequencies === false"
+                    @click="showFrequencies(false)" :aria-pressed="showingRelativeFrequencies === false"
                     :aria-describedby="'absolute-freq-desc'">
                     {{ $t("common.absoluteFrequency") }}
                     <span id="absolute-freq-desc" class="visually-hidden">
@@ -82,7 +82,7 @@
                     </span>
                 </button>
                 <button type="button" class="btn btn-light" :class="{ active: showingRelativeFrequencies }"
-                    @click="toggleFrequencies()" :aria-pressed="showingRelativeFrequencies"
+                    @click="showFrequencies(true)" :aria-pressed="showingRelativeFrequencies"
                     :aria-describedby="'relative-freq-desc'">
                     {{ $t("common.relativeFrequency") }}
                     <span id="relative-freq-desc" class="visually-hidden">
@@ -180,7 +180,7 @@
 
 <script setup>
 import { useI18n } from "vue-i18n";
-import { inject, ref, watch } from "vue";
+import { computed, inject, onScopeDispose, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useMainStore } from "../stores/main";
@@ -215,11 +215,23 @@ const showFacetSelection = ref(true);
 const showFacetResults = ref(false);
 const loading = ref(false);
 const selectedFacet = ref({});
-const showingRelativeFrequencies = ref(false);
-const shouldShowRelativeFrequency = ref(false);
+// The facet's counts: a metadata field's, absolute and relative ({ absolute, relative }); a word property's, a list
 const fullResults = ref({});
-const facetResults = ref([]);
-const selected = ref("");
+
+// Relative frequencies, as the URL asks for them, where the facet has them
+const showingRelativeFrequencies = computed(
+    () =>
+        selectedFacet.value.type === "facet" &&
+        route.query.relative_frequency === "true" &&
+        fullResults.value.relative?.length > 0
+);
+// The counts listed: a word property's first hundred
+const facetResults = computed(() => {
+    if (selectedFacet.value.type === "property") {
+        return Array.isArray(fullResults.value) ? fullResults.value.slice(0, 100) : [];
+    }
+    return (showingRelativeFrequencies.value ? fullResults.value.relative : fullResults.value.absolute) || [];
+});
 
 function populateFacets() {
     const facets = [];
@@ -243,89 +255,66 @@ function populateWordFacets() {
 const facets = ref(populateFacets());
 const wordFacets = ref(populateWordFacets());
 
-function fetchFrequencyFacet(queryParams) {
-    $http.get(`${$dbUrl}/scripts/get_frequency.py`, {
-        params: paramsFilter(queryParams),
-    }).then((response) => {
-        fullResults.value = {
-            absolute: response.data.results,
-            relative: response.data.relative_results || [],
-        };
-        if (shouldShowRelativeFrequency.value && fullResults.value.relative.length) {
-            facetResults.value = fullResults.value.relative;
-        } else {
-            facetResults.value = fullResults.value.absolute;
-            showingRelativeFrequencies.value = false;
-        }
-        loading.value = false;
-        showFacetResults.value = true;
-        const urlString = paramsToUrlString({
-            ...queryParams,
-            frequency_field: selectedFacet.value.alias,
+// The facet's request in flight: another facet, a new search, or hiding the facets aborts it, as leaving the page,
+// its answer no longer wanted
+let inFlight = null;
+
+function abortRequest() {
+    inFlight?.abort();
+    inFlight = null;
+    loading.value = false;
+}
+onScopeDispose(abortRequest);
+
+function fetchFacet(script, queryParams, cacheKey) {
+    abortRequest();
+    const controller = (inFlight = new AbortController());
+    loading.value = true;
+    $http
+        .get(`${$dbUrl}/scripts/${script}`, { params: paramsFilter(queryParams), signal: controller.signal })
+        .then((response) => {
+            fullResults.value =
+                selectedFacet.value.type === "facet"
+                    ? { absolute: response.data.results, relative: response.data.relative_results || [] }
+                    : response.data.results;
+            showFacetResults.value = true;
+            saveToLocalStorage(cacheKey, fullResults.value);
+        })
+        .catch((error) => {
+            if (!controller.signal.aborted) debug({ $options: { name: "facets-report" } }, error);
+        })
+        .finally(() => {
+            if (inFlight === controller) {
+                inFlight = null;
+                loading.value = false;
+            }
         });
-        saveToLocalStorage(urlString, fullResults.value);
-    }).catch((error) => {
-        debug({ $options: { name: "facets-report" } }, error);
-        loading.value = false;
-    });
 }
 
-function fetchPropertyFacet(facet, queryParams) {
-    $http.get(`${$dbUrl}/scripts/get_word_property_count.py`, {
-        params: paramsFilter(queryParams),
-    }).then((response) => {
-        facetResults.value = response.data.results.slice(0, 100);
-        fullResults.value = response.data.results;
-        loading.value = false;
-        showFacetResults.value = true;
-        const urlString = paramsToUrlString({
-            ...queryParams,
-            word_property: facet.facet,
-        });
-        saveToLocalStorage(urlString, fullResults.value);
-    }).catch((error) => {
-        debug({ $options: { name: "facets-report" } }, error);
-        loading.value = false;
-    });
-}
-
-function getFacet(facetObj, updateUrl = true) {
+function getFacet(facetObj) {
     selectedFacet.value = facetObj;
     showFacetSelection.value = false;
-    facetResults.value = [];
+    abortRequest();
+    fullResults.value = {};
 
-    showingRelativeFrequencies.value = !updateUrl && shouldShowRelativeFrequency.value;
-    selected.value = facetObj.alias;
-
-    let urlString;
-    if (facetObj.type === "facet") {
-        urlString = paramsToUrlString({ ...formData.value, frequency_field: facetObj.alias });
-    } else if (facetObj.type === "property") {
-        urlString = paramsToUrlString({ ...formData.value, word_property: facetObj.facet });
-    }
-
+    const urlString = paramsToUrlString(
+        facetObj.type === "facet"
+            ? { ...formData.value, frequency_field: facetObj.alias }
+            : { ...formData.value, word_property: facetObj.facet }
+    );
     if (typeof sessionStorage[urlString] !== "undefined" && philoConfig.production === true) {
         fullResults.value = JSON.parse(sessionStorage[urlString]);
-        if (facetObj.type === "facet") {
-            facetResults.value = (shouldShowRelativeFrequency.value && fullResults.value.relative)
-                ? fullResults.value.relative
-                : fullResults.value.absolute;
-        } else {
-            facetResults.value = fullResults.value.slice(0, 100);
-        }
         showFacetResults.value = true;
-        showFacetSelection.value = false;
         return;
     }
 
-    loading.value = true;
     const queryParams = copyObject(formData.value);
     if (facetObj.type === "facet") {
         queryParams.frequency_field = facetObj.facet;
-        fetchFrequencyFacet(queryParams);
-    } else if (facetObj.type === "property") {
+        fetchFacet("get_frequency.py", queryParams, urlString);
+    } else {
         queryParams.word_property = facetObj.facet;
-        fetchPropertyFacet(facetObj, queryParams);
+        fetchFacet("get_word_property_count.py", queryParams, urlString);
     }
 }
 
@@ -348,38 +337,6 @@ function facetSearch(facetObj) {
     }
 }
 
-function updateFacetUrl() {
-    if (selectedFacet.value && selectedFacet.value.facet) {
-        router.push(paramsToRoute({
-            ...formData.value,
-            facet: selectedFacet.value.facet,
-            relative_frequency: showingRelativeFrequencies.value ? "true" : "false",
-        }));
-    }
-}
-
-function displayRelativeFrequencies() {
-    facetResults.value = fullResults.value.relative;
-    showingRelativeFrequencies.value = true;
-    if (
-        selectedFacet.value.facet !== route.query.facet ||
-        showingRelativeFrequencies.value.toString() !== route.query.relative_frequency
-    ) {
-        updateFacetUrl();
-    }
-}
-
-function displayAbsoluteFrequencies() {
-    facetResults.value = fullResults.value.absolute;
-    showingRelativeFrequencies.value = false;
-    if (
-        selectedFacet.value.facet !== route.query.facet ||
-        showingRelativeFrequencies.value.toString() !== route.query.relative_frequency
-    ) {
-        updateFacetUrl();
-    }
-}
-
 function checkFacetStateFromUrl() {
     if (!route.query.facet) {
         showFacetSelection.value = true;
@@ -388,7 +345,6 @@ function checkFacetStateFromUrl() {
     }
 
     const facet = route.query.facet;
-    shouldShowRelativeFrequency.value = route.query.relative_frequency === "true";
 
     // Clean up irrelevant facet params from store
     if (facet === "property") {
@@ -401,7 +357,7 @@ function checkFacetStateFromUrl() {
     } else {
         facetObj = facets.value.find((f) => f.facet === facet);
     }
-    if (facetObj) getFacet(facetObj, false);
+    if (facetObj) getFacet(facetObj);
 }
 
 function propertyToConcordance(query) {
@@ -416,28 +372,25 @@ function showFacetOptions() {
     showFacetSelection.value = true;
 }
 
-function toggleFrequencies() {
-    showingRelativeFrequencies.value = !showingRelativeFrequencies.value;
+// The absolute or relative frequencies, as the URL then says
+function showFrequencies(relative) {
     router.push(paramsToRoute({
         ...formData.value,
         facet: selectedFacet.value.facet,
-        relative_frequency: showingRelativeFrequencies.value ? "true" : "false",
+        relative_frequency: relative ? "true" : "false",
     }));
 }
 
-function hideFacets(skipRouterPush = false) {
+function hideFacets() {
+    abortRequest();
     showFacetResults.value = false;
     showFacetSelection.value = true;
-    showingRelativeFrequencies.value = false;
-    facetResults.value = [];
     fullResults.value = {};
-    if (!skipRouterPush) {
-        const routeParams = paramsToRoute({ ...formData.value });
-        delete routeParams.query.facet;
-        delete routeParams.query.relative_frequency;
-        delete routeParams.query.word_property;
-        router.push(routeParams);
-    }
+    const routeParams = paramsToRoute({ ...formData.value });
+    delete routeParams.query.facet;
+    delete routeParams.query.relative_frequency;
+    delete routeParams.query.word_property;
+    router.push(routeParams);
 }
 
 function facetClick(metadata) {
@@ -453,7 +406,7 @@ function facetClick(metadata) {
     router.push(routeParams);
 }
 
-
+// The facet shown, as the URL says (the relative frequencies follow it on their own)
 watch(
     () => route.fullPath,
     (newPath, oldPath) => {
@@ -462,6 +415,7 @@ watch(
 
         // If facet param was removed from URL, hide facets immediately
         if (oldQuery.facet && !newQuery.facet) {
+            abortRequest();
             showFacetResults.value = false;
             showFacetSelection.value = true;
             return;
@@ -469,7 +423,7 @@ watch(
 
         if (!isOnlyFacetChange(newQuery, oldQuery)) {
             // Clear facet data when query changes (not just facet selection)
-            facetResults.value = [];
+            abortRequest();
             fullResults.value = {};
             checkFacetStateFromUrl();
         } else if (
@@ -477,18 +431,6 @@ watch(
             newQuery.word_property !== oldQuery.word_property
         ) {
             checkFacetStateFromUrl();
-        }
-
-        // relative_frequency only affects regular metadata facets
-        if (
-            newQuery.relative_frequency !== oldQuery.relative_frequency &&
-            newQuery.facet !== "property"
-        ) {
-            if (newQuery.relative_frequency === "false") {
-                displayAbsoluteFrequencies();
-            } else {
-                displayRelativeFrequencies();
-            }
         }
     }
 );
