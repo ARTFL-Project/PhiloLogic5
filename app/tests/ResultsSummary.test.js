@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { mount } from "@vue/test-utils";
+import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { createGlobalConfig, createMockHttp } from "./helpers.js";
+import { createGlobalConfig, createMockHttp, createPendingHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
 import ResultsSummary from "../src/components/ResultsSummary.vue";
 
@@ -217,5 +217,40 @@ describe("ResultsSummary", () => {
         // Should contain start-end range
         expect(text).toContain("1");
         expect(text).toContain("25");
+    });
+});
+
+describe("ResultsSummary and the search shown", () => {
+    // An aggregation's summary, which asks for the total at once
+    async function aggregation() {
+        const { http, requests } = createPendingHttp("get_total_results.py");
+        const route = { name: "aggregation", path: "/aggregation", query: { q: "liberty", group_by: "author" } };
+        const wrapper = mountResultsSummary({ http, report: "aggregation", route });
+        await flushPromises();
+        return { wrapper, requests, store: useMainStore() };
+    }
+    const search = async (wrapper, store, query) => {
+        store.formData = { ...store.formData, ...query }; // as App sets it from the URL
+        await wrapper.vm.$router.push({ path: "/aggregation", query: { q: store.formData.q, group_by: "author", ...query } });
+        await flushPromises();
+    };
+
+    it("counts the newest search, the request of the one it replaced aborted", async () => {
+        const { wrapper, requests, store } = await aggregation();
+        await search(wrapper, store, { q: "freedom" });
+        expect(requests.length).toBeGreaterThanOrEqual(2);
+        expect(requests[0].config.signal.aborted).toBe(true);
+
+        requests.at(-1).answer(222);
+        requests[0].answer(111); // too late
+        await flushPromises();
+        expect(store.resultsLength).toBe(222);
+        expect(store.totalResultsDone).toBe(true);
+    });
+
+    it("keeps the requests of a search while its pages change", async () => {
+        const { wrapper, requests, store } = await aggregation();
+        await search(wrapper, store, { start: "26", end: "50" });
+        expect(requests[0].config.signal.aborted).toBe(false);
     });
 });

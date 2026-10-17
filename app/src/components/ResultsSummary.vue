@@ -221,7 +221,7 @@
 </template>
 
 <script setup>
-import { computed, inject, ref, watch } from "vue";
+import { computed, inject, onScopeDispose, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import ExportResults from "./ExportResults";
@@ -313,6 +313,33 @@ function buildDescription() {
     }
 }
 
+// The search of the counts: not the page of it shown, nor its KWIC sort
+function queryOf(data) {
+    return {
+        ...data,
+        start: "",
+        end: "",
+        first_kwic_sorting_option: "",
+        second_kwic_sorting_option: "",
+        third_kwic_sorting_option: "",
+    };
+}
+
+// The requests for the search shown (its total, its statistics): a new search aborts them, as leaving the page,
+// their answers no longer its own. The pages of one search share them.
+let requests = new AbortController();
+let requestsQuery = queryOf(formData.value);
+function searchSignal() {
+    const query = queryOf(formData.value);
+    if (!deepEqual(query, requestsQuery)) {
+        requests.abort();
+        requests = new AbortController();
+        requestsQuery = query;
+    }
+    return requests.signal;
+}
+onScopeDispose(() => requests.abort());
+
 function updateTotalResults() {
     // If the report response already provided the final count, skip the extra request
     if (totalResultsDone.value) {
@@ -326,23 +353,26 @@ function updateTotalResults() {
         params.year = `${start}-${end}`;
     }
     totalResultsDone.value = false;
+    const signal = searchSignal();
     $http
-        .get(`${$dbUrl}/scripts/get_total_results.py`, { params: paramsFilter(params) })
+        .get(`${$dbUrl}/scripts/get_total_results.py`, { params: paramsFilter(params), signal })
         .then((response) => {
             resultsLength.value = response.data;
             hits.value = buildDescription();
             totalResultsDone.value = true;
         })
         .catch((error) => {
-            debug({ $options: { name: "ResultsSummary" } }, error);
+            if (!signal.aborted) debug({ $options: { name: "ResultsSummary" } }, error);
         });
 }
 
 function getHitListStats() {
     hitlistStatsDone.value = false;
+    const signal = searchSignal();
     $http
         .get(`${$dbUrl}/scripts/get_hitlist_stats.py`, {
             params: paramsFilter({ ...formData.value }),
+            signal,
         })
         .then((response) => {
             hitlistStatsDone.value = true;
@@ -367,11 +397,12 @@ function getHitListStats() {
             statsDescription.value = out;
         })
         .catch((error) => {
-            debug({ $options: { name: "ResultsSummary" } }, error);
+            if (!signal.aborted) debug({ $options: { name: "ResultsSummary" } }, error);
         });
 }
 
 function updateDescriptions() {
+    searchSignal(); // a new search: the requests of the last one go now, not when this one's are made
     buildDescription();
     // For reports that set searching/totalResultsDone (concordance/kwic/bibliography),
     // defer updateTotalResults + getHitListStats until the report response arrives
@@ -434,14 +465,7 @@ watch(searching, (newVal, oldVal) => {
         ["concordance", "kwic", "bibliography"].includes(formData.value.report)
     ) {
         if (!totalResultsDone.value) updateTotalResults();
-        const newQuery = {
-            ...formData.value,
-            start: "",
-            end: "",
-            first_kwic_sorting_option: "",
-            second_kwic_sorting_option: "",
-            third_kwic_sorting_option: "",
-        };
+        const newQuery = queryOf(formData.value);
         if (!deepEqual(newQuery, currentQuery.value) || Object.keys(statsDescription.value).length === 0) {
             getHitListStats();
             currentQuery.value = newQuery;
@@ -450,14 +474,7 @@ watch(searching, (newVal, oldVal) => {
     }
 });
 
-currentQuery.value = {
-    ...formData.value,
-    start: "",
-    end: "",
-    first_kwic_sorting_option: "",
-    second_kwic_sorting_option: "",
-    third_kwic_sorting_option: "",
-};
+currentQuery.value = queryOf(formData.value);
 updateDescriptions();
 </script>
 
