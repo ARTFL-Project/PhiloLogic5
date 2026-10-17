@@ -55,6 +55,7 @@ import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 import PeriodColumns, { periodWord, periodYears } from "./PeriodColumns.vue";
 import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
+import { useKeptTab } from "./keptTab.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
@@ -66,23 +67,25 @@ const { t } = useI18n();
 const loading = ref(false);
 const failed = ref(false);
 const result = ref(null);
+const { wanted, giveFilters } = useKeptTab(emit, result, loading);
 let fetchToken = 0;
 
 const queryWord = computed(() => (formData.value.q || "").replace(/lemma:/g, "").replace(/"/g, "").trim());
 const nodes = computed(() => result.value?.nodes || []);
 
 function runDetection() {
+    const params = paramsFilter(formData.value);
+    if (!wanted(params)) return;
     const myToken = ++fetchToken;
     loading.value = true;
     failed.value = false;
     result.value = null;
     $http
-        .get(`${$dbUrl}/scripts/get_sense_periods.py`, { params: paramsFilter(formData.value) })
+        .get(`${$dbUrl}/scripts/get_sense_periods.py`, { params })
         .then((response) => {
             if (myToken !== fetchToken) return;
             result.value = response.data;
-            emit("filterList", response.data?.filter_list || []);
-            emit("stopwordsMissing", Boolean(response.data?.stopwords_missing));
+            giveFilters(response.data);
         })
         .catch((error) => {
             if (myToken !== fetchToken) return;

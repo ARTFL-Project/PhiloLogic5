@@ -203,6 +203,7 @@ import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
 import { findWord, inSense, matches, searchableWords } from "./senseSearch.js";
+import { useKeptTab } from "./keptTab.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
@@ -214,6 +215,7 @@ const { t } = useI18n();
 const loading = ref(false);
 const failed = ref(false);
 const result = ref(null);
+const { wanted, giveFilters } = useKeptTab(emit, result, loading);
 const view = ref("share"); // "share" of the year's sentences, or uses per million words ("rate")
 const hoverIndex = ref(null); // the year (from time.start) the pointer is on, in every chart at once
 const position = ref(0); // how many distinctions are shown, the most important first
@@ -244,18 +246,19 @@ function showDefaultDetail() {
 }
 
 function runDetection() {
+    const params = paramsFilter(formData.value);
+    if (!wanted(params)) return;
     const myToken = ++fetchToken;
     loading.value = true;
     failed.value = false;
     result.value = null;
     view.value = "share";
     $http
-        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: paramsFilter(formData.value) })
+        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params })
         .then((response) => {
             if (myToken !== fetchToken) return;
             result.value = response.data;
-            emit("filterList", response.data?.filter_list || []); // the collocation filter's words, left out here too
-            emit("stopwordsMissing", Boolean(response.data?.stopwords_missing));
+            giveFilters(response.data); // the collocation filter's words, left out here too
             showDefaultDetail();
         })
         .catch((error) => {

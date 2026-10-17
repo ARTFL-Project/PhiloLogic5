@@ -383,4 +383,99 @@ describe("Collocation", () => {
         expect(comparisonsOf(http).length).toBe(0);
         expect(wrapper.text()).toContain("Nothing to compare");
     });
+
+    // --- The tabs shown are kept, with their results, until the search changes ---
+    const sensesResult = { n_hits: 0, n_sentences: 0, n_works: 0, nodes: [], time: null, filter_list: ["the"] };
+    const sensesOf = (http) => http.get.mock.calls.filter((c) => c[0].includes("get_word_senses.py"));
+    const keptTabsHttp = () => createMockHttp({ "collocation.py": collocationFixture, "get_word_senses.py": sensesResult });
+    const showTab = async (wrapper, id) => {
+        await wrapper.find(id).trigger("click");
+        await flushPromises();
+    };
+    const newSearch = async (wrapper, q) => {
+        const router = wrapper.vm.$router;
+        await router.push({ path: "/collocation", query: { ...router.currentRoute.value.query, q } });
+        await flushPromises();
+    };
+    // The page as a search opens it: its URL with the parameters of the tabs' own (a shorter one is another search)
+    async function searched(http) {
+        const wrapper = await mountCollocationWithRoute(http, { q: "liberty", report: "collocation" }, { asApp: true });
+        await flushPromises();
+        await showTab(wrapper, "#frequency-tab");
+        return wrapper;
+    }
+
+    it("fetches nothing again when coming back to a tab", async () => {
+        const http = keptTabsHttp();
+        const wrapper = await searched(http);
+        await showTab(wrapper, "#word-senses-tab");
+        const fetched = http.get.mock.calls.length;
+
+        await showTab(wrapper, "#frequency-tab");  // its outliers, and the senses, as they were
+        await showTab(wrapper, "#word-senses-tab");
+
+        expect(http.get.mock.calls.length).toBe(fetched);
+        expect(sensesOf(http).length).toBe(1);
+        expect(wrapper.find("#word-senses-tab").classes()).toContain("active");
+    });
+
+    it("drops the tabs kept when the search changes, keeping the one shown", async () => {
+        const http = keptTabsHttp();
+        const wrapper = await searched(http);
+        await showTab(wrapper, "#word-senses-tab");
+        await newSearch(wrapper, "freedom");
+
+        // the tab shown, its senses fetched anew, then the frequency's, of the new search
+        expect(sensesOf(http).map((c) => c[1].params.q)).toEqual(["liberty", "freedom"]);
+        http.get.mockClear();
+        await showTab(wrapper, "#frequency-tab");
+        expect(searchesOf(http).length).toBeGreaterThan(0);
+        expect(searchesOf(http).every((p) => p.q === "freedom")).toBe(true);
+    });
+
+    it("fetches a tab loaded on demand once, shown again after the search changed", async () => {
+        await import("../src/components/collocation/SenseTree.vue");  // loaded, as once its tab was shown
+        const http = keptTabsHttp();
+        const wrapper = await searched(http);
+        await showTab(wrapper, "#sense-tree-tab");
+        await showTab(wrapper, "#frequency-tab");
+        await newSearch(wrapper, "freedom");
+        await showTab(wrapper, "#sense-tree-tab");  // it fetches as it mounts, and the page asks too
+
+        expect(sensesOf(http).map((c) => c[1].params.q)).toEqual(["liberty", "freedom"]);
+    });
+
+    it("fetches the senses once when a link's shorter URL opens a tab", async () => {
+        await import("../src/components/collocation/SenseTree.vue");  // loaded, as once its tab was shown
+        const http = keptTabsHttp();
+        const wrapper = await mountCollocationWithRoute(http, { q: "liberty", report: "collocation" }, { asApp: true });
+        await flushPromises();
+        await showTab(wrapper, "#sense-tree-tab");  // the tab's URL, longer, is another search
+        await showTab(wrapper, "#frequency-tab");
+        await showTab(wrapper, "#sense-tree-tab");
+
+        expect(sensesOf(http).length).toBe(1);
+    });
+
+    it("gives the summary a kept tab's words left out when it is shown, not when its result comes later", async () => {
+        const http = keptTabsHttp();
+        const respond = http.get.getMockImplementation();
+        let release;
+        http.get.mockImplementation((url, options) => url.includes("get_word_senses.py")
+            ? new Promise((resolve) => { release = () => resolve({ data: sensesResult }); })
+            : respond(url, options));
+        const wrapper = await searched(http);
+        const filterList = () => wrapper.find(".results-summary-stub").attributes("filter-list");
+        const frequencyList = filterList();
+
+        await showTab(wrapper, "#word-senses-tab");
+        await showTab(wrapper, "#frequency-tab");
+        release();  // the senses come while the frequency is shown
+        await flushPromises();
+        expect(filterList()).toBe(frequencyList);
+
+        await showTab(wrapper, "#word-senses-tab");
+        expect(filterList()).toBe("the");
+        expect(sensesOf(http).length).toBe(1);
+    });
 });

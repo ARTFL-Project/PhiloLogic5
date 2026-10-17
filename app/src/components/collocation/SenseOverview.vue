@@ -164,7 +164,7 @@
 <script setup>
 import { Modal } from "bootstrap";
 import { storeToRefs } from "pinia";
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, inject, nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../../stores/main";
 import { debug, paramsFilter } from "../../utils.js";
@@ -174,6 +174,7 @@ import InfoButton from "./InfoButton.vue";
 import PeriodColumns, { periodWord, periodYears } from "./PeriodColumns.vue";
 import { senseColor as colorOf, senseInk, senseShades, senseTextColor } from "./senseColors.js";
 import { findWord, inSense, searchableWords } from "./senseSearch.js";
+import { useKeptTab } from "./keptTab.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
@@ -185,6 +186,7 @@ const { t } = useI18n();
 const loading = ref(false);
 const failed = ref(false);
 const result = ref(null);
+const { wanted, giveFilters } = useKeptTab(emit, result, loading);
 const position = ref(0); // how many distinctions are shown, the most important first
 const selected = ref(null);
 const search = ref("");
@@ -202,6 +204,8 @@ const splits = computed(() =>
 const defaultPosition = computed(() => splits.value.filter((n) => n.split.relative >= (result.value?.detail ?? 1)).length);
 
 function runDetection() {
+    const params = paramsFilter(formData.value);
+    if (!wanted(params)) return;
     const myToken = ++fetchToken;
     loading.value = true;
     failed.value = false;
@@ -209,12 +213,11 @@ function runDetection() {
     selected.value = null;
     periodsById.value = {};
     $http
-        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: paramsFilter(formData.value) })
+        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params })
         .then((response) => {
             if (myToken !== fetchToken) return;
             result.value = response.data;
-            emit("filterList", response.data?.filter_list || []);
-            emit("stopwordsMissing", Boolean(response.data?.stopwords_missing));
+            giveFilters(response.data);
             position.value = defaultPosition.value;
         })
         .catch((error) => {
@@ -339,6 +342,15 @@ onMounted(() => {
 onBeforeUnmount(() => {
     observer?.disconnect();
     if (frame) cancelAnimationFrame(frame);
+});
+// Kept out of the page while another tab is shown, where it would measure nothing: as it was until it is back
+onDeactivated(() => {
+    observer?.disconnect();
+    if (frame) cancelAnimationFrame(frame);
+    frame = null;
+});
+onActivated(() => {
+    for (const el of [box.value, list.value]) if (el) observer?.observe(el);
 });
 
 // Measured again when the rows or the view change, and whenever the box or the list change size (zoom, text spacing,

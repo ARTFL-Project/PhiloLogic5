@@ -87,45 +87,61 @@
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
-            <Frequency v-if="mode === 'frequency'" ref="frequencyRef"
-                :sorted-list="sortedList" :results-length="resultsLength"
-                @pivot-to-compare="pivotToCompare" />
+            <!-- Each tab is kept, with its results, while another is shown: shown again after the search changed, it
+                 is a new one -->
+            <KeepAlive :key="tabKeys.frequency">
+                <Frequency v-if="mode === 'frequency'" ref="frequencyRef"
+                    :sorted-list="sortedList" :results-length="resultsLength"
+                    @pivot-to-compare="pivotToCompare" />
+            </KeepAlive>
             <div class="mx-2 my-3" role="status"
                 v-if="mode == 'frequency' && !searching && (!resultsLength || !sortedList.length)">
                 {{ resultsLength ? $t("collocation.noCollocates") : $t("resultsSummary.noResults") }}
             </div>
 
-            <Compare v-if="mode === 'compare'" ref="compareRef"
-                :sorted-list="sortedList" :biblio="biblio" :results-length="resultsLength"
-                :collocates-file-path="collocatesFilePath"
-                :compared-metadata-values="comparedMetadataValues"
-                :date-type="dateType" :date-range="dateRange"
-                :primary-metadata-values="primaryMetadataValues"
-                :primary-date-type="primaryDateType" :primary-date-range="primaryDateRange"
-                :primary-choice-selected="primaryChoiceSelected"
-                :metadata-display="metadataDisplay" :metadata-input-style="metadataInputStyle"
-                :metadata-choice-values="metadataChoiceValues"
-                :metadata-choice-checked="metadataChoiceChecked"
-                :metadata-choice-selected="metadataChoiceSelected" @run="runComparison" />
+            <KeepAlive :key="tabKeys.compare">
+                <Compare v-if="mode === 'compare'" ref="compareRef"
+                    :sorted-list="sortedList" :biblio="biblio" :results-length="resultsLength"
+                    :collocates-file-path="collocatesFilePath"
+                    :compared-metadata-values="comparedMetadataValues"
+                    :date-type="dateType" :date-range="dateRange"
+                    :primary-metadata-values="primaryMetadataValues"
+                    :primary-date-type="primaryDateType" :primary-date-range="primaryDateRange"
+                    :primary-choice-selected="primaryChoiceSelected"
+                    :metadata-display="metadataDisplay" :metadata-input-style="metadataInputStyle"
+                    :metadata-choice-values="metadataChoiceValues"
+                    :metadata-choice-checked="metadataChoiceChecked"
+                    :metadata-choice-selected="metadataChoiceSelected" @run="runComparison" />
+            </KeepAlive>
 
-            <Similar v-if="mode === 'similar'" ref="similarRef"
-                :biblio="biblio" :results-length="resultsLength"
-                :collocates-file-path="collocatesFilePath"
-                :fields-to-compare="fieldsToCompare"
-                @field-selected="onSimilarFieldSelected"
-                @pivot-to-compare="pivotToCompare" />
+            <KeepAlive :key="tabKeys.similar">
+                <Similar v-if="mode === 'similar'" ref="similarRef"
+                    :biblio="biblio" :results-length="resultsLength"
+                    :collocates-file-path="collocatesFilePath"
+                    :fields-to-compare="fieldsToCompare"
+                    @field-selected="onSimilarFieldSelected"
+                    @pivot-to-compare="pivotToCompare" />
+            </KeepAlive>
 
-            <WordSenses v-if="mode === 'senses'" ref="wordSensesRef"
-                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+            <KeepAlive :key="tabKeys.senses">
+                <WordSenses v-if="mode === 'senses'" ref="wordSensesRef"
+                    @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+            </KeepAlive>
 
-            <SenseTree v-if="mode === 'senseTree'" ref="senseTreeRef"
-                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+            <KeepAlive :key="tabKeys.senseTree">
+                <SenseTree v-if="mode === 'senseTree'" ref="senseTreeRef"
+                    @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+            </KeepAlive>
 
-            <SensePeriods v-if="mode === 'sensePeriods'" ref="sensePeriodsRef"
-                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+            <KeepAlive :key="tabKeys.sensePeriods">
+                <SensePeriods v-if="mode === 'sensePeriods'" ref="sensePeriodsRef"
+                    @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+            </KeepAlive>
 
-            <SenseOverview v-if="mode === 'senseOverview'" ref="senseOverviewRef"
-                @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+            <KeepAlive :key="tabKeys.senseOverview">
+                <SenseOverview v-if="mode === 'senseOverview'" ref="senseOverviewRef"
+                    @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
+            </KeepAlive>
         </div>
     </div>
 </template>
@@ -140,6 +156,7 @@ import {
     dateRangeHandler,
     debug,
     extractSurfaceFromCollocate,
+    isViewOnlyParam,
     paramsFilter,
     paramsToRoute,
     quoteMetadataValue,
@@ -180,6 +197,19 @@ const senseOverviewRef = useTemplateRef("senseOverviewRef");
 
 //  Shared state
 const mode = ref("frequency");
+// Each tab's instance (its KeepAlive's key) and the search it is of, by mode: a tab shown again after the search
+// changed is a new one, its old one gone, while the one shown at a new search stays, to show its results as before
+const tabKeys = reactive({});
+const tabSearches = {};
+let searchCount = 0; // the searches made on the page
+
+function showTab(tab) {
+    if (tabSearches[tab] !== searchCount) {
+        tabSearches[tab] = searchCount;
+        tabKeys[tab] = (tabKeys[tab] || 0) + 1;
+    }
+    mode.value = tab;
+}
 
 // The collocation method a URL asks for; links to the usage patterns over time and the word map, which the senses
 // replaced, open the senses
@@ -342,7 +372,7 @@ function updateCollocationUrl() {
 }
 
 function setMode(newMode, { updateUrl = true } = {}) {
-    mode.value = newMode;
+    showTab(newMode);
     if (updateUrl) updateCollocationUrl();
 }
 
@@ -373,7 +403,7 @@ function updateCollocation() {
 
 // After the primary fetch completes, mode-specific follow-up runs in the active child.
 async function runPostFetchModeAction() {
-    mode.value = methodOf(route.query);
+    showTab(methodOf(route.query));
     await nextTick();  // ensure the active mode's child is mounted
     if (mode.value === "similar") {
         // A URL without the field to compare by (the server needs one): the first one configured
@@ -421,19 +451,6 @@ async function pivotToCompare(payload) {
 }
 
 //  Watchers
-// View-only params don't affect the primary collocation results — they only
-// switch which panel is rendered or feed mode-specific secondary fetches.
-// Changing only these (e.g. clicking a tab) must NOT trigger a re-search.
-function isViewOnlyParam(key) {
-    return (
-        key === "report" || // the route says which: links may have it, the URLs pushed here don't
-        key === "collocation_method" ||
-        key === "similarity_by" ||
-        key === "time_series_interval" ||
-        key.startsWith("compare_")
-    );
-}
-
 function shouldRefetchOnQueryChange(newQuery, oldQuery) {
     const allKeys = new Set([...Object.keys(newQuery), ...Object.keys(oldQuery)]);
     for (const key of allKeys) {
@@ -452,13 +469,17 @@ watch(
         const oldMode = methodOf(oldQuery);
         const newMode = methodOf(newQuery);
         const modeChanged = newMode !== oldMode;
-        if (newMode !== mode.value) mode.value = newMode;
+        // A new search: the tab shown stays (a tab click may have shown it already), the others kept are of the last
+        if (shouldRefetchOnQueryChange(newQuery, oldQuery)) {
+            searchCount += 1;
+            if (newMode === mode.value) tabSearches[mode.value] = searchCount;
+        }
+        if (newMode !== mode.value) showTab(newMode);
         if (newMode === "compare") restoreComparedMetadataFromUrl();
         restorePrimaryMetadataFromUrl();
         biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
 
-        // The senses tabs run on tab switch (no Detect button).
-        // The child is freshly v-if-mounted, so its result is null and needs a fetch.
+        // The senses tabs run on tab switch (no Detect button): a tab kept with its result of this search keeps it.
         if (modeChanged && !shouldRefetchOnQueryChange(newQuery, oldQuery)) {
             if (newMode === "senses") {
                 await nextTick();
@@ -528,7 +549,7 @@ formData.value.report = "collocation";
 currentReport.value = "collocation";
 buildMetadata(searchableMetadata.value);
 biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
-mode.value = methodOf(route.query);
+showTab(methodOf(route.query));
 if (mode.value === "compare") restoreComparedMetadataFromUrl();
 restorePrimaryMetadataFromUrl();
 if (mode.value === "similar" && route.query.similarity_by) {

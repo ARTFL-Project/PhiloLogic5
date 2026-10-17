@@ -110,6 +110,7 @@ import { debug, paramsFilter } from "../../utils.js";
 import ProgressSpinner from "../ProgressSpinner";
 import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
 import { findWord, inSense, searchableWords } from "./senseSearch.js";
+import { useKeptTab } from "./keptTab.js";
 
 const emit = defineEmits(["filterList", "stopwordsMissing"]);
 const $http = inject("$http");
@@ -121,6 +122,7 @@ const { t } = useI18n();
 const loading = ref(false);
 const failed = ref(false);
 const result = ref(null);
+const { wanted, giveFilters } = useKeptTab(emit, result, loading);
 const position = ref(0); // how many distinctions are shown, the most important first
 const selected = ref(null);
 const search = ref(""); // a word looked for among the senses' words
@@ -144,18 +146,19 @@ const splits = computed(() =>
 const defaultPosition = computed(() => splits.value.filter((n) => n.split.relative >= (result.value?.detail ?? 1)).length);
 
 function runDetection() {
+    const params = paramsFilter(formData.value);
+    if (!wanted(params)) return;
     const myToken = ++fetchToken;
     loading.value = true;
     failed.value = false;
     result.value = null;
     selected.value = null;
     $http
-        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params: paramsFilter(formData.value) })
+        .get(`${$dbUrl}/scripts/get_word_senses.py`, { params })
         .then((response) => {
             if (myToken !== fetchToken) return;
             result.value = response.data;
-            emit("filterList", response.data?.filter_list || []);
-            emit("stopwordsMissing", Boolean(response.data?.stopwords_missing));
+            giveFilters(response.data);
             position.value = defaultPosition.value;
         })
         .catch((error) => {

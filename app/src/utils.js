@@ -384,6 +384,18 @@ export function collocationParams(formData, philoConfig, metadata = null) {
     return params;
 }
 
+// The collocation parameters that don't affect its results: they only switch which tab is shown or feed a tab's own
+// fetches. Changing only these (e.g. clicking a tab) is no new search.
+export function isViewOnlyParam(key) {
+    return (
+        key === "report" || // the route says which: links may have it, the URLs pushed here don't
+        key === "collocation_method" ||
+        key === "similarity_by" ||
+        key === "time_series_interval" ||
+        key.startsWith("compare_")
+    );
+}
+
 export function concordanceMethod(collocWithin) {
     return collocWithin === "n" ? "proxy" : "sentence";
 }
