@@ -3,7 +3,6 @@ import "bootstrap";
 import "bootstrap-icons/font/bootstrap-icons.css";
 import { createPinia } from "pinia";
 import { createApp } from "vue";
-import vueScrollTo from "vue-scrollto";
 import App from "./App.vue";
 import router from "./router";
 
@@ -19,9 +18,7 @@ axios
         const pinia = createPinia();
 
         app.config.globalProperties.$philoConfig = response.data;
-        app.config.globalProperties.$scrollTo = vueScrollTo.scrollTo;
         app.config.globalProperties.$dbUrl = dbUrl;
-        app.config.unwrapInjectedRef = true;
         app.provide("$http", axios);
         app.provide("$dbUrl", dbUrl);
         app.provide("$philoConfig", response.data);

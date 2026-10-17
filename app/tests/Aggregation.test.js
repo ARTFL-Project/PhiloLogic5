@@ -28,7 +28,6 @@ async function mountAggregation(overrides = {}) {
 
     const store = useMainStore();
     store.formData = { ...store.formData, q: "liberty", report: "aggregation", group_by: "author", author: "Brown" };
-    store.aggregationCache = { results: [], query: {} };
 
     return mount(Aggregation, {
         global: {
@@ -38,7 +37,7 @@ async function mountAggregation(overrides = {}) {
                 ResultsSummary: { template: "<div class='results-summary-stub' />", props: ["groupLength"] },
                 Citations: { template: "<span class='citations-stub' />", props: ["citation", "resultNumber"] },
             },
-            mocks: { $philoConfig: config, $dbUrl: "/testdb", $scrollTo: vi.fn() },
+            mocks: { $philoConfig: config, $dbUrl: "/testdb" },
             directives: { scroll: { mounted() {}, unmounted() {} } },
         },
     });
@@ -143,7 +142,6 @@ describe("Aggregation by title", () => {
         await router.isReady();
         const store = useMainStore();
         store.formData = { ...store.formData, q: "liberté", report: "aggregation", group_by: "title" };
-        store.aggregationCache = { results: [], query: {} };
         const wrapper = mount(Aggregation, {
             global: {
                 plugins: [pinia, createTestI18n(), router],
@@ -152,7 +150,7 @@ describe("Aggregation by title", () => {
                     ResultsSummary: { template: "<div />", props: ["groupLength"] },
                     Citations: CitationsStub,
                 },
-                mocks: { $philoConfig: config, $dbUrl: "/testdb", $scrollTo: vi.fn() },
+                mocks: { $philoConfig: config, $dbUrl: "/testdb" },
                 directives: { scroll: { mounted() {}, unmounted() {} } },
             },
         });

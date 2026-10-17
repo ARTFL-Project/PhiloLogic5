@@ -291,7 +291,6 @@ const {
     formData,
     searching,
     currentReport,
-    metadataUpdate,
     searchableMetadata,
 } = storeToRefs(store);
 
@@ -350,14 +349,11 @@ const metadataDisplay = ref([]);
 const metadataChoiceValues = reactive({});
 const metadataChoiceChecked = reactive({});
 const metadataChoiceSelected = reactive({});
-const selectedSortValues = ref("rowid");  // eslint-disable-line no-unused-vars
 const showTips = ref(false);
 const dateType = reactive({});
 const dateRange = reactive({});
 
 // ── Computed ─────────────────────────────────────────────────────────────────
-const statFieldSelected = computed(() => getLoadedStatField());  // eslint-disable-line no-unused-vars
-
 const sortValues = computed(() => {
     const values = [{ value: "rowid", text: t("searchForm.selectSort") }];
     for (const fields of philoConfig.concordance_biblio_sorting) {
@@ -397,15 +393,6 @@ function updateInputData() {
     }
 }
 
-function getLoadedStatField() {
-    const queryParam = formData.value?.group_by;
-    if (!queryParam) return "";
-    return (
-        philoConfig.metadata_aliases[queryParam] ||
-        queryParam.charAt(0).toUpperCase() + queryParam.slice(1)
-    );
-}
-
 // ── Toggle handlers ──────────────────────────────────────────────────────────
 function toggleCoocOrder() {           // eslint-disable-line no-unused-vars
     coocOrder.value = !coocOrder.value;
@@ -421,10 +408,6 @@ function toggleApproximate() {         // eslint-disable-line no-unused-vars
 
 function toggleForm() {
     formOpen.value = !formOpen.value;
-}
-
-function selectApproximate(approximateValue) {     // eslint-disable-line no-unused-vars
-    store.updateFormDataField({ key: "approximate_ratio", value: approximateValue });
 }
 
 // ── Submit / reset / report change ───────────────────────────────────────────
@@ -496,23 +479,6 @@ function reportChange(report) {        // eslint-disable-line no-unused-vars
 
 // ── Watchers ─────────────────────────────────────────────────────────────────
 watch(() => route.fullPath, updateInputData);
-
-watch(metadataUpdate, (metadata) => {
-    for (const field of metadata) {
-        const style = philoConfig.metadata_input_style[field];
-        if (style === "text") {
-            metadataValues[field] = metadata[field];
-        } else if (style === "dropdown") {
-            metadataChoiceSelected[field] = metadata[field];
-        } else if (style === "checkbox") {
-            metadataChoiceChecked[field] = metadata[field].split(" | ");
-        }
-    }
-    for (const m of philoConfig.metadata) {
-        autoCompleteResults[m] = [];
-        arrowCounters[m] = -1;
-    }
-});
 
 // Two-way sync for cooc_order / approximate between local UI state and store
 watch(coocOrder, (newValue) => {

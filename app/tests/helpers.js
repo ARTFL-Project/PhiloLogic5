@@ -145,7 +145,6 @@ export function createGlobalConfig(overrides = {}) {
         mocks: {
             $philoConfig: config,
             $dbUrl: "/testdb",
-            $scrollTo: vi.fn(),
             ...(overrides.mocks || {}),
         },
         directives: {

@@ -36,7 +36,6 @@ export const useMainStore = defineStore("main", {
         defaultFields: {},
         resultsLength: 0,
         textNavigationCitation: {},
-        textObject: "",
         navBar: "",
         tocElements: {},
         byte: "",
@@ -49,20 +48,10 @@ export const useMainStore = defineStore("main", {
             termGroups: [],
             cutTerms: [],
         },
-        aggregationCache: {
-            results: [],
-            query: {},
-        },
-        sortedKwicCache: {
-            queryParams: {},
-            results: [],
-            totalResults: 0,
-        },
         totalResultsDone: false,
         searchError: "",
         showFacets: true,
         urlUpdate: "",
-        metadataUpdate: {},
         searchableMetadata: { display: [], inputStyle: [], choiceValues: [] },
     }),
 
@@ -167,14 +156,6 @@ export const useMainStore = defineStore("main", {
             this.formData[payload.key] = payload.value;
         },
 
-        updateAllMetadata(payload) {
-            this.formData = { ...this.formData, ...payload };
-        },
-
-        updateCitation(payload) {
-            this.textNavigationCitation = payload;
-        },
-
         updateDescription(payload) {
             this.description = payload;
         },
@@ -193,20 +174,6 @@ export const useMainStore = defineStore("main", {
                 start_date: payload.startDate,
                 end_date: payload.endDate,
             };
-        },
-
-        // Helper action to mimic the old updateField functionality
-        updateField({ path, value }) {
-            const pathArray = path.split(".");
-            let target = this;
-
-            // Navigate to the parent of the field to update
-            for (let i = 0; i < pathArray.length - 1; i++) {
-                target = target[pathArray[i]];
-            }
-
-            // Set the final value
-            target[pathArray[pathArray.length - 1]] = value;
         },
     },
 });

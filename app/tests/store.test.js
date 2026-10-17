@@ -29,13 +29,6 @@ describe("Main Store", () => {
         expect(store.formData.q).toBe("new query");
     });
 
-    it("updateAllMetadata merges metadata into formData", () => {
-        store.updateAllMetadata({ author: "Voltaire", title: "Candide" });
-        expect(store.formData.author).toBe("Voltaire");
-        expect(store.formData.title).toBe("Candide");
-        expect(store.formData.q).toBe(""); // preserved
-    });
-
     const minimalConfig = {
         time_series_interval: 10,
         aggregation_config: [{ field: "author" }],

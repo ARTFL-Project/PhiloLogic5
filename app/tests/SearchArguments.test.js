@@ -32,7 +32,7 @@ async function mountSearchArguments(overrides = {}) {
             stubs: {
                 BibliographyCriteria: { template: "<div class='biblio-criteria-stub' />" },
             },
-            mocks: { $philoConfig: config, $dbUrl: "/testdb", $scrollTo: vi.fn() },
+            mocks: { $philoConfig: config, $dbUrl: "/testdb" },
         },
     });
 
@@ -205,7 +205,7 @@ describe("SearchArguments with approximate search", () => {
                 plugins: [pinia, createTestI18n(), router],
                 provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
                 stubs: { BibliographyCriteria: { template: "<div />" } },
-                mocks: { $philoConfig: config, $dbUrl: "/testdb", $scrollTo: vi.fn() },
+                mocks: { $philoConfig: config, $dbUrl: "/testdb" },
             },
         });
         await flushPromises();
@@ -235,7 +235,7 @@ describe("SearchArguments terms dialog with the keyboard", () => {
                 plugins: [pinia, createTestI18n(), router],
                 provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
                 stubs: { BibliographyCriteria: { template: "<div />" } },
-                mocks: { $philoConfig: config, $dbUrl: "/testdb", $scrollTo: vi.fn() },
+                mocks: { $philoConfig: config, $dbUrl: "/testdb" },
             },
         });
         await flushPromises();

@@ -70,7 +70,7 @@ async function mountTextNavigation(overrides = {}) {
                 Citations: { template: "<span class='citations-stub' />" },
                 ProgressSpinner: { template: "<div class='spinner-stub' />" },
             },
-            mocks: { $philoConfig: config, $dbUrl: "/testdb", $scrollTo: vi.fn() },
+            mocks: { $philoConfig: config, $dbUrl: "/testdb" },
             directives: { scroll: { mounted() {}, unmounted() {} } },
         },
     });

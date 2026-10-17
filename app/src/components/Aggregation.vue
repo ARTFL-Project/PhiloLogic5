@@ -78,7 +78,7 @@ import { useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import { useMainStore } from "../stores/main";
-import { debug, deepEqual, paramsFilter, paramsToRoute, quoteMetadataValue } from "../utils.js";
+import { debug, paramsFilter, paramsToRoute, quoteMetadataValue } from "../utils.js";
 import citations from "./Citations";
 import ResultsSummary from "./ResultsSummary";
 
@@ -91,7 +91,6 @@ const store = useMainStore();
 const {
     formData,
     resultsLength,
-    aggregationCache,
     searching,
     currentReport,
     urlUpdate,
@@ -114,21 +113,6 @@ const statsConfig = computed(() => {
 provide("results", aggregationResults);
 
 function fetchResults() {
-    if (
-        deepEqual(
-            { ...aggregationCache.value.query, start: "", end: "" },
-            { ...route.query, start: "", end: "" }
-        )
-    ) {
-        aggregationResults.value = aggregationCache.value.results;
-        breakUpFields.value = aggregationResults.value.map((r) => ({
-            show: false,
-            results: r.break_up_field,
-        }));
-        resultsLength.value = aggregationCache.value.totalResults;
-        return;
-    }
-
     searching.value = true;
     $http
         .get(`${$dbUrl}/reports/aggregation.py`, {
