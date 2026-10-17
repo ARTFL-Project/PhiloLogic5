@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { createGlobalConfig, createMockHttp } from "./helpers.js";
+import { createGlobalConfig, createMockHttp, createPendingHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
 import biblioFixture from "./fixtures/bibliography.json";
 import Bibliography from "../src/components/Bibliography.vue";
@@ -63,5 +63,22 @@ describe("Bibliography", () => {
         // bypass the test-utils stub registry — the real Facets component
         // mounts here, not the stub.
         expect(wrapper.find(".facets-column").exists()).toBe(true);
+    });
+
+    // --- A search at a time ---
+    it("shows the newest search, the request of the one it replaced aborted", async () => {
+        const { http, requests } = createPendingHttp("bibliography.py");
+        mountBibliography({ http });
+        const store = useMainStore();
+        store.urlUpdate = { author: "Brown", report: "bibliography", start: "26", end: "50" }; // the next page, fast
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(requests[0].config.signal.aborted).toBe(true);
+
+        requests[1].answer({ ...biblioFixture, results_length: 222 });
+        requests[0].answer({ ...biblioFixture, results_length: 111 }); // too late
+        await flushPromises();
+        expect(store.resultsLength).toBe(222);
+        expect(store.searching).toBe(false);
     });
 });

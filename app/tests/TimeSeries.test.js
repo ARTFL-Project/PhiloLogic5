@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { createGlobalConfig, createMockHttp } from "./helpers.js";
+import { createGlobalConfig, createMockHttp, createPendingHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
 import timeSeriesFixture from "./fixtures/time_series.json";
 import TimeSeries from "../src/components/TimeSeries.vue";
@@ -104,5 +104,27 @@ describe("TimeSeries", () => {
         await nextTick();
 
         expect(buttons[1].classes()).toContain("active");
+    });
+
+    // --- A search at a time ---
+    it("shows the newest search, the request of the one it replaced aborted", async () => {
+        const { http, requests } = createPendingHttp("time_series.py");
+        const wrapper = mountTimeSeries({ http });
+        await flushPromises();
+        const store = useMainStore();
+        store.urlUpdate = { q: "freedom", report: "time_series", start_date: "1500", end_date: "1800" };
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(requests[0].config.signal.aborted).toBe(true);
+
+        // the newer one's counts twice the older one's
+        const doubled = structuredClone(timeSeriesFixture);
+        for (const date of Object.values(doubled.results.absolute_count)) date.count *= 2;
+        requests[1].answer(doubled);
+        requests[0].answer(timeSeriesFixture); // too late
+        await flushPromises();
+        const first = timeSeriesFixture.results.absolute_count["1500"].count;
+        expect(wrapper.findComponent({ name: "Bar" }).props("data").datasets[0].data[0]).toBe(2 * first);
+        expect(store.searching).toBe(false);
     });
 });

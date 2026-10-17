@@ -150,11 +150,11 @@
 import { storeToRefs } from "pinia";
 import { computed, defineAsyncComponent, inject, nextTick, onMounted, reactive, ref, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { useReport } from "../composables/useReport";
 import { useMainStore } from "../stores/main";
 import {
     buildBiblioCriteria,
     dateRangeHandler,
-    debug,
     extractSurfaceFromCollocate,
     isViewOnlyParam,
     paramsFilter,
@@ -180,7 +180,6 @@ const router = useRouter();
 const store = useMainStore();
 const {
     formData,
-    currentReport,
     resultsLength,
     searching,
     searchableMetadata,
@@ -380,26 +379,28 @@ function handleMobileMethodChange() {
     setMode(mode.value);
 }
 
-//  Primary fetch (shared by frequency / compare / similar entry paths)
-function updateCollocation() {
-    $http.get(`${$dbUrl}/reports/collocation.py`, { params: paramsFilter(formData.value) })
-        .then((response) => {
-            resultsLength.value = response.data.results_length;
-            filterList.value = response.data.filter_list;
-            stopwordsMissing.value = Boolean(response.data.stopwords_missing);
-            collocatesFilePath.value = response.data.file_path;
-            searching.value = false;
-            primaryFetched.value = true;
-            if (resultsLength.value) {
-                sortedList.value = extractSurfaceFromCollocate(response.data.collocates);
-                runPostFetchModeAction();
-            }
-        })
-        .catch((error) => {
-            searching.value = false;
-            debug({ $options: { name: "collocation-report" } }, error);
+//  Primary fetch (shared by frequency / compare / similar entry paths), which the route watcher runs: a new one
+//  aborts the one in flight
+const { run: fetchResults } = useReport(
+    "collocation",
+    async (signal) => {
+        similarFieldForUrl.value = "";
+        const { data } = await $http.get(`${$dbUrl}/reports/collocation.py`, {
+            params: paramsFilter(formData.value),
+            signal,
         });
-}
+        resultsLength.value = data.results_length;
+        filterList.value = data.filter_list;
+        stopwordsMissing.value = Boolean(data.stopwords_missing);
+        collocatesFilePath.value = data.file_path;
+        primaryFetched.value = true;
+        if (resultsLength.value) {
+            sortedList.value = extractSurfaceFromCollocate(data.collocates);
+            runPostFetchModeAction();
+        }
+    },
+    { watchUrl: false }
+);
 
 // After the primary fetch completes, mode-specific follow-up runs in the active child.
 async function runPostFetchModeAction() {
@@ -420,12 +421,6 @@ async function runPostFetchModeAction() {
     } else if (mode.value === "frequency") {
         frequencyRef.value?.fetchOutliers();
     }
-}
-
-function fetchResults() {
-    searching.value = true;
-    similarFieldForUrl.value = "";
-    updateCollocation();
 }
 
 //  Cross-mode pivot: a child (frequency or similar) has selected a group
@@ -545,8 +540,6 @@ watch(searchableMetadata, (newVal) => {
 }, { deep: true });
 
 //  Initial dispatch (before first render so the right child mounts)
-formData.value.report = "collocation";
-currentReport.value = "collocation";
 buildMetadata(searchableMetadata.value);
 biblio.value = buildBiblioCriteria(philoConfig, route.query, formData.value);
 showTab(methodOf(route.query));

@@ -106,12 +106,13 @@
 </template>
 
 <script setup>
-import { computed, inject, onBeforeUnmount, provide, ref, watch } from "vue";
+import { computed, inject, provide, ref } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
+import { useReport } from "../composables/useReport";
 import { useMainStore } from "../stores/main";
-import { debug, isOnlyFacetChange, paramsFilter, paramsToRoute } from "../utils.js";
+import { paramsFilter, paramsToRoute } from "../utils.js";
 import Facets from "./Facets";
 import Pages from "./Pages";
 import ResultsSummary from "./ResultsSummary";
@@ -125,9 +126,6 @@ const store = useMainStore();
 const {
     formData,
     resultsLength,
-    searching,
-    currentReport,
-    urlUpdate,
     showFacets,
     totalResultsDone,
 } = storeToRefs(store);
@@ -136,17 +134,6 @@ const results = ref({ description: { end: 0 } });
 const searchParams = ref({});
 
 provide("results", computed(() => results.value.results));
-
-// AbortController for the sorted-KWIC request in flight, which can take a while.
-// Held as a module-scope `let` (not a ref) since its identity isn't needed
-// reactively — we just need to keep a handle to abort on unmount or query change.
-let abortController = null;
-
-// Abort the sorted-KWIC request in flight, if any: its results are no longer wanted
-function abortSortedFetch() {
-    if (abortController) abortController.abort();
-    abortController = null;
-}
 
 // ── Sort options (writable computeds proxy formData) ─────────────────────────
 const first_kwic_sorting_option = computed({
@@ -276,31 +263,8 @@ function sortResults() {
 }
 
 // ── Fetch path ───────────────────────────────────────────────────────────────
-async function fetchSortedResults() {
-    searching.value = true;
-    abortSortedFetch();
-    const controller = new AbortController();
-    abortController = controller;
-
-    try {
-        const response = await $http.get(`${$dbUrl}/scripts/get_sorted_kwic.py`, {
-            params: paramsFilter({ ...formData.value }),
-            signal: controller.signal,
-        });
-        results.value = response.data;
-        resultsLength.value = response.data.results_length;
-    } catch (e) {
-        if (!controller.signal.aborted) debug({ $options: { name: "kwic-report" } }, e);
-    } finally {
-        // Not when aborted: a newer request is searching, or the component is gone
-        if (abortController === controller) {
-            searching.value = false;
-            abortController = null;
-        }
-    }
-}
-
-function fetchResults() {
+// Sorted, the lines come from get_sorted_kwic.py, as one JSON response that can take a while
+const { run: fetchResults } = useReport("kwic", async (signal) => {
     totalResultsDone.value = false;
     results.value = { description: { end: 0 }, results: [] };
     searchParams.value = { ...formData.value };
@@ -314,40 +278,21 @@ function fetchResults() {
             formData.value.start = "0";
             formData.value.end = formData.value.results_per_page;
         }
-        fetchSortedResults();
+        const { data } = await $http.get(`${$dbUrl}/scripts/get_sorted_kwic.py`, {
+            params: paramsFilter({ ...formData.value }),
+            signal,
+        });
+        results.value = data;
+        resultsLength.value = data.results_length;
         return;
     }
 
-    searching.value = true;
-    $http
-        .get(`${$dbUrl}/reports/kwic.py`, { params: paramsFilter(searchParams.value) })
-        .then((response) => {
-            results.value = response.data;
-            resultsLength.value = response.data.results_length;
-            results.value.description = response.data.description;
-            if (response.data.query_done) totalResultsDone.value = true;
-            searching.value = false;
-        })
-        .catch((error) => {
-            searching.value = false;
-            debug({ $options: { name: "kwic-report" } }, error);
-        });
-}
-
-watch(urlUpdate, (newUrl, oldUrl) => {
-    if (!isOnlyFacetChange(newUrl, oldUrl)) {
-        abortSortedFetch();
-        fetchResults();
-    }
+    const { data } = await $http.get(`${$dbUrl}/reports/kwic.py`, { params: paramsFilter(searchParams.value), signal });
+    results.value = data;
+    resultsLength.value = data.results_length;
+    if (data.query_done) totalResultsDone.value = true;
 });
 
-onBeforeUnmount(() => {
-    if (abortController) searching.value = false;
-    abortSortedFetch();
-});
-
-formData.value.report = "kwic";
-currentReport.value = "kwic";
 fetchResults();
 </script>
 

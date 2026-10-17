@@ -62,11 +62,12 @@
 </template>
 
 <script setup>
-import { computed, inject, provide, ref, watch } from "vue";
+import { computed, inject, provide, ref } from "vue";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
+import { useReport } from "../composables/useReport";
 import { useMainStore } from "../stores/main";
-import { debug, isOnlyFacetChange, paramsFilter } from "../utils.js";
+import { debug, paramsFilter } from "../utils.js";
 import Citations from "./Citations";
 import Facets from "./Facets";
 import Pages from "./Pages";
@@ -76,40 +77,25 @@ const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const { t } = useI18n();
 const store = useMainStore();
-const {
-    formData,
-    searching,
-    currentReport,
-    urlUpdate,
-    showFacets,
-    totalResultsDone,
-} = storeToRefs(store);
+const { formData, showFacets, totalResultsDone } = storeToRefs(store);
 
 const results = ref({ description: { end: 0 }, results: [] });
 const searchParams = ref({});
 
 provide("results", computed(() => results.value.results));
 
-function fetchResults() {
+const { run: fetchResults } = useReport("concordance", async (signal) => {
     totalResultsDone.value = false;
     results.value = { description: { end: 0 } };
     searchParams.value = { ...formData.value };
-    searching.value = true;
-    $http
-        .get(`${$dbUrl}/reports/concordance.py`, {
-            params: paramsFilter(searchParams.value),
-        })
-        .then((response) => {
-            results.value = response.data;
-            store.updateResultsLength(parseInt(response.data.results_length));
-            if (response.data.query_done) totalResultsDone.value = true;
-            searching.value = false;
-        })
-        .catch((error) => {
-            searching.value = false;
-            debug({ $options: { name: "concordance-report" } }, error);
-        });
-}
+    const { data } = await $http.get(`${$dbUrl}/reports/concordance.py`, {
+        params: paramsFilter(searchParams.value),
+        signal,
+    });
+    results.value = data;
+    store.updateResultsLength(parseInt(data.results_length));
+    if (data.query_done) totalResultsDone.value = true;
+});
 
 function moreContext(index, event) {
     const button = event.target.closest("button");
@@ -162,12 +148,6 @@ function moreContext(index, event) {
 // empty. Kept as a stub until a real implementation exists.
 function dicoLookup() {}
 
-watch(urlUpdate, (newUrl, oldUrl) => {
-    if (!isOnlyFacetChange(newUrl, oldUrl)) fetchResults();
-});
-
-formData.value.report = "concordance";
-currentReport.value = "concordance";
 fetchResults();
 </script>
 

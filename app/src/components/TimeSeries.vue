@@ -85,13 +85,14 @@ import {
 } from "chart.js";
 import { Bar } from "vue-chartjs";
 
-import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, useTemplateRef, watch } from "vue";
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref, useTemplateRef } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
 import cssVariables from "../assets/styles/theme.module.scss";
+import { useReport } from "../composables/useReport";
 import { useMainStore } from "../stores/main";
-import { copyObject, debug, mergeResults, paramsFilter, paramsToRoute } from "../utils.js";
+import { copyObject, mergeResults, paramsFilter, paramsToRoute } from "../utils.js";
 import ResultsSummary from "./ResultsSummary";
 
 ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale);
@@ -102,7 +103,7 @@ const philoConfig = inject("$philoConfig");
 const router = useRouter();
 const { t } = useI18n();
 const store = useMainStore();
-const { formData, currentReport, searching, urlUpdate } = storeToRefs(store);
+const { formData, searching } = storeToRefs(store);
 
 const chartComponent = useTemplateRef("chartComponent");
 
@@ -342,12 +343,11 @@ function navigateToYear(index) {
     );
 }
 
-function fetchResults() {
+const { run: fetchResults } = useReport("time_series", async (signal) => {
     // An interval below 1 made the loop below endless, freezing the page: as one that isn't a number, the default
     const interval = parseInt(formData.value.year_interval);
     formData.value.year_interval = interval >= 1 ? interval : parseInt(philoConfig.time_series_interval) || 1;
     frequencyType.value = "absolute_time";
-    searching.value = true;
     const defaults = philoConfig.time_series_start_end_date;
     const start = parseInt(formData.value.start_date);
     const end = parseInt(formData.value.end_date);
@@ -367,29 +367,21 @@ function fetchResults() {
     dateCounts.value = {};
     selectedBarIndex.value = 0;
 
-    $http
-        .get(`${$dbUrl}/reports/time_series.py`, {
-            params: {
-                ...paramsFilter({ ...formData.value }),
-                start_date: startDate.value,
-                end_date: endDate.value,
-                year_interval: formData.value.year_interval,
-            },
-        })
-        .then((response) => {
-            const data = response.data;
-            results.value = data;
-            for (const date in data.results.date_count) {
-                dateCounts.value[date] = data.results.date_count[date];
-            }
-            renderTimeSeries(data.results.absolute_count);
-            searching.value = false;
-        })
-        .catch((error) => {
-            debug({ $options: { name: "timeSeries" } }, error);
-            searching.value = false;
-        });
-}
+    const { data } = await $http.get(`${$dbUrl}/reports/time_series.py`, {
+        params: {
+            ...paramsFilter({ ...formData.value }),
+            start_date: startDate.value,
+            end_date: endDate.value,
+            year_interval: formData.value.year_interval,
+        },
+        signal,
+    });
+    results.value = data;
+    for (const date in data.results.date_count) {
+        dateCounts.value[date] = data.results.date_count[date];
+    }
+    renderTimeSeries(data.results.absolute_count);
+});
 
 function renderTimeSeries(absoluteCount) {
     const allResults = mergeResults(undefined, absoluteCount, "label");
@@ -435,13 +427,7 @@ function hexToRGBA(h) {
     return `rgba(${+r}, ${+g}, ${+b}, .7)`;
 }
 
-watch(urlUpdate, () => {
-    if (formData.value.report === "time_series") fetchResults();
-});
-
 onMounted(() => {
-    formData.value.report = "time_series";
-    currentReport.value = "time_series";
     fetchResults();
     document.addEventListener("keydown", handleGlobalEscape);
 });

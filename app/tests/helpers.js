@@ -96,6 +96,25 @@ export function createMockHttp(responses = {}) {
 }
 
 /** Create a test router with memory history */
+// An $http whose requests to pattern stay pending until the test answers them, in any order (requests[i].answer(data)),
+// or until their signal aborts them, rejecting as axios does. Other requests are answered at once, as createMockHttp's.
+export function createPendingHttp(pattern, responses = {}) {
+    const requests = [];
+    const others = createMockHttp(responses);
+    const http = {
+        get: vi.fn((url, config = {}) => {
+            if (!url.includes(pattern)) return others.get(url, config);
+            return new Promise((resolve, reject) => {
+                requests.push({ url, config, answer: (data) => resolve({ data }) });
+                config.signal?.addEventListener("abort", () => {
+                    reject(Object.assign(new Error("canceled"), { name: "CanceledError" }));
+                });
+            });
+        }),
+    };
+    return { http, requests };
+}
+
 export function createTestRouter(route = {}) {
     const routeDefaults = { name: "concordance", path: "/concordance", query: {}, params: {}, ...route };
     const router = createRouter({

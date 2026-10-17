@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { createTestPinia, createTestI18n, createTestConfig, createTestRouter, createMockHttp } from "./helpers.js";
+import { createTestPinia, createTestI18n, createTestConfig, createTestRouter, createMockHttp, createPendingHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
 import aggregationFixture from "./fixtures/aggregation.json";
 import Aggregation from "../src/components/Aggregation.vue";
@@ -171,5 +171,22 @@ describe("Aggregation by title", () => {
         expect(merged.query).toMatchObject({ title: '"Histoire de France"' });
         expect(merged.query.author).toBeUndefined();
         expect(single.query.author).toBeUndefined();
+    });
+
+    // --- A search at a time ---
+    it("shows the newest search, the request of the one it replaced aborted", async () => {
+        const { http, requests } = createPendingHttp("aggregation.py");
+        await mountAggregation({ http });
+        const store = useMainStore();
+        store.urlUpdate = { q: "liberty", report: "aggregation", group_by: "author", author: "Smith" };
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(requests[0].config.signal.aborted).toBe(true);
+
+        requests[1].answer({ ...aggregationFixture, total_results: 222 });
+        requests[0].answer({ ...aggregationFixture, total_results: 111 }); // too late
+        await flushPromises();
+        expect(store.resultsLength).toBe(222);
+        expect(store.searching).toBe(false);
     });
 });

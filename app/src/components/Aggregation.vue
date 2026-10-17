@@ -68,12 +68,13 @@
     </div>
 </template>
 <script setup>
-import { computed, inject, provide, ref, watch } from "vue";
+import { computed, inject, provide, ref } from "vue";
 import { useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
+import { useReport } from "../composables/useReport";
 import { useMainStore } from "../stores/main";
-import { debug, paramsFilter, paramsToRoute, quoteMetadataValue } from "../utils.js";
+import { paramsFilter, paramsToRoute, quoteMetadataValue } from "../utils.js";
 import citations from "./Citations";
 import ResultsSummary from "./ResultsSummary";
 
@@ -83,13 +84,7 @@ const philoConfig = inject("$philoConfig");
 const route = useRoute();
 const { t } = useI18n();
 const store = useMainStore();
-const {
-    formData,
-    resultsLength,
-    searching,
-    currentReport,
-    urlUpdate,
-} = storeToRefs(store);
+const { formData, resultsLength } = storeToRefs(store);
 
 const aggregationResults = ref([]);
 const lastResult = ref(50);
@@ -107,33 +102,24 @@ const statsConfig = computed(() => {
 
 provide("results", aggregationResults);
 
-function fetchResults() {
-    searching.value = true;
-    $http
-        .get(`${$dbUrl}/reports/aggregation.py`, {
-            params: paramsFilter({ ...formData.value }),
-        })
-        .then((response) => {
-            infiniteId.value += 1;
-            aggregationResults.value = Object.freeze(buildStatResults(response.data.results));
-            lastResult.value = 50;
-            breakUpFields.value = aggregationResults.value.map((r) => ({
-                show: false,
-                results: r.break_up_field,
-                limit: 1000,
-            }));
-            const aliasName =
-                philoConfig.metadata_aliases[response.data.break_up_field] ||
-                response.data.break_up_field;
-            breakUpFieldName.value = aliasName ? aliasName.toLowerCase() : "";
-            resultsLength.value = response.data.total_results;
-            searching.value = false;
-        })
-        .catch((error) => {
-            searching.value = false;
-            debug({ $options: { name: "aggregation-report" } }, error);
-        });
-}
+const { run: fetchResults } = useReport("aggregation", async (signal) => {
+    groupedByField.value = route.query.group_by;
+    const { data } = await $http.get(`${$dbUrl}/reports/aggregation.py`, {
+        params: paramsFilter({ ...formData.value }),
+        signal,
+    });
+    infiniteId.value += 1;
+    aggregationResults.value = Object.freeze(buildStatResults(data.results));
+    lastResult.value = 50;
+    breakUpFields.value = aggregationResults.value.map((r) => ({
+        show: false,
+        results: r.break_up_field,
+        limit: 1000,
+    }));
+    const aliasName = philoConfig.metadata_aliases[data.break_up_field] || data.break_up_field;
+    breakUpFieldName.value = aliasName ? aliasName.toLowerCase() : "";
+    resultsLength.value = data.total_results;
+});
 
 function handleFullResultsScroll() {
     const scrollPosition =
@@ -212,15 +198,6 @@ function toggleBreakUp(resultIndex) {
     breakUpFields.value[resultIndex].show = !breakUpFields.value[resultIndex].show;
 }
 
-watch(urlUpdate, () => {
-    if (formData.value.report === "aggregation") {
-        groupedByField.value = route.query.group_by;
-        fetchResults();
-    }
-});
-
-formData.value.report = "aggregation";
-currentReport.value = "aggregation";
 fetchResults();
 </script>
 <style scoped lang="scss">

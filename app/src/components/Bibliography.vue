@@ -65,10 +65,11 @@
     </div>
 </template>
 <script setup>
-import { computed, inject, provide, ref, watch } from "vue";
+import { computed, inject, provide, ref } from "vue";
 import { storeToRefs } from "pinia";
+import { useReport } from "../composables/useReport";
 import { useMainStore } from "../stores/main";
-import { debug, isOnlyFacetChange, paramsFilter } from "../utils.js";
+import { paramsFilter } from "../utils.js";
 import citations from "./Citations";
 import facets from "./Facets";
 import pages from "./Pages";
@@ -78,48 +79,33 @@ const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
 const philoConfig = inject("$philoConfig");
 const store = useMainStore();
-const {
-    formData,
-    currentReport,
-    urlUpdate,
-    showFacets,
-    searching,
-    totalResultsDone,
-} = storeToRefs(store);
+const { formData, showFacets, totalResultsDone } = storeToRefs(store);
 
 const results = ref({});
 const resultType = ref("doc");
 
 provide("results", computed(() => results.value.results));
 
-function fetchResults() {
+const { run: fetchResults } = useReport("bibliography", async (signal) => {
     totalResultsDone.value = false;
     results.value = {};
-    searching.value = true;
-    $http
-        .get(`${$dbUrl}/reports/bibliography.py`, {
-            params: paramsFilter({ ...formData.value }),
-        })
-        .then((response) => {
-            if (!philoConfig.dictionary_bibliography || response.data.doc_level) {
-                results.value = response.data;
-                resultType.value = results.value.result_type;
-            } else {
-                results.value = dictionaryBibliography(response.data);
-            }
-            if (response.data.results_length !== undefined) {
-                store.updateResultsLength(parseInt(response.data.results_length));
-            }
-            if (response.data.query_done) {
-                totalResultsDone.value = true;
-            }
-            searching.value = false;
-        })
-        .catch((error) => {
-            searching.value = false;
-            debug({ $options: { name: "bibliography-report" } }, error);
-        });
-}
+    const { data } = await $http.get(`${$dbUrl}/reports/bibliography.py`, {
+        params: paramsFilter({ ...formData.value }),
+        signal,
+    });
+    if (!philoConfig.dictionary_bibliography || data.doc_level) {
+        results.value = data;
+        resultType.value = results.value.result_type;
+    } else {
+        results.value = dictionaryBibliography(data);
+    }
+    if (data.results_length !== undefined) {
+        store.updateResultsLength(parseInt(data.results_length));
+    }
+    if (data.query_done) {
+        totalResultsDone.value = true;
+    }
+});
 
 function dictionaryBibliography(data) {
     const groupedResults = [];
@@ -141,14 +127,6 @@ function dictionaryBibliography(data) {
     return data;
 }
 
-watch(urlUpdate, (newUrl, oldUrl) => {
-    if (!isOnlyFacetChange(newUrl, oldUrl)) {
-        fetchResults();
-    }
-});
-
-formData.value.report = "bibliography";
-currentReport.value = "bibliography";
 fetchResults();
 </script>
 <style scoped>

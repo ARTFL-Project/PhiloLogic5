@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { createGlobalConfig, createMockHttp } from "./helpers.js";
+import { createGlobalConfig, createMockHttp, createPendingHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
 import concordanceFixture from "./fixtures/concordance.json";
 import Concordance from "../src/components/Concordance.vue";
@@ -99,5 +99,22 @@ describe("Concordance", () => {
         await textDiv.trigger("keyup", { key: "d" });
         // Should not throw — dictionaryLookup handles gracefully even without selection
         windowSpy.mockRestore();
+    });
+
+    // --- A search at a time ---
+    it("shows the newest search, the request of the one it replaced aborted", async () => {
+        const { http, requests } = createPendingHttp("concordance.py");
+        mountConcordance({ http });
+        const store = useMainStore();
+        store.urlUpdate = { q: "liberty", report: "concordance", start: "26", end: "50" }; // the next page, fast
+        await flushPromises();
+        expect(requests).toHaveLength(2);
+        expect(requests[0].config.signal.aborted).toBe(true);
+
+        requests[1].answer({ ...concordanceFixture, results_length: 222 });
+        requests[0].answer({ ...concordanceFixture, results_length: 111 }); // too late
+        await flushPromises();
+        expect(store.resultsLength).toBe(222);
+        expect(store.searching).toBe(false);
     });
 });
