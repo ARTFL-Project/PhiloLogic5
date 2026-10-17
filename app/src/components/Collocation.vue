@@ -160,6 +160,7 @@ import {
     paramsFilter,
     paramsToRoute,
     quoteMetadataValue,
+    upgradeCollocationParams,
 } from "../utils.js";
 import ResultsSummary from "./ResultsSummary";
 import Compare from "./collocation/Compare.vue";
@@ -445,10 +446,17 @@ async function pivotToCompare(payload) {
 }
 
 //  Watchers
+// The search a URL makes, as App fills the form from it: what it leaves out, the defaults. A short link and the URL
+// a tab click makes of it (with the defaults) are the same search.
+function searchOf(query) {
+    return upgradeCollocationParams({ ...store.defaultFields, ...query }, query);
+}
+
 function shouldRefetchOnQueryChange(newQuery, oldQuery) {
-    const allKeys = new Set([...Object.keys(newQuery), ...Object.keys(oldQuery)]);
+    const [next, last] = [searchOf(newQuery), searchOf(oldQuery)];
+    const allKeys = new Set([...Object.keys(next), ...Object.keys(last)]);
     for (const key of allKeys) {
-        if ((newQuery[key] ?? "") === (oldQuery[key] ?? "")) continue; // missing is empty (method_arg)
+        if (String(next[key] ?? "") === String(last[key] ?? "")) continue; // missing is empty (method_arg)
         if (!isViewOnlyParam(key)) return true;
     }
     return false;

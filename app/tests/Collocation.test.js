@@ -20,7 +20,7 @@ function mountCollocation(overrides = {}) {
         route: { name: "collocation", path: "/collocation", query: { q: "liberty", report: "collocation" } },
         stubs: {
             ResultsSummary: { template: "<div class='results-summary-stub' />" },
-            WordCloud: { template: "<div class='word-cloud-stub' />", props: ["wordWeights", "clickHandler", "label"] },
+            WordCloud: { template: "<div class='word-cloud-stub' />", props: ["wordWeights", "clickHandler"] },
             BibliographyCriteria: { template: "<div class='biblio-criteria-stub' />" },
             ProgressSpinner: { template: "<div class='spinner-stub' />" },
             MetadataFields: { template: "<div class='metadata-fields-stub' />" },
@@ -102,6 +102,24 @@ describe("Collocation", () => {
 
         // Compare view shows primary/comparison corpus sections
         expect(wrapper.find(".compare-divider").exists()).toBe(true);
+    });
+
+    it("takes a tab clicked on a short link's page for the same search", async () => {
+        const http = createMockHttp({ "collocation.py": collocationFixture });
+        const wrapper = mountCollocation({ http });
+        const store = useMainStore();
+        // the defaults App fills the form with, which the URL a tab click makes has
+        store.defaultFields = { ...store.formData, q: "", report: "home", colloc_filter_choice: "" };
+        store.formData = { ...store.formData, ...store.defaultFields, q: "liberty", report: "collocation" };
+        await wrapper.vm.$router.push({ path: "/collocation", query: { q: "liberty" } });
+        await flushPromises();
+        const searches = () => http.get.mock.calls.filter(([url, config]) => url.includes("/collocation.py") && !config.params.map_field).length;
+        const before = searches();
+
+        await wrapper.find("#similar-tab").trigger("click");
+        await flushPromises();
+        expect(wrapper.vm.$route.query.colloc_within).toBe("sent"); // the URL now has the defaults
+        expect(searches()).toBe(before);
     });
 
     it("switches to similar view on similar tab click", async () => {
@@ -201,7 +219,7 @@ describe("Collocation", () => {
             route: { name: "collocation", path: "/collocation", query },
             stubs: {
                 ResultsSummary: { template: "<div class='results-summary-stub' />" },
-                WordCloud: { template: "<div class='word-cloud-stub' />", props: ["wordWeights", "clickHandler", "label"] },
+                WordCloud: { template: "<div class='word-cloud-stub' />", props: ["wordWeights", "clickHandler"] },
                 BibliographyCriteria: { template: "<div class='biblio-criteria-stub' />" },
                 ProgressSpinner: { template: "<div class='spinner-stub' />" },
                 MetadataFields: { template: "<div class='metadata-fields-stub' />" },
