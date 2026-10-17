@@ -158,6 +158,37 @@ describe("Kwic", () => {
         }
     });
 
+    // --- The sort chosen, which Sort runs ---
+    const firstSortItem = (wrapper, index) => wrapper.findAll(".dropdown-menu")[0].findAll(".dropdown-item")[index];
+
+    it("keeps the sort chosen out of the search shown until Sort runs it", async () => {
+        const wrapper = mountKwic();
+        await flushPromises();
+        const store = useMainStore();
+        const left = firstSortItem(wrapper, 2); // the words to the left
+        await left.trigger("click");
+        expect(wrapper.findAll(".sort-toggle")[0].text()).toBe(left.text());
+        expect(store.formData.first_kwic_sorting_option).toBe("");
+
+        await wrapper.find("#sort-button").trigger("click");
+        await flushPromises();
+        expect(wrapper.vm.$router.currentRoute.value.query).toMatchObject({ first_kwic_sorting_option: "left" });
+    });
+
+    it("shows the sort of the search shown again when it changes", async () => {
+        const wrapper = mountKwic();
+        await flushPromises();
+        const toggle = () => wrapper.findAll(".sort-toggle")[0].text();
+        const unsorted = toggle();
+        await firstSortItem(wrapper, 2).trigger("click");
+        expect(toggle()).not.toBe(unsorted);
+
+        const store = useMainStore();
+        store.formData = { ...store.formData }; // another page: App sets the search shown anew from the URL
+        await nextTick();
+        expect(toggle()).toBe(unsorted);
+    });
+
     // --- Sorted KWIC: one JSON request, aborted when its results are no longer wanted ---
     it("fetches the sorted kwic as JSON and renders it", async () => {
         const http = createMockHttp({ "get_sorted_kwic.py": kwicFixture });

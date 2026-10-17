@@ -106,7 +106,7 @@
 </template>
 
 <script setup>
-import { computed, inject, provide, ref } from "vue";
+import { computed, inject, provide, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { storeToRefs } from "pinia";
 import { useI18n } from "vue-i18n";
@@ -135,19 +135,17 @@ const searchParams = ref({});
 
 provide("results", computed(() => results.value.results));
 
-// ── Sort options (writable computeds proxy formData) ─────────────────────────
-const first_kwic_sorting_option = computed({
-    get: () => formData.value.first_kwic_sorting_option,
-    set: (value) => { formData.value.first_kwic_sorting_option = value; },
-});
-const second_kwic_sorting_option = computed({
-    get: () => formData.value.second_kwic_sorting_option,
-    set: (value) => { formData.value.second_kwic_sorting_option = value; },
-});
-const third_kwic_sorting_option = computed({
-    get: () => formData.value.third_kwic_sorting_option,
-    set: (value) => { formData.value.third_kwic_sorting_option = value; },
-});
+// ── Sort options ─────────────────────────────────────────────────────────────
+// The dropdowns' choices, which Sort runs: the search shown (its links, the next page) keeps its own until then, and
+// the dropdowns show them again when it changes
+const SORT_OPTIONS = ["first_kwic_sorting_option", "second_kwic_sorting_option", "third_kwic_sorting_option"];
+const sortChoices = ref(SORT_OPTIONS.map((option) => formData.value[option]));
+watch(
+    () => SORT_OPTIONS.map((option) => formData.value[option]),
+    (shown) => {
+        sortChoices.value = shown;
+    }
+);
 
 const sortingFields = computed(() => {
     const fields = [
@@ -179,17 +177,9 @@ const sortKeys = computed(() => {
     return keys;
 });
 
-const sortingSelection = computed(() => [
-    first_kwic_sorting_option.value !== ""
-        ? sortKeys.value[first_kwic_sorting_option.value]
-        : t("kwic.firstLabel"),
-    second_kwic_sorting_option.value !== ""
-        ? sortKeys.value[second_kwic_sorting_option.value]
-        : t("kwic.secondLabel"),
-    third_kwic_sorting_option.value !== ""
-        ? sortKeys.value[third_kwic_sorting_option.value]
-        : t("kwic.thirdLabel"),
-]);
+const sortingSelection = computed(() =>
+    sortChoices.value.map((choice, index) => (choice !== "" ? sortKeys.value[choice] : sortingLabels.value[index]))
+);
 
 const sortingLabels = computed(() => [
     t("kwic.firstLabel"),
@@ -251,15 +241,13 @@ function getSortingAriaLabel(index) {
 }
 
 function updateSortingSelection(index, selection) {
-    const value = selection.label === t("common.none") ? "" : selection.field;
-    if (index === 0) first_kwic_sorting_option.value = value;
-    else if (index === 1) second_kwic_sorting_option.value = value;
-    else third_kwic_sorting_option.value = value;
+    sortChoices.value[index] = selection.label === t("common.none") ? "" : selection.field;
 }
 
 function sortResults() {
     // a new sort order changes the URL, and the results are fetched again; the same leaves them as they are
-    router.push(paramsToRoute({ ...formData.value }));
+    const choices = Object.fromEntries(SORT_OPTIONS.map((option, index) => [option, sortChoices.value[index]]));
+    router.push(paramsToRoute({ ...formData.value, ...choices }));
 }
 
 // ── Fetch path ───────────────────────────────────────────────────────────────
@@ -268,10 +256,7 @@ const { run: fetchResults } = useReport("kwic", async (signal) => {
     totalResultsDone.value = false;
     results.value = { description: { end: 0 }, results: [] };
     searchParams.value = { ...formData.value };
-    const hasSorting =
-        first_kwic_sorting_option.value !== "" ||
-        second_kwic_sorting_option.value !== "" ||
-        third_kwic_sorting_option.value !== "";
+    const hasSorting = SORT_OPTIONS.some((option) => formData.value[option] !== "");
 
     if (hasSorting) {
         if (formData.value.start === "") {
