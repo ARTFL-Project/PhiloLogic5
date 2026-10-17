@@ -574,7 +574,9 @@
         "dataTable": "Time series data table",
         "dataTableCaption": "Time series data showing frequency over time periods",
         "chartInstructions": "Use arrow keys to navigate between time periods, Enter or Space to view detailed results for selected period, Escape to dismiss tooltip. A complete data table is available below for screen readers.",
-        "periodRange": "{start} to {end}"
+        "periodRange": "{start} to {end}",
+        "chartUpdated": "Chart updated to show {type}",
+        "keyboardHint": "← → move between periods · Enter shows the period's concordance · Escape hides the tooltip"
     },
     "bibliography": {
         "dictionaryResultsRegion": "Dictionary bibliography results",

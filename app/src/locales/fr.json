@@ -574,7 +574,9 @@
         "dataTable": "Tableau des données de la série chronologique",
         "dataTableCaption": "Données de la série chronologique : fréquence par période",
         "chartInstructions": "Utilisez les flèches pour passer d'une période à l'autre, Entrée ou Espace pour voir les résultats de la période choisie, Échap pour fermer l'infobulle. Un tableau complet des données se trouve plus bas pour les lecteurs d'écran.",
-        "periodRange": "{start} à {end}"
+        "periodRange": "{start} à {end}",
+        "chartUpdated": "Graphique mis à jour : {type}",
+        "keyboardHint": "← → passer d'une période à l'autre · Entrée affiche la concordance de la période · Échap masque l'infobulle"
     },
     "bibliography": {
         "dictionaryResultsRegion": "Résultats de bibliographie du dictionnaire",

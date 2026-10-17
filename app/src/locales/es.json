@@ -574,7 +574,9 @@
         "dataTable": "Tabla de datos de la serie temporal",
         "dataTableCaption": "Datos de la serie temporal: frecuencia por período",
         "chartInstructions": "Use las flechas para pasar de un período a otro, Intro o Espacio para ver los resultados del período elegido, Escape para cerrar la información emergente. Más abajo hay una tabla completa de los datos para lectores de pantalla.",
-        "periodRange": "{start} a {end}"
+        "periodRange": "{start} a {end}",
+        "chartUpdated": "Gráfico actualizado: {type}",
+        "keyboardHint": "← → pasar de un período a otro · Intro muestra la concordancia del período · Escape oculta la información emergente"
     },
     "bibliography": {
         "dictionaryResultsRegion": "Resultados bibliográficos del diccionario",

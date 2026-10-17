@@ -1,23 +1,11 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createGlobalConfig, createMockHttp, createPendingHttp } from "./helpers.js";
 import { useMainStore } from "../src/stores/main.js";
 import timeSeriesFixture from "./fixtures/time_series.json";
 import TimeSeries from "../src/components/TimeSeries.vue";
-
-// The chart as a canvas that draws nothing: jsdom has no canvas context, so chart.js threw (unhandled) once mounted.
-// (A stub by name can't replace it: vue-chartjs's components have no name.)
-vi.mock("vue-chartjs", async () => {
-    const { defineComponent, h } = await import("vue");
-    return {
-        Bar: defineComponent({
-            name: "Bar",
-            props: ["data", "options"],
-            setup: () => () => h("canvas", { class: "chart-stub" }),
-        }),
-    };
-});
+import TimeSeriesChart from "../src/components/TimeSeriesChart.vue";
 
 function mountTimeSeries(overrides = {}) {
     const http = overrides.http || createMockHttp({ "time_series.py": timeSeriesFixture });
@@ -106,6 +94,38 @@ describe("TimeSeries", () => {
         expect(buttons[1].classes()).toContain("active");
     });
 
+    // --- The chart ---
+    it("charts each period, named and counted", async () => {
+        const wrapper = mountTimeSeries();
+        await flushPromises();
+        const bars = wrapper.findAll(".ts-column");
+        expect(bars).toHaveLength(7); // 1500 to 1800 by 50
+        expect(bars[0].attributes("aria-label")).toBe("1500-1549: 165 occurrences");
+        expect(bars[6].attributes("aria-label")).toMatch(/^1800: /); // the last period stops at the end date
+        expect(wrapper.find("table tbody tr td").text()).toBe("1500-1549");
+        expect(wrapper.find(".ts-hint").text()).toContain("move between periods");
+    });
+
+    it("charts the relative frequencies, and says so", async () => {
+        const wrapper = mountTimeSeries();
+        await flushPromises();
+        await wrapper.findAll(".btn-group .btn")[1].trigger("click");
+        const per10000 = Math.round((165 / 29174035) * 10000 * 100) / 100;
+        expect(wrapper.find(".ts-column").attributes("aria-label")).toBe(`1500-1549: ${per10000} per 10,000 words`);
+        expect(wrapper.find("[role='status']").text()).toBe("Chart updated to show Relative Frequency");
+    });
+
+    it("shows the concordance of a period chosen", async () => {
+        const wrapper = mountTimeSeries();
+        await flushPromises();
+        await wrapper.findAll(".ts-column")[1].trigger("click");
+        await flushPromises();
+        const route = wrapper.vm.$router.currentRoute.value;
+        expect(route.path).toBe("/concordance");
+        expect(route.query.year).toBe("1550-1599");
+        expect(useMainStore().formData.year).toBe("1550-1599");
+    });
+
     // --- A search at a time ---
     it("shows the newest search, the request of the one it replaced aborted", async () => {
         const { http, requests } = createPendingHttp("time_series.py");
@@ -124,7 +144,7 @@ describe("TimeSeries", () => {
         requests[0].answer(timeSeriesFixture); // too late
         await flushPromises();
         const first = timeSeriesFixture.results.absolute_count["1500"].count;
-        expect(wrapper.findComponent({ name: "Bar" }).props("data").datasets[0].data[0]).toBe(2 * first);
+        expect(wrapper.findComponent(TimeSeriesChart).props("values")[0]).toBe(2 * first);
         expect(store.searching).toBe(false);
     });
 });
