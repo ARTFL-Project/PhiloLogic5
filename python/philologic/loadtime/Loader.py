@@ -1072,11 +1072,6 @@ class Loader:
     @staticmethod
     def create_year_field(metadata):
         """Create year field from date fields in header"""
-        # Matches a year with an optional single leading minus for BCE dates (ISO 8601/TEI).
-        # A single hyphen before digits = negative year (e.g. "-0044" for 44 BC).
-        # Double hyphens ("--") indicate a partial date with unknown year (W3C "--mm-dd" format)
-        # or junk delimiters (e.g. "--1798--"), so we skip those.
-        year_finder = re.compile(r"(?<!\-)(\-?)(\d{1,})")
         earliest_year = float("inf")
         metadata_with_year = ""
         for field in ["date", "create_date", "pub_date", "period"]:
@@ -1085,10 +1080,8 @@ class Loader:
                     metadata[field] = str(metadata[field].year)
                 elif isinstance(metadata[field], int):
                     metadata[field] = str(metadata[field])
-                year_match = year_finder.search(metadata[field])
-                if year_match:
-                    sign, digits = year_match.groups()
-                    year = int(f"{sign}{digits}")
+                year = date_year(metadata[field])
+                if year is not None:
                     metadata_with_year = field
                     if field == "create_date":  # this should be the canonical date
                         earliest_year = year
@@ -2115,6 +2108,50 @@ class Loader:
             print(format_str(str(web_config), mode=FileMode()), file=output_file)
         print(f"wrote Web application info to {filename}")
 
+
+YEAR_CORRECTION = re.compile(r"i\.\s*e\.", re.I)  # 2649 [i.e. 1649]: the year as it should have been printed
+FOUR_DIGITS = re.compile(r"(?<!\d)\d{4}(?!\d)")
+SEPARATED_DIGITS = re.compile(r"(?<!\d)\d+(?:[.,]\s?\d+)+(?!\d)")  # 1.5.4.6, 1,5,5,7, 1.5.62
+WHOLE_NUMBER = re.compile(r"(?<!\d)\d+(?!\d)")
+MONTH_DAY = re.compile(r"\s*--\d\d(?:-\d\d)?\s*")  # W3C's dates without a year: --12-25
+UNKNOWN_DIGITS = re.compile(r"(?<!\w)(\d{2,3})([uUxX]{1,2})(?!\w)")  # 16uu (MARC), 16XX (EDTF): the 1600s
+STARTING_MINUS = re.compile(r"\s*\[?-\d")  # years before the common era, as ISO 8601 and TEI write them: -0044
+
+
+def date_year(date):
+    """The year of a date as a header has it, or None: the year of the correction of a misprinted date (2649 [i.e.
+    1649]), else its first number of four digits (not the day of Octob. 12. 1642.), else four digits separated by
+    dots or commas (1.5.4.6), else its first number. Brackets around digits a cataloguer supplied are left out
+    ([1]596), and the unknown digits of a year whose century is known are zeros, so that it's the first of its span
+    (169u: 1690). The year is negative after a minus starting the date (-0044); hyphens elsewhere join (post-1640)."""
+    if MONTH_DAY.fullmatch(date):
+        return None
+    date = UNKNOWN_DIGITS.sub(lambda m: m.group(1) + "0" * len(m.group(2)) if len(m.group()) == 4 else m.group(), date)
+    separated, joined = re.sub(r"[\[\]]", " ", date), re.sub(r"[\[\]]", "", date)  # 1744[1743], and [1]596
+    year = None
+    for text in (separated, joined):
+        parts = YEAR_CORRECTION.split(text, maxsplit=1)
+        for part in parts[1:] + [text]:
+            match = FOUR_DIGITS.search(part)
+            if match:
+                year = int(match.group())
+                break
+        if year is not None:
+            break
+    if year is None:
+        for match in SEPARATED_DIGITS.finditer(joined):
+            digits = re.sub(r"\D", "", match.group())
+            if len(digits) == 4:
+                year = int(digits)
+                break
+    if year is None:
+        match = WHOLE_NUMBER.search(separated)
+        if match is None:
+            return None
+        year = int(match.group())
+    if STARTING_MINUS.match(date) and not YEAR_CORRECTION.search(date):
+        year = -year
+    return year
 
 def word_attribute_values(frequency_file, names):
     """The values of each word attribute of a word_attributes frequency file (word:attribute:value lines), whose
