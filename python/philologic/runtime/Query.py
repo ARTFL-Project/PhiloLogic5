@@ -27,6 +27,7 @@ from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.lmdb_env import lmdb_env
 from philologic.runtime.QuerySyntax import group_terms, parse_query, quoted_text
 from philologic.runtime.word_properties import hits_with_properties
+from philologic.utils.ligatures import ligatures_as_letters
 
 
 @numba.jit(nopython=True, cache=True, nogil=True)
@@ -407,7 +408,7 @@ def words_per_hit(method, split):
     return 1 if method == "single_term" else len(split)
 
 
-def write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index):
+def write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index, flatten_ligatures=False):
     """Write the expanded search terms of a query to filename.terms.
 
     Readers (e.g. collocation) wait for .terms to exist, so it has to appear complete: write it under a
@@ -419,7 +420,7 @@ def write_terms_file(filename, split, frequency_file, ascii_conversion, lowercas
     terms_tmp = f"{filename}.terms.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
         with open(terms_tmp, "w", encoding="utf8") as terms_file:
-            expand_query_not(split, frequency_file, terms_file, ascii_conversion, lowercase_index)
+            expand_query_not(split, frequency_file, terms_file, ascii_conversion, lowercase_index, flatten_ligatures)
     finally:
         os.replace(terms_tmp, f"{filename}.terms")
 
@@ -428,10 +429,17 @@ def rewrite_terms_file(db, qs, filename):
     """Write filename.terms again for query qs, for a finished search whose .terms file was removed."""
     split = split_terms(group_terms(parse_query(qs, query_patterns=db.locals.query_patterns)))
     frequency_file = db.path + "/frequencies/normalized_word_frequencies"
-    write_terms_file(filename, split, frequency_file, db.locals.ascii_conversion, db.locals["lowercase_index"])
+    write_terms_file(
+        filename,
+        split,
+        frequency_file,
+        db.locals.ascii_conversion,
+        db.locals["lowercase_index"],
+        db.locals["flatten_ligatures"],
+    )
 
 
-def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowercase_index,
+def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowercase_index, flatten_ligatures,
                 method, method_arg, overflow_words, object_level, corpus, lock, phrases=None):
     """Run search in a background thread. Always finishes the hitlist: as failed if the search raises. phrases are
     the number of groups of split each term of the query is (see phrase_lengths)."""
@@ -441,7 +449,7 @@ def _run_search(db_path, filename, split, frequency_file, ascii_conversion, lowe
     )
 
     try:
-        write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index)
+        write_terms_file(filename, split, frequency_file, ascii_conversion, lowercase_index, flatten_ligatures)
 
         if phrases is not None and len(phrases) == 1 and method not in ("single_term", "phrase_ordered"):
             # The query is one phrase, a unit for the other searches: whatever they ask of it, it is the phrase
@@ -500,7 +508,7 @@ def start_search(db, terms, filename, lock=None, corpus=None, method=None, metho
         target=_run_search,
         args=(
             db.path, filename, split, frequency_file,
-            db.locals.ascii_conversion, db.locals["lowercase_index"],
+            db.locals.ascii_conversion, db.locals["lowercase_index"], db.locals["flatten_ligatures"],
             method, method_arg, db.locals.overflow_words, object_level, corpus, lock, phrase_lengths(grouped),
         ),
         daemon=True,
@@ -764,6 +772,7 @@ class IndexedWords:
         if db_path:
             self.ascii_conversion = config.db_locals["ascii_conversion"] is True
             self.lowercase = config.db_locals["lowercase_index"] is not False
+            self.flatten_ligatures = config.db_locals["flatten_ligatures"] is True
             index = "frequencies/normalized_word_frequencies.lmdb" if self.ascii_conversion else "words.lmdb"
             self.path = os.path.join(db_path, "data", index)
         self.env = self.txn = None
@@ -788,6 +797,8 @@ class IndexedWords:
             key = _norm_key(word, self.lowercase)
             return bool(key) and self.txn.get(key) is not None
         word = word.lower() if self.lowercase else word
+        if self.flatten_ligatures:  # as the index has it
+            word = ligatures_as_letters(word)
         # with a long s, as an s too, as loads index it (and as it is, as they did before)
         return any(self.txn.get(form.encode("utf-8")) is not None for form in {word, word.replace("ſ", "s")})
 

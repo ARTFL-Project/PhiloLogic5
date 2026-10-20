@@ -315,9 +315,8 @@ join_hyphen_in_words = True
 abbrev_expand = True
 
 # ---------------------- Flatten Ligatures for Indexing --------------
-# Convert SGML ligatures to base characters for indexing.
-# &oelig; = oe.  Leave this on.  At one point we should think
-# Unicode, but who knows if this is important.
+# Index ligatures as their letters (œ and &oelig; as oe, ﬁ as fi) in words and lemmas, which searches then take as
+# letters too. Leave this on.
 flatten_ligatures = True
 
 # Define a list of strings which mark the end of a sentence.

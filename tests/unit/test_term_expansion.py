@@ -211,6 +211,86 @@ class TestLongS:
         assert expand_autocomplete("QUOTE", '"ſon"', frequency_file, str(tmp_path), True, True) == ["son", "sont"]
 
 
+# norm_word.lmdb of a database loaded with flatten_ligatures: its words have their ligatures as letters
+LOADED_FLATTENED = {"caesar": ["caesar"], "coeur": ["coeur"], "coeurs": ["coeurs"], "cour": ["cour"]}
+
+
+@pytest.mark.unit
+class TestLigatures:
+    """With the flatten_ligatures of a database loaded so, a word, quoted or not, a pattern, a lemma or a word with its
+    properties typed with a ligature is looked up with its letters, as the index has them. Without it (databases
+    loaded before), as it is typed."""
+
+    @pytest.mark.parametrize("long_s_txn", [LOADED_FLATTENED], indirect=True)
+    def test_quoted(self, long_s_txn):
+        assert _expand_positive("QUOTE", '"cœur"', long_s_txn, True, True, flatten_ligatures=True) == ["coeur"]
+        assert _expand_positive("QUOTE", '"Cæsar', long_s_txn, True, True, flatten_ligatures=True) == ["Caesar"]
+        assert _expand_positive("QUOTE", '"cœur"', long_s_txn, True, True) == ["cœur"]
+
+    @pytest.mark.parametrize("long_s_txn", [LOADED_FLATTENED], indirect=True)
+    def test_quoted_pattern(self, long_s_txn):
+        """A ligature in a bracket expression, or before a quantifier, stands for its letters together"""
+        expanded = _expand_positive("QUOTE", '"c[œo]urs?"', long_s_txn, True, True, flatten_ligatures=True)
+        assert expanded == ["coeur", "coeurs", "cour"]
+        assert _expand_positive("QUOTE", '"cœ?urs"', long_s_txn, True, True, flatten_ligatures=True) == ["coeurs"]
+
+    def test_without_ascii_conversion(self, norm_words):
+        with norm_words.begin(buffers=True) as txn:
+            assert _expand_positive("TERM", "cœur", txn, False, True, flatten_ligatures=True) == ["coeur"]
+            assert _expand_positive("TERM", "ſœur", txn, False, True, flatten_ligatures=True) == ["ſoeur", "soeur"]
+            assert _expand_positive("TERM", "cœur", txn, False, True) == ["cœur"]
+
+    def test_lemmas_and_properties(self, norm_words):
+        """Lemmas and the other properties of words have their ligatures as letters too"""
+        with norm_words.begin(buffers=True) as txn:
+            for kind, token, key in [
+                ("LEMMA", "lemma:cœur", "lemma:coeur"),
+                ("LEMMA_ATTR", "lemma:cœur:pos:NOUN", "lemma:coeur:pos:NOUN"),
+                ("ATTR", "cœurs:lemma:cœur", "coeurs:lemma:coeur"),
+            ]:
+                assert _expand_positive(kind, token, txn, True, True, flatten_ligatures=True) == [key]
+                assert _expand_positive(kind, token, txn, True, True) == [token]
+
+    @pytest.mark.parametrize("long_s_txn", [LOADED_FLATTENED], indirect=True)
+    def test_excluded(self, long_s_txn):
+        assert _expand_exclude("QUOTE", '"cœur.*"', long_s_txn, True, True, flatten_ligatures=True) == {
+            "coeur",
+            "coeurs",
+        }
+        assert _expand_exclude("LEMMA", "lemma:cœur", long_s_txn, True, True, flatten_ligatures=True) == {"lemma:coeur"}
+
+    def test_query(self, tmp_path):
+        """The search's terms file has the forms of the terms with their ligatures as letters"""
+        import io
+
+        frequency_file = norm_index(tmp_path, LOADED_FLATTENED)
+        split = split_terms(group_terms(parse_query('"cœur" NOT "cœurs" lemma:cœur')))
+        terms = io.StringIO()
+        term_expansion.expand_query_not(split, frequency_file, terms, True, True, flatten_ligatures=True)
+        assert terms.getvalue() == "coeur\n\nlemma:coeur\n"
+
+    def test_autocomplete(self, tmp_path):
+        import lmdb
+
+        frequency_file = norm_index(tmp_path, LOADED_FLATTENED)
+        (tmp_path / "frequencies").mkdir()
+        env = lmdb.open(str(tmp_path / "frequencies" / "word_forms.lmdb"), map_size=1 << 20)
+        with env.begin(write=True) as txn:
+            for key in ("lemma:coeur", "lemma:cour"):
+                txn.put(key.encode(), b"")
+        env.close()
+
+        def suggest(kind, token, flatten_ligatures=True):
+            return expand_autocomplete(
+                kind, token, frequency_file, str(tmp_path), False, True, flatten_ligatures=flatten_ligatures
+            )
+
+        assert suggest("TERM", "cœ") == ["coeur", "coeurs"]
+        assert suggest("QUOTE", '"cœ') == ["coeur", "coeurs"]
+        assert suggest("LEMMA", "lemma:cœ") == ["lemma:coeur"]
+        assert suggest("LEMMA", "lemma:cœ", flatten_ligatures=False) == []
+
+
 @pytest.mark.unit
 class TestExpansionCap:
     """A regex with no literal start expands to REGEX_EXPANSION_CAP forms at most, and says when it left some out:

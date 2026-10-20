@@ -52,6 +52,7 @@ def index_keys(db, group):
         expanded,
         db.locals.ascii_conversion,
         db.locals["lowercase_index"],
+        db.locals["flatten_ligatures"],
     )
     return [key for key in expanded.getvalue().split("\n") if key]
 

@@ -247,7 +247,8 @@ OPTIONS = [
         "bool",
         True,
         "tokenization",
-        "Index SGML ligatures as their base characters (&oelig; as oe). Leave this on.",
+        "Index ligatures as their letters (&oelig; and its character as oe) in words and lemmas, which searches then "
+        "take as letters too. Leave this on.",
     ),
     Option(
         "long_word_limit",

@@ -417,18 +417,23 @@ class TestWordsTheIndexHasWhole:
 
     rules = [(" OR ", " | "), ("'", " "), (",", ""), ("-", " ")]
 
-    def config(self, tmp_path, ascii_conversion):
+    def config(self, tmp_path, ascii_conversion, flatten_ligatures=False):
         index = "frequencies/normalized_word_frequencies.lmdb" if ascii_conversion else "words.lmdb"
         (tmp_path / "data" / "frequencies").mkdir(parents=True)
         env = lmdb.open(str(tmp_path / "data" / index), map_size=1 << 20)
         with env.begin(write=True) as txn:
-            for word in ("aujourd'hui", "peut-être" if not ascii_conversion else "peut-etre", "peut-estre", "l", "homme"):
+            for word in (
+                "aujourd'hui", "peut-être" if not ascii_conversion else "peut-etre", "peut-estre", "l", "homme",
+                "main-d'oeuvre",
+            ):
                 txn.put(word.encode("utf-8"), word.encode("utf-8"))
         env.close()
         return type("Config", (), {
             "query_parser_regex": self.rules,
             "db_path": str(tmp_path),
-            "db_locals": {"ascii_conversion": ascii_conversion, "lowercase_index": True},
+            "db_locals": {
+                "ascii_conversion": ascii_conversion, "lowercase_index": True, "flatten_ligatures": flatten_ligatures
+            },
         })()
 
     @pytest.mark.parametrize("ascii_conversion", [True, False])
@@ -454,10 +459,17 @@ class TestWordsTheIndexHasWhole:
     def test_typographic_apostrophe(self, tmp_path):
         assert query_parse("aujourd\u2019hui", self.config(tmp_path, True)) == "aujourd'hui"
 
+    def test_ligatures(self, tmp_path):
+        """A word typed with a ligature is looked up with its letters, as a database loaded with flatten_ligatures
+        has it (ascii_conversion looks it up so already)"""
+        assert query_parse("main-d'œuvre", self.config(tmp_path, False, flatten_ligatures=True)) == "main-d'œuvre"
+        assert query_parse("main-d'œuvre", self.config(tmp_path / "before", False)) == "main d œuvre"
+
     def test_without_the_index(self, tmp_path):
         """A database without its index (as the tests' configs) splits words as the rules do"""
         config = type("Config", (), {"query_parser_regex": self.rules, "db_path": str(tmp_path / "none"),
-                                     "db_locals": {"ascii_conversion": True, "lowercase_index": True}})()
+                                     "db_locals": {"ascii_conversion": True, "lowercase_index": True,
+                                                   "flatten_ligatures": False}})()
         assert query_parse("aujourd'hui", config) == "aujourd hui"
 
 

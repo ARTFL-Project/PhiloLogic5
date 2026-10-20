@@ -158,6 +158,15 @@ DB_LOCALS_DEFAULTS = {
         "value": True,
         "comment": "# This defines whether all terms in the index have been lowercased. If so, input searches will be lowercased",
     },
+    "flatten_ligatures": {
+        "value": False,
+        "comment": "\n".join(
+            [
+                "# This defines whether the index has ligatures as their letters (œ as oe). If so, searches and",
+                "# autocomplete take them so too. Don't change this value post-database load.",
+            ]
+        ),
+    },
     "debug": {
         "value": False,
         "comment": "# If set to True, this enabled debugging messages to be printed out to the Apache error log",

@@ -18,6 +18,7 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 from philologic.loadtime.Loader import Loader
 from philologic.loadtime.Parser import XMLParser
 from philologic.loadtime.spacy_tokenizer import spacy_tokenizer
+from philologic.utils.ligatures import ligatures_as_letters
 
 pytest.importorskip("spacy")
 
@@ -245,7 +246,7 @@ def test_bytes_in_a_real_file():
             assert attrib["start_byte"] >= last_end
             last_end = attrib["end_byte"]
             text = parser.convert_entities(re.sub(r"<[^>]*>", "", text))
-            assert parser.chars_not_to_index.sub("", text).lower().replace("_", "") == name
+            assert ligatures_as_letters(parser.chars_not_to_index.sub("", text).lower().replace("_", "")) == name
             count += 1
         elif kind == "punct":
             assert parser.convert_entities(text).replace("\t", " ") == name
@@ -324,7 +325,7 @@ def test_tagger_gets_tokens(tmp_path):
     with open(raw, "w", encoding="utf8") as output:
         xml = document("L'homme dit-il peut-être oui.")
         XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}, language="fr").parse(io.StringIO(xml))
-    loader = type("Loader", (), {"nlp": Tagger()})
+    loader = type("Loader", (), {"parser_config": {}, "nlp": Tagger()})
     spacy_tagger(loader, {"raw": str(raw)})
     assert [word for word in loader.nlp.words if word.isalpha() or "'" in word or "-" in word] == [
         "L'",
@@ -344,6 +345,41 @@ def test_tagger_gets_tokens(tmp_path):
         ("oui", None),
     ]
     assert all("pos" in json.loads(attrib) for kind, _, _, attrib in tagged if kind == "word")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("flatten_ligatures, form", [(True, "coeur"), (False, "cœur")])
+def test_tagger_lemmas_have_ligatures_as_letters(tmp_path, flatten_ligatures, form):
+    """The tagger tags a word with a ligature as the text has it, and with flatten_ligatures, its lemma has the
+    ligature as letters, as the word does"""
+    import spacy
+    from philologic.loadtime.LoadFilters import spacy_tagger
+
+    class Tagger:
+        """A pipeline which lemmatizes words as themselves, and keeps the words it's given"""
+
+        vocab = spacy.blank("fr").vocab
+        words = []
+
+        def pipe(self, documents, batch_size):
+            for document in documents:
+                for token in document:
+                    self.words.append(token.text)
+                    token.lemma_ = token.text
+                yield document
+
+    raw = tmp_path / "raw"
+    xml = document("Mon cœur.")
+    with open(raw, "w", encoding="utf8") as output:
+        size = len(xml.encode("utf8"))
+        parser = XMLParser(output, 1, size, metadata_sql_types={}, language="fr", flatten_ligatures=flatten_ligatures)
+        parser.parse(io.StringIO(xml))
+    loader = type("Loader", (), {"parser_config": {"flatten_ligatures": flatten_ligatures}, "nlp": Tagger()})
+    spacy_tagger(loader, {"raw": str(raw)})
+    assert "cœur" in loader.nlp.words
+    tagged = [line.split("\t") for line in raw.read_text(encoding="utf8").split("\n")[:-1]]
+    words = [(name, json.loads(attrib)["lemma"]) for kind, name, _, attrib in tagged if kind == "word"]
+    assert words == [("mon", "mon"), (form, form)]
 
 
 @pytest.mark.unit
@@ -370,7 +406,7 @@ def test_tagger_gets_sentences(tmp_path, language):
     with open(raw, "w", encoding="utf8") as output:
         XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}, language=language).parse(io.StringIO(xml))
     parsed = [line.split("\t")[:2] for line in raw.read_text(encoding="utf8").split("\n")[:-1]]
-    loader = type("Loader", (), {"nlp": Tagger()})
+    loader = type("Loader", (), {"parser_config": {}, "nlp": Tagger()})
     spacy_tagger(loader, {"raw": str(raw)})
     sentences = {
         "fr": [["Il", "vient", ". «"], ["Elle", "part", "! »"], ["Oui", ",", "dit", "-il", "."], ["Sans", "point"]],
@@ -418,7 +454,7 @@ def test_tagger_tags_in_halves_what_the_gpu_has_no_memory_for(tmp_path, monkeypa
         raw = tmp_path / f"raw{limit}"
         with open(raw, "w", encoding="utf8") as output:
             XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
-        LoadFilters.spacy_tagger(type("Loader", (), {"nlp": Tagger(limit)}), {"raw": str(raw)})
+        LoadFilters.spacy_tagger(type("Loader", (), {"parser_config": {}, "nlp": Tagger(limit)}), {"raw": str(raw)})
         tagged[limit] = [(line.split("\t")[1], json.loads(line.split("\t")[3]).get("tag")) for line in raw.open()]
     assert tagged[6] == tagged[1000]
     assert ("word39", "WORD39") in tagged[6]
@@ -426,4 +462,4 @@ def test_tagger_tags_in_halves_what_the_gpu_has_no_memory_for(tmp_path, monkeypa
         raw = tmp_path / "raw0"
         with open(raw, "w", encoding="utf8") as output:
             XMLParser(output, 1, len(xml.encode("utf8")), metadata_sql_types={}).parse(io.StringIO(xml))
-        LoadFilters.spacy_tagger(type("Loader", (), {"nlp": Tagger(0)}), {"raw": str(raw)})
+        LoadFilters.spacy_tagger(type("Loader", (), {"parser_config": {}, "nlp": Tagger(0)}), {"raw": str(raw)})

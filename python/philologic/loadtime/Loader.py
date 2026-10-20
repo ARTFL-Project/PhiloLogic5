@@ -69,6 +69,7 @@ from philologic.utils import (
     start_worker_server,
     thread_pool,
 )
+from philologic.utils.ligatures import ligatures_as_letters
 
 SORT_BY_WORD = "-k 2,2"
 SORT_BY_ID = "-k 3,3n -k 4,4n -k 5,5n -k 6,6n -k 7,7n -k 8,8n -k 9,9n"
@@ -765,7 +766,10 @@ class Loader:
         cls.all_word_attribute_names = None
         cls.post_filters = list(loader_options["post_filters"])
         cls.debug = loader_options["debug"]
+        flatten_ligatures = loader_options.get("flatten_ligatures", True)  # as the parser has it
         cls.words_to_index = loader_options["words_to_index"]
+        if flatten_ligatures and cls.words_to_index:  # as the parser indexes them
+            cls.words_to_index = {ligatures_as_letters(word) for word in cls.words_to_index}
         cls.destination = loader_options["data_destination"]
         cls.workdir = os.path.join(loader_options["data_destination"], "WORK/")
         cls.textdir = os.path.join(loader_options["data_destination"], "TEXT/")
@@ -784,6 +788,8 @@ class Loader:
                     word, lemma = line.strip().split("\t")
                     if lowercase_lemma_keys:
                         word = word.lower()
+                    if flatten_ligatures:  # the words as the parser indexes them, and their lemmas so too
+                        word, lemma = ligatures_as_letters(word), ligatures_as_letters(lemma)
                     cls.lemmas[word] = lemma
         for option in PARSER_OPTIONS:
             try:
@@ -1901,6 +1907,7 @@ class Loader:
         db_values["default_object_level"] = self.default_object_level
         db_values["word_attributes"] = self.word_attributes
         db_values["overflow_words"] = self.overflow_words
+        db_values["flatten_ligatures"] = self.parser_config.get("flatten_ligatures", True)  # as the parser has it
 
         db_config = MakeDBConfig(filename, **db_values)
         with open(filename, "w", encoding="utf8") as db_file:

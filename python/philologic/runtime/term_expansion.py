@@ -19,6 +19,7 @@ from unidecode import unidecode
 from philologic.runtime.lmdb_env import lmdb_env
 from philologic.runtime.QuerySyntax import quoted_text
 from philologic.runtime.word_properties import property_names, split_properties
+from philologic.utils.ligatures import has_ligature, ligatures_as_letters
 
 
 # Flat files (in frequencies/) that feed word_forms.lmdb
@@ -50,6 +51,32 @@ def _long_s_variants(kind: str, token: str) -> list[str]:
     if kind in ("TERM", "RANGE", "QUOTE") and "ſ" in token:
         return [token, token.replace("ſ", "s")]
     return [token]
+
+
+def _without_ligatures(kind: str, token: str) -> str:
+    """token with its ligatures as their letters, as loads with flatten_ligatures index words, their lemmas and other
+    properties. A regex has those of its literal characters so (see _normalize_regex): c[œo]ur matches coeur."""
+    if not has_ligature(token):
+        return token
+    if kind == "QUOTE":
+        return '"' + _without_ligatures("TERM", quoted_text(token)) + '"'
+    if _is_regex_pattern(token):
+        flattened = _normalize_regex(token, ligatures_as_letters)
+        try:
+            re.compile(flattened)
+        except re.error:
+            return ligatures_as_letters(token)
+        return flattened
+    return ligatures_as_letters(token)
+
+
+def _variants(kind: str, token: str, flatten_ligatures: bool) -> list[str]:
+    """The tokens a token is looked up as: its long s variants, with their ligatures as letters when the database
+    was loaded with flatten_ligatures (see _without_ligatures)"""
+    variants = _long_s_variants(kind, token)
+    if flatten_ligatures:
+        return list(dict.fromkeys(_without_ligatures(kind, variant) for variant in variants))
+    return variants
 
 
 def _lmdb_lookup(txn, key: bytes) -> list[str]:
@@ -344,11 +371,13 @@ def _expand_positive(
     lowercase: bool,
     forms_env: lmdb.Environment | None = None,
     names=frozenset(),
+    flatten_ligatures: bool = False,
 ) -> list[str]:
-    """Expand one positive token to the list of words.lmdb lookup keys: the forms of each of its long s variants."""
-    variants = _long_s_variants(kind, token)
+    """Expand one positive token to the list of words.lmdb lookup keys: the forms of each of its variants (see
+    _variants)."""
+    variants = _variants(kind, token, flatten_ligatures)
     if len(variants) == 1:
-        return _expand_positive_token(kind, token, txn, ascii_conversion, lowercase, forms_env, names)
+        return _expand_positive_token(kind, variants[0], txn, ascii_conversion, lowercase, forms_env, names)
     forms = Forms()
     seen: set[str] = set()
     for variant in variants:
@@ -421,12 +450,13 @@ def _expand_exclude(
     lowercase: bool,
     forms_env: lmdb.Environment | None = None,
     names=frozenset(),
+    flatten_ligatures: bool = False,
 ) -> set[str]:
-    """Expand one NOT token to the set of forms to exclude: those of each of its long s variants."""
+    """Expand one NOT token to the set of forms to exclude: those of each of its variants (see _variants)."""
     return set().union(
         *(
             _expand_exclude_token(kind, variant, txn, ascii_conversion, lowercase, forms_env, names)
-            for variant in _long_s_variants(kind, token)
+            for variant in _variants(kind, token, flatten_ligatures)
         )
     )
 
@@ -476,7 +506,7 @@ def _cap_applies(kind: str, token: str, ascii_conversion: bool, lowercase: bool)
     return _is_regex_pattern(pattern) and not _normalize_pattern(pattern, lowercase)[0]
 
 
-def cut_terms(split, freq_file, ascii_conversion, lowercase=True) -> list[tuple[str, bool]]:
+def cut_terms(split, freq_file, ascii_conversion, lowercase=True, flatten_ligatures=False) -> list[tuple[str, bool]]:
     """The terms of the query groups split whose expansion REGEX_EXPANSION_CAP cut, as expand_query_not expands them,
     each with whether it follows a NOT. A cut term misses some of its forms; a cut NOT excludes too few."""
     tokens = []
@@ -492,18 +522,22 @@ def cut_terms(split, freq_file, ascii_conversion, lowercase=True) -> list[tuple[
     cut = []
     with lmdb_env(freq_file + ".lmdb") as env, env.begin(buffers=True) as txn:
         for kind, token, negated in tokens:
-            if getattr(_expand_positive(kind, token, txn, ascii_conversion, lowercase), "cut", False):
+            expanded = _expand_positive(
+                kind, token, txn, ascii_conversion, lowercase, flatten_ligatures=flatten_ligatures
+            )
+            if getattr(expanded, "cut", False):
                 cut.append((token, negated))
     return cut
 
 
-def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True):
+def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True, flatten_ligatures=False):
     """Expand search terms using LMDB index (replaces subprocess/rg pipeline).
 
     For each query group, expands positive tokens to all matching original word
     forms (including regex patterns like sens.*), subtracts any NOT-excluded
     forms, and writes the result to dest_fh.
     Groups are separated by blank lines (consumed by get_word_groups()).
+    flatten_ligatures is that of the database's db.locals: tokens are then looked up with their ligatures as letters.
     """
     db_path = os.path.normpath(os.path.join(os.path.dirname(freq_file), ".."))
     forms_lmdb_path = os.path.join(db_path, "frequencies", "word_forms.lmdb")
@@ -534,7 +568,9 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
             seen: set[str] = set()
             pos_forms: list[str] = []
             for kind, token in pos_group:
-                for form in _expand_positive(kind, token, txn, ascii_conversion, lowercase, forms_env, names):
+                for form in _expand_positive(
+                    kind, token, txn, ascii_conversion, lowercase, forms_env, names, flatten_ligatures
+                ):
                     if form not in seen:
                         seen.add(form)
                         pos_forms.append(form)
@@ -542,7 +578,9 @@ def expand_query_not(split, freq_file, dest_fh, ascii_conversion, lowercase=True
             # Set of forms to exclude
             excl: set[str] = set()
             for kind, token in exclude_specs:
-                excl |= _expand_exclude(kind, token, txn, ascii_conversion, lowercase, forms_env, names)
+                excl |= _expand_exclude(
+                    kind, token, txn, ascii_conversion, lowercase, forms_env, names, flatten_ligatures
+                )
 
             # Write filtered forms, one per line
             for form in pos_forms:
@@ -859,6 +897,7 @@ def expand_autocomplete(
     lowercase: bool,
     max_results: int = AUTOCOMPLETE_SUGGESTIONS,
     overflow_words=frozenset(),
+    flatten_ligatures: bool = False,
 ) -> list[str]:
     """Expand a single autocomplete token using LMDB cursor scans (no subprocess).
 
@@ -870,10 +909,13 @@ def expand_autocomplete(
     The most frequent come from the tables built at load time (build_autocomplete_tables); a database without them
     has its suggestions in alphabetical order. Supports regex patterns (e.g. sens.*, lemma:virt.*) via cursor +
     re.match, the most frequent of the first REGEX_EXPANSION_CAP matches first. overflow_words are those of
-    db.locals, whose hits are in files of their own.
+    db.locals, whose hits are in files of their own, and with its flatten_ligatures, token is completed with its
+    ligatures as letters.
     """
     if kind in ("NOT", "OR", "NULL"):
         return []
+    if flatten_ligatures:
+        token = _without_ligatures(kind, token)
 
     if kind in ("TERM", "QUOTE"):
         raw_token = quoted_text(token) if kind == "QUOTE" else token

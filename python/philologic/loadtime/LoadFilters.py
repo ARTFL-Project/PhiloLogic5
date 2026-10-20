@@ -10,6 +10,7 @@ from orjson import dumps, loads
 
 from philologic.loadtime.OHCOVector import Record
 from philologic.utils import run_shell
+from philologic.utils.ligatures import ligatures_as_letters
 
 RG_OK_STATUSES = (0, 1)  # rg exits with 1 when no line matches
 
@@ -58,9 +59,12 @@ def spacy_tagger(loader_obj, text):
     """Tag words with Spacy, a sentence at a time: their token, as the tokenizer split it, when the indexed word is less
     than it (see XMLParser.index_tokens), and the punctuation of the sentence. A sentence is the words and punctuation
     up to its sent record, which isn't tagged, and the punctuation after it which ends it (within its bytes: these
-    records don't have the sentence's id)."""
+    records don't have the sentence's id). With flatten_ligatures, lemmas have their ligatures as letters, as words
+    do."""
     from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
     from spacy.util import minibatch
+
+    flatten_ligatures = loader_obj.parser_config.get("flatten_ligatures", True)  # as the parser has it
 
     def token(record):
         """What spaCy tags for a record: nothing for a sentence"""
@@ -120,7 +124,8 @@ def spacy_tagger(loader_obj, text):
                         record.attrib["pos"] = parsed_word.pos_
                         record.attrib["tag"] = parsed_word.tag_
                         record.attrib["ent_type"] = parsed_word.ent_type_
-                        record.attrib["lemma"] = "_".join((parsed_word.lemma_ or record.name).lower().split())
+                        lemma = "_".join((parsed_word.lemma_ or record.name).lower().split())
+                        record.attrib["lemma"] = ligatures_as_letters(lemma) if flatten_ligatures else lemma
                     print(record, file=tmp_file)
 
                 for doc in spacy_sentence:

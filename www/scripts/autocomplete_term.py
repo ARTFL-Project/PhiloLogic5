@@ -2,6 +2,7 @@ from philologic.runtime.DB import DB
 from philologic.runtime.Query import split_terms
 from philologic.runtime.QuerySyntax import group_terms, parse_query, quoted_text
 from philologic.runtime.term_expansion import expand_autocomplete
+from philologic.utils.ligatures import ligatures_as_letters
 
 
 def autocomplete_term(request, config):
@@ -47,6 +48,7 @@ def format_query(q, db, config):
         lowercase=db.locals["lowercase_index"],
         max_results=100,
         overflow_words=db.locals.overflow_words,
+        flatten_ligatures=db.locals["flatten_ligatures"],
     )
 
     if not matches:
@@ -54,6 +56,8 @@ def format_query(q, db, config):
 
     # len of the typed portion (without surrounding quotes for QUOTE)
     raw_token = quoted_text(token) if kind == "QUOTE" else token
+    if db.locals["flatten_ligatures"]:  # as the matches start
+        raw_token = ligatures_as_letters(raw_token)
     len_token = len(raw_token)
 
     output_string = []

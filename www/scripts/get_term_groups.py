@@ -50,6 +50,7 @@ def get_term_groups(request, config):
         config.db_path + "/data/frequencies/normalized_word_frequencies",
         config.db_locals["ascii_conversion"],
         config.db_locals["lowercase_index"],
+        config.db_locals["flatten_ligatures"],
     )
     return {
         "term_groups": term_groups,

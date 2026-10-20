@@ -457,3 +457,61 @@ def test_long_s_is_indexed_as_s_in_plain_text():
     assert [word[1] for word in words] == ["ils", "sont", "christiens"]
     sont = json.loads(words[1][3])
     assert text.encode()[sont["start_byte"] : sont["end_byte"]].decode() == "ſont"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "flatten_ligatures, forms, lemma",
+    [
+        (True, ["mon", "coeur", "oeil", "oeuvres", "fin", "caesar", "coeurs"], "coeur"),
+        (False, ["mon", "cœur", "œil", "œuvres", "ﬁn", "cæsar", "cœurs"], "cœur"),
+    ],
+)
+def test_ligatures_are_indexed_as_letters(flatten_ligatures, forms, lemma):
+    """Test that with flatten_ligatures, words have their ligatures as letters, as they have their entities, at the
+    bytes of the ligature form, and so do the lemmas of <w> tags."""
+    text = (
+        "<TEI><text><body><div><p>Mon cœur, &oelig;il, Œuvres, ﬁn, Cæsar, "
+        '<w lemma="cœur">cœurs</w>.</p></div></body></text></TEI>\n'
+    )
+    if not flatten_ligatures:  # (the entity then stays one)
+        text = text.replace("&oelig;", "œ")
+    output = io.StringIO()
+    parser = XMLParser(
+        output,
+        1,
+        len(text.encode()),
+        known_metadata={"filename": "t.xml"},
+        metadata_sql_types={},
+        flatten_ligatures=flatten_ligatures,
+    )
+    parser.parse(io.StringIO(text))
+    words = [line.split("\t") for line in output.getvalue().splitlines() if line.startswith("word")]
+    assert [word[1] for word in words] == forms
+    coeur = json.loads(words[1][3])
+    assert text.encode()[coeur["start_byte"] : coeur["end_byte"]].decode() == "cœur"
+    assert json.loads(words[-1][3])["lemma"] == lemma
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("flatten_ligatures, forms", [(True, ["mon", "coeur", "fin"]), (False, ["mon", "cœur", "ﬁn"])])
+def test_ligatures_are_indexed_as_letters_in_plain_text(flatten_ligatures, forms):
+    """Test that the plain text parser indexes ligatures as their letters with flatten_ligatures too, and the lemmas of
+    its words so."""
+    text = "Mon Cœur, ﬁn.\n"
+    output = io.StringIO()
+    lemmas = {"coeur": "coeur", "cœur": "cœur"}  # as the loader has those of the lemma file
+    parser = PlainTextParser(
+        output,
+        1,
+        len(text.encode()),
+        known_metadata={"filename": "t.txt"},
+        lemmas=lemmas,
+        flatten_ligatures=flatten_ligatures,
+    )
+    parser.parse(io.StringIO(text))
+    words = [line.split("\t") for line in output.getvalue().splitlines() if line.startswith("word")]
+    assert [word[1] for word in words] == forms
+    coeur = json.loads(words[1][3])
+    assert text.encode()[coeur["start_byte"] : coeur["end_byte"]].decode() == "Cœur"
+    assert coeur["lemma"] == forms[1]

@@ -10,6 +10,7 @@ import regex as re
 from philologic.loadtime import OHCOVector
 from philologic.loadtime.Parser import CHARS_NOT_TO_INDEX, pilcrow_between, virgule_ends_sentence
 from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input
+from philologic.utils.ligatures import ligatures_as_letters
 
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 PUNCTUATION = r"""[;,:=+()"]"""
@@ -77,6 +78,7 @@ class PlainTextParser:
         self.buffers = []
 
         self.lemmas = lemmas
+        self.flatten_ligatures = parse_options.get("flatten_ligatures", True)
 
         # With a language, words are split by spaCy's tokenizer for it rather than by token_regex (the loader only
         # gives a language spaCy has a tokenizer for): see index_tokens
@@ -137,8 +139,10 @@ class PlainTextParser:
                     original = last_word = word
                     # Switch everything to lower case
                     word = word.lower()
-                    # The long s is an s, as the XML parser has it
+                    # The long s is an s, as the XML parser has it, and ligatures their letters if flattened
                     word = word.replace("ſ", "s")
+                    if self.flatten_ligatures:
+                        word = ligatures_as_letters(word)
                     # Check to see if the word is longer than we want. More than 235 characters appear to cause problems in the indexer.
                     if len(word_in_utf8) > 200:
                         print(f"Long word in {input_file.name}: {word}", file=sys.stderr)
@@ -210,11 +214,12 @@ class PlainTextParser:
             is_sent = True
         return is_sent
 
-    @staticmethod
-    def index_form(word):
-        """The form under which a word is indexed: in lowercase, the long s as an s, without control characters, "_" and
-        spaces"""
+    def index_form(self, word):
+        """The form under which a word is indexed: in lowercase, the long s as an s, ligatures as their letters (with
+        flatten_ligatures), without control characters, "_" and spaces"""
         word = word.lower().replace("ſ", "s")
+        if self.flatten_ligatures:
+            word = ligatures_as_letters(word)
         word = "".join(c for c in word if unicodedata.category(c)[0] != "C")  # remove control characters
         word = word.replace("_", "").strip()
         return word.replace(" ", "")

@@ -24,6 +24,7 @@ from philologic.loadtime.parser_defaults import (  # (which other modules import
 )
 from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input
 from philologic.utils import convert_entities, extract_full_date, extract_integer
+from philologic.utils.ligatures import ligatures_as_letters
 
 # Tags which open or close para and div level objects (or their containers). Used to detect when we
 # leave the object containing an unclosed suppressed tag.
@@ -604,6 +605,10 @@ class XMLParser:
         # tag clear them (current_tag only changes with opening tags).
         if self.current_tag == "w":
             self.word_tag_attributes = self.get_attributes(tag)
+            if self.flatten_ligatures:  # its lemma and other properties have their ligatures as letters, as words do
+                self.word_tag_attributes = [
+                    (name, ligatures_as_letters(value)) for name, value in self.word_tag_attributes
+                ]
 
         method = self.handler_of(tag, tag_name)
         if method is not None:
@@ -1031,6 +1036,8 @@ class XMLParser:
         if self.lowercase_index is True:
             word = word.lower()
         word = word.replace("ſ", "s")  # the long s is an s, as its entity &s; already is
+        if self.flatten_ligatures:
+            word = ligatures_as_letters(word)  # œ as oe, as its entity &oelig; already is
 
         word = self.remove_control_chars(word)
         word = word.replace("_", "").strip()
