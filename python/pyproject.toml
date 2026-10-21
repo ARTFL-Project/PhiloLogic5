@@ -40,14 +40,7 @@ dependencies = [
 [project.optional-dependencies]
 transformers = [
     "spacy-transformers~=1.4.0",
-    "cupy-cuda12x; sys_platform == 'linux'",  # spaCy runs models on NVIDIA GPUs with it
-]
-# FlashAttention, which models like ModernBERT use once installed (NVIDIA GPU, Ampere or newer). Its build imports torch:
-# install it after the transformers extra, with --no-build-isolation-package flash-attn
-flash-attn = [
-    "flash-attn~=2.8",
-    "transformers>=4.53",  # the ModernBERT of older versions fails to load with flash-attn 2.8
-    "torch>=2.5,<2.9",  # those flash-attn 2.8 has prebuilt wheels for (CUDA 12): for others, it compiles for hours
+    "cupy-cuda13x; sys_platform == 'linux'",  # spaCy runs models on NVIDIA GPUs with it, as torch does (CUDA 13)
 ]
 # philologic5-webui-loader, and the web app (install.sh installs them)
 web = ["gunicorn>=26.1,<27", "falcon>=4.3,<5"]
