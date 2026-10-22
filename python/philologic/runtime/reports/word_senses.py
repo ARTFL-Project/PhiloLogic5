@@ -1127,7 +1127,7 @@ def fit_split(Xs, parent, r, search=False):
     return _em(Xs, parent, r, every_marker=False)
 
 
-@numba.njit(cache=True)
+@numba.njit(cache=True, nogil=True)
 def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_counts, total_tokens, col_weights):
     """For each candidate word f, how much better its sentences and the others predict their other candidate words
     with rates of their own than at the sense's rates: for each word more frequent on a side, its count there times
@@ -1136,13 +1136,15 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
     rate, by the Bayesian information criterion). Leaving each sentence out keeps a few sentences that share their words
     from looking like a sense of their own. The cost of saying which side each sentence is on is left to the test:
     expectation-maximization moves the sentences from the seed's side to their sense's core, which changes it. Sentences
-    x candidates in CSR (indptr, indices, data); the sentences of each candidate in col_ptr, col_rows."""
+    x candidates in CSR (indptr, indices, data; with no data, each entry counts one, a count of n as n entries); the
+    sentences of each candidate in col_ptr, col_rows."""
     m = len(node_counts)
     n = len(indptr) - 1
     scores = np.full(m, -np.inf)
     side_a = np.zeros(m, dtype=data.dtype)
     touched = np.empty(m, dtype=np.uint32)
     rates = node_counts / total_tokens
+    counted = len(data) == 0
     for f in range(m):
         n_a = col_ptr[f + 1] - col_ptr[f]
         if n_a == 0 or n_a == n:
@@ -1152,12 +1154,20 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
         for k in range(col_ptr[f], col_ptr[f + 1]):
             i = col_rows[k]
             tokens_a += row_tokens[i]
-            for j in range(indptr[i], indptr[i + 1]):
-                w = indices[j]
-                if side_a[w] == 0.0:
-                    touched[n_touched] = w
-                    n_touched += 1
-                side_a[w] += data[j]
+            if counted:
+                for j in range(indptr[i], indptr[i + 1]):
+                    w = indices[j]
+                    if side_a[w] == 0:
+                        touched[n_touched] = w
+                        n_touched += 1
+                    side_a[w] += 1
+            else:
+                for j in range(indptr[i], indptr[i + 1]):
+                    w = indices[j]
+                    if side_a[w] == 0.0:
+                        touched[n_touched] = w
+                        n_touched += 1
+                    side_a[w] += data[j]
         tokens_b = total_tokens - tokens_a
         price_a = 0.5 * np.log(tokens_a) if tokens_a > 0 else 0.0
         price_b = 0.5 * np.log(tokens_b) if tokens_b > 0 else 0.0
@@ -1187,6 +1197,84 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
     return scores
 
 
+@numba.njit(cache=True, nogil=True)
+def _seed_counts(indptr, indices, data, column, row_len, col_len, row_tokens):
+    """For one group of words: each sentence's number of entries among the candidates (column: the candidate each word
+    is, -1 for none), a count of n as n entries, added to row_len; each candidate's number of sentences, to col_len;
+    each sentence's count of all words, to row_tokens. Whether the counts are all whole numbers, none negative (else
+    the rest is not to be used)."""
+    for i in range(len(indptr) - 1):
+        tokens = 0.0
+        for j in range(indptr[i], indptr[i + 1]):
+            v = data[j]
+            if not (v >= 0 and v == np.rint(v)):
+                return False
+            tokens += v
+            f = column[indices[j]]
+            if f >= 0:
+                row_len[i] += np.int64(v)
+                col_len[f] += 1
+        row_tokens[i] += tokens
+    return True
+
+
+@numba.njit(cache=True, nogil=True)
+def _seed_fill(indptr, indices, data, column, row_at, col_at, idx, col_rows, node_counts):
+    """For one group of words, after _seed_counts: each sentence's candidates (a count of n, n times) into idx from
+    row_at, each candidate's sentences, in order, into col_rows from col_at, and the candidates' counts."""
+    for i in range(len(indptr) - 1):
+        for j in range(indptr[i], indptr[i + 1]):
+            f = column[indices[j]]
+            if f >= 0:
+                for _ in range(np.int64(data[j])):
+                    idx[row_at[i]] = f
+                    row_at[i] += 1
+                col_rows[col_at[f]] = i
+                col_at[f] += 1
+                node_counts[f] += data[j]
+
+
+def _seed_matrix(Xs, candidates):
+    """The sentences x candidates matrix _seed_scores takes, the sentences of each candidate, the candidates' counts
+    and the sentences' counts of all words; made from the groups' matrices at once when their counts are whole numbers
+    (as the sentences' are), each count of n as n entries, which add up to the same in any order, with no counts to
+    read, and the candidates' indices as small as their number allows."""
+    n = Xs[0].shape[0]
+    m = sum(len(c) for c in candidates)
+    row_len = np.zeros(n, dtype=np.int64)
+    col_len = np.zeros(m, dtype=np.int64)
+    row_tokens = np.zeros(n)
+    columns, offset, whole = [], 0, True
+    for X, cand in zip(Xs, candidates):
+        column = np.full(X.shape[1], -1, dtype=np.int64)
+        column[cand] = np.arange(offset, offset + len(cand))
+        offset += len(cand)
+        columns.append(column)
+        whole = whole and _seed_counts(X.indptr, X.indices, X.data, column, row_len, col_len, row_tokens)
+    if not whole or float(row_tokens.sum()) >= 2.0**53:
+        A = csr_matrix(hstack([X[:, cand] for X, cand in zip(Xs, candidates)]))
+        A.sum_duplicates()
+        columns = A.tocsc()
+        node_counts = np.asarray(A.sum(axis=0)).ravel()
+        row_tokens = sum(np.asarray(X.sum(axis=1)).ravel() for X in Xs)
+        # Counts that are whole numbers add up the same in integers, faster (and indices unsigned: see _WIDTH)
+        whole = bool(np.all(A.data == np.rint(A.data))) and A.nnz and float(np.abs(A.data).sum()) < 2.0**53
+        data = A.data.astype(np.int64) if whole else A.data.astype(np.float64)
+        rows = (A.indptr.astype(np.uint64), A.indices.astype(np.uint32), data)
+        return rows, columns.indptr.astype(np.uint64), columns.indices.astype(np.uint32), node_counts, row_tokens
+    indptr = np.zeros(n + 1, dtype=np.uint64)
+    np.cumsum(row_len, out=indptr[1:])
+    col_ptr = np.zeros(m + 1, dtype=np.uint64)
+    np.cumsum(col_len, out=col_ptr[1:])
+    idx = np.empty(int(indptr[-1]), dtype=np.uint16 if m <= 2**16 else np.uint32)
+    col_rows = np.empty(int(col_ptr[-1]), dtype=np.uint32)
+    node_counts = np.zeros(m)
+    row_at, col_at = indptr[:-1].astype(np.int64), col_ptr[:-1].astype(np.int64)
+    for X, column in zip(Xs, columns):
+        _seed_fill(X.indptr, X.indices, X.data, column, row_at, col_at, idx, col_rows, node_counts)
+    return (indptr, idx, np.empty(0, dtype=np.int64)), col_ptr, col_rows, node_counts, row_tokens
+
+
 def seed_splits(Xs, collocates, k=_SEEDS_TRIED, weights=None):
     """The halves splits may start from: the sentences with a seed word and the others. Seeds are among the query's
     collocates (words markedly more frequent around it than in the corpus, in any group of words) that the sense's
@@ -1194,26 +1282,22 @@ def seed_splits(Xs, collocates, k=_SEEDS_TRIED, weights=None):
     anchored by words, as in HyperLex. (A sense's own marker words, against its parent, would not do: those of the
     larger side of a split are only the words the smaller one lacks.) Returns up to k (r, (group, local index)), the
     most promising first."""
-    candidates = [cols[np.asarray(X[:, cols].getnnz(axis=0)) > 0] for X, cols in zip(Xs, collocates)]
+    candidates = [
+        cols[np.bincount(X.indices[: X.nnz], minlength=X.shape[1])[cols] > 0] for X, cols in zip(Xs, collocates)
+    ]
     if sum(len(c) for c in candidates) < 2:
         return []
-    A = csr_matrix(hstack([X[:, cand] for X, cand in zip(Xs, candidates)]))
-    A.sum_duplicates()
-    columns = A.tocsc()
-    row_tokens = sum(np.asarray(X.sum(axis=1)).ravel() for X in Xs)
-    node_counts = np.asarray(A.sum(axis=0)).ravel()
+    (indptr, indices, data), col_ptr, col_rows, node_counts, row_tokens = _seed_matrix(Xs, candidates)
     weights = weights or [None] * len(Xs)
     col_weights = np.concatenate(
         [np.ones(len(cand)) if w is None else w[cand] for cand, w in zip(candidates, weights)]
     ).astype(np.float64)
-    # Counts that are whole numbers add up the same in integers, faster (and indices unsigned: see _WIDTH)
-    whole = bool(np.all(A.data == np.rint(A.data))) and A.nnz and float(np.abs(A.data).sum()) < 2.0**53
     scores = _seed_scores(
-        A.indptr.astype(np.uint64),
-        A.indices.astype(np.uint32),
-        A.data.astype(np.int64) if whole else A.data.astype(np.float64),
-        columns.indptr.astype(np.uint64),
-        columns.indices.astype(np.uint32),
+        indptr,
+        indices,
+        data,
+        col_ptr,
+        col_rows,
         row_tokens.astype(np.float64),
         node_counts,
         float(row_tokens.sum()),
@@ -1224,8 +1308,8 @@ def seed_splits(Xs, collocates, k=_SEEDS_TRIED, weights=None):
     for best in np.argsort(-scores, kind="stable")[:k]:
         if not np.isfinite(scores[best]) or scores[best] <= 0:
             break
-        has = np.zeros(A.shape[0], dtype=bool)
-        has[columns.indices[columns.indptr[best] : columns.indptr[best + 1]]] = True
+        has = np.zeros(Xs[0].shape[0], dtype=bool)
+        has[col_rows[col_ptr[best] : col_ptr[best + 1]]] = True
         group = int(np.searchsorted(offsets, best, side="right") - 1)
         seeds.append(
             (np.column_stack([has, ~has]).astype(np.float64), (group, int(candidates[group][best - offsets[group]])))
