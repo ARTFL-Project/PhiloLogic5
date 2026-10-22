@@ -44,7 +44,7 @@ import math
 import os
 import tempfile
 import time
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
 import numba
 import numpy as np
@@ -1255,24 +1255,31 @@ def work_folds(groups):
     return fold_of[inverse], n_folds
 
 
-def _fold_data(Xs, unsplit_fit, groups, pool_map=map):
-    """The folds a split is tested on, the same for every split of a sense: for each, its training and held-out
-    sentences (masks and matrices), the unsplit sense fitted on the training ones and the held-out sentences'
-    log-probability under it. Whole works are held out; a single work's sentences, in turn."""
-    n = Xs[0].shape[0]
+def _fold_of(groups, n):
+    """The fold each of n sentences is held out in, and the number of folds: whole works; a single work's sentences,
+    in turn."""
     folds, n_folds = work_folds(groups)
     if folds is None:  # a single work: its sentences then
         folds, n_folds = np.arange(n) % N_FOLDS, min(N_FOLDS, n)
+    return folds, n_folds
 
-    def fold(f):
-        train = folds != f
-        test = ~train
-        Xtrain = _Mats([X[train] for X in Xs])
-        Xtest = [X[test] for X in Xs]
-        unsplit = unsplit_fit([np.asarray(X.sum(axis=0)).ravel() for X in Xtrain])
-        return train, test, Xtrain, Xtest, unsplit, _loglik(Xtest, unsplit)
 
-    return list(pool_map(fold, range(n_folds)))
+def _fold(Xs, unsplit_fit, folds, f):
+    """A fold a split is tested on, the same for every split of a sense: its training and held-out sentences (masks
+    and matrices), the unsplit sense fitted on the training ones and the held-out sentences' log-probability under
+    it."""
+    train = folds != f
+    test = ~train
+    Xtrain = _Mats([X[train] for X in Xs])
+    Xtest = [X[test] for X in Xs]
+    unsplit = unsplit_fit([np.asarray(X.sum(axis=0)).ravel() for X in Xtrain])
+    return train, test, Xtrain, Xtest, unsplit, _loglik(Xtest, unsplit)
+
+
+def _fold_data(Xs, unsplit_fit, groups, pool_map=map):
+    """The folds a split is tested on (_fold), the same for every split of a sense."""
+    folds, n_folds = _fold_of(groups, Xs[0].shape[0])
+    return list(pool_map(lambda f: _fold(Xs, unsplit_fit, folds, f), range(n_folds)))
 
 
 def _fold_gain(fold, r):
@@ -1355,7 +1362,7 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
 
     floor = {"importance": 0.0}
 
-    def grow(node, pool_map):
+    def grow(node, submit):
         if node is root:
             unsplit_fit = root_fit
         else:
@@ -1363,23 +1370,23 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
             unsplit_fit = lambda train_counts, parents=parents: [
                 fit_sparse(c, d) for c, d in zip(train_counts, parents)
             ]
-        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, pool_map)
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, submit)
         return node
 
-    def grow_with(pool_map, senses=None):
-        grow(root, pool_map)
+    def grow_with(submit, senses=None):
+        grow(root, submit)
         if root.children:
             floor["importance"] = finest * root.test["importance"]
         if senses is None:
             queue = list(root.children)
             while queue:
-                queue.extend(grow(queue.pop(0), pool_map).children)
+                queue.extend(grow(queue.pop(0), submit).children)
             return
-        pending = {senses.submit(grow, child, pool_map) for child in root.children}
+        pending = {senses.submit(grow, child, submit) for child in root.children}
         while pending:
             done, pending = wait(pending, return_when=FIRST_COMPLETED)
             for future in done:
-                pending |= {senses.submit(grow, child, pool_map) for child in future.result().children}
+                pending |= {senses.submit(grow, child, submit) for child in future.result().children}
 
     # The seeds of a split and the folds of each are fitted at once, and the senses below the first split grow at once
     # too (they are independent of one another once the first sets the floor): the compiled EM and numpy release the
@@ -1387,10 +1394,10 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
     # as for the rest of the app): those that grow the senses only hand their work to them.
     workers = numba.config.NUMBA_NUM_THREADS
     if workers < 2:
-        grow_with(map)
+        grow_with(_now)
         return root
     with ThreadPoolExecutor(max_workers=workers) as fits, ThreadPoolExecutor(max_workers=workers) as senses:
-        grow_with(fits.map, senses)
+        grow_with(fits.submit, senses)
     return root
 
 
@@ -1507,30 +1514,59 @@ def marks(node, against, common=None):
     return False
 
 
-def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map):
+def _now(fn, *args):
+    """fn(*args) run at once, as a future: the pool of a single thread."""
+    future = Future()
+    future.set_result(fn(*args))
+    return future
+
+
+def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit=_now):
     units = node.units
     if len(units) < 2:
         node.reason = "inseparable"
         return
 
-    def prepare(_):
-        Xs = _Mats([X[units] for X in Xall])
-        return Xs, seed_splits(Xs, collocates, weights=[d.weights for d in node.dists])
+    # All of it on the pool's threads (submit), which alone do the work, each step as soon as what it needs is done,
+    # so that no thread waits for the slowest of a step: the sentences' matrices packed for the EM, the seeds and the
+    # folds of the test at once (the folds, the same for every split, are wasted only when no seed splits the sense),
+    # each seed's search once both the first are made, each candidate's fit on a fold once its search and the fold are
+    # done. The results are the same as one after the other: each is kept in its place.
+    def sentences():
+        return [X[units] for X in Xall], _fold_of(groups[units], len(units))
 
-    ((Xs, seeds),) = pool_map(prepare, (None,))  # on the pool's threads too, which alone do the work
-    candidates = []
-    for (_, seed), fitted in zip(seeds, pool_map(lambda s: fit_split(Xs, node.dists, s[0], search=True), seeds)):
-        if fitted is None:
-            continue
-        side = fitted[2][:, 0] >= fitted[2][:, 1]
-        if side.all() or not side.any():  # one sense is in every sentence, more or less: no halves
-            continue
-        candidates.append((seed, fitted, side))
-    best = None
+    Xs, (fold_of, n_folds) = submit(sentences).result()
+    packed = submit(_Mats, Xs)
+    seeding = submit(lambda: seed_splits(Xs, collocates, weights=[d.weights for d in node.dists]))
+    folds = [submit(_fold, Xs, unsplit_fit, fold_of, f) for f in range(n_folds)]
+    Xs = packed.result()
+    seeds = seeding.result()
+    searches = [submit(fit_split, Xs, node.dists, r, True) for r, _ in seeds]
+    candidates = {}  # by the place of their seed
+    fits = {}  # (candidate, fold): its fit on the fold
+    pending = set(searches) | set(folds)
+    while pending:
+        if all(s in candidates for s in range(len(searches))) and not any(candidates.values()):
+            for fold in folds:  # no halves: no test
+                fold.cancel()
+            break
+        _, pending = wait(pending, return_when=FIRST_COMPLETED)
+        for s, search in enumerate(searches):
+            if not search.done() or s in candidates:
+                continue
+            fitted = search.result()
+            side = None if fitted is None else fitted[2][:, 0] >= fitted[2][:, 1]
+            # One sense in every sentence, more or less: no halves
+            candidates[s] = None if side is None or side.all() or not side.any() else (seeds[s][1], fitted, side)
+        for s, candidate in candidates.items():
+            for f, fold in enumerate(folds):
+                if candidate is not None and fold.done() and (s, f) not in fits:
+                    fits[(s, f)] = submit(_fold_gain, fold.result(), candidate[1][2])
+    candidates = [candidates[s] for s in range(len(searches)) if candidates[s] is not None]
     if candidates:
-        folds = _fold_data(Xs, unsplit_fit, groups[units], pool_map)
-        tasks = [(fitted[2], fold) for _, fitted, _ in candidates for fold in folds]
-        results = list(pool_map(lambda task: _fold_gain(task[1], task[0]), tasks))
+        folds = [fold.result() for fold in folds]
+        results = [fits[key].result() for key in sorted(fits)]
+    best = None
     for c, (seed, fitted, side) in enumerate(candidates):
         pi, dists, r, counts = fitted
         test = _test_result(folds, results[c * len(folds) : (c + 1) * len(folds)], len(units))
