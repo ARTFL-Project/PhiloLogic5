@@ -2391,10 +2391,22 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     listed_words = {}
     phrases = _Phrases(db, sentences)
     near_by_node = {}
+    mine_of = {}
+    columns = {}
+
+    def sentences_of(node):  # its sentences: those on its side of every split on the way to it
+        if node.id not in mine_of:
+            mine_of[node.id] = np.flatnonzero(margin[:, node.id] > 0)
+        return mine_of[node.id]
+
+    def columns_of(ci):  # the sentences of each word of a group (_pattern_columns), made once
+        if ci not in columns:
+            columns[ci] = _pattern_columns(Xall[ci].indptr, Xall[ci].indices, Xall[ci].shape[1])
+        return columns[ci]
 
     def near(node):  # the words next to the query in a sense's sentences, as the text has them (see _Phrases)
         if node.id not in near_by_node:
-            near_by_node[node.id] = phrases.near(np.flatnonzero(margin[:, node.id] > 0))
+            near_by_node[node.id] = phrases.near(sentences_of(node))
         return near_by_node[node.id]
 
     asked = []  # the words of the senses, to which their sentences are added once all are known (with_hits)
@@ -2405,19 +2417,18 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
 
     def add_hits():
         """To each word of a sense, the sentences of the sense with it, the most clearly in the sense first (their
-        first hits): the words' columns taken out of each group's matrix at once, not the whole matrix turned."""
-        for ci in range(len(Xall)):
-            mine = [a for a in asked if a[2] == ci]
-            if not mine:
-                continue
-            cols = np.unique([i for *_, i in mine])
-            sub = Xall[ci][:, cols].tocsc()
-            where = {int(c): k for k, c in enumerate(cols)}
-            for item, nid, _, i in mine:
-                k = where[i]
-                rows = sub.indices[sub.indptr[k] : sub.indptr[k + 1]]
-                rows = rows[margin[rows, nid] > 0]
-                clear = posteriors[rows, nid]
+        first hits): from the sentences of each word, a sense at a time."""
+        by_node = {}
+        for a in asked:
+            by_node.setdefault(a[1], []).append(a)
+        for nid, items in by_node.items():
+            inside = margin[:, nid] > 0
+            clear_of = np.ascontiguousarray(posteriors[:, nid])
+            for item, _, ci, i in items:
+                col_ptr, rows = columns_of(ci)
+                rows = rows[col_ptr[i] : col_ptr[i + 1]]
+                rows = rows[inside[rows]]
+                clear = clear_of[rows]
                 if len(rows) > _WORD_EXAMPLES:  # the clearest only, without sorting them all
                     keep = np.argpartition(-clear, _WORD_EXAMPLES)[:_WORD_EXAMPLES]
                     rows, clear = rows[keep], clear[keep]
@@ -2457,7 +2468,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         else:
             hidden = []
         # Its words that go together in its sentences, across the works, around hub words (as in HyperLex)
-        groups = _word_groups(node, groups_of_words[0], margin, Xall[0], docs, listed_words.get(node.id))
+        groups = _word_groups(sentences_of(node), columns_of(0), docs, listed_words.get(node.id))
         # What it lacks, against the sense it was split from, in any group of words (the strongest evidence first)
         rarer = []
         if node.parent is not None:
@@ -2493,8 +2504,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
             seed = split.pop("seed", None)
             split["seed"] = None if seed is None else with_phrase({"word": word(*seed), "group": seed[0]}, node, *seed)
             split["relative"] = round(float(split["importance"] / top_importance), 4) if top_importance > 0 else 0.0
-        # Its sentences: those on its side of every split on the way to it
-        mine = np.flatnonzero(margin[:, node.id] > 0)
+        mine = sentences_of(node)
         works_of = docs[mine]
         work_counts = np.unique(works_of, return_counts=True)[1] if len(mine) else np.zeros(1)
         out.append(
@@ -2707,13 +2717,40 @@ def hub_groups(X, works=None):
     return out
 
 
-def _word_groups(node, words, margin, X, docs, listed):
-    """The groups of a sense's listed words (positions in words) around hub words: [{"hub": position, "members":
-    [positions]}], words linked in its sentences across the works (hub_groups)."""
-    mine = np.flatnonzero(margin[:, node.id] > 0)
+@numba.njit(cache=True, nogil=True)
+def _pattern_columns(indptr, indices, n_cols):
+    """The sentences of each word of a sentences x words matrix in CSR, in order (its columns' row indices, without
+    the counts), and where each word's begin."""
+    n = len(indptr) - 1
+    col_ptr = np.zeros(n_cols + 1, dtype=np.int64)
+    for j in range(indptr[0], indptr[n]):
+        col_ptr[indices[j] + 1] += 1
+    for c in range(n_cols):
+        col_ptr[c + 1] += col_ptr[c]
+    at = col_ptr[:-1].copy()
+    rows = np.empty(col_ptr[n_cols], dtype=np.int32)
+    for i in range(n):
+        for j in range(indptr[i], indptr[i + 1]):
+            rows[at[indices[j]]] = i
+            at[indices[j]] += 1
+    return col_ptr, rows
+
+
+def _word_groups(mine, columns, docs, listed):
+    """The groups of a sense's listed words (positions in its words) around hub words: [{"hub": position, "members":
+    [positions]}], words linked in its sentences mine across the works (hub_groups). columns: the sentences of each
+    word of the group (_pattern_columns), of which the matrix of its sentences and listed words is made."""
     if listed is None or len(listed) < 2 or len(mine) < 2:
         return []
-    sub = csr_matrix(X)[mine][:, listed]
+    col_ptr, rows = columns
+    parts = [rows[col_ptr[j] : col_ptr[j + 1]] for j in listed]
+    at = np.concatenate(parts)
+    word = np.repeat(np.arange(len(listed)), [len(part) for part in parts])
+    inside = np.zeros(len(docs), dtype=np.bool_)
+    inside[mine] = True
+    rank = np.cumsum(inside) - 1
+    keep = inside[at]
+    sub = csr_matrix((np.ones(int(keep.sum())), (rank[at[keep]], word[keep])), shape=(len(mine), len(listed)))
     return [{"hub": int(hub), "members": [int(m) for m in members]} for hub, members in hub_groups(sub, docs[mine])]
 
 
