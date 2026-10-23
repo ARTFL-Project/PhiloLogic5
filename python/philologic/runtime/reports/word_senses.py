@@ -21,14 +21,14 @@ from the others in their other collocates, the most promising are tried (none of
 mostly function words: par, leur, mon tell the register of works more than a sense), and expectation-maximization
 moves the sentences to the sense they fit, each with a probability of being in either (first letting every collocate
 tell the senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark
-either, chosen at every step, and held if that choice cycles or swings back; the first pass, on a sense of many
-sentences, on a sample of them). A split is kept if, fitted without each of N_FOLDS groups of works in turn, it
-predicts the sentences of the works left out better than its unsplit sense, paying for saying which sense each is in,
-by more than EVIDENCE standard errors over the sentences. Holding out whole works keeps the sentences of a passage,
-which share their words, from predicting one another. For a query of more than _GROWN sentences, splits are looked for
-and tested on _GROWN of them, spread over all, and a split once kept is fitted again on all the sentences of its
-sense, which go to its two senses as they fit: the senses have all the sentences, their words and their course over
-time; the tests, their sample.
+either, chosen at every step, and held if that choice cycles; the first pass, on a sense of many sentences, on a
+sample of them). A split is kept if, fitted without each of N_FOLDS groups of works in turn, it predicts the sentences
+of the works left out better than its unsplit sense, paying for saying which sense each is in, by more than EVIDENCE
+standard errors over the sentences. Holding out whole works keeps the sentences of a passage, which share their words,
+from predicting one another. For a query of more than _GROWN sentences, splits are looked for and tested on _GROWN of
+them, spread over all, and a split once kept is fitted again on all the sentences of its sense, which go to its two
+senses as they fit: the senses have all the sentences, their words and their course over time; the tests, their
+sample.
 
 Each split has its importance: how much it improves the prediction of the words around the query, per use of the
 word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the elbow
@@ -1506,11 +1506,11 @@ def _column_sums(r):
 
 def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
     """The EM of a split (see fit_split). The words chosen at every step (every_marker false), once the set chosen comes
-    back to one chosen before, after another, or swings back (it is nearer the set chosen before the last than the
-    last), are held from then on (switch): the choice cycles, and the fit would not settle. left_out, a block of the
-    sentences (Xs a _Mats with blocks: a fold), fits the split without its sentences (their entries not read, their
-    probabilities of either sense zero), whose log-probabilities under the fit are then returned too (n_block x 2, in
-    their order). Xs may be in parts (_Parts), whose steps are made at once on the pool's threads (submit)."""
+    back to one chosen before, after another, are held from then on (switch): the choice cycles, and the fit would not
+    settle. left_out, a block of the sentences (Xs a _Mats with blocks: a fold), fits the split without its sentences
+    (their entries not read, their probabilities of either sense zero), whose log-probabilities under the fit are then
+    returned too (n_block x 2, in their order). Xs may be in parts (_Parts), whose steps are made at once on the
+    pool's threads (submit)."""
     parts = list(Xs) if isinstance(Xs, _Parts) else [Xs if isinstance(Xs, _Mats) else _Mats(Xs, parent=parent)]
     Xs = parts[0]
     pos, cols, cmp_off, voc_off = Xs.words  # the same for every part
@@ -1571,7 +1571,6 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
 
     previous = None
     seen, last = set(), None  # the sets of words chosen
-    before_last = last_chosen = None
     for _ in range(_MAX_ITER):
         if weight.min() < 1.0:
             return None
@@ -1593,11 +1592,7 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
             return None
         if switch and not every_marker:
             key = chosen.tobytes()
-            swings = before_last is not None and np.count_nonzero(chosen != before_last) < np.count_nonzero(
-                chosen != last_chosen
-            )
-            before_last, last_chosen = last_chosen, chosen
-            if (key in seen and key != last) or swings:  # the choice cycles: these words, held from now on
+            if key in seen and key != last:  # the choice cycles: these words, held from now on
                 mk, mk_cmp = mk[chosen], mk_cmp[chosen]
                 mk_off = np.searchsorted(mk, voc_off)
                 markers = np.zeros(n_words, dtype=np.bool_)
@@ -1666,13 +1661,12 @@ def fit_split(Xs, parent, r, search=False, sample=None, first=None):
     both have their own rates for the words that mark either, and share the parent's for all others. A search (from a
     seed) first lets every one of the parent's markers tell the senses apart: few of the words of the seed's sense are
     marked yet on its side, and the sense would not grow. The words that mark either are chosen again at every step;
-    when the choice comes back to a set it made before, after another, or swings back towards the one before the last
-    (more than half the words the last step changed change back), that set is held: such a fit cycles, and never
-    settled (stopped by _MAX_ITER), or settled only after many more steps. A search's first pass only finds where the
-    second starts: given a sample of the sentences (their indices, and their matrices: see search_sample), it runs on
-    those alone, and the second, which chooses the words, on all of them. Returns (pi, dists, r, counts), or None when
-    a sense ends up with less than a sentence or none of the words tells them apart. first, a list, is given the
-    senses of a search's first pass, (pi, dists)."""
+    when the choice comes back to a set it made before, after another, that set is held: such a fit cycles, and never
+    settled (stopped by _MAX_ITER). A search's first pass only finds where the second starts: given a sample of the
+    sentences (their indices, and their matrices: see search_sample), it runs on those alone, and the second, which
+    chooses the words, on all of them. Returns (pi, dists, r, counts), or None when a sense ends up with less than a
+    sentence or none of the words tells them apart. first, a list, is given the senses of a search's first pass, (pi,
+    dists)."""
     if search:
         if sample is None:
             fitted = _em(Xs, parent, r, every_marker=True)
