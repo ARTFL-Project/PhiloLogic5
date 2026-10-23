@@ -2418,6 +2418,8 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     def shown(ci, local):  # the filter's words: not among a sense's words, but next to the query, where common words
         return ci > 0 or not unshown[int(names[ci][local])]  # make the construction (homme d'esprit, mon esprit)
 
+    not_shown = [unshown[names[0]]] + [None] * (len(names) - 1)  # as shown has them, for all the words at once
+
     def word(ci, local):
         tid = int(names[ci][local])
         s = v_blob[int(v_offsets[tid]) : int(v_offsets[tid + 1])].decode("utf-8", errors="replace")
@@ -2556,7 +2558,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 "reason": node.reason,
                 "works": int(len(work_counts)) if len(mine) else 0,
                 "top_work_share": round(float(work_counts.max() / max(1, len(mine))), 4),
-                "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, shown),
+                "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, not_shown),
             }
         )
 
@@ -2791,44 +2793,64 @@ def _word_groups(mine, columns, docs, listed):
     return [{"hub": int(hub), "members": [int(m) for m in members]} for hub, members in hub_groups(sub, docs[mine])]
 
 
-def _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, shown=lambda ci, i: True):
+def _first(key, among, k):
+    """The k of among first by key, then by among: among[np.lexsort((among, key))][:k], without sorting them all."""
+    if len(key) > k and not np.isnan(key).any():
+        near = key <= np.partition(key, k - 1)[k - 1]
+        key, among = key[near], among[near]
+    return among[np.lexsort((among, key))][:k]
+
+
+def _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, hidden=None):
     """The sentences most clearly in a sense, with the words that decided it: for a split sense, those with the
     largest margin, and for each the words whose (weighted) evidence most favoured its side along the way; for the
-    whole query, those with the most evidence of its collocates."""
+    whole query, those with the most evidence of its collocates. hidden: for each group of words, None or a mask of
+    its words not shown."""
     path = _path(root, node)
     if path:
-        top = mine[np.lexsort((mine, -margin[mine, node.id]))][:_MAX_EXAMPLES]
+        top = _first(-margin[mine, node.id], mine, _MAX_EXAMPLES)
     else:  # the whole query: the sentences with the most evidence of its collocates against the corpus
         score = sum(
             X @ ((1.0 if d.weights is None else d.weights) * np.log(d.p / parent.p))
             for X, d, parent in zip(Xall, node.dists, node.parent_dists)
         )
-        top = np.argsort(-score, kind="stable")[:_MAX_EXAMPLES]
+        top = _first(-score, np.arange(len(score)), _MAX_EXAMPLES)
+    # The evidence of every word of the sentences, all at once: of each, in order, the groups' words in order
+    sentence, group, local, evidence = [], [], [], []
+    for ci, X in enumerate(Xall):
+        lo, hi = X.indptr[top].astype(np.int64), X.indptr[top + 1].astype(np.int64)
+        lengths = hi - lo
+        at = np.arange(int(lengths.sum())) + np.repeat(lo - np.cumsum(lengths) + lengths, lengths)
+        indices, data = X.indices[at], X.data[at]
+        w = 1.0 if weights[ci] is None else weights[ci][indices]
+        contribution = np.zeros(len(at))
+        if path:
+            for split_node, k in path:
+                dists = split_node.model[1][ci]
+                contribution += data * w * (np.log(dists[k].p[indices]) - np.log(dists[1 - k].p[indices]))
+        else:
+            contribution = data * w * np.log(node.dists[ci].p[indices] / node.parent_dists[ci].p[indices])
+        keep = contribution > 0
+        if hidden is not None and hidden[ci] is not None:
+            keep &= ~hidden[ci][indices]
+        sentence.append(np.repeat(np.arange(len(top)), lengths)[keep])
+        group.append(np.full(int(keep.sum()), ci))
+        local.append(indices[keep])
+        evidence.append(contribution[keep])
+    sentence, group, local, evidence = (np.concatenate(a) for a in (sentence, group, local, evidence))
+    order = np.lexsort((np.arange(len(sentence)), -evidence, sentence))  # the strongest first, as found among equals
+    starts = np.searchsorted(sentence[order], np.arange(len(top) + 1))
     examples = []
-    for u in top:
-        evidence = {}
-        for ci, X in enumerate(Xall):
-            lo, hi = X.indptr[u], X.indptr[u + 1]  # the sentence's row, as getrow has it
-            if hi == lo:
-                continue
-            indices, data = X.indices[lo:hi], X.data[lo:hi]
-            w = 1.0 if weights[ci] is None else weights[ci][indices]
-            contribution = np.zeros(hi - lo)
-            if path:
-                for split_node, k in path:
-                    dists = split_node.model[1][ci]
-                    contribution += data * w * (np.log(dists[k].p[indices]) - np.log(dists[1 - k].p[indices]))
-            else:
-                contribution = data * w * np.log(node.dists[ci].p[indices] / node.parent_dists[ci].p[indices])
-            for i, c in zip(indices, contribution):
-                if c > 0 and shown(ci, int(i)):
-                    evidence[(ci, int(i))] = evidence.get((ci, int(i)), 0.0) + float(c)
-        strongest = sorted(evidence.items(), key=lambda kv: -kv[1])[:8]
+    for s, u in enumerate(top):
+        strongest = order[starts[s] : starts[s + 1]][:8]
         examples.append(
             {
                 "hit": int(first_hit[u]),
                 "p": round(float(posteriors[u, node.id]), 4),
-                "evidence": [{"word": word(ci, i), "group": ci} for (ci, i), _ in strongest],
+                "evidence": [
+                    {"word": word(int(ci), int(i)), "group": int(ci)}
+                    for ci, i in zip(group[strongest], local[strongest])
+                ],
             }
         )
     return examples
