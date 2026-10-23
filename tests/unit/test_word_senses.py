@@ -304,6 +304,7 @@ def report_node(id, parent, children, share, own=True, relative=None):
         "words": [{"word": "w"}] if own else [],
         "before": [],
         "after": [],
+        "hidden": [],
         "split": None if relative is None else {"relative": relative},
     }
 
@@ -467,14 +468,12 @@ class TestModel:
 
 def plain_em(Xs, parent, r, every_marker):
     """The EM of a split in plain numpy, as the compiled one must compute it: the words chosen at every step held once
-    their choice comes back to a set chosen before, after another, or swings back nearer the set chosen before the last
-    than the last. The compiled one adds up what the words that mark no sense tell of a sentence apart (their parent's
-    log-rates once, their count times the log of the scale at every step), so its sums differ from these in the last
-    bits."""
+    their choice comes back to a set chosen before, after another. The compiled one adds up what the words that mark
+    no sense tell of a sentence apart (their parent's log-rates once, their count times the log of the scale at every
+    step), so its sums differ from these in the last bits."""
     n = Xs[0].shape[0]
     previous = None
     seen, last, held = set(), None, None
-    before_last = last_owns = None
     for _ in range(ws._MAX_ITER):
         weight = r.sum(axis=0)
         if weight.min() < 1.0:
@@ -489,11 +488,7 @@ def plain_em(Xs, parent, r, every_marker):
             return None
         if not every_marker and held is None:
             key = tuple(tuple(own) for own in owns)
-            swings = before_last is not None and sum(len(np.setxor1d(a, b)) for a, b in zip(owns, before_last)) < sum(
-                len(np.setxor1d(a, b)) for a, b in zip(owns, last_owns)
-            )
-            before_last, last_owns = last_owns, owns
-            if (key in seen and key != last) or swings:
+            if key in seen and key != last:
                 held = [
                     ws.Dist(d.p, d.rest, np.isin(np.arange(len(d.p)), own), d.weights, d.discount)
                     for d, own in zip(parent, owns)

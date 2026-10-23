@@ -6,7 +6,7 @@ import SenseOverview from "../src/components/collocation/SenseOverview.vue";
 
 const word = (w) => ({ word: w, n: 10, ratio: 3, lift: 6, hits: [3, 4] });
 const node = (id, parent, children, share, fields = {}) => ({
-    id, parent, children, share, sentences: Math.round(share * 100), words: [], before: [], after: [],
+    id, parent, children, share, sentences: Math.round(share * 100), words: [], before: [], after: [], hidden: [],
     rarer: [], split: null, reason: null, works: 10, top_work_share: 0.2, examples: [], sense: null, rank: null, ...fields,
 });
 const flat = (n, v) => new Array(n).fill(v);

@@ -143,19 +143,16 @@ class TestWordSenses:
         near = _Phrases(eltec_db, sentences).near([first])
         assert near[1] == {} and near[2]
 
-    def test_the_filters_words_are_left_out_of_the_sentences_words_but_not_next_to_the_word(self, eltec_db):
-        from philologic.runtime.reports.word_senses import query_sentences
-
+    def test_the_filter_hides_its_words_among_a_senses_words_but_not_next_to_the_word(self, eltec_db):
         report = call(eltec_db, get_word_senses, q="lemma:light")
         common = {w.removeprefix("lemma:") for w in report["filter_list"]}
         nodes = report["nodes"]
-        in_sentence = [node["words"] + [w for w in node["rarer"] if w["group"] == 0] for node in nodes]
-        assert not any(common & {w["word"] for w in words} for words in in_sentence)
+        assert not any(common & {w["word"] for w in node["words"]} for node in nodes)
         assert any(common & {w["word"] for w in node["before"] + node["after"]} for node in nodes)
-        sentences = query_sentences(eltec_db, "lemma:light", True, filter_words=report["filter_list"])
-        (X, ids), before, after = sentences["channels"]
-        assert not sentences["filtered"][ids].any()
-        assert sentences["filtered"][before[1]].any() and sentences["filtered"][after[1]].any()
+        for node in nodes:  # the filter's words a sense has, only when nothing else marks it
+            if node["hidden"]:
+                assert not (node["words"] or node["before"] or node["after"])
+                assert {w["word"] for w in node["hidden"]} <= common
 
     def test_the_filters_words_seed_no_split(self, eltec_db):
         report = call(eltec_db, get_word_senses, q="lemma:light")
