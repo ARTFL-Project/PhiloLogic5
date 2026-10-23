@@ -512,6 +512,31 @@ class TestCompiled:
         for every_marker in (True, False):
             assert_same_fit(ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
 
+    def test_a_fit_in_parts_is_numpys(self):
+        # The sentences in two parts packed apart with the words of all, their markers' entries taken from those of all
+        # the sentences, their counts from their sentences' entries: the counts of the parts added up
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
+        channels, works = sentences(specs, seed=12)
+        X = csr_matrix(channels[0][0])
+        rng = np.random.default_rng(13)
+        weights = rng.uniform(0.5, 6.0, X.shape[1])
+        Xs = [X, csr_matrix(X[:, 40:60])]
+        Xs[1].data = rng.integers(1, 4, Xs[1].nnz).astype(np.float64)
+        parent = [
+            ws.Dist(np.full(X.shape[1], 0.8 / X.shape[1]), 0.2, rng.uniform(size=X.shape[1]) > 0.2, weights, 0.6),
+            ws.Dist(np.full(20, 0.9 / 20), 0.1, None, None, 0.3),
+        ]
+        r = rng.dirichlet([1.0, 1.0], X.shape[0])
+        marked = ws._Marked(Xs, parent)
+        words = [np.flatnonzero(np.asarray(Y.getnnz(axis=0))) for Y in Xs]
+        half = X.shape[0] // 3
+        parts = ws._Parts(
+            ws._Mats([Y[rows] for Y in Xs], marked=(marked, rows), words=words, by_words=False)
+            for rows in (np.arange(half), np.arange(half, X.shape[0]))
+        )
+        for every_marker in (True, False):
+            assert_same_fit(ws._em(parts, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
+
     def test_a_fold_is_fitted_as_on_its_training_sentences_alone(self):
         # The sentences packed by fold once, a fold left out of each fit: as if packed without its sentences
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
