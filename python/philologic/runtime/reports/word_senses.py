@@ -1638,6 +1638,27 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
     node.children.sort(key=lambda c: (-len(c.units), c.k))
 
 
+@numba.njit(cache=True, nogil=True)
+def _add_rows(indptr, indices, data, ones, evidence, ll):
+    """ll += X @ evidence (n x 2), X in CSR: each row's sums of its entries in order, from 0, as scipy's product makes
+    them (with ones, the counts are not read: one times a number is that number)."""
+    for i in range(len(indptr) - 1):
+        s0 = 0.0
+        s1 = 0.0
+        if ones:
+            for j in range(indptr[i], indptr[i + 1]):
+                w = np.uint64(indices[j])
+                s0 += evidence[w, 0]
+                s1 += evidence[w, 1]
+        else:
+            for j in range(indptr[i], indptr[i + 1]):
+                w = np.uint64(indices[j])
+                s0 += data[j] * evidence[w, 0]
+                s1 += data[j] * evidence[w, 1]
+        ll[i, 0] += s0
+        ll[i, 1] += s1
+
+
 def node_posteriors(root, Xall):
     """Every sense of the tree, in order (each before those it splits into), given its id and parent; and for every
     sentence the log-probability of each sense (n x senses), and its margin: the smallest log-likelihood ratio, along
@@ -1645,6 +1666,7 @@ def node_posteriors(root, Xall):
     split, infinite for the whole query)."""
     n = Xall[0].shape[0]
     nodes, logp, margin = [], [], []
+    ones = [bool(np.all(X.data[: X.nnz] == 1)) for X in Xall]
 
     def walk(node, lp, mg, parent):
         node.id = len(nodes)
@@ -1655,7 +1677,9 @@ def node_posteriors(root, Xall):
         if not node.children:
             return
         pi, dists = node.model
-        ll = _mixture_loglik(Xall, pi, dists)
+        ll = np.tile(np.log(pi), (n, 1))  # _mixture_loglik, compiled
+        for X, one, ds in zip(Xall, ones, dists):
+            _add_rows(X.indptr, X.indices, X.data, one, np.column_stack([_evidence(ds[0]), _evidence(ds[1])]), ll)
         cond = ll - _logsumexp2(ll)[:, None]
         for child in node.children:
             walk(child, lp + cond[:, child.k], np.minimum(mg, ll[:, child.k] - ll[:, 1 - child.k]), node)
