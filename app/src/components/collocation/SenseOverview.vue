@@ -560,6 +560,7 @@ function label(node) {
         if (node.before[i]) add(node.before[i], wordText(node.before[i], 1));
         if (node.after[i]) add(node.after[i], wordText(node.after[i], 2));
     }
+    (node.hidden || []).forEach((w) => add(w, w.word));
     return out.join(", ") || queryWord.value;
 }
 
