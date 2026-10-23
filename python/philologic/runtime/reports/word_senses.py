@@ -62,7 +62,7 @@ from philologic.runtime.reports.collocation import (
     phrase_words,
 )
 from philologic.runtime.get_text import _get_mmap
-from philologic.runtime.word_properties import _nb_word_kept, property_masks
+from philologic.runtime.word_properties import _nb_compare_keys, _nb_sentence_index, _nb_word_kept, property_masks
 from philologic.runtime.reports.time_series import _corpus_year_counts, _get_doc_year_data
 
 # The conventions the method rests on: none is fitted to any corpus.
@@ -2027,6 +2027,20 @@ def _sentence_words(
     return bag[:nb], bag_ptr, left[:nl], left_ptr, right[:nr], right_ptr, hashes
 
 
+@numba.njit(cache=True, nogil=True)
+def _hit_sentences(sent_keys, rows):
+    """The place of each hit's sentence among the sorted sentence keys (sent_keys_native.npy), by the first 6 fields of
+    its row, or where it would go, and whether it is there."""
+    n_sents = sent_keys.shape[0]
+    si = np.empty(rows.shape[0], dtype=np.int64)
+    found = np.zeros(rows.shape[0], dtype=np.bool_)
+    for i in range(rows.shape[0]):
+        lo = _nb_sentence_index(sent_keys, rows[i])
+        si[i] = lo
+        found[i] = lo < n_sents and _nb_compare_keys(sent_keys[lo], rows[i]) == 0
+    return si, found
+
+
 def _channel(flat, ptr, n_units):
     """A sentences x words count matrix of local word indices, and the vocabulary ids of its words."""
     # np.unique(flat, return_inverse=True), by marking the ids rather than sorting the entries
@@ -2075,7 +2089,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
         rows = np.frombuffer(f.read(), dtype=np.uint32).reshape(-1, hits.length)
 
     colloc_dir = os.path.join(data_path, "collocations")
-    sent_keys = np.load(os.path.join(colloc_dir, "sent_keys_s24.npy"), mmap_mode="r")
+    sent_keys = np.load(os.path.join(colloc_dir, "sent_keys_native.npy"), mmap_mode="r")
     sent_offsets = np.asarray(np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r"))
     prefix = "attr_lemma_" if count_lemmas else ""
     count_ids = np.load(
@@ -2084,10 +2098,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     v_blob, v_offsets = _vocabulary(data_path, count_lemmas)
     n_vocab = len(v_offsets) - 1
 
-    keys = np.ascontiguousarray(rows[:, :6].astype(">u4")).view("S24").ravel()
-    si = np.searchsorted(sent_keys, keys)
-    n_sents = len(sent_keys)
-    matched = (si < n_sents) & (sent_keys[np.clip(si, 0, n_sents - 1)] == keys)
+    si, matched = _hit_sentences(sent_keys, rows)
     hit_index = np.flatnonzero(matched)
     if len(hit_index) == 0:
         return None
