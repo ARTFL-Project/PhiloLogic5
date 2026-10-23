@@ -453,15 +453,14 @@ def _profile_rows(cooc, base, lo, hi, Q):
 
 
 @numba.njit(cache=True, nogil=True)
-def _profile(Q, slots, c, parent_p, total, threshold, out):
-    """The corpus profile of a sense over some of the profiled words (slots, their places in Q; out, summing to 1):
-    the mean of the profiles of the words that mark it (markedly more frequent in it than in its parent: G2 above
-    threshold, from its counts c of a total, the parent's rates parent_p), each as often as the sense has it; of all
-    its words when none marks it; the parent's rates when it has none."""
-    n = len(slots)
-    w = np.zeros(n)
+def _anchors(c, parent_p, total, threshold, w):
+    """The weight of each word in a sense's corpus profile (w): its count c (of a total) if it marks the sense (markedly
+    more frequent in it than in its parent, of rates parent_p: G2 above threshold), else 0; when none marks it, its
+    count. Returns whether any marks it."""
+    n = len(c)
     sw = 0.0
     for i in range(n):
+        w[i] = 0.0
         co = c[i]
         eo = total * parent_p[i]
         if co <= eo:
@@ -472,10 +471,21 @@ def _profile(Q, slots, c, parent_p, total, threshold, out):
                 continue
         w[i] = co
         sw += co
-    if sw <= 0.0:
-        for i in range(n):
-            w[i] = c[i]
-            sw += c[i]
+    if sw > 0.0:
+        return True
+    for i in range(n):
+        w[i] = c[i]
+    return False
+
+
+@numba.njit(cache=True, nogil=True)
+def _centre(Q, slots, w, parent_p, out):
+    """The mean of the profiles (Q's rows at slots) of the words of weights w, over the same words (out, summing to 1);
+    the parent's rates parent_p without any weight."""
+    n = len(slots)
+    sw = 0.0
+    for i in range(n):
+        sw += w[i]
     for i in range(n):
         out[i] = 0.0
     if sw <= 0.0:
@@ -495,6 +505,15 @@ def _profile(Q, slots, c, parent_p, total, threshold, out):
     if s > 0:
         for i in range(n):
             out[i] /= s
+
+
+def _profile(Q, slots, c, parent_p, total, threshold, out):
+    """The corpus profile of a sense over some of the profiled words (slots, their places in Q; out, summing to 1):
+    the mean of the profiles of the words that mark it (_anchors, from its counts c of a total), each as often as the
+    sense has it; of all its words when none marks it; the parent's rates when it has none."""
+    w = np.empty(len(c))
+    _anchors(c, parent_p, total, threshold, w)
+    _centre(Q, slots, w, parent_p, out)
 
 
 def prior_strength(c, q):
@@ -554,11 +573,13 @@ def _prior_places(profiles, Xs, parent):
 
 
 @numba.njit(cache=True, nogil=True)
-def _prior_rates(p, counts, set_m, set_cmp, q, a, by_word):
+def _prior_rates(p, counts, set_m, set_cmp, q, strengths, by_word):
     """Either sense's rates for the profiled words (p at set_m: markers x 2, or 2 x words when by_word) with its prior
-    (centred on q, 2 x those words, of strength a), from its counts of them (counts at set_cmp): (N p + a pi q) /
-    (N + a), N its count of them and pi its rate for them all, so that every other word keeps its rate."""
+    (centred on q, 2 x those words, of strength a: strengths, of each), from its counts of them (counts at set_cmp):
+    (N p + a pi q) / (N + a), N its count of them and pi its rate for them all, so that every other word keeps its
+    rate."""
     for k in range(2):
+        a = strengths[k]
         N = 0.0
         pi = 0.0
         for i in range(len(set_m)):
@@ -577,7 +598,8 @@ def corpus_cooccurrence(data_path, count_lemmas, words, skipped):
     """For the vocabulary ids words, the number of the corpus's sentences with each pair of them (the diagonal: with
     each), but those of skipped (their indices in the collocation index: the query's), each word once a sentence, as
     the query's sentences count them. One pass over the corpus's sentences, in as many parts as numba has threads,
-    each counting the rows of its own words, so that they share one array: words x words."""
+    each counting the pairs whose first word (the one of lower place) is one of its own, so that they share one array:
+    words x words."""
     colloc_dir = os.path.join(data_path, "collocations")
     sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
     count_ids = np.load(
@@ -596,32 +618,46 @@ def corpus_cooccurrence(data_path, count_lemmas, words, skipped):
             pool.submit(_cooccurrence, sent_offsets, count_ids, slot, skip, part, parts, cooc) for part in range(parts)
         ]:
             done.result()
+    _mirror(cooc)
     return cooc
 
 
 @numba.njit(cache=True, nogil=True)
 def _cooccurrence(sent_offsets, count_ids, slot, skip, part, parts, cooc):
-    """corpus_cooccurrence's counts for the rows of the words of one part (their place modulo parts)."""
-    n_vocab = len(slot)
-    stamp = np.full(n_vocab, -1, dtype=np.int64)
-    present = np.empty(cooc.shape[0], dtype=np.int64)
+    """corpus_cooccurrence's counts of the pairs (a, b), a < b (and of a alone: the diagonal), whose a is of this part
+    (its place modulo parts)."""
+    n = cooc.shape[0]
+    stamp = np.full(n, -1, dtype=np.int64)
+    present = np.empty(n, dtype=np.int64)
     for s in range(len(sent_offsets) - 1):
         if skip[s]:
             continue
         m = 0
         for k in range(sent_offsets[s], sent_offsets[s + 1]):
-            t = count_ids[k]
-            w = slot[t]
-            if w >= 0 and stamp[t] != s:
-                stamp[t] = s
-                present[m] = w
+            w = slot[count_ids[k]]
+            if w >= 0 and stamp[w] != s:
+                stamp[w] = s
+                i = m  # in order, as they are few: each row's counts then in order too
+                while i > 0 and present[i - 1] > w:
+                    present[i] = present[i - 1]
+                    i -= 1
+                present[i] = w
                 m += 1
         for i in range(m):
             a = present[i]
             if a % parts != part:
                 continue
-            for j in range(m):
+            for j in range(i, m):
                 cooc[a, present[j]] += 1
+
+
+@numba.njit(cache=True, nogil=True)
+def _mirror(cooc):
+    """The upper triangle copied onto the lower."""
+    n = cooc.shape[0]
+    for a in range(n):
+        for b in range(a + 1, n):
+            cooc[b, a] = cooc[a, b]
 
 
 # The EM of a split, compiled: the words of all groups in one vocabulary (each group's words after the last group's),
@@ -1866,13 +1902,14 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, pr
         if not any_own:  # no word tells the senses apart: both are the parent, no split
             return None
         if prior is not None:
-            if centre is None:
+            if centre is None:  # set where the fit starts, from the counts it starts from, then held (see above)
                 centre = np.empty((2, len(set_m)))
                 parent_set = np.ascontiguousarray(parent_had[set_cmp])
                 for k in range(2):
                     c_k = np.ascontiguousarray(counts[set_cmp, k])
                     _profile(prior[0].Q, slots, c_k, parent_set, totals[0, k], thresholds[0, k], centre[k])
-            _prior_rates(p, counts, set_m, set_cmp, centre, prior[1], False)
+                strengths = np.full(2, prior[1])
+            _prior_rates(p, counts, set_m, set_cmp, centre, strengths, False)
         if switch and not every_marker:
             key = chosen.tobytes()
             if key in seen and key != last:  # the choice cycles: these words, held from now on
@@ -1910,7 +1947,7 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, pr
         counts, totals, thresholds, parent_p, parent_rest, markers, discount, voc_off, every_marker
     )
     if prior is not None:  # the same rates for the profiled words as the last step's
-        _prior_rates(p, counts_had, np.ascontiguousarray(cols[set_cmp]), set_cmp, centre, prior[1], True)
+        _prior_rates(p, counts_had, np.ascontiguousarray(cols[set_cmp]), set_cmp, centre, strengths, True)
         is_parent[0] = False
     dists = [
         [
