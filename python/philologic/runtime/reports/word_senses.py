@@ -2661,27 +2661,28 @@ def _sentence_words(
     prop_allowed,
     max_dist,
     n_vocab,
+    bag,
+    left,
+    right,
+    bag_at,
+    side_at,
 ):
     """The words of each sentence (once each; within max_dist of a hit when max_dist >= 0; with a kept value of each
     word property of prop_columns, see word_properties.property_masks), and the words just before and just after each
-    hit, as flat arrays and their bounds by sentence. The query's own words are left out, and the filtered ones."""
+    hit, into the flat arrays bag, left and right from bag_at and side_at (room enough: the words of the sentences,
+    and their hits), and their bounds by sentence there. The query's own words are left out, and the filtered ones."""
     n_units = len(unit_bounds) - 1
-    total = 0
-    for u in range(n_units):
-        si = hit_sent[unit_bounds[u]]
-        total += sent_offsets[si + 1] - sent_offsets[si]
-    n_hits = len(hit_sent)
-    bag = np.empty(total, dtype=np.int64)
-    left = np.empty(n_hits, dtype=np.int64)
-    right = np.empty(n_hits, dtype=np.int64)
     bag_ptr = np.zeros(n_units + 1, dtype=np.int64)
     left_ptr = np.zeros(n_units + 1, dtype=np.int64)
     right_ptr = np.zeros(n_units + 1, dtype=np.int64)
     seen = np.zeros(n_vocab, dtype=np.bool_)
     hashes = np.empty(n_units, dtype=np.uint64)
-    nb = 0
-    nl = 0
-    nr = 0
+    nb = bag_at
+    nl = side_at
+    nr = side_at
+    bag_ptr[0] = nb
+    left_ptr[0] = nl
+    right_ptr[0] = nr
     for u in range(n_units):
         h0 = unit_bounds[u]
         h1 = unit_bounds[u + 1]
@@ -2726,39 +2727,156 @@ def _sentence_words(
                     nr += 1
         left_ptr[u + 1] = nl
         right_ptr[u + 1] = nr
-    return bag[:nb], bag_ptr, left[:nl], left_ptr, right[:nr], right_ptr, hashes
+    return bag_ptr, left_ptr, right_ptr, hashes
+
+
+@numba.njit(cache=True, nogil=True)
+def _first_of_each(values):
+    """The indices of the first of each of the values, in order (np.sort(np.unique(values, return_index=True)[1])), by
+    a table of the values seen rather than sorting them."""
+    n = len(values)
+    size = 2
+    while size < 2 * n:
+        size *= 2
+    mask = np.uint64(size - 1)
+    table = np.empty(size, dtype=np.uint64)
+    used = np.zeros(size, dtype=np.bool_)
+    keep = np.empty(n, dtype=np.int64)
+    m = 0
+    for i in range(n):
+        v = np.uint64(values[i])
+        j = (v ^ (v >> np.uint64(29))) & mask
+        seen = False
+        while used[j]:
+            if table[j] == v:
+                seen = True
+                break
+            j = (j + np.uint64(1)) & mask
+        if not seen:
+            used[j] = True
+            table[j] = v
+            keep[m] = i
+            m += 1
+    return keep[:m]
 
 
 @numba.njit(cache=True, nogil=True)
 def _hit_sentences(sent_keys, rows):
     """The place of each hit's sentence among the sorted sentence keys (sent_keys_native.npy), by the first 6 fields of
-    its row, or where it would go, and whether it is there."""
+    its row, or where it would go (the first key not before it), and whether it is there: looked for from the hit
+    before's, by steps doubling away from it, then halving (hits in the order of the corpus are near one another)."""
     n_sents = sent_keys.shape[0]
     si = np.empty(rows.shape[0], dtype=np.int64)
     found = np.zeros(rows.shape[0], dtype=np.bool_)
+    at = 0
     for i in range(rows.shape[0]):
-        lo = _nb_sentence_index(sent_keys, rows[i])
+        key = rows[i]
+        step = 1
+        if at < n_sents and _nb_compare_keys(sent_keys[at], key) < 0:  # after the key at: the place is past it
+            below, above = at, at + 1  # sent_keys[below] before the key
+            while above < n_sents and _nb_compare_keys(sent_keys[above], key) < 0:
+                below = above
+                step *= 2
+                above = below + step
+            lo, hi = below + 1, min(above, n_sents)
+        else:  # not after the key at: the place is at it or before
+            below, above = at - 1, at  # sent_keys[above] not before the key (or the end)
+            while below >= 0 and _nb_compare_keys(sent_keys[below], key) >= 0:
+                above = below
+                step *= 2
+                below = above - step
+            lo, hi = max(below + 1, 0), above
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if _nb_compare_keys(sent_keys[mid], key) < 0:
+                lo = mid + 1
+            else:
+                hi = mid
+        at = lo
         si[i] = lo
-        found[i] = lo < n_sents and _nb_compare_keys(sent_keys[lo], rows[i]) == 0
+        found[i] = lo < n_sents and _nb_compare_keys(sent_keys[lo], key) == 0
     return si, found
 
 
-def _channel(flat, ptr, rows):
-    """A sentences x words count matrix of local word indices, of the sentences rows (their words flat[ptr[r] :
-    ptr[r + 1]] for each r), and the vocabulary ids of its words: those of these sentences."""
-    lengths = ptr[rows + 1] - ptr[rows]
-    kept_ptr = np.zeros(len(rows) + 1, dtype=np.int64)
-    np.cumsum(lengths, out=kept_ptr[1:])
-    flat = flat[np.arange(kept_ptr[-1]) + np.repeat(ptr[rows] - kept_ptr[:-1], lengths)]
-    # np.unique(flat, return_inverse=True), by marking the ids rather than sorting the entries
-    had = np.zeros(int(flat.max()) + 1 if len(flat) else 0, dtype=np.bool_)
-    had[flat] = True
+def _channel(flat, starts, ends, rows, n_vocab, submit=_now):
+    """A sentences x words count matrix of local word indices, of the sentences rows (their words flat[starts[r] :
+    ends[r]] for each r, vocabulary ids below n_vocab), and the vocabulary ids of its words: those of these sentences
+    (the local index of a word, its rank among them). Each row's words in order, once each with its count, as scipy's
+    sum_duplicates leaves them; made in two parts of about as many entries at once on the pool's threads (submit)."""
+    lengths = ends[rows] - starts[rows]
+    at = np.zeros(len(rows) + 1, dtype=np.int64)
+    np.cumsum(lengths, out=at[1:])
+    half = int(np.searchsorted(at, at[-1] / 2))
+    parts = [(lo, hi) for lo, hi in ((0, half), (half, len(rows))) if hi > lo]
+
+    def marked(part):
+        had = np.zeros(n_vocab, dtype=np.bool_)
+        _mark_words(flat, starts, ends, rows, part[0], part[1], had)
+        return had
+
+    had = np.logical_or.reduce(_at_once(submit, marked, parts)) if parts else np.zeros(n_vocab, dtype=np.bool_)
     ids = np.flatnonzero(had).astype(flat.dtype)
-    local = np.zeros(len(had), dtype=np.int64)
-    local[ids] = np.arange(len(ids))
-    X = csr_matrix((np.ones(len(flat)), local[flat], kept_ptr), shape=(len(rows), len(ids)))
-    X.sum_duplicates()
+    local = np.zeros(n_vocab, dtype=np.int32)
+    local[ids] = np.arange(len(ids), dtype=np.int32)
+    indices = np.empty(at[-1], dtype=np.int32)
+    data = np.empty(at[-1])
+    indptr = np.zeros(len(rows) + 1, dtype=np.int64)
+    end = _at_once(
+        submit, lambda p: _sorted_rows(flat, starts, ends, rows, *p, local, indices, data, indptr, at), parts
+    )
+    if len(end) > 1 and end[0] < at[half]:  # words counted once in the first part: the second's moved up to it
+        gap = at[half] - end[0]
+        indices[end[0] : end[1] - gap] = indices[at[half] : end[1]].copy()
+        data[end[0] : end[1] - gap] = data[at[half] : end[1]].copy()
+        indptr[half + 1 :] -= gap
+    X = csr_matrix((data[: indptr[-1]], indices[: indptr[-1]], indptr), shape=(len(rows), len(ids)))
+    X.has_canonical_format = True
     return X, ids
+
+
+@numba.njit(cache=True, nogil=True)
+def _mark_words(flat, starts, ends, rows, lo, hi, had):
+    """had[w] for each word w of the rows lo to hi of rows (flat[starts[r] : ends[r]] for each r)."""
+    for q in range(lo, hi):
+        r = rows[q]
+        for t in range(starts[r], ends[r]):
+            had[flat[t]] = True
+
+
+@numba.njit(cache=True, nogil=True)
+def _sorted_rows(flat, starts, ends, rows, lo, hi, local, indices, data, indptr, at):
+    """The rows lo to hi of rows: each's words (flat[starts[r] : ends[r]] for each r) by their local index, in order,
+    once each with its count (indices, data), from at[lo], and where each ends (indptr). Returns where the last
+    ends."""
+    w = at[lo]
+    for q in range(lo, hi):
+        r = rows[q]
+        a = starts[r]
+        n = ends[r] - a
+        if n <= 64:  # by insertion, as they are copied
+            for t in range(n):
+                v = local[flat[a + t]]
+                k = w + t
+                while k > w and indices[k - 1] > v:
+                    indices[k] = indices[k - 1]
+                    k -= 1
+                indices[k] = v
+        else:
+            for t in range(n):
+                indices[w + t] = local[flat[a + t]]
+            indices[w : w + n].sort()
+        m = w
+        for t in range(w, w + n):
+            v = indices[t]
+            if m > w and indices[m - 1] == v:
+                data[m - 1] += 1.0
+            else:
+                indices[m] = v
+                data[m] = 1.0
+                m += 1
+        w = m
+        indptr[q + 1] = w
+    return w
 
 
 def _filter_mask(colloc_dir, prefix, filter_words, n_vocab):
@@ -2784,6 +2902,14 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     of those next to the query alike; the words of the sentence without a kept value of each word property of
     properties ((name, values) pairs, as the collocation report's filters have them) too."""
     metadata = metadata or {}
+    workers = numba.config.NUMBA_NUM_THREADS
+    with ThreadPoolExecutor(max_workers=max(1, workers - 1)) as pool:
+        submit = pool.submit if workers > 1 else _now
+        return _query_sentences(db, q, count_lemmas, properties, metadata, distance, filter_words, submit)
+
+
+def _query_sentences(db, q, count_lemmas, properties, metadata, distance, filter_words, submit):
+    """query_sentences, its compiled steps in two parts at once, on this thread and the pool's (submit)."""
     data_path = os.path.normpath(db.path)
     method, method_arg = collocation_search_method(q, db.locals.query_patterns, distance)
     hits = db.query(q, method, method_arg, raw_results=True, raw_bytes=True, **metadata)
@@ -2804,7 +2930,9 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     v_blob, v_offsets = _vocabulary(data_path, count_lemmas)
     n_vocab = len(v_offsets) - 1
 
-    si, matched = _hit_sentences(sent_keys, rows)
+    halves = [(lo, hi) for lo, hi in ((0, len(rows) // 2), (len(rows) // 2, len(rows))) if hi > lo]
+    made = _at_once(submit, lambda part: _hit_sentences(sent_keys, rows[part[0] : part[1]]), halves)
+    si, matched = (np.concatenate(got) for got in zip(*made))
     hit_index = np.flatnonzero(matched)
     if len(hit_index) == 0:
         return None
@@ -2813,7 +2941,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     # The query's own words: whatever form or lemma is at its hits' positions, wherever it is in the sentence
     at = (sent_offsets[si].astype(np.int64)[:, None] + positions - 1)[positions > 0]
     excluded = np.zeros(n_vocab, dtype=np.bool_)
-    excluded[np.unique(np.asarray(count_ids[at]))] = True
+    excluded[np.asarray(count_ids[at])] = True
     filtered = _filter_mask(colloc_dir, prefix, filter_words, n_vocab)
 
     order = np.argsort(si, kind="stable")
@@ -2821,25 +2949,49 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     unit_bounds = np.append(np.flatnonzero(np.r_[True, si[1:] != si[:-1]]), len(si))
     prop_columns, prop_allowed = property_masks(data_path, properties)
     max_dist = distance + phrase_words(q, db.locals.query_patterns) if distance is not None else -1
-    bag, bag_ptr, left, left_ptr, right, right_ptr, hashes = _sentence_words(
-        unit_bounds,
-        si,
-        positions.min(axis=1).astype(np.uint32),
-        positions.max(axis=1).astype(np.uint32),
-        sent_offsets,
-        count_ids,
-        excluded,
-        filtered,
-        prop_columns,
-        prop_allowed,
-        np.int32(max_dist),
-        n_vocab,
-    )
     n_units = len(unit_bounds) - 1
+    # The sentences in two parts of about as many words, each's words into its own stretch of the arrays
+    first_si = si[unit_bounds[:-1]]
+    words_at = np.zeros(n_units + 1, dtype=np.int64)
+    np.cumsum(sent_offsets[first_si + 1].astype(np.int64) - sent_offsets[first_si], out=words_at[1:])
+    half = int(np.searchsorted(words_at, words_at[-1] / 2))
+    parts = [(lo, hi) for lo, hi in ((0, half), (half, n_units)) if hi > lo]
+    bag = np.empty(words_at[-1], dtype=np.int64)
+    left = np.empty(len(si), dtype=np.int64)
+    right = np.empty(len(si), dtype=np.int64)
+    hit_start = positions.min(axis=1).astype(np.uint32)
+    hit_end = positions.max(axis=1).astype(np.uint32)
+
+    def words_of(part):
+        lo, hi = part
+        return _sentence_words(
+            unit_bounds[lo : hi + 1],
+            si,
+            hit_start,
+            hit_end,
+            sent_offsets,
+            count_ids,
+            excluded,
+            filtered,
+            prop_columns,
+            prop_allowed,
+            np.int32(max_dist),
+            n_vocab,
+            bag,
+            left,
+            right,
+            words_at[lo],
+            unit_bounds[lo],
+        )
+
+    made = _at_once(submit, words_of, parts)
+    bounds = [np.concatenate([ptr[:-1] for ptr in got]) for got in zip(*(m[:3] for m in made))]
+    ends = [np.concatenate([ptr[1:] for ptr in got]) for got in zip(*(m[:3] for m in made))]
+    hashes = np.concatenate([m[3] for m in made])
     first = hit_index[unit_bounds[:-1]]  # the first hit of each sentence, in the hitlist
     # Identical sentences count once (repeated titles, running heads, reprints): they are one use, not many
-    keep = np.sort(np.unique(hashes, return_index=True)[1])
-    channels = [_channel(flat, ptr, keep) for flat, ptr in ((bag, bag_ptr), (left, left_ptr), (right, right_ptr))]
+    keep = _first_of_each(hashes)
+    channels = [_channel(flat, a, b, keep, n_vocab, submit) for flat, a, b in zip((bag, left, right), bounds, ends)]
     first = first[keep]
     # The words just before and after each hit as the text has them: their forms, and where the hit is in its text
     forms = np.load(os.path.join(colloc_dir, "token_ids.npy"), mmap_mode="r") if count_lemmas else count_ids
