@@ -82,7 +82,7 @@ _MAX_WORDS = 40  # words sent for each sense and group of words (the response wo
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses27\0"  # bump when the result changes
+_CACHE_TAG = b"senses28\0"  # bump when the result changes
 
 
 class Dist:
@@ -319,13 +319,18 @@ def fit_sparse(c, parent, own=None):
     the counts of the group are, the discount of all its words shared among them as the parent's rates are (absolute
     discounting, interpolated): a word that marks the other sense of a split, and is (nearly) absent from this one,
     keeps a small rate, not its parent's."""
+    return _fit_sparse(c, parent, own)[0]
+
+
+def _fit_sparse(c, parent, own=None):
+    """fit_sparse, and the scale of the parent's rates it gives the words that are not its own (1 for the parent)."""
     total = float(c.sum())
     if total <= 0:
-        return parent
+        return parent, 1.0
     if own is None:
         own = marked(c, parent)
     if len(own) == 0:
-        return parent
+        return parent, 1.0
     kept = np.maximum(c[own] - parent.discount, 0.0) / total
     freed = float(np.minimum(c, parent.discount).sum()) / total  # the discount of every word the sense has
     p_own = kept + freed * parent.p[own]
@@ -333,7 +338,7 @@ def fit_sparse(c, parent, own=None):
     scale = (1.0 - float(p_own.sum())) / others if others > 0 else 0.0
     p = parent.p * scale
     p[own] = p_own
-    return Dist(p, parent.rest * scale, parent.markers, parent.weights, parent.discount)
+    return Dist(p, parent.rest * scale, parent.markers, parent.weights, parent.discount), scale
 
 
 def _split_words(c, parent, every_marker):
@@ -346,27 +351,43 @@ def _split_words(c, parent, every_marker):
 
 
 # The EM of a split, compiled: the words of all groups in one vocabulary (each group's words after the last group's),
-# the sentences' matrices in CSR. It computes what fit_sparse, _split_words and _mixture_loglik do, in the same order
-# (numpy's pairwise sums included), so that the results are the same to the last bit; logarithms and exponentials are
-# left to numpy, whose own implementations differ from the C library's in the last bit. Its iterations only follow the
-# words the sentences have: those of a sense's sentences are a fraction of the query's.
+# the sentences' matrices in CSR. It computes what fit_sparse and _split_words do, in the same order (numpy's pairwise
+# sums included), so that the senses' rates are the same to the last bit for the same counts; logarithms and
+# exponentials are left to numpy, whose own implementations differ from the C library's in the last bit. Its
+# iterations only follow the words the sentences have: those of a sense's sentences are a fraction of the query's. A
+# word that marks no sense has its parent's rate, scaled, under both senses of every split (fit_sparse): what such
+# words tell of a sentence is then the sum of their parent's log-rates, the same at every step, and their weighted
+# count times the log of the scale. So each step reads only the entries of the markers, from slices of their own, the
+# others once a fit: the sentences' log-probabilities are _mixture_loglik's, added up in another order (to rounding).
 
 
 class _Mats(list):
     """The matrices of the groups of words of the same sentences, packed once for the compiled EM: the words the
     sentences have, in one vocabulary (cols, their index in the vocabulary of all words; pos, among their group's
     words; each group's from cmp_off), indices into it, and whether each group's counts are all ones (whose counts are
-    then not read: one times a number is that number)."""
+    then not read: one times a number is that number). The sentences may be in blocks (blocks, the block of each: the
+    folds a split is tested on), packed a block after the other (perm, the sentences in that order, inv its inverse;
+    bounds, each block's first and n), so that a fit leaves a block out by not reading its entries, and the fits of
+    every fold share one packing. parent, the sense split, whose markers are packed apart (marking)."""
 
-    def __init__(self, Xs):
+    def __init__(self, Xs, blocks=None, parent=None):
         super().__init__(csr_matrix(X) for X in Xs)
         n = self[0].shape[0]
+        self.blocks = None if blocks is None else np.asarray(blocks)
+        if blocks is None:
+            self.perm = self.inv = None
+            self.bounds = np.array([0, n], dtype=np.int64)
+        else:
+            self.perm = np.argsort(self.blocks, kind="stable")
+            self.inv = np.argsort(self.perm)
+            self.bounds = np.concatenate([[0], np.cumsum(np.bincount(self.blocks))]).astype(np.int64)
+        packed = self._packed()
         n_groups = len(self)
         voc_off = np.zeros(n_groups + 1, dtype=np.int64)
         cmp_off = np.zeros(n_groups + 1, dtype=np.int64)
         nnz_off = np.zeros(n_groups + 1, dtype=np.int64)
         had = []
-        for c, X in enumerate(self):
+        for c, X in enumerate(packed):
             had.append(np.flatnonzero(np.bincount(X.indices[: X.nnz], minlength=X.shape[1])))
             voc_off[c + 1] = voc_off[c] + X.shape[1]
             cmp_off[c + 1] = cmp_off[c] + len(had[c])
@@ -375,7 +396,7 @@ class _Mats(list):
         indices = np.empty(nnz_off[-1], dtype=np.int32)
         data = np.empty(nnz_off[-1], dtype=np.float64)
         ones = np.empty(n_groups, dtype=np.bool_)
-        for c, X in enumerate(self):
+        for c, X in enumerate(packed):
             to_cmp = np.zeros(X.shape[1], dtype=np.int32)
             to_cmp[had[c]] = np.arange(cmp_off[c], cmp_off[c + 1], dtype=np.int32)
             indptr[c] = X.indptr + nnz_off[c]
@@ -386,15 +407,48 @@ class _Mats(list):
         pos = np.concatenate(had).astype(np.int64)
         cols = pos + np.repeat(voc_off[:-1], np.diff(cmp_off))
         self.ones = ones
-        self.rows = _row_slices(indptr, indices, data, ones, len(cols))
-        self.columns = _column_slices(indptr, indices, data, ones, cmp_off)
+        self.rows = _row_slices(indptr, indices, data, ones, len(cols), self.bounds)
+        self.columns = _column_slices(indptr, indices, data, ones, cmp_off, self.bounds)
         self.words = (pos, cols, cmp_off, voc_off)
         self._marking = []
+        self._unmarked_loglik = []
+        if parent is not None:
+            self.marking(parent, packed)
 
-    def marking(self, parent):
+    def _packed(self):
+        return list(self) if self.perm is None else [X[self.perm] for X in self]
+
+    def ranges(self, left_out=None):
+        """The slices of the sentences' entries of every block but left_out (k x 2, from and to, as _em_loglik takes
+        them), and those blocks."""
+        first = self.rows[4]
+        n_blocks = len(self.bounds) - 1
+        if left_out is None:
+            ranges = [(0, first[-1])]
+        else:
+            ranges = [r for r in ((0, first[left_out]), (first[left_out + 1], first[-1])) if r[1] > r[0]]
+        blocks = np.array([b for b in range(n_blocks) if b != left_out], dtype=np.int64)
+        return np.array(ranges, dtype=np.int64).reshape(-1, 2), blocks
+
+    def block_loglik(self, dists, block):
+        """The (weighted) log-probability of each sentence of a block under one sense: sum(X @ _evidence(d)) over the
+        groups, to rounding, compiled."""
+        pos, cols, cmp_off, voc_off = self.words
+        evidence = np.zeros((len(cols) + 1, 2))
+        evidence[: len(cols)] = np.concatenate([_evidence(d) for d in dists])[cols, None]
+        order, start, idx, sdata, first = self.rows
+        ranges = np.array([[first[block], first[block + 1]]], dtype=np.int64)
+        ll = _em_loglik(
+            order, start, idx, sdata, self.ones, evidence.reshape(-1), np.zeros(2), self[0].shape[0], ranges
+        )
+        return ll[self.bounds[block] : self.bounds[block + 1], 0].copy()
+
+    def marking(self, parent, packed=None):
         """The markers of the groups of words (all of them; their indices; each group's first; their places among the
-        words the sentences have, -1 for none) and the weights of the words the sentences have (and the padding's): the
-        same for every sense of a tree, its root's, so made once."""
+        words the sentences have, -1 for none), and those the sentences have: their places among the words they have,
+        the place of each of those among them (-1 for none), each group's first, their weights (and the padding's),
+        the slices of their entries, and each sentence's weighted count of its other words in each group (groups x n).
+        The same for every sense of a tree, its root's, so made once."""
         key = [(d.markers, d.weights) for d in parent]
         for known, made in self._marking:
             if all(a[0] is b[0] and a[1] is b[1] for a, b in zip(known, key)):
@@ -405,9 +459,57 @@ class _Mats(list):
         mk = np.flatnonzero(markers)
         had = np.full(int(voc_off[-1]), -1, dtype=np.int64)
         had[cols] = np.arange(len(cols))
-        weights_had = np.repeat(np.append(weights[cols], 1.0), 2).reshape(-1, 2)  # both senses', for numpy's fast loop
-        made = (markers, mk, np.searchsorted(mk, voc_off), had[mk], weights_had)
+        mk_cmp = had[mk]
+        # The markers the sentences have (their places among the words they have), and their entries apart
+        mk_had = mk_cmp[mk_cmp >= 0]
+        mkh_off = np.searchsorted(mk_had, cmp_off)
+        w_had = weights[cols]
+        n = self[0].shape[0]
+        m_indptr = np.empty((len(self), n + 1), dtype=np.int64)
+        parts, unmarked = [], np.empty((len(self), n))
+        total = 0
+        for c, X in enumerate(self._packed() if packed is None else packed):
+            to_mk = np.full(X.shape[1], -1, dtype=np.int64)
+            to_mk[pos[mk_had[mkh_off[c] : mkh_off[c + 1]]]] = np.arange(mkh_off[c], mkh_off[c + 1])
+            w = np.zeros(X.shape[1])
+            w[pos[cmp_off[c] : cmp_off[c + 1]]] = w_had[cmp_off[c] : cmp_off[c + 1]]
+            ptr, idx, data, unmarked[c] = _marker_entries(X.indptr, X.indices, X.data, bool(self.ones[c]), to_mk, w)
+            m_indptr[c] = ptr + total
+            total += len(idx)
+            parts.append((idx, data))
+        m_indices = np.concatenate([idx for idx, _ in parts]) if parts else np.empty(0, np.int32)
+        m_data = np.concatenate([data for _, data in parts]) if parts else np.empty(0)
+        rows = _row_slices(m_indptr, m_indices, m_data, self.ones, len(mk_had), self.bounds)
+        weights_mk = np.repeat(np.append(w_had[mk_had], 1.0), 2).reshape(-1, 2)  # both senses', for numpy's fast loop
+        mk_pos = np.full(len(cols), -1, dtype=np.int64)
+        mk_pos[mk_had] = np.arange(len(mk_had))
+        made = (
+            markers,
+            mk,
+            np.searchsorted(mk, voc_off),
+            mk_cmp,
+            (mk_had, mk_pos, mkh_off, weights_mk, rows, unmarked),
+        )
         self._marking.append((key, made))
+        return made
+
+    def unmarked_loglik(self, parent):
+        """What the words that mark no sense tell of each sentence under the parent: the sum of their weighted
+        log-rates, over the groups (n, in the order of perm), as the sentences' matrices of those words times the
+        log-rates add them up. The same for every fit from the same parent, so made once for each."""
+        for known, made in self._unmarked_loglik:
+            if known is parent:
+                return made
+        pos, cols, cmp_off, voc_off = self.words
+        mk_had, mk_pos = self.marking(parent)[4][:2]
+        evidence = np.zeros((len(cols) + 1, 2))
+        evidence[: len(cols)] = np.concatenate([_evidence(d) for d in parent])[cols, None]
+        evidence[mk_had] = 0.0  # the markers' read at every step
+        order, start, idx, sdata, _ = self.rows
+        n = self[0].shape[0]
+        ll = _em_loglik(order, start, idx, sdata, self.ones, evidence.reshape(-1), np.zeros(2), n, self.ranges()[0])
+        made = ll[:n, 0].copy()
+        self._unmarked_loglik.append((parent, made))
         return made
 
 
@@ -440,90 +542,151 @@ def _by_length(lengths):
 
 
 @numba.njit(cache=True, nogil=True)
-def _row_slices(indptr, indices, data, ones, pad):
-    """The entries of each group of the sentences in slices of sentences: the sentences of each slice (order, groups x
-    n, by number of entries within each _WINDOW), the start of each slice's entries (groups x slices + 1), the entries t
-    of its sentences stored together (idx, the word pad for padding, and their counts, sdata, for the groups not all
-    ones)."""
+def _row_slices(indptr, indices, data, ones, pad, bounds):
+    """The entries of each group of the sentences in slices of sentences, those of each block of sentences (from
+    bounds, the first of each and n) apart: the sentences of each slice (order, groups x _WIDTH a slice, by number of
+    entries within each _WINDOW of a block, the sentence after the last, n, in the places past a block's last), the
+    start of each slice's entries (groups x slices + 1), the entries t of its sentences stored together (idx, the word
+    pad for padding, and their counts, sdata, for the groups not all ones), and each block's first slice."""
     n_groups = indptr.shape[0]
     n = indptr.shape[1] - 1
-    n_slices = (n + _WIDTH - 1) // _WIDTH
-    order = np.empty((n_groups, n), dtype=np.uint64)
+    n_blocks = len(bounds) - 1
+    block_slices = np.zeros(n_blocks + 1, dtype=np.int64)
+    for b in range(n_blocks):
+        block_slices[b + 1] = block_slices[b] + (bounds[b + 1] - bounds[b] + _WIDTH - 1) // _WIDTH
+    n_slices = block_slices[n_blocks]
+    order = np.full((n_groups, _WIDTH * n_slices), n, dtype=np.uint64)
     start = np.empty((n_groups, n_slices + 1), dtype=np.uint64)
-    lengths = np.empty((n_groups, n), dtype=np.int64)
+    lengths = np.zeros((n_groups, n + 1), dtype=np.int64)
     total = 0
     for c in range(n_groups):
         for i in range(n):
             lengths[c, i] = indptr[c, i + 1] - indptr[c, i]
-        for w in range(0, n, _WINDOW):
-            by_length = _by_length(lengths[c, w : w + _WINDOW])
-            for q in range(len(by_length)):
-                order[c, w + q] = w + by_length[q]
+        for b in range(n_blocks):
+            lo, hi = bounds[b], bounds[b + 1]
+            first = _WIDTH * block_slices[b] - lo
+            for w in range(lo, hi, _WINDOW):
+                by_length = _by_length(lengths[c, w : min(w + _WINDOW, hi)])
+                for q in range(len(by_length)):
+                    order[c, first + w + q] = w + by_length[q]
         for sl in range(n_slices):
             start[c, sl] = total
             longest = 0
-            for q in range(sl * _WIDTH, min(n, (sl + 1) * _WIDTH)):
+            for q in range(sl * _WIDTH, (sl + 1) * _WIDTH):
                 longest = max(longest, lengths[c, order[c, q]])
             total += _WIDTH * longest
         start[c, n_slices] = total
     idx = np.full(total, pad, dtype=np.uint32)
     sdata = np.zeros(total)
     for c in range(n_groups):
-        for q in range(n):
+        for q in range(_WIDTH * n_slices):
             i = order[c, q]
             base = start[c, q // _WIDTH] + q % _WIDTH
             for t in range(lengths[c, i]):
                 idx[base + t * _WIDTH] = indices[indptr[c, i] + t]
                 if not ones[c]:
                     sdata[base + t * _WIDTH] = data[indptr[c, i] + t]
-    return order, start, idx, sdata
+    return order, start, idx, sdata, block_slices
 
 
 @numba.njit(cache=True, nogil=True)
-def _column_slices(indptr, indices, data, ones, cmp_off):
-    """The entries of the words the sentences have in slices of words, each group's apart: the words of each slice
-    (order, _WIDTH a slice, the word after the last for none), the start of each slice's entries, the sentences of
-    each word's entries, in order, stored together (idx, the sentence after the last for padding, and the entries'
-    counts, cdata, for the groups not all ones), and each group's first slice (g_off)."""
+def _column_slices(indptr, indices, data, ones, cmp_off, bounds):
+    """The entries of the words the sentences have in slices of words, each group's and each block of sentences' (from
+    bounds, as for _row_slices) apart: the words of each slice (order, _WIDTH a slice, the word after the last for
+    none; of a block, only the words it has), the start of each slice's entries, the sentences of each word's entries,
+    in order, stored together (idx, the sentence after the last for padding, and the entries' counts, cdata, for the
+    groups not all ones), and each block's and group's first slice (g_off, blocks x groups + 1)."""
     n_groups = indptr.shape[0]
     n = indptr.shape[1] - 1
     n_cols = cmp_off[n_groups]
-    lengths = np.zeros(n_cols, dtype=np.int64)
-    for c in range(n_groups):
-        for jj in range(indptr[c, 0], indptr[c, n]):
-            lengths[indices[jj]] += 1
-    g_off = np.zeros(n_groups + 1, dtype=np.int64)
-    for c in range(n_groups):
-        g_off[c + 1] = g_off[c] + (cmp_off[c + 1] - cmp_off[c] + _WIDTH - 1) // _WIDTH
-    order = np.full(_WIDTH * g_off[n_groups], n_cols, dtype=np.uint64)
-    slot = np.empty(n_cols, dtype=np.int64)  # each word's place among the slices' words
-    for c in range(n_groups):
-        by_length = _by_length(lengths[cmp_off[c] : cmp_off[c + 1]])
-        for q in range(len(by_length)):
-            j = cmp_off[c] + by_length[q]
-            order[_WIDTH * g_off[c] + q] = j
-            slot[j] = _WIDTH * g_off[c] + q
-    start = np.empty(g_off[n_groups] + 1, dtype=np.uint64)
+    n_blocks = len(bounds) - 1
+    lengths = np.zeros((n_blocks, n_cols), dtype=np.int64)
+    for b in range(n_blocks):
+        for c in range(n_groups):
+            for jj in range(indptr[c, bounds[b]], indptr[c, bounds[b + 1]]):
+                lengths[b, indices[jj]] += 1
+    g_off = np.zeros((n_blocks, n_groups + 1), dtype=np.int64)
+    sorted_words = np.empty((n_blocks, n_cols), dtype=np.int64)
+    n_slices = 0
+    for b in range(n_blocks):
+        g_off[b, 0] = n_slices
+        for c in range(n_groups):
+            by_length = _by_length(lengths[b, cmp_off[c] : cmp_off[c + 1]])
+            had = 0
+            for q in range(len(by_length)):
+                sorted_words[b, cmp_off[c] + q] = cmp_off[c] + by_length[q]
+                if lengths[b, cmp_off[c] + by_length[q]] > 0:
+                    had += 1
+            n_slices += (had + _WIDTH - 1) // _WIDTH
+            g_off[b, c + 1] = n_slices
+    order = np.full(_WIDTH * n_slices, n_cols, dtype=np.uint64)
+    slot = np.full((n_blocks, n_cols), -1, dtype=np.int64)  # each word's place among a block's slices' words
+    for b in range(n_blocks):
+        for c in range(n_groups):
+            for q in range(_WIDTH * (g_off[b, c + 1] - g_off[b, c])):
+                if q < cmp_off[c + 1] - cmp_off[c]:
+                    j = sorted_words[b, cmp_off[c] + q]
+                    if lengths[b, j] > 0:
+                        order[_WIDTH * g_off[b, c] + q] = j
+                        slot[b, j] = _WIDTH * g_off[b, c] + q
+    start = np.empty(n_slices + 1, dtype=np.uint64)
     total = 0
-    for sl in range(g_off[n_groups]):
+    b = 0
+    for sl in range(n_slices):
+        while sl >= g_off[b, n_groups]:
+            b += 1
         start[sl] = total
         first = order[_WIDTH * sl]
-        total += _WIDTH * (lengths[first] if first < n_cols else 0)
-    start[g_off[n_groups]] = total
+        total += _WIDTH * (lengths[b, first] if first < n_cols else 0)
+    start[n_slices] = total
     idx = np.full(total, n, dtype=np.uint32)
     cdata = np.zeros(total)
-    at = np.empty(n_cols, dtype=np.int64)  # where each word's next entry goes
-    for j in range(n_cols):
-        at[j] = start[slot[j] // _WIDTH] + slot[j] % _WIDTH
-    for c in range(n_groups):
-        for i in range(n):
-            for jj in range(indptr[c, i], indptr[c, i + 1]):
-                j = indices[jj]
-                idx[at[j]] = i
-                if not ones[c]:
-                    cdata[at[j]] = data[jj]
-                at[j] += _WIDTH
+    at = np.empty(n_cols, dtype=np.int64)  # where each word's next entry goes, in the block
+    for b in range(n_blocks):
+        for j in range(n_cols):
+            if slot[b, j] >= 0:
+                at[j] = start[slot[b, j] // _WIDTH] + slot[b, j] % _WIDTH
+        for c in range(n_groups):
+            for i in range(bounds[b], bounds[b + 1]):
+                for jj in range(indptr[c, i], indptr[c, i + 1]):
+                    j = indices[jj]
+                    idx[at[j]] = i
+                    if not ones[c]:
+                        cdata[at[j]] = data[jj]
+                    at[j] += _WIDTH
     return order, start, idx, cdata, g_off
+
+
+@numba.njit(cache=True, nogil=True)
+def _marker_entries(indptr, indices, data, ones, to_mk, w):
+    """A group's entries of the markers (indptr, their index among the markers to_mk gives, -1 for the other words,
+    and their counts), and each sentence's weighted count of its other words, as the matrix of those words times
+    their weights w adds it up (in the order of its entries, from 0)."""
+    n = len(indptr) - 1
+    m_indptr = np.zeros(n + 1, dtype=np.int64)
+    unmarked = np.zeros(n)
+    m = 0
+    for i in range(n):
+        s = 0.0
+        for jj in range(indptr[i], indptr[i + 1]):
+            j = indices[jj]
+            if to_mk[j] >= 0:
+                m += 1
+            else:
+                s += (1.0 if ones else data[jj]) * w[j]
+        unmarked[i] = s
+        m_indptr[i + 1] = m
+    m_indices = np.empty(m, dtype=np.int32)
+    m_data = np.empty(m)
+    m = 0
+    for i in range(n):
+        for jj in range(indptr[i], indptr[i + 1]):
+            j = indices[jj]
+            if to_mk[j] >= 0:
+                m_indices[m] = to_mk[j]
+                m_data[m] = data[jj]
+                m += 1
+    return m_indptr, m_indices, m_data, unmarked
 
 
 @numba.njit(cache=True, nogil=True)
@@ -696,68 +859,76 @@ def _sums_at(counts, d, pos, n, out):
 
 
 @numba.njit(cache=True, nogil=True)
-def _em_counts(order, start, idx, cdata, g_off, ones, r, n_cols):
-    """Each word's (soft) count in either sense (X.T @ r for each group), for the n_cols words the sentences have (and
-    one more, for the slices' empty places), from the slices of the words' entries: each word's sentences in order,
-    from 0. r: n + 1 x 2, flat (the padding's last, 0). Returns n_cols + 1 x 2."""
+def _em_counts(order, start, idx, cdata, g_off, ones, r, n_cols, blocks):
+    """Each word's (soft) count in either sense (X.T @ r for each group) in the sentences of the blocks given, for the
+    n_cols words the sentences have (and one more, for the slices' empty places), from the slices of the words'
+    entries: in each block, each word's sentences in order, from 0, and the blocks' sums in order. r: n + 1 x 2, flat
+    (the padding's last, 0). Returns n_cols + 1 x 2."""
     counts = np.zeros(2 * (n_cols + 1))
-    one, two, three, four = np.uint64(1), np.uint64(2), np.uint64(3), np.uint64(4)
-    for c in range(len(ones)):
-        for sl in range(g_off[c], g_off[c + 1]):
-            a0 = 0.0
-            b0 = 0.0
-            a1 = 0.0
-            b1 = 0.0
-            a2 = 0.0
-            b2 = 0.0
-            a3 = 0.0
-            b3 = 0.0
-            e = start[sl]
-            end = start[sl + 1]
-            if ones[c]:
-                while e < end:
-                    i = np.uint64(idx[e]) * two
-                    a0 += r[i]
-                    b0 += r[i + one]
-                    i = np.uint64(idx[e + one]) * two
-                    a1 += r[i]
-                    b1 += r[i + one]
-                    i = np.uint64(idx[e + two]) * two
-                    a2 += r[i]
-                    b2 += r[i + one]
-                    i = np.uint64(idx[e + three]) * two
-                    a3 += r[i]
-                    b3 += r[i + one]
-                    e += four
-            else:
-                while e < end:
-                    i = np.uint64(idx[e]) * two
-                    a0 += cdata[e] * r[i]
-                    b0 += cdata[e] * r[i + one]
-                    i = np.uint64(idx[e + one]) * two
-                    a1 += cdata[e + one] * r[i]
-                    b1 += cdata[e + one] * r[i + one]
-                    i = np.uint64(idx[e + two]) * two
-                    a2 += cdata[e + two] * r[i]
-                    b2 += cdata[e + two] * r[i + one]
-                    i = np.uint64(idx[e + three]) * two
-                    a3 += cdata[e + three] * r[i]
-                    b3 += cdata[e + three] * r[i + one]
-                    e += four
-            q = _WIDTH * sl
-            j = order[q] * two
-            counts[j] = a0
-            counts[j + one] = b0
-            j = order[q + 1] * two
-            counts[j] = a1
-            counts[j + one] = b1
-            j = order[q + 2] * two
-            counts[j] = a2
-            counts[j + one] = b2
-            j = order[q + 3] * two
-            counts[j] = a3
-            counts[j + one] = b3
+    for b in blocks:
+        for c in range(len(ones)):
+            _em_counts_of(order, start, idx, cdata, ones[c], r, g_off[b, c], g_off[b, c + 1], counts)
     return counts.reshape(n_cols + 1, 2)
+
+
+@numba.njit(cache=True, nogil=True)
+def _em_counts_of(order, start, idx, cdata, ones, r, first, last, counts):
+    """_em_counts of the slices from first to last (of a group), added to counts."""
+    one, two, three, four = np.uint64(1), np.uint64(2), np.uint64(3), np.uint64(4)
+    for sl in range(first, last):
+        a0 = 0.0
+        b0 = 0.0
+        a1 = 0.0
+        b1 = 0.0
+        a2 = 0.0
+        b2 = 0.0
+        a3 = 0.0
+        b3 = 0.0
+        e = start[sl]
+        end = start[sl + 1]
+        if ones:
+            while e < end:
+                i = np.uint64(idx[e]) * two
+                a0 += r[i]
+                b0 += r[i + one]
+                i = np.uint64(idx[e + one]) * two
+                a1 += r[i]
+                b1 += r[i + one]
+                i = np.uint64(idx[e + two]) * two
+                a2 += r[i]
+                b2 += r[i + one]
+                i = np.uint64(idx[e + three]) * two
+                a3 += r[i]
+                b3 += r[i + one]
+                e += four
+        else:
+            while e < end:
+                i = np.uint64(idx[e]) * two
+                a0 += cdata[e] * r[i]
+                b0 += cdata[e] * r[i + one]
+                i = np.uint64(idx[e + one]) * two
+                a1 += cdata[e + one] * r[i]
+                b1 += cdata[e + one] * r[i + one]
+                i = np.uint64(idx[e + two]) * two
+                a2 += cdata[e + two] * r[i]
+                b2 += cdata[e + two] * r[i + one]
+                i = np.uint64(idx[e + three]) * two
+                a3 += cdata[e + three] * r[i]
+                b3 += cdata[e + three] * r[i + one]
+                e += four
+        q = _WIDTH * sl
+        j = order[q] * two
+        counts[j] += a0
+        counts[j + one] += b0
+        j = order[q + 1] * two
+        counts[j] += a1
+        counts[j + one] += b1
+        j = order[q + 2] * two
+        counts[j] += a2
+        counts[j + one] += b2
+        j = order[q + 3] * two
+        counts[j] += a3
+        counts[j + one] += b3
 
 
 @numba.njit(cache=True, nogil=True)
@@ -841,17 +1012,23 @@ def _em_fit(counts, totals, thresholds, parent_p, parent_rest, markers, discount
 
 
 @numba.njit(cache=True, nogil=True)
-def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off, mk, mk_cmp, mk_off, discount, every):
-    """_em_fit for the words the sentences have, from their counts (counts), the groups' totals and sums of the counts'
-    least with the discount over all their words (least), and their parent's probabilities (parent_had): their
-    probabilities (words x 2, and 1 for the padding of the slices), whether any word tells the senses apart, and
-    which of the markers have rates of their own (chosen). mk
-    are the markers of each group (from mk_off), mk_cmp their place among the words the sentences have (-1 for none:
-    such a word may still mark a sense, as rarer in both than in the parent)."""
-    n_groups = len(cmp_off) - 1
-    n_had = len(parent_had)
-    p = np.empty((n_had + 1, 2))
-    p[n_had] = 1.0  # the padding of the slices of the sentences' entries: its evidence is 0
+def _em_fit_marked(
+    counts, totals, least, thresholds, parent_p, parent_had, mk, mk_cmp, mk_off, discount, every, marked
+):
+    """_em_fit for the markers the sentences have, from the counts of the words they have (counts), the groups' totals
+    and sums of the counts' least with the discount over all their words (least), and their parent's probabilities
+    (parent_had): the markers' probabilities (markers x 2, and 1 for the padding of the slices), the scale of either
+    sense's rates for the words not its own (groups x 2), whether any word tells the senses apart, and which of the
+    markers have rates of their own (chosen). mk are the markers of each group (from mk_off), mk_cmp their place among
+    the words the sentences have (-1 for none: such a word may still mark a sense, as rarer in both than in the
+    parent); marked, those the sentences have (Mats.marking), whose probabilities are made (the markers of the root,
+    when those chosen are held)."""
+    mk_had, mk_pos, mkh_off = marked
+    n_groups = len(mkh_off) - 1
+    n_mk = len(mk_had)
+    p = np.empty((n_mk + 1, 2))
+    p[n_mk] = 1.0  # the padding of the slices of the markers' entries: its evidence is 0
+    scales = np.ones((n_groups, 2))
     any_own = False
     chosen = np.zeros(len(mk), dtype=np.bool_)
     own = np.empty(len(mk), dtype=np.int64)
@@ -888,13 +1065,13 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
                 own_cmp[n_own] = q
                 n_own += 1
         any_own = any_own or n_own > 0
-        a, b = cmp_off[c], cmp_off[c + 1]
+        a, b = mkh_off[c], mkh_off[c + 1]
         d = discount[c]
         for k in range(2):
             t = totals[c, k]
             if t <= 0 or n_own == 0:
-                for q in range(a, b):
-                    p[q, k] = parent_had[q]
+                for m in range(a, b):
+                    p[m, k] = parent_had[mk_had[m]]
                 continue
             freed = least[c, k] / t
             p_own = np.empty(n_own)
@@ -906,84 +1083,120 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
                 parent_own[m] = parent_p[j]
             others = 1.0 - _pairwise_sum(parent_own, 0, n_own)
             scale = (1.0 - _pairwise_sum(p_own, 0, n_own)) / others if others > 0 else 0.0
-            for q in range(a, b):
-                p[q, k] = parent_had[q] * scale
+            scales[c, k] = scale
+            for m in range(a, b):
+                p[m, k] = parent_had[mk_had[m]] * scale
             for m in range(n_own):
                 if own_cmp[m] >= 0:
-                    p[own_cmp[m], k] = p_own[m]
-    return p, any_own, chosen
+                    p[mk_pos[own_cmp[m]], k] = p_own[m]
+    return p, scales, any_own, chosen
 
 
 @numba.njit(cache=True, nogil=True)
-def _em_loglik(order, start, idx, sdata, ones, evidence, log_pi):
-    """Each sentence's (weighted) log-probability under either sense of a split, with its share: n x 2, from the slices
-    of the sentences' entries. evidence: words x 2, flat, the padding's last (0). Each sentence's sum of each group
-    still adds its entries in order, from 0, and the groups' sums in order: _WIDTH sentences' at once."""
-    n_groups, n = order.shape
-    ll = np.empty(2 * n)
-    for i in range(n):
+def _em_loglik(order, start, idx, sdata, ones, evidence, log_pi, n, ranges):
+    """Each of the n sentences' (weighted) log-probability under either sense of a split, with its share: n + 1 x 2
+    (the last, the padding's, to be ignored), from the slices of the sentences' entries in the ranges given (those of
+    the other sentences only their share). evidence: words x 2, flat, the padding's last (0). Each sentence's sum of
+    each group still adds its entries in order, from 0, and the groups' sums in order: _WIDTH sentences' at once."""
+    ll = np.empty(2 * (n + 1))
+    for i in range(n + 1):
         ll[2 * i] = log_pi[0]
         ll[2 * i + 1] = log_pi[1]
+    _em_loglik_add(order, start, idx, sdata, ones, evidence, ll, ranges)
+    return ll.reshape(n + 1, 2)
+
+
+@numba.njit(cache=True, nogil=True)
+def _em_marked_loglik(order, start, idx, sdata, ones, evidence, log_pi, unmarked_ll, unmarked, log_scale, ranges):
+    """_em_loglik from the markers' entries alone (order ... evidence: their slices and evidence), the other words'
+    from what they tell under the parent (unmarked_ll, n) and their weighted counts (unmarked, groups x n) times the log
+    of the scale of either sense's rates (log_scale, groups x 2): for each sentence, the share and the other words'
+    log-probability, each group's count times its log-scale, then each group's sum of the markers' entries, as the
+    senses' matrices of those words make them (the markers' of the slices in the ranges given): n + 1 x 2, as
+    _em_loglik."""
+    n_groups, n = unmarked.shape
+    ll = np.zeros(2 * (n + 1))
+    for i in range(n):
+        ll[2 * i] = log_pi[0] + unmarked_ll[i]
+        ll[2 * i + 1] = log_pi[1] + unmarked_ll[i]
+    for c in range(n_groups):
+        l0 = log_scale[c, 0]
+        l1 = log_scale[c, 1]
+        if np.isfinite(l0) and np.isfinite(l1):
+            for i in range(n):
+                ll[2 * i] += unmarked[c, i] * l0
+                ll[2 * i + 1] += unmarked[c, i] * l1
+        else:  # a scale of 0: nothing for a sentence without such words, not 0 times its log
+            for i in range(n):
+                if unmarked[c, i] != 0.0:
+                    ll[2 * i] += unmarked[c, i] * l0
+                    ll[2 * i + 1] += unmarked[c, i] * l1
+    _em_loglik_add(order, start, idx, sdata, ones, evidence, ll, ranges)
+    return ll.reshape(n + 1, 2)
+
+
+@numba.njit(cache=True, nogil=True)
+def _em_loglik_add(order, start, idx, sdata, ones, evidence, ll, ranges):
+    """Each group's sum of the evidence of each sentence's entries, added to ll (n + 1 x 2, flat), for the slices in
+    the ranges given (k x 2, from and to)."""
+    n_groups = order.shape[0]
     one, two, three, four = np.uint64(1), np.uint64(2), np.uint64(3), np.uint64(4)
     for c in range(n_groups):
-        for sl in range(start.shape[1] - 1):
-            a0 = 0.0
-            b0 = 0.0
-            a1 = 0.0
-            b1 = 0.0
-            a2 = 0.0
-            b2 = 0.0
-            a3 = 0.0
-            b3 = 0.0
-            e = start[c, sl]
-            end = start[c, sl + 1]
-            if ones[c]:
-                while e < end:
-                    j = np.uint64(idx[e]) * two
-                    a0 += evidence[j]
-                    b0 += evidence[j + one]
-                    j = np.uint64(idx[e + one]) * two
-                    a1 += evidence[j]
-                    b1 += evidence[j + one]
-                    j = np.uint64(idx[e + two]) * two
-                    a2 += evidence[j]
-                    b2 += evidence[j + one]
-                    j = np.uint64(idx[e + three]) * two
-                    a3 += evidence[j]
-                    b3 += evidence[j + one]
-                    e += four
-            else:
-                while e < end:
-                    j = np.uint64(idx[e]) * two
-                    a0 += sdata[e] * evidence[j]
-                    b0 += sdata[e] * evidence[j + one]
-                    j = np.uint64(idx[e + one]) * two
-                    a1 += sdata[e + one] * evidence[j]
-                    b1 += sdata[e + one] * evidence[j + one]
-                    j = np.uint64(idx[e + two]) * two
-                    a2 += sdata[e + two] * evidence[j]
-                    b2 += sdata[e + two] * evidence[j + one]
-                    j = np.uint64(idx[e + three]) * two
-                    a3 += sdata[e + three] * evidence[j]
-                    b3 += sdata[e + three] * evidence[j + one]
-                    e += four
-            q = sl * _WIDTH
-            i = order[c, q] * two
-            ll[i] += a0
-            ll[i + one] += b0
-            if q + 1 < n:
+        for g in range(ranges.shape[0]):
+            for sl in range(ranges[g, 0], ranges[g, 1]):
+                a0 = 0.0
+                b0 = 0.0
+                a1 = 0.0
+                b1 = 0.0
+                a2 = 0.0
+                b2 = 0.0
+                a3 = 0.0
+                b3 = 0.0
+                e = start[c, sl]
+                end = start[c, sl + 1]
+                if ones[c]:
+                    while e < end:
+                        j = np.uint64(idx[e]) * two
+                        a0 += evidence[j]
+                        b0 += evidence[j + one]
+                        j = np.uint64(idx[e + one]) * two
+                        a1 += evidence[j]
+                        b1 += evidence[j + one]
+                        j = np.uint64(idx[e + two]) * two
+                        a2 += evidence[j]
+                        b2 += evidence[j + one]
+                        j = np.uint64(idx[e + three]) * two
+                        a3 += evidence[j]
+                        b3 += evidence[j + one]
+                        e += four
+                else:
+                    while e < end:
+                        j = np.uint64(idx[e]) * two
+                        a0 += sdata[e] * evidence[j]
+                        b0 += sdata[e] * evidence[j + one]
+                        j = np.uint64(idx[e + one]) * two
+                        a1 += sdata[e + one] * evidence[j]
+                        b1 += sdata[e + one] * evidence[j + one]
+                        j = np.uint64(idx[e + two]) * two
+                        a2 += sdata[e + two] * evidence[j]
+                        b2 += sdata[e + two] * evidence[j + one]
+                        j = np.uint64(idx[e + three]) * two
+                        a3 += sdata[e + three] * evidence[j]
+                        b3 += sdata[e + three] * evidence[j + one]
+                        e += four
+                q = sl * _WIDTH
+                i = order[c, q] * two
+                ll[i] += a0
+                ll[i + one] += b0
                 i = order[c, q + 1] * two
                 ll[i] += a1
                 ll[i + one] += b1
-            if q + 2 < n:
                 i = order[c, q + 2] * two
                 ll[i] += a2
                 ll[i + one] += b2
-            if q + 3 < n:
                 i = order[c, q + 3] * two
                 ll[i] += a3
                 ll[i + one] += b3
-    return ll.reshape(n, 2)
 
 
 @numba.njit(cache=True, nogil=True)
@@ -1028,40 +1241,48 @@ def _column_sums(r):
     return out
 
 
-def _em(Xs, parent, r, every_marker, switch=True):
+def _em(Xs, parent, r, every_marker, switch=True, left_out=None):
     """The EM of a split (see fit_split). The words chosen at every step (every_marker false), once the set chosen comes
     back to one chosen before, after another, are held from then on (switch): the choice cycles, and the fit would not
-    settle."""
+    settle. left_out, a block of the sentences (Xs a _Mats with blocks: a fold), fits the split without its sentences
+    (their entries not read, their probabilities of either sense zero), whose log-probabilities under the fit are then
+    returned too (n_block x 2, in their order)."""
     if not isinstance(Xs, _Mats):
-        Xs = _Mats(Xs)
+        Xs = _Mats(Xs, parent=parent)
     ones = Xs.ones
-    order, start, idx, sdata = Xs.rows
     c_order, c_start, c_idx, cdata, g_off = Xs.columns
     pos, cols, cmp_off, voc_off = Xs.words
     n = Xs[0].shape[0]
+    ranges, blocks = Xs.ranges(left_out)
+    lo, hi = (n, n) if left_out is None else (Xs.bounds[left_out], Xs.bounds[left_out + 1])
+    n_fit = n - (hi - lo)
     n_words = int(voc_off[-1])
     parent_p = np.concatenate([d.p for d in parent]).astype(np.float64)
     parent_rest = np.array([d.rest for d in parent], dtype=np.float64)
     discount = np.array([d.discount for d in parent], dtype=np.float64)
-    markers, mk, mk_off, mk_cmp, weights_had = Xs.marking(parent)
+    markers, mk, mk_off, mk_cmp, (mk_had, mk_pos, mkh_off, weights_mk, m_rows, unmarked) = Xs.marking(parent)
+    m_order, m_start, m_idx, m_sdata, _ = m_rows
+    marked = (mk_had, mk_pos, mkh_off)
+    unmarked_ll = Xs.unmarked_loglik(parent)
     parent_had = parent_p[cols]
-    weight = _weights(r)
-    padded = np.zeros((n + 1, 2))  # r, and the padding's (0)
-    padded[:n] = r
+    padded = np.zeros((n + 1, 2))  # r (in the order of the packing), and the padding's (0)
+    padded[:n] = r if Xs.perm is None else r[Xs.perm]
+    padded[lo:hi] = 0.0  # the sentences left out, in no sense: they add nothing to any count
     r = padded[:n]
-    lse, hi, log2 = np.empty(n), np.empty(n), 0.0 + math.log(2.0)
+    weight = _weights(r)
+    lse, top, log2 = np.empty(n), np.empty(n), 0.0 + math.log(2.0)
     previous = None
     seen, last = set(), None  # the sets of words chosen
     for _ in range(_MAX_ITER):
         if weight.min() < 1.0:
             return None
-        pi = weight / n
-        counts = _em_counts(c_order, c_start, c_idx, cdata, g_off, ones, padded.reshape(-1), len(cols))
+        pi = weight / n_fit
+        counts = _em_counts(c_order, c_start, c_idx, cdata, g_off, ones, padded.reshape(-1), len(cols), blocks)
         totals, least = _em_sums(counts, pos, cmp_off, voc_off, discount)
         with np.errstate(divide="ignore"):
             thresholds = np.log(totals)
-        p, any_own, chosen = _em_fit_had(
-            counts, totals, least, thresholds, parent_p, parent_had, cmp_off, mk, mk_cmp, mk_off, discount, every_marker
+        p, scales, any_own, chosen = _em_fit_marked(
+            counts, totals, least, thresholds, parent_p, parent_had, mk, mk_cmp, mk_off, discount, every_marker, marked
         )
         if not any_own:  # no word tells the senses apart: both are the parent, no split
             return None
@@ -1076,19 +1297,37 @@ def _em(Xs, parent, r, every_marker, switch=True):
             seen.add(key)
             last = key
         evidence = np.log(p, out=p)
-        np.multiply(evidence, weights_had, out=evidence)
-        ll = _em_loglik(order, start, idx, sdata, ones, evidence.reshape(-1), np.log(pi))
+        np.multiply(evidence, weights_mk, out=evidence)
+        with np.errstate(divide="ignore"):
+            log_scales = np.log(scales)
+        ll_all = _em_marked_loglik(
+            m_order,
+            m_start,
+            m_idx,
+            m_sdata,
+            ones,
+            evidence.reshape(-1),
+            np.log(pi),
+            unmarked_ll,
+            unmarked,
+            log_scales,
+            ranges,
+        )
+        ll = ll_all[:n]
         # r = exp(ll - logsumexp(ll)): _logsumexp2's arithmetic, its passes joined
-        _lse_apart(ll, lse, hi)
+        _lse_apart(ll, lse, top)
         with np.errstate(invalid="ignore", over="ignore"):
             np.exp(lse, out=lse)
         np.log1p(lse, out=lse)
-        bad, total = _lse_join_less(ll, lse, hi, log2, r)
+        bad, total = _lse_join_less(ll, lse, top, log2, r)
         if bad:
             lse = _logsumexp2(ll)
             _less(ll, lse, r)
             total = _pairwise_sum(lse, 0, n)
         np.exp(r, out=r)
+        if left_out is not None:
+            r[lo:hi] = 0.0
+            total = _pairwise_sum(lse, 0, lo) + _pairwise_sum(lse, hi, n - hi)
         if previous is not None and abs(total - previous) <= _TOL * abs(total):
             break
         previous = total
@@ -1118,7 +1357,14 @@ def _em(Xs, parent, r, every_marker, switch=True):
         ]
         for c in range(len(parent))
     ]
-    return pi, dists, r, [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
+    counts = [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
+    out = pi, dists, r if Xs.perm is None else r[Xs.inv], counts
+    if left_out is None:
+        return out
+    # The sentences left out under the fit: their markers' entries too, with the same rates
+    held_out = np.array([[Xs.rows[4][left_out], Xs.rows[4][left_out + 1]]], dtype=np.int64)
+    _em_loglik_add(m_order, m_start, m_idx, m_sdata, ones, evidence.reshape(-1), ll_all.reshape(-1), held_out)
+    return out + (ll_all[lo:hi].copy(),)
 
 
 def fit_split(Xs, parent, r, search=False):
@@ -1350,35 +1596,34 @@ def work_folds(groups):
     return fold_of[inverse], n_folds
 
 
-def _fold_data(Xs, unsplit_fit, groups, pool_map=map):
-    """The folds a split is tested on, the same for every split of a sense: for each, its training and held-out
-    sentences (masks and matrices), the unsplit sense fitted on the training ones and the held-out sentences'
-    log-probability under it. Whole works are held out; a single work's sentences, in turn."""
-    n = Xs[0].shape[0]
-    folds, n_folds = work_folds(groups)
-    if folds is None:  # a single work: its sentences then
-        folds, n_folds = np.arange(n) % N_FOLDS, min(N_FOLDS, n)
+def _folds(groups):
+    """The fold of each sentence, for the test of a split: whole works held out (work_folds); a single work's
+    sentences, in turn."""
+    folds, _ = work_folds(groups)
+    return np.arange(len(groups)) % N_FOLDS if folds is None else folds
+
+
+def _fold_data(Xs, unsplit_fit, pool_map=map):
+    """The folds a split is tested on, the same for every split of a sense: the blocks of the sense's sentences (Xs, a
+    _Mats packed by fold, which the fits of every fold share). For each, its index, its held-out sentences (a mask),
+    Xs, the unsplit sense fitted on the other sentences and the held-out sentences' log-probability under it."""
 
     def fold(f):
-        train = folds != f
-        test = ~train
-        Xtrain = _Mats([X[train] for X in Xs])
-        Xtest = [X[test] for X in Xs]
-        unsplit = unsplit_fit([np.asarray(X.sum(axis=0)).ravel() for X in Xtrain])
-        return train, test, Xtrain, Xtest, unsplit, _loglik(Xtest, unsplit)
+        test = Xs.blocks == f
+        unsplit = unsplit_fit([np.asarray(X.T @ (~test).astype(np.float64)).ravel() for X in Xs])
+        return f, test, Xs, unsplit, Xs.block_loglik(unsplit, f)
 
-    return list(pool_map(fold, range(n_folds)))
+    return list(pool_map(fold, range(len(Xs.bounds) - 1)))
 
 
 def _fold_gain(fold, r):
     """The split started from the probabilities r, fitted on a fold's training sentences: each held-out sentence's
     gain over the unsplit sense, and the gains of those more likely in either sense; None for no evidence."""
-    train, _, Xtrain, Xtest, unsplit, unsplit_ll = fold
-    fitted = fit_split(Xtrain, unsplit, r[train])
+    f, _, Xs, unsplit, unsplit_ll = fold
+    fitted = _em(Xs, unsplit, r, every_marker=False, left_out=f)
     if fitted is None:  # without these sentences, nothing can be told apart: no better
         return None
-    pi, dists, _, _ = fitted
-    ll = _mixture_loglik(Xtest, pi, dists)
+    ll = fitted[4]  # under the fit, with its shares: as _mixture_loglik makes it
     gain = _logsumexp2(ll) - unsplit_ll
     if not np.all(np.isfinite(gain)):  # a sentence impossible under either: no evidence for the split
         return None
@@ -1414,7 +1659,7 @@ def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map):
     words, from predicting one another. Sentences are the units of evidence: each gains or loses, and the mean of their
     gains, in nats, is compared with its standard error."""
     if folds is None:
-        folds = _fold_data(Xs, unsplit_fit, groups, pool_map)
+        folds = _fold_data(_Mats(Xs, _folds(groups)), unsplit_fit, pool_map)
     return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
 
 
@@ -1608,8 +1853,8 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
         node.reason = "inseparable"
         return
 
-    def prepare(_):
-        Xs = _Mats([X[units] for X in Xall])
+    def prepare(_):  # the sentences packed by the folds the splits are tested on
+        Xs = _Mats([X[units] for X in Xall], _folds(groups[units]), node.dists)
         return Xs, seed_splits(Xs, collocates, weights=[d.weights for d in node.dists])
 
     ((Xs, seeds),) = pool_map(prepare, (None,))  # on the pool's threads too, which alone do the work
@@ -1623,7 +1868,7 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
         candidates.append((seed, fitted, side))
     best = None
     if candidates:
-        folds = _fold_data(Xs, unsplit_fit, groups[units], pool_map)
+        folds = _fold_data(Xs, unsplit_fit, pool_map)
         tasks = [(fitted[2], fold) for _, fitted, _ in candidates for fold in folds]
         results = list(pool_map(lambda task: _fold_gain(task[1], task[0]), tasks))
     for c, (seed, fitted, side) in enumerate(candidates):
