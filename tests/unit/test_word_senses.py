@@ -69,6 +69,26 @@ class TestSenses:
         is_a = np.array([sense == "a" for _, sense in specs])
         assert sorted(set(is_a[leaf.units]) for leaf in found) == [{False}, {True}]
 
+    def test_no_first_pass_sample_inside_a_growth_sample(self, monkeypatch):
+        # A query grown on a sample: its searches' first pass runs on all of the sample, not on a sample of it
+        monkeypatch.setattr(ws, "_GROWN", 300)
+        monkeypatch.setattr(ws, "_SAMPLE_LEAST", 50)
+        sampled = []
+        search_sample = ws.search_sample
+
+        def spy(Xs, parent=None):
+            sampled.append(Xs[0].shape[0])
+            return search_sample(Xs, parent)
+
+        monkeypatch.setattr(ws, "search_sample", spy)
+        specs = [(work, "abc"[i % 3]) for work in range(20) for i in range(45)]
+        channels, works = sentences(specs, seed=1)
+        root = ws.induce_senses(channels, works)
+        assert root.test["sentences"] == 300 and len(leaves(root)) == 3
+        assert sampled == []
+        ws.induce_senses(channels, works, sample=np.arange(len(specs)))  # grown on all of them: the first pass sampled
+        assert sampled[0] == len(specs)
+
     def test_senses_grown_on_a_sample_have_every_sentence(self, monkeypatch):
         # A query of more than _GROWN sentences: the tree grown on _GROWN of them, every sentence then placed in it
         monkeypatch.setattr(ws, "_GROWN", 300)

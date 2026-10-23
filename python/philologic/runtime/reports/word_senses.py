@@ -1960,12 +1960,14 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
     Xs, fold_of = submit(sentences).result()
     packed = submit(_Mats, Xs, fold_of, node.dists)
     seeding = submit(seed_splits, Xs, collocates, _SEEDS_TRIED, [d.weights for d in node.dists])
-    sampling = submit(search_sample, Xs, node.dists)
+    # The searches' first pass on a sample of the sense's sentences, unless they are a sample already (grown): sampled
+    # again, it took no less time, and its splits were no better
+    sampling = submit(search_sample, Xs, node.dists) if len(tried) == len(units) else None
     Xs = packed.result()
     n_folds = len(Xs.bounds) - 1
     folds = [submit(_fold, Xs, unsplit_fit, f) for f in range(n_folds)]
     seeds = seeding.result()
-    sample = sampling.result()
+    sample = None if sampling is None else sampling.result()
     firsts = [[] for _ in seeds]  # the senses of each search's first pass, for _fit_all
     searches = [submit(fit_split, Xs, node.dists, r, True, sample, first) for (r, _), first in zip(seeds, firsts)]
     found = {}  # by the place of their seed: the candidate, or None
