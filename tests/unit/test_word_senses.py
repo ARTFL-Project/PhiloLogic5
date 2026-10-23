@@ -1,5 +1,8 @@
 """Unit tests for the word senses report's method (philologic.runtime.reports.word_senses), on made-up sentences."""
 
+import threading
+from concurrent.futures import Future
+
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
@@ -76,9 +79,9 @@ class TestSenses:
         sampled = []
         search_sample = ws.search_sample
 
-        def spy(Xs, parent=None):
+        def spy(Xs, *args):
             sampled.append(Xs[0].shape[0])
-            return search_sample(Xs, parent)
+            return search_sample(Xs, *args)
 
         monkeypatch.setattr(ws, "search_sample", spy)
         specs = [(work, "abc"[i % 3]) for work in range(20) for i in range(45)]
@@ -150,6 +153,49 @@ class TestSenses:
             return [(node.units.tolist(), node.reason, node.test) for node in nodes]
 
         assert tree(1) == tree(2) == tree(4)
+
+    def test_the_race_waits_for_the_folds_it_is_decided_on(self, monkeypatch):
+        # The first fold's data made last, after the candidates' fits on the second are done: the race is decided once
+        # their fits on both are, as when the threads finish in the usual order
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
+        channels, works = sentences(specs, seed=3)
+
+        class FirstFoldLast:  # runs each task at once, but the first fold's data, made a moment later
+            def __init__(self, max_workers=None):
+                self.later = []
+
+            def submit(self, fn, *args):
+                if fn is not ws._fold or args[2] != 0:
+                    return ws._now(fn, *args)
+                future = Future()
+
+                def make():
+                    if future.set_running_or_notify_cancel():
+                        future.set_result(fn(*args))
+
+                self.later.append(threading.Timer(0.05, make))
+                self.later[-1].start()
+                return future
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                for timer in self.later:
+                    timer.join()
+
+        def tree():
+            root = ws.induce_senses(channels, works)
+            nodes = [root]
+            for node in nodes:
+                nodes.extend(node.children)
+            return [(node.units.tolist(), node.reason, node.test) for node in nodes]
+
+        monkeypatch.setattr(ws.numba.config, "NUMBA_NUM_THREADS", 1)
+        alone = tree()
+        monkeypatch.setattr(ws.numba.config, "NUMBA_NUM_THREADS", 2)
+        monkeypatch.setattr(ws, "ThreadPoolExecutor", FirstFoldLast)
+        assert tree() == alone
 
     def test_sentences_go_to_their_sense(self):
         specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
@@ -516,6 +562,31 @@ class TestCompiled:
         r = rng.dirichlet([1.0, 1.0], len(rows))
         for every_marker in (True, False):
             assert_same_fit(ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
+
+    def test_a_fit_in_parts_is_numpys(self):
+        # The sentences in two parts packed apart with the words of all, their markers' entries taken from those of all
+        # the sentences, their counts from their sentences' entries: the counts of the parts added up
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
+        channels, works = sentences(specs, seed=12)
+        X = csr_matrix(channels[0][0])
+        rng = np.random.default_rng(13)
+        weights = rng.uniform(0.5, 6.0, X.shape[1])
+        Xs = [X, csr_matrix(X[:, 40:60])]
+        Xs[1].data = rng.integers(1, 4, Xs[1].nnz).astype(np.float64)
+        parent = [
+            ws.Dist(np.full(X.shape[1], 0.8 / X.shape[1]), 0.2, rng.uniform(size=X.shape[1]) > 0.2, weights, 0.6),
+            ws.Dist(np.full(20, 0.9 / 20), 0.1, None, None, 0.3),
+        ]
+        r = rng.dirichlet([1.0, 1.0], X.shape[0])
+        marked = ws._Marked(Xs, parent)
+        words = [np.flatnonzero(np.asarray(Y.getnnz(axis=0))) for Y in Xs]
+        half = X.shape[0] // 3
+        parts = ws._Parts(
+            ws._Mats([Y[rows] for Y in Xs], marked=(marked, rows), words=words, by_words=False)
+            for rows in (np.arange(half), np.arange(half, X.shape[0]))
+        )
+        for every_marker in (True, False):
+            assert_same_fit(ws._em(parts, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
 
     def test_a_fold_is_fitted_as_on_its_training_sentences_alone(self):
         # The sentences packed by fold once, a fold left out of each fit: as if packed without its sentences
