@@ -76,9 +76,9 @@ class TestSenses:
         sampled = []
         search_sample = ws.search_sample
 
-        def spy(Xs, parent=None):
+        def spy(Xs, *args):
             sampled.append(Xs[0].shape[0])
-            return search_sample(Xs, parent)
+            return search_sample(Xs, *args)
 
         monkeypatch.setattr(ws, "search_sample", spy)
         specs = [(work, "abc"[i % 3]) for work in range(20) for i in range(45)]

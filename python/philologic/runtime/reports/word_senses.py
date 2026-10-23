@@ -376,11 +376,14 @@ class _Mats(list):
     then not read: one times a number is that number). The sentences may be in blocks (blocks, the block of each: the
     folds a split is tested on), packed a block after the other (perm, the sentences in that order, inv its inverse;
     bounds, each block's first and n), so that a fit leaves a block out by not reading its entries, and the fits of
-    every fold share one packing. parent, the sense split, whose markers are packed apart (marking)."""
+    every fold share one packing. parent, the sense split, whose markers are packed apart (marking); marked, when
+    given, the markers' entries of all the query's sentences and the indices of these among them (_Marked), which the
+    markers' entries are taken from."""
 
-    def __init__(self, Xs, blocks=None, parent=None):
+    def __init__(self, Xs, blocks=None, parent=None, marked=None):
         super().__init__(csr_matrix(X) for X in Xs)
         n = self[0].shape[0]
+        self.marked = marked
         self.blocks = None if blocks is None else np.asarray(blocks)
         if blocks is None:
             self.perm = self.inv = None
@@ -491,20 +494,28 @@ class _Mats(list):
         mkh_off = np.searchsorted(mk_had, cmp_off)
         w_had = weights[cols]
         n = self[0].shape[0]
-        m_indptr = np.empty((len(self), n + 1), dtype=np.int64)
-        parts, unmarked = [], np.empty((len(self), n))
-        total = 0
-        for c, X in enumerate(self._packed() if packed is None else packed):
-            to_mk = np.full(X.shape[1], -1, dtype=np.int64)
-            to_mk[pos[mk_had[mkh_off[c] : mkh_off[c + 1]]]] = np.arange(mkh_off[c], mkh_off[c + 1])
-            w = np.zeros(X.shape[1])
-            w[pos[cmp_off[c] : cmp_off[c + 1]]] = w_had[cmp_off[c] : cmp_off[c + 1]]
-            ptr, idx, data, unmarked[c] = _marker_entries(X.indptr, X.indices, X.data, bool(self.ones[c]), to_mk, w)
-            m_indptr[c] = ptr + total
-            total += len(idx)
-            parts.append((idx, data))
-        m_indices = np.concatenate([idx for idx, _ in parts]) if parts else np.empty(0, np.int32)
-        m_data = np.concatenate([data for _, data in parts]) if parts else np.empty(0)
+        if self.marked is not None and self.marked[0].made_for(key):
+            # Those of all the query's sentences, taken for these
+            whole, of = self.marked
+            to_had = np.full(len(mk), -1, dtype=np.int32)
+            to_had[mk_cmp >= 0] = np.arange(len(mk_had), dtype=np.int32)
+            of = np.asarray(of if self.perm is None else of[self.perm], dtype=np.int64)
+            m_indptr, m_indices, m_data, unmarked = _marker_rows(*whole.entries, of, to_had, self.ones)
+        else:
+            m_indptr = np.empty((len(self), n + 1), dtype=np.int64)
+            parts, unmarked = [], np.empty((len(self), n))
+            total = 0
+            for c, X in enumerate(self._packed() if packed is None else packed):
+                to_mk = np.full(X.shape[1], -1, dtype=np.int64)
+                to_mk[pos[mk_had[mkh_off[c] : mkh_off[c + 1]]]] = np.arange(mkh_off[c], mkh_off[c + 1])
+                w = np.zeros(X.shape[1])
+                w[pos[cmp_off[c] : cmp_off[c + 1]]] = w_had[cmp_off[c] : cmp_off[c + 1]]
+                ptr, idx, data, unmarked[c] = _marker_entries(X.indptr, X.indices, X.data, bool(self.ones[c]), to_mk, w)
+                m_indptr[c] = ptr + total
+                total += len(idx)
+                parts.append((idx, data))
+            m_indices = np.concatenate([idx for idx, _ in parts]) if parts else np.empty(0, np.int32)
+            m_data = np.concatenate([data for _, data in parts]) if parts else np.empty(0)
         rows = _row_slices(m_indptr, m_indices, m_data, self.ones, len(mk_had), self.bounds)
         weights_mk = np.repeat(np.append(w_had[mk_had], 1.0), 2).reshape(-1, 2)  # both senses', for numpy's fast loop
         mk_pos = np.full(len(cols), -1, dtype=np.int64)
@@ -537,6 +548,113 @@ class _Mats(list):
         made = ll if self.perm is None else ll[self.perm]
         self._unmarked_loglik.append((parent, made))
         return made
+
+
+class _Marked:
+    """The entries of the markers of a tree's senses (the root's: the same for every sense) in all of the query's
+    sentences, apart (by their index among the markers; indptr groups x n + 1, into the entries of all; their counts,
+    each group's from data_off, none for a group of counts all ones), and each sentence's weighted count of its other
+    words in each group (groups x n), as _Mats.marking makes them: made once, so that each sense's packing takes those
+    of its sentences instead of sorting out its entries again."""
+
+    def __init__(self, Xall, parent):
+        self.key = [(d.markers, d.weights) for d in parent]
+        n = Xall[0].shape[0]
+        indptr = np.empty((len(Xall), n + 1), dtype=np.int64)
+        parts, unmarked = [], np.empty((len(Xall), n))
+        total = lo = mk_lo = 0
+        for c, (X, d) in enumerate(zip(Xall, parent)):
+            mk = np.arange(len(d.p)) if d.markers is None else np.flatnonzero(d.markers)
+            to_mk = np.full(X.shape[1], -1, dtype=np.int32)
+            to_mk[mk] = np.arange(mk_lo, mk_lo + len(mk))
+            w = np.ones(X.shape[1]) if d.weights is None else np.asarray(d.weights, dtype=np.float64)
+            ones = bool(np.all(X.data[: X.nnz] == 1))
+            ptr, idx, data, unmarked[c] = _marker_split(X.indptr, X.indices, X.data, ones, to_mk, w)
+            indptr[c] = ptr + total
+            total += len(idx)
+            parts.append((idx, data))
+            lo += len(d.p)
+            mk_lo += len(mk)
+        indices = np.concatenate([idx for idx, _ in parts]) if parts else np.empty(0, np.int32)
+        data = np.concatenate([data for _, data in parts]) if parts else np.empty(0)
+        data_off = np.concatenate([[0], np.cumsum([len(data) for _, data in parts])]).astype(np.int64)
+        self.entries = (indptr, indices, data, data_off, unmarked)
+
+    def made_for(self, key):
+        """Whether these are the markers (and weights) of key, as _Mats.marking has them."""
+        return all(a[0] is b[0] and a[1] is b[1] for a, b in zip(self.key, key))
+
+
+@numba.njit(cache=True, nogil=True)
+def _marker_split(indptr, indices, data, ones, to_mk, w):
+    """_marker_entries in one pass, its counts left out for a group of counts all ones (ones: they are not read)."""
+    n = len(indptr) - 1
+    one = np.uint64(1)
+    m_indptr = np.zeros(n + 1, dtype=np.int64)
+    m_indices = np.empty(len(indices), dtype=np.int32)
+    m_data = np.empty(0 if ones else len(indices))
+    unmarked = np.zeros(n)
+    m = np.uint64(0)
+    for i in range(n):
+        s = 0.0
+        jj = np.uint64(indptr[i])
+        end = np.uint64(indptr[i + 1])
+        while jj < end:
+            j = np.uint64(indices[jj])
+            t = to_mk[j]
+            if t >= 0:
+                m_indices[m] = t
+                if not ones:
+                    m_data[m] = data[jj]
+                m += one
+            else:
+                s += (1.0 if ones else data[jj]) * w[j]
+            jj += one
+        unmarked[i] = s
+        m_indptr[i + 1] = m
+    return m_indptr, m_indices[:m], m_data[: 0 if ones else m], unmarked
+
+
+@numba.njit(cache=True, nogil=True)
+def _marker_rows(indptr, indices, data, data_off, unmarked_all, rows, to_had, ones):
+    """The markers' entries of the sentences rows of all the query's (from _Marked: indptr ... unmarked_all), each by
+    the place to_had gives its marker, and their weighted counts of their other words: as _marker_entries makes them
+    from those sentences' matrices (indptr groups x n + 1, into the entries of all, indices, counts; groups x n), but
+    for the counts of the groups whose counts are all ones (ones), which are not read."""
+    n_groups = indptr.shape[0]
+    n = len(rows)
+    one = np.uint64(1)
+    m_indptr = np.empty((n_groups, n + 1), dtype=np.int64)
+    total = 0
+    for c in range(n_groups):
+        for q in range(n):
+            m_indptr[c, q] = total
+            r = np.uint64(rows[q])
+            total += indptr[c, r + one] - indptr[c, r]
+        m_indptr[c, n] = total
+    m_indices = np.empty(total, dtype=np.int32)
+    m_data = np.empty(total)
+    unmarked = np.empty((n_groups, n))
+    e = np.uint64(0)
+    for c in range(n_groups):
+        for q in range(n):
+            r = np.uint64(rows[q])
+            unmarked[c, q] = unmarked_all[c, r]
+            jj = np.uint64(indptr[c, r])
+            end = np.uint64(indptr[c, r + one])
+            if ones[c]:
+                while jj < end:
+                    m_indices[e] = to_had[np.uint64(indices[jj])]
+                    e += one
+                    jj += one
+            else:
+                before = np.uint64(indptr[c, 0] - data_off[c])  # the entries of the groups before without counts
+                while jj < end:
+                    m_indices[e] = to_had[np.uint64(indices[jj])]
+                    m_data[e] = data[jj - before]
+                    e += one
+                    jj += one
+    return m_indptr, m_indices, m_data, unmarked
 
 
 def _block_slices(bounds):
@@ -1445,16 +1563,18 @@ def fit_split(Xs, parent, r, search=False, sample=None, first=None):
     return _em(Xs, parent, r, every_marker=False)
 
 
-def search_sample(Xs, parent=None):
+def search_sample(Xs, parent=None, marked=None):
     """The sentences a search's first pass runs on (fit_split), for a sense of at least _SAMPLE_EVERY times
     _SAMPLE_LEAST of them: every _SAMPLE_EVERY-th, so that each work keeps its share, and each sense its sentences in
     proportion (a sample of whole works would leave out the senses of a few); (indices, matrices, packed for the
-    parent's markers when given), or None for all."""
+    parent's markers when given, their entries from marked as _Mats takes it), or None for all."""
     n = Xs[0].shape[0]
     if n < _SAMPLE_EVERY * _SAMPLE_LEAST:
         return None
     kept = np.arange(0, n, _SAMPLE_EVERY)
-    return kept, _Mats([X[kept] for X in Xs], parent=parent)
+    return kept, _Mats(
+        [X[kept] for X in Xs], parent=parent, marked=None if marked is None else (marked[0], marked[1][kept])
+    )
 
 
 @numba.njit(cache=True, nogil=True)
@@ -1784,10 +1904,15 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None):
             unsplit_fit = lambda train_counts, parents=parents: [
                 fit_sparse(c, d) for c, d in zip(train_counts, parents)
             ]
-        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, grown, submit)
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, grown, submit, marked[0])
         return node
 
+    marked = [None]
+
     def grow_with(submit, senses=None):
+        # The markers' entries of all the sentences, apart, for each sense's packing to take its own from: made while
+        # the first split is looked for (on its sentences, which sort out their own rather than wait)
+        marked[0] = submit(_Marked, Xall, root.dists)
         grow(root, submit)
         if root.children:
             floor["importance"] = finest * root.test["importance"]
@@ -1978,14 +2103,17 @@ def _race(racing, fits, folds, n):
     return behind
 
 
-def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=None, submit=_now):
+def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=None, submit=_now, marked=None):
     """Split a sense, if a split passes: looked for and tested on its sentences, or on those of them in the sample
-    (grown, a mask of all the sentences, or None for all), then fitted again on all of them (_fit_all)."""
+    (grown, a mask of all the sentences, or None for all), then fitted again on all of them (_fit_all). marked, a
+    future of the markers' entries of all the sentences (_Marked), which the packings take theirs from once made."""
     units = node.units
     tried = units if grown is None else units[grown[units]]
     if len(tried) < 2:
         node.reason = "inseparable"
         return
+    whole = marked.result() if marked is not None and marked.done() else None
+    of = None if whole is None else (whole, tried)
 
     # All of it on the pool's threads (submit), which alone do the work, each step as soon as what it needs is done,
     # so that no thread waits for the slowest of a step: the sentences' matrices packed for the EM (by the folds the
@@ -1999,11 +2127,11 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
         return [X[tried] for X in Xall], _folds(groups[tried])
 
     Xs, fold_of = submit(sentences).result()
-    packed = submit(_Mats, Xs, fold_of, node.dists)
+    packed = submit(_Mats, Xs, fold_of, node.dists, of)
     seeding = submit(seed_splits, Xs, collocates, _SEEDS_TRIED, [d.weights for d in node.dists])
     # The searches' first pass on a sample of the sense's sentences, unless they are a sample already (grown): sampled
     # again, it took no less time, and its splits were no better
-    sampling = submit(search_sample, Xs, node.dists) if len(tried) == len(units) else None
+    sampling = submit(search_sample, Xs, node.dists, of) if len(tried) == len(units) else None
     Xs = packed.result()
     n_folds = len(Xs.bounds) - 1
     folds = [submit(_fold, Xs, unsplit_fit, f) for f in range(n_folds)]
@@ -2075,7 +2203,8 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
         node.reason = "no_gain" if node.test["z"] <= EVIDENCE else "faint"
         return
     if len(tried) < len(units):
-        pi, dists, side, counts = submit(_fit_all, Xall, units, node.dists, first, (pi, dists)).result()
+        whole = None if marked is None else marked.result()
+        pi, dists, side, counts = submit(_fit_all, Xall, units, node.dists, first, (pi, dists), whole).result()
     node.model = (pi, dists)
     for k, members in ((0, side), (1, ~side)):
         child = Node(units[members], [d[k] for d in dists], [c[:, k] for c in counts], node.dists)
@@ -2084,14 +2213,15 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
     node.children.sort(key=lambda c: (-len(c.units), c.k))
 
 
-def _fit_all(Xall, units, parent, first, fitted):
+def _fit_all(Xall, units, parent, first, fitted, marked=None):
     """A split found on a sample of its sense's sentences, fitted again on all of them (units): its search's second
     pass, on all of them, from the senses of its first (pi, dists), as these share them out. The second pass on the
     sample alone chose the words that mark either sense from the sample's counts: fewer of them than all the sentences
     have, which would hold the split to a fit less good on them. Should that fail (no halves), the split as fitted
     (fitted: pi, dists), its senses' rates fitted again on all the sentences, as they share them out. Returns (pi,
-    dists, side: the sentences more likely in the first sense, counts)."""
-    Xs = _Mats([X[units] for X in Xall])
+    dists, side: the sentences more likely in the first sense, counts). marked: the markers' entries of all the
+    sentences (_Marked), or None."""
+    Xs = _Mats([X[units] for X in Xall], marked=None if marked is None else (marked, units))
     ll = _mixture_loglik(Xs, *first)
     again = fit_split(Xs, parent, np.exp(ll - _logsumexp2(ll)[:, None]))
     if again is not None:
