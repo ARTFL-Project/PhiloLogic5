@@ -706,3 +706,93 @@ class TestSmoothing:
         P = np.ones((10, 1))
         assert ws.sense_curves(P, np.zeros(10, dtype=int), np.arange(10)) is None
         assert ws.sense_curves(P, np.full(10, 1800), np.arange(10)) is None
+
+
+def corpus_of(specs, columns, seed=1):
+    """The co-occurrence of the words of columns in made-up sentences of the corpus outside the query's (specs as
+    sentences'): as cooccurrence(columns) gives it to induce_senses within corpus_profiles."""
+    X = sentences(specs, seed)[0][0][0]
+    B = (X[:, columns] > 0).astype(np.int64)
+    return np.asarray((B.T @ B).todense()).astype(np.int32)
+
+
+@pytest.mark.unit
+class TestCorpusPrior:
+    def test_the_corpus_pass_counts_each_pair_once_a_sentence(self, tmp_path):
+        colloc = tmp_path / "collocations"
+        colloc.mkdir()
+        text = [[0, 1, 2, 1], [1, 2], [3, 0, 3], [0, 2], [2, 2, 0, 1]]
+        offsets = np.concatenate([[0], np.cumsum([len(s) for s in text])]).astype(np.uint64)
+        np.save(colloc / "sent_offsets.npy", offsets)
+        np.save(colloc / "attr_lemma_ids.npy", np.concatenate(text).astype(np.uint32))
+        np.save(colloc / "attr_lemma_vocab_offsets.npy", np.arange(6, dtype=np.int64))
+        words = np.array([2, 0, 1])
+        cooc = ws.corpus_cooccurrence(str(tmp_path), True, words, skipped=[3])
+        expected = np.zeros((3, 3), dtype=np.int64)
+        for s, sentence in enumerate(text):
+            if s == 3:
+                continue
+            had = [i for i, w in enumerate(words) if w in sentence]
+            for i in had:
+                for j in had:
+                    expected[i, j] += 1
+        assert np.array_equal(cooc, expected)
+
+    def test_a_profile_is_its_row_without_itself_backed_off(self):
+        rng = np.random.default_rng(0)
+        C = rng.poisson(2.0, size=(30, 30)).astype(np.int32)
+        C = np.triu(C, 1) + np.triu(C, 1).T
+        np.fill_diagonal(C, C.max(axis=1) + 5)
+        profiles = ws._Profiles(np.arange(30), C, 30)
+        base = ws.Dist(np.diag(C) / np.diag(C).sum(), 0.0)
+        for a in (0, 7, 29):
+            row = C[a].astype(np.float64)
+            row[a] = 0.0
+            assert profiles.Q[a] == pytest.approx(ws.fit_dist(row, base, ws.discount(row)).p, rel=1e-6)
+        assert profiles.tokens[3] == C[3].sum() - C[3, 3]
+
+    def test_the_strength_is_that_of_the_dirichlet_the_counts_were_drawn_from(self):
+        rng = np.random.default_rng(0)
+        q = rng.dirichlet(np.ones(400))
+        for a in (300.0, 3000.0):
+            counts = rng.multinomial(20000, rng.dirichlet(a * q)).astype(np.float64)
+            assert 0.6 < ws.prior_strength(counts, q) / a < 1.6
+
+    def test_a_prior_moves_only_the_profiled_words_rates(self):
+        rng = np.random.default_rng(1)
+        C = rng.poisson(5.0, size=(10, 10)).astype(np.int32)
+        C = np.triu(C, 1) + np.triu(C, 1).T
+        np.fill_diagonal(C, 40)
+        columns = np.arange(5, 15)  # the profiled words, of 20
+        profiles = ws._Profiles(columns, C, 20)
+        p = rng.dirichlet(np.ones(20)) * 0.9
+        dist = ws.Dist(p, 0.1)
+        c0 = rng.poisson(3.0, size=20).astype(np.float64)
+        local = columns[c0[columns] > 0]
+        (prior,), strength, tokens = ws._with_prior(profiles, local, [dist], c0, dist)
+        others = np.setdiff1d(np.arange(20), local)
+        assert np.array_equal(prior.p[others], p[others])
+        assert prior.p.sum() == pytest.approx(p.sum())
+        assert tokens == c0[local].sum()
+        assert 0.0 <= strength <= profiles.tokens[profiles.slot[local]].sum()
+
+    def test_senses_found_with_the_corpus(self):
+        specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
+        channels, works = sentences(specs)
+        corpus = [(work, "a" if i % 2 else "b") for work in range(50) for i in range(40)]
+        with ws.corpus_profiles(lambda columns: corpus_of(corpus, columns)):
+            root = ws.induce_senses(channels, works)
+        assert root.prior is not None and root.prior["strength"] > 0
+        found = leaves(root)
+        assert len(found) == 2
+        described = [words_of(leaf) for leaf in found]
+        assert any(d and d <= set(SENSES["a"]) for d in described)
+        assert any(d and d <= set(SENSES["b"]) for d in described)
+
+    def test_without_the_corpus_nothing_changes(self):
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(15)]
+        channels, works = sentences(specs)
+        plain = ws.node_posteriors(ws.induce_senses(channels, works), [csr_matrix(c[0]) for c in channels])[1]
+        with ws.corpus_profiles(lambda columns: np.zeros((len(columns), len(columns)), dtype=np.int32)):
+            none = ws.node_posteriors(ws.induce_senses(channels, works), [csr_matrix(c[0]) for c in channels])[1]
+        assert np.array_equal(plain, none)  # a corpus without any sentence of the words gives no prior
