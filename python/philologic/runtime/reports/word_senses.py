@@ -2294,7 +2294,7 @@ def _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field
     channels, names = _senses_channels(sentences, count_lemmas)
     common = _filtered(sentences, filter_words)
     root = induce_senses(channels, sentences["docs"], unseeded=[common[ids] for ids in names])
-    return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field)
+    return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, common)
 
 
 def _senses_channels(sentences, count_lemmas):
@@ -2436,9 +2436,10 @@ def _filtered(sentences, filter_words):
     return _filter_mask(colloc_dir, prefix, filter_words, len(sentences["v_offsets"]) - 1)
 
 
-def _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field):
-    """The report of the tree of senses root, as JSON-ready data."""
-    unshown = _filtered(sentences, filter_words)
+def _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, unshown=None):
+    """The report of the tree of senses root, as JSON-ready data. unshown: the words of filter_words, as _filtered
+    has them (made again without)."""
+    unshown = _filtered(sentences, filter_words) if unshown is None else unshown
     n = sentences["n_units"]
     docs = sentences["docs"]
     Xall = [csr_matrix(c[0]) for c in channels]
