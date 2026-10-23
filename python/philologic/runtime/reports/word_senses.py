@@ -2273,11 +2273,13 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
             for fold in folds:  # no halves: no test
                 fold.cancel()
             break
+        # The race decided on the next fold once every racing candidate's fits on it and on the folds before are
+        # done: a fold's data may be made after the next one's, and its fits submitted after theirs
         while (
             known
             and len(racing) > 1
             and raced + 1 < n_folds - 1
-            and all((s, raced + 1) in fits and fits[(s, raced + 1)].done() for s in racing)
+            and all((s, f) in fits and fits[(s, f)].done() for s in racing for f in range(raced + 2))
         ):
             raced += 1
             behind = _race(racing, fits, [fold.result() for fold in folds[: raced + 1]], len(tried))

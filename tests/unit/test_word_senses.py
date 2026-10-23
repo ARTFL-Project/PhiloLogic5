@@ -1,5 +1,8 @@
 """Unit tests for the word senses report's method (philologic.runtime.reports.word_senses), on made-up sentences."""
 
+import threading
+from concurrent.futures import Future
+
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
@@ -150,6 +153,49 @@ class TestSenses:
             return [(node.units.tolist(), node.reason, node.test) for node in nodes]
 
         assert tree(1) == tree(2) == tree(4)
+
+    def test_the_race_waits_for_the_folds_it_is_decided_on(self, monkeypatch):
+        # The first fold's data made last, after the candidates' fits on the second are done: the race is decided once
+        # their fits on both are, as when the threads finish in the usual order
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
+        channels, works = sentences(specs, seed=3)
+
+        class FirstFoldLast:  # runs each task at once, but the first fold's data, made a moment later
+            def __init__(self, max_workers=None):
+                self.later = []
+
+            def submit(self, fn, *args):
+                if fn is not ws._fold or args[2] != 0:
+                    return ws._now(fn, *args)
+                future = Future()
+
+                def make():
+                    if future.set_running_or_notify_cancel():
+                        future.set_result(fn(*args))
+
+                self.later.append(threading.Timer(0.05, make))
+                self.later[-1].start()
+                return future
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                for timer in self.later:
+                    timer.join()
+
+        def tree():
+            root = ws.induce_senses(channels, works)
+            nodes = [root]
+            for node in nodes:
+                nodes.extend(node.children)
+            return [(node.units.tolist(), node.reason, node.test) for node in nodes]
+
+        monkeypatch.setattr(ws.numba.config, "NUMBA_NUM_THREADS", 1)
+        alone = tree()
+        monkeypatch.setattr(ws.numba.config, "NUMBA_NUM_THREADS", 2)
+        monkeypatch.setattr(ws, "ThreadPoolExecutor", FirstFoldLast)
+        assert tree() == alone
 
     def test_sentences_go_to_their_sense(self):
         specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
