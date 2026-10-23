@@ -93,7 +93,7 @@ _MAX_WORDS = 40  # words sent for each sense and group of words (the response wo
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses34\0"  # bump when the result changes
+_CACHE_TAG = b"senses35\0"  # bump when the result changes
 
 
 class Dist:
@@ -369,10 +369,11 @@ def _split_words(c, parent, every_marker):
 # they go with. So the rates of each sense for the collocates that may seed a split (of the sentence's words) have a
 # prior: a Dirichlet distribution centred on the corpus profile of the words that mark the sense (the distribution of
 # those collocates in their sentences outside the query's), as strong as empirical Bayes finds the corpus worth at the
-# sense split (the strength under which its sentences' counts are most likely). Where the sentences are many, their
-# counts outweigh it and the senses are those they alone make; where they are few, the corpus carries them; where the
-# corpus is thin too (a small database, whose collocates have few sentences outside the query's), its profiles fit
-# the counts badly, and the strength falls.
+# sense split (the strength under which its sentences' counts are most likely), but never surer than the corpus's
+# counts the profile is made from. Where the sentences are many, their counts outweigh it and the senses are those
+# they alone make; where they are few, the corpus carries them; where the corpus is thin too (a small database, or
+# words of the query's own texts, such as an author's spellings, with few sentences outside them), the profiles are
+# made from few counts, and the prior is worth no more than those.
 
 _CORPUS = contextvars.ContextVar("word_senses_corpus", default=None)
 
@@ -406,6 +407,7 @@ class _Profiles:
         has = df > 0
         self.slot[columns[has]] = np.flatnonzero(has)
         self.Q = np.empty(cooc.shape, dtype=np.float32)  # single precision: 10,000 words take 400 MB
+        self.tokens = cooc.sum(axis=1, dtype=np.float64) - df  # what each profile is made from: its row's counts
         if has.any():
             base = df / df.sum()
             workers = max(1, int(numba.config.NUMBA_NUM_THREADS))
@@ -479,13 +481,22 @@ def _anchors(c, parent_p, total, threshold, w):
 
 
 @numba.njit(cache=True, nogil=True)
-def _centre(Q, slots, w, parent_p, out):
+def _centre(Q, slots, w, parent_p, out, tokens):
     """The mean of the profiles (Q's rows at slots) of the words of weights w, over the same words (out, summing to 1);
-    the parent's rates parent_p without any weight."""
+    the parent's rates parent_p without any weight. Returns the number of the corpus's counts the mean is as sure as:
+    (sum w)^2 / sum (w^2 / tokens), tokens the counts each profile is made from (a weighted mean of estimates from
+    those counts varies as one from that many would), over the profiles made from any; 0 when none is."""
     n = len(slots)
     sw = 0.0
     for i in range(n):
         sw += w[i]
+    spread = 0.0
+    evidenced = 0.0
+    for i in range(n):
+        t = tokens[slots[i]]
+        if w[i] > 0.0 and t > 0:
+            spread += w[i] * w[i] / t
+            evidenced += w[i]
     for i in range(n):
         out[i] = 0.0
     if sw <= 0.0:
@@ -505,20 +516,23 @@ def _centre(Q, slots, w, parent_p, out):
     if s > 0:
         for i in range(n):
             out[i] /= s
+    return evidenced * evidenced / spread if spread > 0 else 0.0
 
 
-def _profile(Q, slots, c, parent_p, total, threshold, out):
+def _profile(Q, slots, c, parent_p, total, threshold, out, tokens):
     """The corpus profile of a sense over some of the profiled words (slots, their places in Q; out, summing to 1):
     the mean of the profiles of the words that mark it (_anchors, from its counts c of a total), each as often as the
     sense has it; of all its words when none marks it; the parent's rates when it has none."""
     w = np.empty(len(c))
     _anchors(c, parent_p, total, threshold, w)
-    _centre(Q, slots, w, parent_p, out)
+    return _centre(Q, slots, w, parent_p, out, tokens)
 
 
 def prior_strength(c, q):
     """The strength of a Dirichlet prior of mean q (summing to 1) under which the counts c (soft, of the same words)
-    are most likely: the maximum of their Dirichlet-multinomial marginal likelihood (empirical Bayes), looked for
+    are most likely: the maximum of their Dirichlet-multinomial marginal likelihood (empirical Bayes). On few counts
+    any mean near theirs fits them as well, and this says the prior is worth about as much as they are, however thin
+    the corpus it comes from: its callers hold it to what the prior's mean is made from (_centre). Looked for
     between the strength whose weight against the counts' is lost in rounding and that under which theirs is (N eps to
     N / eps, N their total, eps the machine epsilon): from nothing to everything. 0 for no counts."""
     c = np.asarray(c, dtype=np.float64)
@@ -541,8 +555,10 @@ def prior_strength(c, q):
 
 def _with_prior(profiles, local, dists, c0, against):
     """A sense's rates (dists) for the profiled words its sentences have (local, columns of the first group) with the
-    prior of its corpus profile, as strong as its counts c0 (of every word of the first group) find it: the posterior
-    mean (count p + a pi q) / (count + a), pi its rate for all of those words, so that every other word keeps its own.
+    prior of its corpus profile, as strong as its counts c0 (of every word of the first group) find it (prior_strength)
+    but no stronger than the corpus's counts the profile is made from (a prior of strength a is as sure as a + 1
+    counts): the posterior mean (count p + a pi q) / (count + a), pi its rate for all of those words, so that every
+    other word keeps its own.
     against: the rates of the sense it is told from, for which words mark it (_profile). Returns (dists, strength,
     count)."""
     local = np.asarray(local, dtype=np.int64)
@@ -552,8 +568,8 @@ def _with_prior(profiles, local, dists, c0, against):
         return dists, 0.0, 0.0
     q = np.empty(len(local))
     parent_p = np.ascontiguousarray(np.asarray(against.p, dtype=np.float64)[local])
-    _profile(profiles.Q, profiles.slot[local], c, parent_p, total, math.log(total), q)
-    a = prior_strength(c, q)
+    sure = _profile(profiles.Q, profiles.slot[local], c, parent_p, total, math.log(total), q, profiles.tokens)
+    a = min(prior_strength(c, q), max(0.0, sure - 1.0))  # no surer than the corpus's counts it is made from
     d = dists[0]
     p = np.array(d.p, dtype=np.float64)
     N = float(c.sum())
@@ -1814,7 +1830,8 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, pr
     returned too (n_block x 2, in their order). Xs may be in parts (_Parts), whose steps are made at once on the
     pool's threads (submit). prior, (profiles, strength) or None: the senses' rates for the profiled words have the
     prior of their corpus profiles (_Profiles), as the fit starts (the words that mark either then, from the counts
-    of the sentences it is fitted on), of that strength (a MAP fit: the prior's centre stays where it was set)."""
+    of the sentences it is fitted on), of that strength or of what each profile is made from if less (a MAP fit: the
+    prior's centre stays where it was set)."""
     parts = list(Xs) if isinstance(Xs, _Parts) else [Xs if isinstance(Xs, _Mats) else _Mats(Xs, parent=parent)]
     Xs = parts[0]
     pos, cols, cmp_off, voc_off = Xs.words  # the same for every part
@@ -1905,10 +1922,13 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, pr
             if centre is None:  # set where the fit starts, from the counts it starts from, then held (see above)
                 centre = np.empty((2, len(set_m)))
                 parent_set = np.ascontiguousarray(parent_had[set_cmp])
+                strengths = np.full(2, prior[1])
                 for k in range(2):
                     c_k = np.ascontiguousarray(counts[set_cmp, k])
-                    _profile(prior[0].Q, slots, c_k, parent_set, totals[0, k], thresholds[0, k], centre[k])
-                strengths = np.full(2, prior[1])
+                    sure = _profile(
+                        prior[0].Q, slots, c_k, parent_set, totals[0, k], thresholds[0, k], centre[k], prior[0].tokens
+                    )
+                    strengths[k] = min(prior[1], max(0.0, sure - 1.0))  # as sure as its own centre
             _prior_rates(p, counts, set_m, set_cmp, centre, strengths, False)
         if switch and not every_marker:
             key = chosen.tobytes()
