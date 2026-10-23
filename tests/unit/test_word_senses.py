@@ -304,6 +304,7 @@ def report_node(id, parent, children, share, own=True, relative=None):
         "words": [{"word": "w"}] if own else [],
         "before": [],
         "after": [],
+        "hidden": [],
         "split": None if relative is None else {"relative": relative},
     }
 

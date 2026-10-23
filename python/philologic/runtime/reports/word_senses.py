@@ -12,25 +12,23 @@ information criterion. Both have their own rates for those words, discounted (so
 a small rate), and every other word keeps its parent's rate (Law, Figueiredo and Jain 2004: features salient or not),
 so splitting the sentences does not estimate again, from fewer of them, the rates of the many words that have nothing
 to do with the senses. At the top, the rates are the query's own, by Katz backoff with absolute discounting (Ney,
-Essen and Kneser 1994) to the corpus's. The words of the collocation filter (its most frequent words or its
-stopwords, mostly function words) are left out of the sentence's words, where they would be half of what is read and
-tell the register of works more than a sense; next to the query they are read, as they make the phrase (l'esprit, mon
-esprit). In telling which sense a sentence is in, each word's evidence weighs by its inverse document frequency, so
-that frequent words count for less than rarer ones.
+Essen and Kneser 1994) to the corpus's. No list of words is filtered: in telling which sense a sentence is in, each
+word's evidence weighs by its inverse document frequency, so that frequent words (je, vous, les, de) count for less
+than rarer ones.
 
 A split starts from the sentences with one of the query's collocates, the seed: of those whose sentences differ most
-from the others in their other collocates, the most promising are tried (none of the collocation filter's words
-next to the query: mon, le tell the register of works more than a sense), and expectation-maximization moves the
-sentences to the sense they fit, each with a probability of being in either (first letting every collocate tell the
-senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark either,
-chosen at every step, and held if that choice cycles or swings back; the first pass, on a sense of many sentences,
-on a sample of them). A split is kept if, fitted without each of N_FOLDS groups of works in turn, it predicts the
-sentences of the works left out better than its unsplit sense, paying for saying which sense each is in, by more than
-EVIDENCE standard errors over the sentences. Holding out whole works keeps the sentences of a passage, which share
-their words, from predicting one another. For a query of more than _GROWN sentences, splits are looked for and tested
-on _GROWN of them, spread over all, and a split once kept is fitted again on all the sentences of its sense, which go
-to its two senses as they fit: the senses have all the sentences, their words and their course over time; the tests,
-their sample.
+from the others in their other collocates, the most promising are tried (none of the collocation filter's words,
+mostly function words: par, leur, mon tell the register of works more than a sense), and expectation-maximization
+moves the sentences to the sense they fit, each with a probability of being in either (first letting every collocate
+tell the senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark
+either, chosen at every step, and held if that choice cycles or swings back; the first pass, on a sense of many
+sentences, on a sample of them). A split is kept if, fitted without each of N_FOLDS groups of works in turn, it
+predicts the sentences of the works left out better than its unsplit sense, paying for saying which sense each is in,
+by more than EVIDENCE standard errors over the sentences. Holding out whole works keeps the sentences of a passage,
+which share their words, from predicting one another. For a query of more than _GROWN sentences, splits are looked for
+and tested on _GROWN of them, spread over all, and a split once kept is fitted again on all the sentences of its
+sense, which go to its two senses as they fit: the senses have all the sentences, their words and their course over
+time; the tests, their sample.
 
 Each split has its importance: how much it improves the prediction of the words around the query, per use of the
 word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the elbow
@@ -92,7 +90,7 @@ _MAX_WORDS = 40  # words sent for each sense and group of words (the response wo
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses32\0"  # bump when the result changes
+_CACHE_TAG = b"senses33\0"  # bump when the result changes
 
 
 class Dist:
@@ -2129,7 +2127,7 @@ def leaves_at(nodes, detail):
 
 def _has_own(node):
     """Whether a sense has something to show: a word markedly more frequent in it, in any group of words."""
-    return bool(node["words"] or node["before"] or node["after"])
+    return bool(node["words"] or node["before"] or node["after"] or node["hidden"])
 
 
 def sense_numbers(nodes, marked=_has_own):
@@ -2727,8 +2725,7 @@ def _sentence_words(
     """The words of each sentence (once each; within max_dist of a hit when max_dist >= 0; with a kept value of each
     word property of prop_columns, see word_properties.property_masks), and the words just before and just after each
     hit, into the flat arrays bag, left and right from bag_at and side_at (room enough: the words of the sentences,
-    and their hits), and their bounds by sentence there. The query's own words are left out, and the filtered ones of
-    the sentence's words (next to the query, common words make the phrase: l'esprit, mon esprit)."""
+    and their hits), and their bounds by sentence there. The query's own words are left out, and the filtered ones."""
     n_units = len(unit_bounds) - 1
     bag_ptr = np.zeros(n_units + 1, dtype=np.int64)
     left_ptr = np.zeros(n_units + 1, dtype=np.int64)
@@ -2775,12 +2772,12 @@ def _sentence_words(
         for h in range(h0, h1):
             if hit_start[h] > 1:
                 t = count_ids[s + hit_start[h] - 2]
-                if not excluded[t]:
+                if not excluded[t] and not filtered[t]:
                     left[nl] = t
                     nl += 1
             if hit_end[h] < e - s:
                 t = count_ids[s + hit_end[h]]
-                if not excluded[t]:
+                if not excluded[t] and not filtered[t]:
                     right[nr] = t
                     nr += 1
         left_ptr[u + 1] = nl
@@ -2956,9 +2953,9 @@ def _vocabulary(data_path, count_lemmas):
 
 def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=None, filter_words=None):
     """The sentences the query is in, one for each sentence, with their words: a dict, or None without any. The words
-    of filter_words (as the collocation report's filter list has them) are left out of the words of the sentence, not
-    of those next to the query; the words of the sentence without a kept value of each word property of properties
-    ((name, values) pairs, as the collocation report's filters have them) too."""
+    of filter_words (as the collocation report's filter list has them) are left out, of the words of the sentence and
+    of those next to the query alike; the words of the sentence without a kept value of each word property of
+    properties ((name, values) pairs, as the collocation report's filters have them) too."""
     metadata = metadata or {}
     workers = numba.config.NUMBA_NUM_THREADS
     with ThreadPoolExecutor(max_workers=max(1, workers - 1)) as pool:
@@ -3065,7 +3062,7 @@ def _query_sentences(db, q, count_lemmas, properties, metadata, distance, filter
     for at, ok in ((s0 + lo - 2, lo > 1), (s0 + hi, hi < length)):  # as _sentence_words takes them
         at = np.where(ok, at, 0)
         near = np.asarray(count_ids[at]).astype(np.int64)
-        ok = ok & (unit_of >= 0) & ~excluded[near]
+        ok = ok & (unit_of >= 0) & ~excluded[near] & ~filtered[near]
         neighbors.append(
             {
                 "unit": unit_of[ok],
@@ -3089,7 +3086,7 @@ def _query_sentences(db, q, count_lemmas, properties, metadata, distance, filter
         "v_blob": v_blob,
         "v_offsets": v_offsets,
         "count_lemmas": count_lemmas,
-        "filtered": filtered,  # the words of filter_words, by vocabulary id: left out of the sentence's words
+        "filtered": filtered,  # the words of filter_words, by vocabulary id
         "data_path": data_path,
         "neighbors": neighbors,  # for each group of words next to the query (1, before; 2, after), as above
         "query_words": int(positions.shape[1]),
@@ -3118,8 +3115,8 @@ def word_senses(
     filter_words=None,
 ):
     """The senses of the query and their course over time, as JSON-ready data (cached in the hitlist directory). The
-    words of filter_words (the collocation report's filter) are left out of the sentence's words; next to the query,
-    where they make the phrase, they are read and shown, but seed no split."""
+    words of filter_words (the collocation report's filter) are not shown but next to the query, and seed no split; the
+    analysis reads them, as every word."""
     metadata = {k: v for k, v in (metadata or {}).items() if v}
     filter_words = sorted(set(filter_words or []))
     path = _cache_path(db, q, bool(count_lemmas), properties, metadata, distance, year_field, filter_words)
@@ -3198,11 +3195,9 @@ def _load_membership(path):
 
 
 def _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field, filter_words=None):
-    # The filter's words are left out of the sentence's words: about half of its entries, at a third of the evidence
-    # weight of the others, they tell the register of works more than a sense (on pseudowords the rarer word's sense is
-    # found better without them, though a rare sense's marker may be one: dieu for prière). Next to the query they
-    # make the phrase (l'esprit, mon esprit): read there, they seed no split
-    sentences = query_sentences(db, q, count_lemmas, properties, metadata, distance, filter_words)
+    # The analysis reads every word, rare ones weighing more: left out of it, the filter's words that tell a rare sense
+    # (dieu for prière) would be too (see the pseudoword test). They only seed no split
+    sentences = query_sentences(db, q, count_lemmas, properties, metadata, distance)
     if sentences is None:
         return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
     channels, names = _senses_channels(sentences, count_lemmas)
@@ -3220,13 +3215,10 @@ def _senses_channels(sentences, count_lemmas):
     tf = _load_token_counts(data_path, count_lemmas)
     channels = []
     names = []
-    left_out = (sentences["filtered"], None, None)  # the filter's words, out of the sentence's words only
-    for (X, ids), background, units, out in zip(
-        sentences["channels"], (df, tf, tf), (n_corpus_sentences, None, None), left_out
-    ):
+    for (X, ids), background, units in zip(sentences["channels"], (df, tf, tf), (n_corpus_sentences, None, None)):
         total = float(background.sum())
-        # The corpus's rates among the words left in (the filtered words are in no sentence, so none is expected)
-        p = background[ids] / (total - (0.0 if out is None else float(background[out].sum())))
+        # The corpus's rates among the words left in (filtered words are in no sentence, so none is expected)
+        p = background[ids] / (total - float(background[sentences["filtered"]].sum()))
         weights = np.log((units if units else total) / background[ids])
         channels.append((X, p, max(0.0, 1.0 - float(p.sum())), weights))
         names.append(ids)
@@ -3415,6 +3407,10 @@ def _senses_report_with(db, sentences, channels, names, root, filter_words, meta
 
     v_blob, v_offsets = sentences["v_blob"], sentences["v_offsets"]
 
+    # The filter's words: not among a sense's words, but next to the query, where common words make the construction
+    # (homme d'esprit, mon esprit). For each group of words, None or the mask of those not shown
+    not_shown = [unshown[names[0]]] + [None] * (len(names) - 1)
+
     def word(ci, local):
         tid = int(names[ci][local])
         s = v_blob[int(v_offsets[tid]) : int(v_offsets[tid + 1])].decode("utf-8", errors="replace")
@@ -3484,8 +3480,11 @@ def _senses_report_with(db, sentences, channels, names, root, filter_words, meta
         lifts = (p[listed] / corpus_p[ci][listed]).tolist()
         return list(zip(listed.tolist(), counts, ratios, lifts))
 
-    def rarer_words(node, ci, against):  # describe_rarer's items, only as many as are sent
+    def rarer_words(node, ci, against):  # describe_rarer's items of the words shown, only as many as are sent
         listed, g2 = _described_rarer(node.counts[ci], node.dists[ci], against[ci].p)
+        if not_shown[ci] is not None:
+            keep = ~not_shown[ci][listed]
+            listed, g2 = listed[keep], g2[keep]
         listed, g2 = listed[:_MAX_WORDS], g2[:_MAX_WORDS]
         c, p = node.counts[ci], node.dists[ci].p
         counts = c[listed].astype(np.float64).tolist()
@@ -3495,9 +3494,14 @@ def _senses_report_with(db, sentences, channels, names, root, filter_words, meta
         """A sense's words, against the dists of the sense it is told from (as a rule, its parent): those markedly more
         frequent in it, and what it lacks. read: the phrases to read, (item, group, row)."""
         groups_of_words = []
+        hidden = []
         for ci in range(len(channels)):
-            # As describe lists them, only as many as are sent
-            listed = described_words(node, ci, against, listed_words_of(node, ci, against)[:_MAX_WORDS])
+            # As describe lists them, those of its words shown and those not (the filter's), only as many as are sent
+            listed = listed_words_of(node, ci, against)
+            if not_shown[ci] is not None:
+                hidden = described_words(node, ci, against, listed[not_shown[ci][listed]][:_MAX_WORDS])
+                listed = listed[~not_shown[ci][listed]]
+            listed = described_words(node, ci, against, listed[:_MAX_WORDS])
             if ci == 0:
                 listed_words[node.id] = np.array([i for i, *_ in listed], dtype=np.int64)
 
@@ -3506,6 +3510,14 @@ def _senses_report_with(db, sentences, channels, names, root, filter_words, meta
                 return with_hits(with_phrase(item, node, ci, i, read), node, ci, i)
 
             groups_of_words.append([entry(i, c, r, f) for i, c, r, f in listed])
+        # A sense with nothing else to show: the words of the filter that mark it
+        if not any(groups_of_words):
+            hidden = [
+                {"word": word(0, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(lift, 3)}
+                for i, c, r, lift in hidden
+            ]
+        else:
+            hidden = []
         # Its words that go together in its sentences, across the works, around hub words (as in HyperLex)
         groups = _word_groups(sentences_of(node), columns_of(0), docs, listed_words.get(node.id))
         # What it lacks, against the sense it was split from, in any group of words (the strongest evidence first)
@@ -3522,6 +3534,7 @@ def _senses_report_with(db, sentences, channels, names, root, filter_words, meta
             rarer = [with_phrase(item, node.parent, *item.pop("at"), read) for _, item in rarer[:_MAX_WORDS]]
         return {
             "words": groups_of_words[0],
+            "hidden": hidden,
             "before": groups_of_words[1],
             "after": groups_of_words[2],
             "groups": groups,
@@ -3529,7 +3542,8 @@ def _senses_report_with(db, sentences, channels, names, root, filter_words, meta
         }
 
     # Something of its own to show, for a sense: a word markedly more frequent in it, in any group, outside the
-    # collocation filter (whose words, next to the query, make the phrase but alone no sense: ma volonté, sa volonté)
+    # collocation filter (whose words, mostly function words, tell the style of works more than a sense: alone, they
+    # make none)
     common = [unshown[ids] for ids in names]
     marked = {
         node.id: marks(
@@ -3565,7 +3579,7 @@ def _senses_report_with(db, sentences, channels, names, root, filter_words, meta
             "reason": node.reason,
             "works": int(len(work_counts)) if len(mine) else 0,
             "top_work_share": round(float(work_counts.max() / max(1, len(mine))), 4),
-            "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word),
+            "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, not_shown),
         }
         return item, read
 
@@ -3833,10 +3847,11 @@ def _first(key, among, k):
     return among[np.lexsort((among, key))][:k]
 
 
-def _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word):
+def _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, hidden=None):
     """The sentences most clearly in a sense, with the words that decided it: for a split sense, those with the
     largest margin, and for each the words whose (weighted) evidence most favoured its side along the way; for the
-    whole query, those with the most evidence of its collocates."""
+    whole query, those with the most evidence of its collocates. hidden: for each group of words, None or a mask of
+    its words not shown."""
     path = _path(root, node)
     if path:
         top = _first(-margin[mine, node.id], mine, _MAX_EXAMPLES)
@@ -3862,6 +3877,8 @@ def _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, wo
         else:
             contribution = data * w * np.log(node.dists[ci].p[indices] / node.parent_dists[ci].p[indices])
         keep = contribution > 0
+        if hidden is not None and hidden[ci] is not None:
+            keep &= ~hidden[ci][indices]
         sentence.append(np.repeat(np.arange(len(top)), lengths)[keep])
         group.append(np.full(int(keep.sum()), ci))
         local.append(indices[keep])
