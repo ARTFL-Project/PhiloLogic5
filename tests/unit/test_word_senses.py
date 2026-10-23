@@ -432,6 +432,34 @@ class TestCompiled:
         for every_marker in (True, False):
             assert_same_fit(ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
 
+    def test_a_fold_is_fitted_as_on_its_training_sentences_alone(self):
+        # The sentences packed by fold once, a fold left out of each fit: as if packed without its sentences
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
+        channels, works = sentences(specs, seed=10)
+        X = csr_matrix(channels[0][0])
+        rng = np.random.default_rng(11)
+        weights = rng.uniform(0.5, 6.0, X.shape[1])
+        Xs = [X, csr_matrix(X[:, 40:60])]
+        Xs[1].data = rng.integers(1, 4, Xs[1].nnz).astype(np.float64)
+        parent = [
+            ws.Dist(np.full(X.shape[1], 0.8 / X.shape[1]), 0.2, rng.uniform(size=X.shape[1]) > 0.2, weights, 0.6),
+            ws.Dist(np.full(20, 0.9 / 20), 0.1, None, None, 0.3),
+        ]
+        r = rng.dirichlet([1.0, 1.0], X.shape[0])
+        folds = ws._folds(works)
+        packed = ws._Mats(Xs, folds, parent)
+        for f in range(ws.N_FOLDS):
+            train, test = folds != f, folds == f
+            mine = ws._em(packed, parent, r, False, left_out=f)
+            plain = plain_em([Y[train] for Y in Xs], parent, r[train], False)
+            assert not mine[2][test].any()
+            assert_same_fit((mine[0], mine[1], mine[2][train], mine[3]), plain)
+            held_out = ws._mixture_loglik([Y[test] for Y in Xs], plain[0], plain[1])
+            assert np.allclose(mine[4], held_out, rtol=1e-12, atol=0)
+            unsplit = [ws.fit_sparse(np.asarray(Y[train].sum(axis=0)).ravel(), d) for Y, d in zip(Xs, parent)]
+            plain_ll = sum(Y[test] @ ws._evidence(d) for Y, d in zip(Xs, unsplit))
+            assert np.allclose(packed.block_loglik(unsplit, f), plain_ll, rtol=1e-12, atol=0)
+
     def test_sums_of_the_words_the_sentences_have_are_numpys(self):
         # Over all the words of a group, those the sentences lack zero
         rng = np.random.default_rng(9)
