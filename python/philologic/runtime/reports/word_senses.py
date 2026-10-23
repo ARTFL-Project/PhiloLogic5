@@ -40,6 +40,8 @@ and its uses per million words are smoothed by a Whittaker-Henderson smoother wh
 cross-validation chooses, with a band from resampling the works.
 """
 
+import contextlib
+import contextvars
 import hashlib
 import html
 import json
@@ -53,8 +55,9 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 import numba
 import numpy as np
 import regex
+from scipy.optimize import minimize_scalar
 from scipy.sparse import csr_matrix, hstack
-from scipy.special import gammaincinv, ndtr
+from scipy.special import gammaincinv, gammaln, ndtr
 
 from philologic.runtime.reports.collocation import (
     _filter_hashes,
@@ -90,7 +93,7 @@ _MAX_WORDS = 40  # words sent for each sense and group of words (the response wo
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses33\0"  # bump when the result changes
+_CACHE_TAG = b"senses34\0"  # bump when the result changes
 
 
 class Dist:
@@ -125,6 +128,7 @@ class Node:
         self.reason = None
         self.id = None  # its place in the tree, each sense before those it splits into
         self.parent = None
+        self.prior = None  # the strength of the prior of its split's senses, and the count it weighs against
 
 
 # ----------------------------- The sense model ------------------------------
@@ -356,6 +360,268 @@ def _split_words(c, parent, every_marker):
         present = np.flatnonzero(c.sum(axis=1) > 0)
         return present if parent.markers is None else present[parent.markers[present]]
     return np.union1d(marked(c[:, 0], parent), marked(c[:, 1], parent))
+
+
+# ----------------------------- The corpus's profiles of the collocates ------------------------------
+# On few sentences, a sense's rates for the query's collocates come from few counts: a word that goes with the sense
+# but that its sentences happen not to have gets no rate of its own there, and a sentence with it is not told to be in
+# the sense. The rest of the corpus can tell: elsewhere, the words that mark a sense are in sentences with the words
+# they go with. So the rates of each sense for the collocates that may seed a split (of the sentence's words) have a
+# prior: a Dirichlet distribution centred on the corpus profile of the words that mark the sense (the distribution of
+# those collocates in their sentences outside the query's), as strong as empirical Bayes finds the corpus worth at the
+# sense split (the strength under which its sentences' counts are most likely). Where the sentences are many, their
+# counts outweigh it and the senses are those they alone make; where they are few, the corpus carries them; where the
+# corpus is thin too (a small database, whose collocates have few sentences outside the query's), its profiles fit
+# the counts badly, and the strength falls.
+
+_CORPUS = contextvars.ContextVar("word_senses_corpus", default=None)
+
+
+@contextlib.contextmanager
+def corpus_profiles(cooccurrence):
+    """Within this context, induce_senses gives the senses priors from the corpus. cooccurrence(columns), for some of
+    the sentence's words (columns of the first group's matrix), is the number of the corpus's sentences outside the
+    query's with each pair of them (the diagonal: with each), a square array. (A context rather than an argument of
+    induce_senses, whose arguments the method's benchmark reads as they are.)"""
+    token = _CORPUS.set(cooccurrence)
+    try:
+        yield
+    finally:
+        _CORPUS.reset(token)
+
+
+class _Profiles:
+    """The corpus profiles of some of the sentence's words (columns of the first group's matrix): for each that the
+    corpus has sentences of outside the query's, the distribution of the others in those sentences, each once a
+    sentence (not itself: the prior of a word is what the sentences of the others say of it, not its own count again),
+    by Katz backoff with absolute discounting to their rates in the corpus (as fit_dist
+    fits a sense), so that a word never in a sentence with another keeps a small rate there. Q, words x words, rows
+    summing to 1; slot, the place of each column among them (-1 for none, or one without sentences outside the
+    query's: the corpus says nothing of it)."""
+
+    def __init__(self, columns, cooc, n_columns):
+        columns = np.asarray(columns, dtype=np.int64)
+        df = np.ascontiguousarray(np.diag(cooc)).astype(np.float64)
+        self.slot = np.full(n_columns, -1, dtype=np.int64)
+        has = df > 0
+        self.slot[columns[has]] = np.flatnonzero(has)
+        self.Q = np.empty(cooc.shape, dtype=np.float32)  # single precision: 10,000 words take 400 MB
+        if has.any():
+            base = df / df.sum()
+            workers = max(1, int(numba.config.NUMBA_NUM_THREADS))
+            cuts = np.linspace(0, len(df), workers + 1).astype(np.int64)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                for done in [pool.submit(_profile_rows, cooc, base, lo, hi, self.Q) for lo, hi in zip(cuts, cuts[1:])]:
+                    done.result()
+
+
+@numba.njit(cache=True, nogil=True)
+def _profile_rows(cooc, base, lo, hi, Q):
+    """Rows lo to hi of the profiles (_Profiles): each word's counts with the others (cooc; not with itself), less the
+    discount of its counts (discount), the discounted mass shared out among the words it is never with, itself
+    included, as base has them (fit_dist)."""
+    n = cooc.shape[0]
+    for a in range(lo, hi):
+        total = 0.0
+        n1 = 0
+        n2 = 0
+        for j in range(n):
+            c = cooc[a, j] if j != a else 0
+            total += c
+            if c == 1:
+                n1 += 1
+            elif c == 2:
+                n2 += 1
+        if total <= 0:
+            for j in range(n):
+                Q[a, j] = base[j]
+            continue
+        n1 = max(1, n1)
+        d = n1 / (n1 + 2 * n2)
+        kept = 0.0
+        unseen = 0.0
+        for j in range(n):
+            k = (cooc[a, j] if j != a else 0) - d
+            if k > 0:
+                kept += k
+            else:
+                unseen += base[j]
+        scale = (1.0 - kept / total) / unseen if unseen > 0 else 0.0
+        for j in range(n):
+            k = (cooc[a, j] if j != a else 0) - d
+            Q[a, j] = k / total if k > 0 else base[j] * scale
+
+
+@numba.njit(cache=True, nogil=True)
+def _profile(Q, slots, c, parent_p, total, threshold, out):
+    """The corpus profile of a sense over some of the profiled words (slots, their places in Q; out, summing to 1):
+    the mean of the profiles of the words that mark it (markedly more frequent in it than in its parent: G2 above
+    threshold, from its counts c of a total, the parent's rates parent_p), each as often as the sense has it; of all
+    its words when none marks it; the parent's rates when it has none."""
+    n = len(slots)
+    w = np.zeros(n)
+    sw = 0.0
+    for i in range(n):
+        co = c[i]
+        eo = total * parent_p[i]
+        if co <= eo:
+            continue
+        if eo > 0 and total > eo:
+            g = 2.0 * (_xlogy(co, co / eo) + _xlogy(total - co, (total - co) / (total - eo)))
+            if not g > threshold:
+                continue
+        w[i] = co
+        sw += co
+    if sw <= 0.0:
+        for i in range(n):
+            w[i] = c[i]
+            sw += c[i]
+    for i in range(n):
+        out[i] = 0.0
+    if sw <= 0.0:
+        for i in range(n):
+            out[i] = parent_p[i]
+    else:
+        for a in range(n):
+            if w[a] <= 0.0:
+                continue
+            wa = w[a] / sw
+            row = Q[slots[a]]
+            for i in range(n):
+                out[i] += wa * row[slots[i]]
+    s = 0.0
+    for i in range(n):
+        s += out[i]
+    if s > 0:
+        for i in range(n):
+            out[i] /= s
+
+
+def prior_strength(c, q):
+    """The strength of a Dirichlet prior of mean q (summing to 1) under which the counts c (soft, of the same words)
+    are most likely: the maximum of their Dirichlet-multinomial marginal likelihood (empirical Bayes), looked for
+    between the strength whose weight against the counts' is lost in rounding and that under which theirs is (N eps to
+    N / eps, N their total, eps the machine epsilon): from nothing to everything. 0 for no counts."""
+    c = np.asarray(c, dtype=np.float64)
+    N = float(c.sum())
+    if N <= 0:
+        return 0.0
+    used = c > 0
+    cu, qu = c[used], np.asarray(q, dtype=np.float64)[used]
+    if not np.all(qu > 0):
+        return 0.0
+
+    def minus(log_a):
+        a = math.exp(log_a)
+        return -(float(gammaln(a)) - float(gammaln(a + N)) + float(np.sum(gammaln(a * qu + cu) - gammaln(a * qu))))
+
+    eps = np.finfo(np.float64).eps
+    found = minimize_scalar(minus, bounds=(math.log(N * eps), math.log(N / eps)), method="bounded")
+    return float(math.exp(found.x))
+
+
+def _with_prior(profiles, local, dists, c0, against):
+    """A sense's rates (dists) for the profiled words its sentences have (local, columns of the first group) with the
+    prior of its corpus profile, as strong as its counts c0 (of every word of the first group) find it: the posterior
+    mean (count p + a pi q) / (count + a), pi its rate for all of those words, so that every other word keeps its own.
+    against: the rates of the sense it is told from, for which words mark it (_profile). Returns (dists, strength,
+    count)."""
+    local = np.asarray(local, dtype=np.int64)
+    c = np.ascontiguousarray(np.asarray(c0, dtype=np.float64)[local])
+    total = float(np.sum(c0))
+    if len(local) == 0 or total <= 0:
+        return dists, 0.0, 0.0
+    q = np.empty(len(local))
+    parent_p = np.ascontiguousarray(np.asarray(against.p, dtype=np.float64)[local])
+    _profile(profiles.Q, profiles.slot[local], c, parent_p, total, math.log(total), q)
+    a = prior_strength(c, q)
+    d = dists[0]
+    p = np.array(d.p, dtype=np.float64)
+    N = float(c.sum())
+    pi = float(p[local].sum())
+    p[local] = (N * p[local] + a * pi * q) / (N + a)
+    return [Dist(p, d.rest, d.markers, d.weights, d.discount)] + list(dists[1:]), a, N
+
+
+def _prior_places(profiles, Xs, parent):
+    """The profiled words of the first group a packing's sentences have: their places among the markers they have (as
+    _em_fit_marked's rates have them), among the words they have (as the counts), and among the profiled words (Q's)."""
+    mk_had, _, mkh_off = Xs.marking(parent)[4][:3]
+    m = np.arange(mkh_off[0], mkh_off[1], dtype=np.int64)
+    slot = profiles.slot[Xs.words[0][mk_had[m]]]
+    keep = slot >= 0
+    return m[keep], np.ascontiguousarray(mk_had[m[keep]]), np.ascontiguousarray(slot[keep])
+
+
+@numba.njit(cache=True, nogil=True)
+def _prior_rates(p, counts, set_m, set_cmp, q, a, by_word):
+    """Either sense's rates for the profiled words (p at set_m: markers x 2, or 2 x words when by_word) with its prior
+    (centred on q, 2 x those words, of strength a), from its counts of them (counts at set_cmp): (N p + a pi q) /
+    (N + a), N its count of them and pi its rate for them all, so that every other word keeps its rate."""
+    for k in range(2):
+        N = 0.0
+        pi = 0.0
+        for i in range(len(set_m)):
+            N += counts[set_cmp[i], k]
+            pi += p[k, set_m[i]] if by_word else p[set_m[i], k]
+        if N + a <= 0:
+            continue
+        for i in range(len(set_m)):
+            if by_word:
+                p[k, set_m[i]] = (N * p[k, set_m[i]] + a * pi * q[k, i]) / (N + a)
+            else:
+                p[set_m[i], k] = (N * p[set_m[i], k] + a * pi * q[k, i]) / (N + a)
+
+
+def corpus_cooccurrence(data_path, count_lemmas, words, skipped):
+    """For the vocabulary ids words, the number of the corpus's sentences with each pair of them (the diagonal: with
+    each), but those of skipped (their indices in the collocation index: the query's), each word once a sentence, as
+    the query's sentences count them. One pass over the corpus's sentences, in as many parts as numba has threads,
+    each counting the rows of its own words, so that they share one array: words x words."""
+    colloc_dir = os.path.join(data_path, "collocations")
+    sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
+    count_ids = np.load(
+        os.path.join(colloc_dir, "attr_lemma_ids.npy" if count_lemmas else "token_ids.npy"), mmap_mode="r"
+    )
+    prefix = "attr_lemma_" if count_lemmas else ""
+    n_vocab = len(np.load(os.path.join(colloc_dir, f"{prefix}vocab_offsets.npy"), mmap_mode="r")) - 1
+    slot = np.full(n_vocab, -1, dtype=np.int32)
+    slot[np.asarray(words, dtype=np.int64)] = np.arange(len(words), dtype=np.int32)
+    skip = np.zeros(len(sent_offsets) - 1, dtype=np.bool_)
+    skip[np.asarray(skipped, dtype=np.int64)] = True
+    cooc = np.zeros((len(words), len(words)), dtype=np.int32)
+    parts = max(1, int(numba.config.NUMBA_NUM_THREADS))
+    with ThreadPoolExecutor(max_workers=parts) as pool:
+        for done in [
+            pool.submit(_cooccurrence, sent_offsets, count_ids, slot, skip, part, parts, cooc) for part in range(parts)
+        ]:
+            done.result()
+    return cooc
+
+
+@numba.njit(cache=True, nogil=True)
+def _cooccurrence(sent_offsets, count_ids, slot, skip, part, parts, cooc):
+    """corpus_cooccurrence's counts for the rows of the words of one part (their place modulo parts)."""
+    n_vocab = len(slot)
+    stamp = np.full(n_vocab, -1, dtype=np.int64)
+    present = np.empty(cooc.shape[0], dtype=np.int64)
+    for s in range(len(sent_offsets) - 1):
+        if skip[s]:
+            continue
+        m = 0
+        for k in range(sent_offsets[s], sent_offsets[s + 1]):
+            t = count_ids[k]
+            w = slot[t]
+            if w >= 0 and stamp[t] != s:
+                stamp[t] = s
+                present[m] = w
+                m += 1
+        for i in range(m):
+            a = present[i]
+            if a % parts != part:
+                continue
+            for j in range(m):
+                cooc[a, present[j]] += 1
 
 
 # The EM of a split, compiled: the words of all groups in one vocabulary (each group's words after the last group's),
@@ -1504,13 +1770,15 @@ def _column_sums(r):
     return out
 
 
-def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
+def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, prior=None):
     """The EM of a split (see fit_split). The words chosen at every step (every_marker false), once the set chosen comes
     back to one chosen before, after another, are held from then on (switch): the choice cycles, and the fit would not
     settle. left_out, a block of the sentences (Xs a _Mats with blocks: a fold), fits the split without its sentences
     (their entries not read, their probabilities of either sense zero), whose log-probabilities under the fit are then
     returned too (n_block x 2, in their order). Xs may be in parts (_Parts), whose steps are made at once on the
-    pool's threads (submit)."""
+    pool's threads (submit). prior, (profiles, strength) or None: the senses' rates for the profiled words have the
+    prior of their corpus profiles (_Profiles), as the fit starts (the words that mark either then, from the counts
+    of the sentences it is fitted on), of that strength (a MAP fit: the prior's centre stays where it was set)."""
     parts = list(Xs) if isinstance(Xs, _Parts) else [Xs if isinstance(Xs, _Mats) else _Mats(Xs, parent=parent)]
     Xs = parts[0]
     pos, cols, cmp_off, voc_off = Xs.words  # the same for every part
@@ -1525,6 +1793,13 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
     markers, mk, mk_off, mk_cmp, (mk_had, mk_pos, mkh_off, weights_mk, _, _) = Xs.marking(parent)
     marked = (mk_had, mk_pos, mkh_off)
     parent_had = parent_p[cols]
+    centre = None  # the senses' corpus profiles, once set
+    if prior is not None and prior[1] > 0:
+        set_m, set_cmp, slots = _prior_places(prior[0], Xs, parent)
+        if len(set_m) == 0:
+            prior = None
+    else:
+        prior = None
     # r and each part's padding (0) after its sentences, in the order of the packings, in one array: the sums over the
     # sentences are made in their order (the paddings' zeros change none)
     padded = np.zeros((n + len(parts), 2))
@@ -1590,6 +1865,14 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
         )
         if not any_own:  # no word tells the senses apart: both are the parent, no split
             return None
+        if prior is not None:
+            if centre is None:
+                centre = np.empty((2, len(set_m)))
+                parent_set = np.ascontiguousarray(parent_had[set_cmp])
+                for k in range(2):
+                    c_k = np.ascontiguousarray(counts[set_cmp, k])
+                    _profile(prior[0].Q, slots, c_k, parent_set, totals[0, k], thresholds[0, k], centre[k])
+            _prior_rates(p, counts, set_m, set_cmp, centre, prior[1], False)
         if switch and not every_marker:
             key = chosen.tobytes()
             if key in seen and key != last:  # the choice cycles: these words, held from now on
@@ -1626,6 +1909,9 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
     p, rest, is_parent, _ = _em_fit(
         counts, totals, thresholds, parent_p, parent_rest, markers, discount, voc_off, every_marker
     )
+    if prior is not None:  # the same rates for the profiled words as the last step's
+        _prior_rates(p, counts_had, np.ascontiguousarray(cols[set_cmp]), set_cmp, centre, prior[1], True)
+        is_parent[0] = False
     dists = [
         [
             (
@@ -1655,7 +1941,7 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
     return out + (ll_all[lo:hi].copy(),)
 
 
-def fit_split(Xs, parent, r, search=False, sample=None, first=None):
+def fit_split(Xs, parent, r, search=False, sample=None, first=None, prior=None):
     """Fit a split of the sentences Xs (one matrix for each group of words) into two senses by expectation-maximization,
     from the probabilities r (n x 2) of each sentence being in either, each sense a sparse departure from the parent:
     both have their own rates for the words that mark either, and share the parent's for all others. A search (from a
@@ -1666,13 +1952,13 @@ def fit_split(Xs, parent, r, search=False, sample=None, first=None):
     sentences (their indices, and their matrices: see search_sample), it runs on those alone, and the second, which
     chooses the words, on all of them. Returns (pi, dists, r, counts), or None when a sense ends up with less than a
     sentence or none of the words tells them apart. first, a list, is given the senses of a search's first pass, (pi,
-    dists)."""
+    dists). prior: see _em."""
     if search:
         if sample is None:
-            fitted = _em(Xs, parent, r, every_marker=True)
+            fitted = _em(Xs, parent, r, every_marker=True, prior=prior)
         else:
             kept, Xkept = sample
-            fitted = _em(Xkept, parent, r[kept], every_marker=True)
+            fitted = _em(Xkept, parent, r[kept], every_marker=True, prior=prior)
         if fitted is None:
             return None
         if first is not None:
@@ -1682,7 +1968,7 @@ def fit_split(Xs, parent, r, search=False, sample=None, first=None):
         else:  # every sentence's probabilities under the first pass's senses
             ll = _mixture_loglik(Xs, fitted[0], fitted[1])
             r = np.exp(ll - _logsumexp2(ll)[:, None])
-    return _em(Xs, parent, r, every_marker=False)
+    return _em(Xs, parent, r, every_marker=False, prior=prior)
 
 
 def search_sample(Xs, parent=None, marked=None):
@@ -1918,25 +2204,34 @@ def _folds(groups):
     return np.arange(len(groups)) % N_FOLDS if folds is None else folds
 
 
-def _fold(Xs, unsplit_fit, f):
+def _fold(Xs, unsplit_fit, f, prior=None):
     """A fold a split is tested on, the same for every split of a sense, from the sense's sentences (Xs, a _Mats packed
     by fold, which the fits of every fold share): its index, its held-out sentences (a mask), Xs, the unsplit sense
-    fitted on the other sentences and the held-out sentences' log-probability under it."""
+    fitted on the other sentences and the held-out sentences' log-probability under it, and the prior of the split's
+    fits on the fold, or None. prior, (profiles, the rates of the sense's parent) or None: the unsplit sense has the
+    prior of its corpus profile, as strong as its training sentences find it (_with_prior), and so do the split's."""
     test = Xs.blocks == f
-    unsplit = unsplit_fit([np.asarray(X.T @ (~test).astype(np.float64)).ravel() for X in Xs])
-    return f, test, Xs, unsplit, Xs.block_loglik(unsplit, f)
+    train = [np.asarray(X.T @ (~test).astype(np.float64)).ravel() for X in Xs]
+    unsplit = unsplit_fit(train)
+    fit_prior = None
+    if prior is not None:
+        profiles, against = prior
+        local = Xs.words[0][_prior_places(profiles, Xs, unsplit)[1]]
+        unsplit, strength, _ = _with_prior(profiles, local, unsplit, train[0], against)
+        fit_prior = (profiles, strength)
+    return f, test, Xs, unsplit, Xs.block_loglik(unsplit, f), fit_prior
 
 
-def _fold_data(Xs, unsplit_fit, pool_map=map):
+def _fold_data(Xs, unsplit_fit, pool_map=map, prior=None):
     """The folds a split is tested on (_fold), the same for every split of a sense: the blocks of Xs."""
-    return list(pool_map(lambda f: _fold(Xs, unsplit_fit, f), range(len(Xs.bounds) - 1)))
+    return list(pool_map(lambda f: _fold(Xs, unsplit_fit, f, prior), range(len(Xs.bounds) - 1)))
 
 
 def _fold_gain(fold, r):
     """The split started from the probabilities r, fitted on a fold's training sentences: each held-out sentence's
     gain over the unsplit sense, and the gains of those more likely in either sense; None for no evidence."""
-    f, _, Xs, unsplit, unsplit_ll = fold
-    fitted = _em(Xs, unsplit, r, every_marker=False, left_out=f)
+    f, _, Xs, unsplit, unsplit_ll, prior = fold
+    fitted = _em(Xs, unsplit, r, every_marker=False, left_out=f, prior=prior)
     if fitted is None:  # without these sentences, nothing can be told apart: no better
         return None
     ll = fitted[4]  # under the fit, with its shares: as _mixture_loglik makes it
@@ -1968,14 +2263,14 @@ def _test_result(folds, results, n):
     }
 
 
-def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map):
+def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map, prior=None):
     """Whether the split predicts the sentences of the works it was not fitted on better than its unsplit sense: in
     each of N_FOLDS folds of the works, both are fitted on the other folds and scored on its sentences, the split paying
     for saying which sense each is in. Holding out whole works keeps the sentences of a passage, which share their
     words, from predicting one another. Sentences are the units of evidence: each gains or loses, and the mean of their
-    gains, in nats, is compared with its standard error."""
+    gains, in nats, is compared with its standard error. prior: see _fold."""
     if folds is None:
-        folds = _fold_data(_Mats(Xs, _folds(groups)), unsplit_fit, pool_map)
+        folds = _fold_data(_Mats(Xs, _folds(groups)), unsplit_fit, pool_map, prior)
     return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
 
 
@@ -1987,7 +2282,9 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None):
     Each split has its importance: how much it improves the prediction of the words around the query, per use of the
     word (its sense's share of the sentences times its gain per sentence there). Splits less important than finest
     times the first one are not looked for. The splits are looked for and tested on the sentences of sample (their
-    indices; by default growth_sample's, all of them for a query of no more than _GROWN): see _try_split."""
+    indices; by default growth_sample's, all of them for a query of no more than _GROWN): see _try_split. Within
+    corpus_profiles, the senses' rates for the collocates that may seed a split, of the sentence's words, have the
+    prior of their corpus profiles (see _with_prior and _em)."""
     Xall = [csr_matrix(c[0]) for c in channels]
     n = Xall[0].shape[0]
     corpus = [Dist(np.asarray(c[1], dtype=np.float64), float(c[2])) for c in channels]
@@ -2009,6 +2306,14 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None):
         return dists
 
     root = Node(np.arange(n), root_fit(counts), counts, corpus)
+    cooccurrence = _CORPUS.get()
+    profiles = None
+    if cooccurrence is not None and len(seeds[0]):
+        profiles = _Profiles(seeds[0], cooccurrence(seeds[0]), Xall[0].shape[1])
+        local = profiles.slot[np.flatnonzero(counts[0] > 0)] >= 0
+        local = np.flatnonzero(counts[0] > 0)[local]
+        root.dists, strength, tokens = _with_prior(profiles, local, root.dists, counts[0], corpus[0])
+        root.prior = {"strength": strength, "tokens": tokens}
     if sample is None:
         sample = growth_sample(n)
     grown = None
@@ -2026,7 +2331,7 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None):
             unsplit_fit = lambda train_counts, parents=parents: [
                 fit_sparse(c, d) for c, d in zip(train_counts, parents)
             ]
-        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, grown, submit, marked[0])
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, grown, submit, marked[0], profiles)
         return node
 
     marked = [None]
@@ -2218,10 +2523,14 @@ def _race(racing, fits, folds, n):
     return behind
 
 
-def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=None, submit=_now, marked=None):
+def _try_split(
+    node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=None, submit=_now, marked=None, profiles=None
+):
     """Split a sense, if a split passes: looked for and tested on its sentences, or on those of them in the sample
     (grown, a mask of all the sentences, or None for all), then fitted again on all of them (_fit_all). marked, a
-    future of the markers' entries of all the sentences (_Marked), which the packings take theirs from once made."""
+    future of the markers' entries of all the sentences (_Marked), which the packings take theirs from once made.
+    profiles (_Profiles) or None: the senses of its splits have the prior of their corpus profiles, as strong as the
+    sense's sentences find the corpus (_with_prior: in each fold, its training sentences)."""
     units = node.units
     tried = units if grown is None else units[grown[units]]
     if len(tried) < 2:
@@ -2249,11 +2558,21 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
     sampling = submit(search_sample, Xs, node.dists, of) if len(tried) == len(units) else None
     Xs = packed.result()
     n_folds = len(Xs.bounds) - 1
-    folds = [submit(_fold, Xs, unsplit_fit, f) for f in range(n_folds)]
+    fold_prior = None if profiles is None else (profiles, node.parent_dists[0])
+    folds = [submit(_fold, Xs, unsplit_fit, f, fold_prior) for f in range(n_folds)]
+    prior = None
+    if profiles is not None:  # the strength of the corpus against the sense's sentences, for the searches
+        c0 = np.asarray(Xs[0].sum(axis=0)).ravel()
+        local = Xs.words[0][_prior_places(profiles, Xs, node.dists)[1]]
+        _, strength, tokens = _with_prior(profiles, local, node.dists, c0, node.parent_dists[0])
+        prior = (profiles, strength)
+        node.prior = {"strength": strength, "tokens": tokens}
     seeds = seeding.result()
     sample = None if sampling is None else sampling.result()
     firsts = [[] for _ in seeds]  # the senses of each search's first pass, for _fit_all
-    searches = [submit(fit_split, Xs, node.dists, r, True, sample, first) for (r, _), first in zip(seeds, firsts)]
+    searches = [
+        submit(fit_split, Xs, node.dists, r, True, sample, first, prior) for (r, _), first in zip(seeds, firsts)
+    ]
     found = {}  # by the place of their seed: the candidate, or None
     fits = {}  # (candidate, fold): its fit on the fold
     out = set()  # the candidates out of the race
@@ -2309,6 +2628,12 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
         test = _test_result(folds, results[c * len(folds) : (c + 1) * len(folds)], len(tried))
         test["seed"] = seed
         test["importance"] = float(len(units) / n_all * max(0.0, test["bits_per_sentence"]))
+        if node.prior is not None:
+            test["prior"] = {
+                "strength": round(node.prior["strength"], 2),
+                "tokens": round(node.prior["tokens"], 2),
+                "folds": [None if fold[5] is None else round(fold[5][1], 2) for fold in folds],
+            }
         passes = test["z"] > EVIDENCE and test["importance"] >= floor["importance"]
         if best is None or (passes, test["importance"]) > (best[0], best[1]["importance"]):
             best = (passes, test, pi, dists, side, counts, first)
@@ -2321,7 +2646,9 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
         return
     if len(tried) < len(units):
         whole = None if marked is None else marked.result()
-        pi, dists, side, counts = submit(_fit_all, Xall, units, node.dists, first, (pi, dists), whole, submit).result()
+        pi, dists, side, counts = submit(
+            _fit_all, Xall, units, node.dists, first, (pi, dists), whole, submit, prior
+        ).result()
     node.model = (pi, dists)
     for k, members in ((0, side), (1, ~side)):
         child = Node(units[members], [d[k] for d in dists], [c[:, k] for c in counts], node.dists)
@@ -2330,7 +2657,7 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
     node.children.sort(key=lambda c: (-len(c.units), c.k))
 
 
-def _fit_all(Xall, units, parent, first, fitted, marked=None, submit=_now):
+def _fit_all(Xall, units, parent, first, fitted, marked=None, submit=_now, prior=None):
     """A split found on a sample of its sense's sentences, fitted again on all of them (units): its search's second
     pass, on all of them, from the senses of its first (pi, dists), as these share them out. The second pass on the
     sample alone chose the words that mark either sense from the sample's counts: fewer of them than all the sentences
@@ -2339,7 +2666,7 @@ def _fit_all(Xall, units, parent, first, fitted, marked=None, submit=_now):
     dists, side: the sentences more likely in the first sense, counts). marked: the markers' entries of all the
     sentences (_Marked), or None. The sentences are in _PARTS parts of about as many entries, each packed and fitted
     at once on the pool's threads (submit), so that the refit of the first split, which nothing else can run beside,
-    keeps both busy."""
+    keeps both busy. prior: see _em (the fallback's rates have none)."""
     entries = np.cumsum(sum(np.diff(X.indptr)[units] for X in Xall))
     cuts = np.searchsorted(entries, np.arange(1, _PARTS) * entries[-1] / _PARTS) if len(units) else []
     pieces = [piece for piece in np.split(units, cuts) if len(piece)]
@@ -2358,7 +2685,9 @@ def _fit_all(Xall, units, parent, first, fitted, marked=None, submit=_now):
         return Xs, np.exp(ll - _logsumexp2(ll)[:, None])
 
     made = _at_once(submit, packed, range(len(pieces)))
-    again = _em(_Parts(Xs for Xs, _ in made), parent, np.concatenate([r for _, r in made]), False, submit=submit)
+    again = _em(
+        _Parts(Xs for Xs, _ in made), parent, np.concatenate([r for _, r in made]), False, submit=submit, prior=prior
+    )
     if again is not None:
         pi, dists, r, counts = again
         side = r[:, 0] >= r[:, 1]
@@ -3084,6 +3413,7 @@ def _query_sentences(db, q, count_lemmas, properties, metadata, distance, filter
         "data_path": data_path,
         "neighbors": neighbors,  # for each group of words next to the query (1, before; 2, after), as above
         "query_words": int(positions.shape[1]),
+        "sentence_index": first_si,  # each sentence's place in the collocation index, identical ones each
     }
 
 
@@ -3196,7 +3526,12 @@ def _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field
         return {"n_hits": 0, "n_sentences": 0, "n_works": 0, "nodes": [], "time": None}
     channels, names = _senses_channels(sentences, count_lemmas)
     common = _filtered(sentences, filter_words)
-    root = induce_senses(channels, sentences["docs"], unseeded=[common[ids] for ids in names])
+
+    def cooccurrence(columns):  # of the corpus's sentences outside the query's
+        return corpus_cooccurrence(sentences["data_path"], count_lemmas, names[0][columns], sentences["sentence_index"])
+
+    with corpus_profiles(cooccurrence):
+        root = induce_senses(channels, sentences["docs"], unseeded=[common[ids] for ids in names])
     return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, common)
 
 
