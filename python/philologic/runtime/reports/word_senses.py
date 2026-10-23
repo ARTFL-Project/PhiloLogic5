@@ -85,12 +85,13 @@ _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the sea
 _SAMPLE_EVERY = 4  # a search's first pass runs on every 4th sentence of a sense of many (search_sample)
 _SAMPLE_LEAST = 10000  # ... when that leaves at least this many (the first pass only finds where the second starts)
 _GROWN = 100000  # the most sentences splits are looked for and tested on (growth_sample): enough to find them as all do
+_PARTS = 2  # the parts a split is fitted again in on all its sentences (_fit_all), at once: a request's threads
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses30\0"  # bump when the result changes
+_CACHE_TAG = b"senses31\0"  # bump when the result changes
 
 
 class Dist:
@@ -378,9 +379,10 @@ class _Mats(list):
     bounds, each block's first and n), so that a fit leaves a block out by not reading its entries, and the fits of
     every fold share one packing. parent, the sense split, whose markers are packed apart (marking); marked, when
     given, the markers' entries of all the query's sentences and the indices of these among them (_Marked), which the
-    markers' entries are taken from."""
+    markers' entries are taken from; words, when given, the words of each group the sentences have, or more (those of
+    all the parts of a sense: see _Parts)."""
 
-    def __init__(self, Xs, blocks=None, parent=None, marked=None):
+    def __init__(self, Xs, blocks=None, parent=None, marked=None, words=None):
         super().__init__(csr_matrix(X) for X in Xs)
         n = self[0].shape[0]
         self.marked = marked
@@ -398,7 +400,9 @@ class _Mats(list):
         cmp_off = np.zeros(n_groups + 1, dtype=np.int64)
         had = []
         for c, X in enumerate(packed):
-            had.append(np.flatnonzero(np.bincount(X.indices[: X.nnz], minlength=X.shape[1])))
+            had.append(
+                np.flatnonzero(np.bincount(X.indices[: X.nnz], minlength=X.shape[1])) if words is None else words[c]
+            )
             voc_off[c + 1] = voc_off[c] + X.shape[1]
             cmp_off[c + 1] = cmp_off[c] + len(had[c])
         pos = np.concatenate(had).astype(np.int64)
@@ -655,6 +659,62 @@ def _marker_rows(indptr, indices, data, data_off, unmarked_all, rows, to_had, on
                     e += one
                     jj += one
     return m_indptr, m_indices, m_data, unmarked
+
+
+class _Parts(list):
+    """The sentences of a sense in parts, each packed apart (_Mats) with the words of all, for an EM that makes each
+    step's counts and log-probabilities of every part at once on the pool's threads, the counts then added up (each
+    part's in the order of its sentences, as the blocks of one packing would be: see _em)."""
+
+
+def _now(fn, *args):
+    """fn(*args) run at once, as a future: the pool of a single thread."""
+    future = Future()
+    future.set_result(fn(*args))
+    return future
+
+
+class _Task:
+    """fn(item), run by the first thread to get to it."""
+
+    def __init__(self, fn, item):
+        self.fn, self.item = fn, item
+        self.lock = threading.Lock()
+        self.started = False
+        self.done = threading.Event()
+        self.result = self.error = None
+
+    def run(self):
+        with self.lock:
+            if self.started:
+                return
+            self.started = True
+        try:
+            self.result = self.fn(self.item)
+        except BaseException as error:  # handed to the thread that waits for it
+            self.error = error
+        finally:
+            self.done.set()
+
+    def get(self):
+        self.done.wait()
+        if self.error is not None:
+            raise self.error
+        return self.result
+
+
+def _at_once(submit, fn, items):
+    """fn of each of items, at once: all but the first handed to the pool's threads (submit), the first done here,
+    then any of the others no thread has started yet, so that a thread of the pool that runs this never waits for work
+    queued behind its own. The results, in order."""
+    if len(items) == 1:
+        return [fn(items[0])]
+    tasks = [_Task(fn, item) for item in items]
+    for task in tasks[1:]:
+        submit(task.run)
+    for task in tasks:
+        task.run()
+    return [task.get() for task in tasks]
 
 
 def _block_slices(bounds):
@@ -1407,43 +1467,76 @@ def _column_sums(r):
     return out
 
 
-def _em(Xs, parent, r, every_marker, switch=True, left_out=None):
+def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
     """The EM of a split (see fit_split). The words chosen at every step (every_marker false), once the set chosen comes
     back to one chosen before, after another, are held from then on (switch): the choice cycles, and the fit would not
     settle. left_out, a block of the sentences (Xs a _Mats with blocks: a fold), fits the split without its sentences
     (their entries not read, their probabilities of either sense zero), whose log-probabilities under the fit are then
-    returned too (n_block x 2, in their order)."""
-    if not isinstance(Xs, _Mats):
-        Xs = _Mats(Xs, parent=parent)
-    ones = Xs.ones
-    c_order, c_start, c_idx, cdata, g_off = Xs.columns
-    pos, cols, cmp_off, voc_off = Xs.words
-    n = Xs[0].shape[0]
-    ranges, blocks = Xs.ranges(left_out)
+    returned too (n_block x 2, in their order). Xs may be in parts (_Parts), whose steps are made at once on the
+    pool's threads (submit)."""
+    parts = list(Xs) if isinstance(Xs, _Parts) else [Xs if isinstance(Xs, _Mats) else _Mats(Xs, parent=parent)]
+    Xs = parts[0]
+    pos, cols, cmp_off, voc_off = Xs.words  # the same for every part
+    at = np.concatenate([[0], np.cumsum([part[0].shape[0] for part in parts])]).astype(np.int64)  # each part's first
+    n = int(at[-1])
     lo, hi = (n, n) if left_out is None else (Xs.bounds[left_out], Xs.bounds[left_out + 1])
     n_fit = n - (hi - lo)
     n_words = int(voc_off[-1])
     parent_p = np.concatenate([d.p for d in parent]).astype(np.float64)
     parent_rest = np.array([d.rest for d in parent], dtype=np.float64)
     discount = np.array([d.discount for d in parent], dtype=np.float64)
-    markers, mk, mk_off, mk_cmp, (mk_had, mk_pos, mkh_off, weights_mk, m_rows, unmarked) = Xs.marking(parent)
-    m_order, m_start, m_idx, m_sdata, _ = m_rows
+    markers, mk, mk_off, mk_cmp, (mk_had, mk_pos, mkh_off, weights_mk, _, _) = Xs.marking(parent)
     marked = (mk_had, mk_pos, mkh_off)
-    unmarked_ll = Xs.unmarked_loglik(parent)
     parent_had = parent_p[cols]
-    padded = np.zeros((n + 1, 2))  # r (in the order of the packing), and the padding's (0)
-    padded[:n] = r if Xs.perm is None else r[Xs.perm]
+    # r and each part's padding (0) after its sentences, in the order of the packings, in one array: the sums over the
+    # sentences are made in their order (the paddings' zeros change none)
+    padded = np.zeros((n + len(parts), 2))
+    views = [padded[a + p : b + p + 1] for p, (a, b) in enumerate(zip(at[:-1], at[1:]))]
+    for part, view, a, b in zip(parts, views, at[:-1], at[1:]):
+        view[:-1] = r[a:b] if part.perm is None else r[a:b][part.perm]
     padded[lo:hi] = 0.0  # the sentences left out, in no sense: they add nothing to any count
-    r = padded[:n]
-    weight = _weights(r)
+    weight = _weights(padded)
     lse, top, log2 = np.empty(n), np.empty(n), 0.0 + math.log(2.0)
+    steps = []  # each part's: its slices of the words' entries, of the markers', its other words' weighted counts...
+    for part in parts:
+        ranges, blocks = part.ranges(left_out)
+        m_rows, unmarked = part.marking(parent)[4][4:]
+        steps.append((part.columns, blocks, m_rows[:4], unmarked, part.unmarked_loglik(parent), ranges, part.ones))
+
+    def counts_of(p):  # each word's count in either sense in a part's sentences
+        (c_order, c_start, c_idx, cdata, g_off), blocks, ones = steps[p][0], steps[p][1], steps[p][6]
+        return _em_counts(c_order, c_start, c_idx, cdata, g_off, ones, views[p].reshape(-1), len(cols), blocks)
+
+    def shares_of(p, evidence, log_pi, log_scales):  # a part's sentences' log-probabilities, and r of either sense
+        (m_order, m_start, m_idx, m_sdata), unmarked, unmarked_ll, ranges, ones = steps[p][2:]
+        ll_all = _em_marked_loglik(
+            m_order, m_start, m_idx, m_sdata, ones, evidence, log_pi, unmarked_ll, unmarked, log_scales, ranges
+        )
+        a, b = at[p], at[p + 1]
+        ll, s, h, rp = ll_all[: b - a], lse[a:b], top[a:b], views[p][:-1]
+        # r = exp(ll - logsumexp(ll)): _logsumexp2's arithmetic, its passes joined
+        _lse_apart(ll, s, h)
+        with np.errstate(invalid="ignore", over="ignore"):
+            np.exp(s, out=s)
+        np.log1p(s, out=s)
+        bad, total = _lse_join_less(ll, s, h, log2, rp)
+        if bad:
+            s[:] = _logsumexp2(ll)
+            _less(ll, s, rp)
+            total = _pairwise_sum(s, 0, b - a)
+        np.exp(rp, out=rp)
+        return ll_all, total
+
     previous = None
     seen, last = set(), None  # the sets of words chosen
     for _ in range(_MAX_ITER):
         if weight.min() < 1.0:
             return None
         pi = weight / n_fit
-        counts = _em_counts(c_order, c_start, c_idx, cdata, g_off, ones, padded.reshape(-1), len(cols), blocks)
+        made = _at_once(submit, counts_of, range(len(parts)))
+        counts = made[0]
+        for more in made[1:]:  # each part's sums, added in order: as the blocks of one packing add them
+            counts = counts + more
         totals, least = _em_sums(counts, pos, cmp_off, voc_off, discount)
         with np.errstate(divide="ignore"):
             thresholds = np.log(totals)
@@ -1466,39 +1559,19 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None):
         np.multiply(evidence, weights_mk, out=evidence)
         with np.errstate(divide="ignore"):
             log_scales = np.log(scales)
-        ll_all = _em_marked_loglik(
-            m_order,
-            m_start,
-            m_idx,
-            m_sdata,
-            ones,
-            evidence.reshape(-1),
-            np.log(pi),
-            unmarked_ll,
-            unmarked,
-            log_scales,
-            ranges,
-        )
-        ll = ll_all[:n]
-        # r = exp(ll - logsumexp(ll)): _logsumexp2's arithmetic, its passes joined
-        _lse_apart(ll, lse, top)
-        with np.errstate(invalid="ignore", over="ignore"):
-            np.exp(lse, out=lse)
-        np.log1p(lse, out=lse)
-        bad, total = _lse_join_less(ll, lse, top, log2, r)
-        if bad:
-            lse = _logsumexp2(ll)
-            _less(ll, lse, r)
+        log_pi = np.log(pi)
+        made = _at_once(submit, lambda p: shares_of(p, evidence.reshape(-1), log_pi, log_scales), range(len(parts)))
+        ll_all, total = made[0]
+        if len(parts) > 1:
             total = _pairwise_sum(lse, 0, n)
-        np.exp(r, out=r)
         if left_out is not None:
-            r[lo:hi] = 0.0
+            padded[lo:hi] = 0.0
             total = _pairwise_sum(lse, 0, lo) + _pairwise_sum(lse, hi, n - hi)
         if previous is not None and abs(total - previous) <= _TOL * abs(total):
             break
         previous = total
-        weight = _weights(r)
-    if _weights(r).min() < 1.0:
+        weight = _weights(padded)
+    if _weights(padded).min() < 1.0:
         return None
     # The last fit again, for every word
     counts_had, counts = counts, np.zeros((n_words, 2))
@@ -1524,12 +1597,14 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None):
         for c in range(len(parent))
     ]
     counts = [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
-    out = pi, dists, r if Xs.perm is None else r[Xs.inv], counts
+    r = [view[:-1] if part.perm is None else view[:-1][part.inv] for part, view in zip(parts, views)]
+    out = pi, dists, r[0] if len(r) == 1 else np.concatenate(r), counts
     if left_out is None:
         return out
     # The sentences left out under the fit: their markers' entries too, with the same rates
     held_out = np.array([[Xs.first[left_out], Xs.first[left_out + 1]]], dtype=np.int64)
-    _em_loglik_add(m_order, m_start, m_idx, m_sdata, ones, evidence.reshape(-1), ll_all.reshape(-1), held_out)
+    m_order, m_start, m_idx, m_sdata = steps[0][2]
+    _em_loglik_add(m_order, m_start, m_idx, m_sdata, Xs.ones, evidence.reshape(-1), ll_all.reshape(-1), held_out)
     return out + (ll_all[lo:hi].copy(),)
 
 
@@ -2066,13 +2141,6 @@ def marks(node, against, common=None, listed=None):
     return False
 
 
-def _now(fn, *args):
-    """fn(*args) run at once, as a future: the pool of a single thread."""
-    future = Future()
-    future.set_result(fn(*args))
-    return future
-
-
 def _race(racing, fits, folds, n):
     """The candidates out of the race after the folds given (Maron and Moore 1994: models compared by
     cross-validation, those clearly worse no longer tested): those whose held-out sentences so far gain less than the
@@ -2204,7 +2272,7 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
         return
     if len(tried) < len(units):
         whole = None if marked is None else marked.result()
-        pi, dists, side, counts = submit(_fit_all, Xall, units, node.dists, first, (pi, dists), whole).result()
+        pi, dists, side, counts = submit(_fit_all, Xall, units, node.dists, first, (pi, dists), whole, submit).result()
     node.model = (pi, dists)
     for k, members in ((0, side), (1, ~side)):
         child = Node(units[members], [d[k] for d in dists], [c[:, k] for c in counts], node.dists)
@@ -2213,22 +2281,41 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=
     node.children.sort(key=lambda c: (-len(c.units), c.k))
 
 
-def _fit_all(Xall, units, parent, first, fitted, marked=None):
+def _fit_all(Xall, units, parent, first, fitted, marked=None, submit=_now):
     """A split found on a sample of its sense's sentences, fitted again on all of them (units): its search's second
     pass, on all of them, from the senses of its first (pi, dists), as these share them out. The second pass on the
     sample alone chose the words that mark either sense from the sample's counts: fewer of them than all the sentences
     have, which would hold the split to a fit less good on them. Should that fail (no halves), the split as fitted
     (fitted: pi, dists), its senses' rates fitted again on all the sentences, as they share them out. Returns (pi,
     dists, side: the sentences more likely in the first sense, counts). marked: the markers' entries of all the
-    sentences (_Marked), or None."""
-    Xs = _Mats([X[units] for X in Xall], marked=None if marked is None else (marked, units))
-    ll = _mixture_loglik(Xs, *first)
-    again = fit_split(Xs, parent, np.exp(ll - _logsumexp2(ll)[:, None]))
+    sentences (_Marked), or None. The sentences are in _PARTS parts of about as many entries, each packed and fitted
+    at once on the pool's threads (submit), so that the refit of the first split, which nothing else can run beside,
+    keeps both busy."""
+    entries = np.cumsum(sum(np.diff(X.indptr)[units] for X in Xall))
+    cuts = np.searchsorted(entries, np.arange(1, _PARTS) * entries[-1] / _PARTS) if len(units) else []
+    pieces = [piece for piece in np.split(units, cuts) if len(piece)]
+
+    def rows(piece):  # a part's matrices, and the words each group of them has
+        Xs = [X[piece] for X in Xall]
+        return Xs, [np.bincount(X.indices[: X.nnz], minlength=X.shape[1]) > 0 for X in Xs]
+
+    made = _at_once(submit, rows, pieces)
+    words = [np.flatnonzero(np.logical_or.reduce([had[c] for _, had in made])) for c in range(len(Xall))]
+
+    def packed(p):  # a part packed, and its sentences' probabilities under the first pass's senses
+        Xs = _Mats(made[p][0], marked=None if marked is None else (marked, pieces[p]), words=words)
+        Xs.unmarked_loglik(parent)
+        ll = _mixture_loglik(Xs, *first)
+        return Xs, np.exp(ll - _logsumexp2(ll)[:, None])
+
+    made = _at_once(submit, packed, range(len(pieces)))
+    again = _em(_Parts(Xs for Xs, _ in made), parent, np.concatenate([r for _, r in made]), False, submit=submit)
     if again is not None:
         pi, dists, r, counts = again
         side = r[:, 0] >= r[:, 1]
         if side.any() and not side.all():
             return pi, dists, side, counts
+    Xs = [X[units] for X in Xall]
     ll = _mixture_loglik(Xs, *fitted)
     r = np.exp(ll - _logsumexp2(ll)[:, None])
     counts = [np.asarray(X.T @ r) for X in Xs]
