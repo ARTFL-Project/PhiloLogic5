@@ -1929,7 +1929,7 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit
 
     Xs, fold_of = submit(sentences).result()
     packed = submit(_Mats, Xs, fold_of, node.dists)
-    seeding = submit(lambda: seed_splits(Xs, collocates, weights=[d.weights for d in node.dists]))
+    seeding = submit(seed_splits, Xs, collocates, _SEEDS_TRIED, [d.weights for d in node.dists])
     sampling = submit(search_sample, Xs, node.dists)
     Xs = packed.result()
     n_folds = len(Xs.bounds) - 1
