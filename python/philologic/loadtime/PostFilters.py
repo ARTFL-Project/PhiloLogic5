@@ -2,13 +2,15 @@
 
 
 import array
+import gc
 import hashlib
 import io
 import os
+import queue
 import sqlite3
 import struct as _struct
 import time
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, deque
 from contextlib import contextmanager, nullcontext
 from functools import partial
 
@@ -23,7 +25,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from tqdm import tqdm
 from unidecode import unidecode
 
-from philologic.utils import count_lines, process_pool, run_shell
+from philologic.utils import count_lines, process_pool, run_shell, thread_pool
 
 
 class ByteRange(io.RawIOBase):
@@ -265,6 +267,19 @@ def make_collocation_database(loader_obj, db_destination):
     Creates numpy arrays storing token IDs, sentence offsets, and sentence keys
     that enable fully vectorized collocation counting at runtime.
     """
+    write_collocation_arrays(loader_obj, db_destination)  # its arrays freed: the counts read them from their files
+
+    print(f"{time.ctime()}: Counting the sentences and occurrences of each word...")
+    write_corpus_counts(db_destination)
+
+    print(f"{time.ctime()}: Counting the sentences each pair of words is in...")
+    write_cooccurrence(db_destination, max(1, getattr(loader_obj, "cores", 1) or 1))
+
+    print(f"{time.ctime()}: Collocation database built successfully.")
+
+
+def write_collocation_arrays(loader_obj, db_destination):
+    """The collocation arrays of make_collocation_database, written into db_destination."""
     print(f"{time.ctime()}: Building collocation columnar database...")
 
     vocab = {}  # token string -> uint32 ID
@@ -490,11 +505,6 @@ def make_collocation_database(loader_obj, db_destination):
             with open(os.path.join(db_destination, "attr_lemma_vocab_strings.bin"), "wb") as f:
                 f.write(attr_flat)
 
-    print(f"{time.ctime()}: Counting the sentences and occurrences of each word...")
-    write_corpus_counts(db_destination)
-
-    print(f"{time.ctime()}: Collocation database built successfully.")
-
 
 # What the corpus counts are counted from, for words and for lemmas: the id of each running word, the offsets of the
 # vocabulary (its size), and the name the counts are saved under
@@ -559,6 +569,279 @@ def write_corpus_counts(colloc_dir):
                 if os.path.exists(tmp):
                     os.unlink(tmp)
             written.append(name)
+    return written
+
+
+# The co-occurrence table (write_cooccurrence): for each pair of words (or lemmas) of a sentence, the number of the
+# corpus's sentences with both, each word once a sentence, as the word senses count the query's sentences. A pair is in
+# one row only, that of the word in fewer sentences (of two in as many, the one later in the vocabulary): a row then
+# holds the words more common than its own, so that the rows of common words, which are in sentences with almost every
+# word, are short. Rows are in CSR: for each word, from indptr[word] to indptr[word + 1], its partners (ascending) and
+# the number of sentences with both.
+COOCCURRENCE_PARTS = ("indptr", "partners", "counts")
+
+
+def cooccurrence_paths(colloc_dir, kind):
+    """The files of the co-occurrence table of words (kind "word") or lemmas ("lemma")."""
+    return {part: os.path.join(colloc_dir, f"cooccurrence_{kind}_{part}.npy") for part in COOCCURRENCE_PARTS}
+
+
+@numba.njit(nogil=True)
+def _distinct_counts(count_ids, sent_offsets, lo, hi, n_vocab, distinct):
+    """The number of distinct ids of each sentence lo..hi (distinct[s])."""
+    seen = np.zeros(n_vocab, dtype=np.bool_)
+    for s in range(lo, hi):
+        m = 0
+        for k in range(sent_offsets[s], sent_offsets[s + 1]):
+            tid = count_ids[k]
+            if not seen[tid]:
+                seen[tid] = True
+                m += 1
+        for k in range(sent_offsets[s], sent_offsets[s + 1]):
+            seen[count_ids[k]] = False
+        distinct[s] = m
+
+
+@numba.njit(nogil=True)
+def _distinct_ranks(count_ids, sent_offsets, rank, lo, hi, n_vocab, d_offsets, ranks):
+    """The ranks of the distinct ids of each sentence lo..hi, ascending, from d_offsets[s] in ranks."""
+    seen = np.zeros(n_vocab, dtype=np.bool_)
+    for s in range(lo, hi):
+        e = d_offsets[s]
+        for k in range(sent_offsets[s], sent_offsets[s + 1]):
+            tid = count_ids[k]
+            if not seen[tid]:
+                seen[tid] = True
+                ranks[e] = rank[tid]
+                e += 1
+        for k in range(sent_offsets[s], sent_offsets[s + 1]):
+            seen[count_ids[k]] = False
+        ranks[d_offsets[s] : e].sort()
+
+
+@numba.njit(nogil=True)
+def _sentences_of(ranks, d_offsets, r_lo, r_hi, entries, sentence, work):
+    """For each rank r_lo..r_hi, the sentences it is in (from entries[r] in sentence); work[r], the sum of its places
+    among their ranks (the more common words there), the counts its row adds up. Returns whether each got as many as
+    entries allows it (its number of sentences)."""
+    cursor = entries[r_lo:r_hi].copy()
+    for s in range(len(d_offsets) - 1):
+        start = d_offsets[s]
+        for k in range(start, d_offsets[s + 1]):
+            r = ranks[k]
+            if r >= r_hi:
+                break
+            if r >= r_lo:
+                c = cursor[r - r_lo]
+                if c >= entries[r + 1]:
+                    return False
+                sentence[c] = s
+                cursor[r - r_lo] = c + 1
+                work[r] += k - start
+    for r in range(r_lo, r_hi):
+        if cursor[r - r_lo] != entries[r + 1]:
+            return False
+    return True
+
+
+@numba.njit(nogil=True)
+def _pair_rows(a_lo, a_hi, rank, order, entries, sentence, ranks, d_offsets, count, touched):
+    """The rows of the ids a_lo..a_hi: for each, its partners (the more common words of its sentences: those of lower
+    rank) by id, ascending, and the number of sentences with both. count (zeros, left so) and touched are as long as
+    the vocabulary. Returns the number of partners of each row, the partners and the counts."""
+    lengths = np.zeros(a_hi - a_lo, dtype=np.int64)
+    capacity = 1024
+    partners = np.empty(capacity, dtype=np.uint32)
+    counts = np.empty(capacity, dtype=np.uint32)
+    e = 0
+    for a in range(a_lo, a_hi):
+        r = rank[a]
+        t = 0
+        for x in range(entries[r], entries[r + 1]):
+            start = d_offsets[sentence[x]]
+            place = np.searchsorted(ranks[start : d_offsets[sentence[x] + 1]], r)  # the words more common there
+            for k in range(start, start + place):
+                b = ranks[k]
+                if count[b] == 0:
+                    touched[t] = b
+                    t += 1
+                count[b] += 1
+        if e + t > capacity:
+            while e + t > capacity:
+                capacity *= 2
+            grown = np.empty(capacity, dtype=np.uint32)
+            grown[:e] = partners[:e]
+            partners = grown
+            grown = np.empty(capacity, dtype=np.uint32)
+            grown[:e] = counts[:e]
+            counts = grown
+        ids = np.empty(t, dtype=np.uint32)
+        for i in range(t):
+            ids[i] = order[touched[i]]
+        ids.sort()
+        for i in range(t):
+            b = rank[ids[i]]
+            partners[e + i] = ids[i]
+            counts[e + i] = count[b]
+            count[b] = 0
+        e += t
+        lengths[a - a_lo] = t
+    return lengths, partners[:e].copy(), counts[:e].copy()
+
+
+class _ArrayFile:
+    """A one-dimensional .npy file written a part after the other, put in place whole when done (tmp + os.replace:
+    no worker reads half of it)."""
+
+    def __init__(self, path, dtype):
+        self.path, self.dtype, self.length = path, np.dtype(dtype), 0
+        self.tmp = f"{path}.{os.getpid()}.tmp"
+        self.file = open(self.tmp, "wb")
+        self.file.write(self._header(0))  # written again with its length once known
+
+    def _header(self, length):
+        header = io.BytesIO()
+        np.lib.format.write_array_header_1_0(
+            header, {"descr": np.lib.format.dtype_to_descr(self.dtype), "fortran_order": False, "shape": (length,)}
+        )
+        return header.getvalue()
+
+    def write(self, array):
+        self.file.write(np.ascontiguousarray(array, dtype=self.dtype).data)
+        self.length += len(array)
+
+    def finish(self):
+        header = self._header(self.length)
+        if len(header) != len(self._header(0)):  # numpy pads headers to room for any length
+            raise RuntimeError(f"The header of {self.path} would not fit before its data")
+        self.file.seek(0)
+        self.file.write(header)
+        self.file.close()
+        os.replace(self.tmp, self.path)
+
+    def discard(self):
+        self.file.close()
+        if os.path.exists(self.tmp):
+            os.unlink(self.tmp)
+
+
+def _even_cuts(cumulative, parts):
+    """Places in an array of running totals, from 0 to its last, cutting it into at most parts of about as much."""
+    cuts = np.searchsorted(cumulative, np.linspace(0, cumulative[-1], parts + 1)[1:-1])
+    return np.unique(np.concatenate([[0], cuts, [len(cumulative) - 1]]))
+
+
+def write_cooccurrence_table(colloc_dir, count_lemmas, workers=1):
+    """Write the co-occurrence table of the words (count_lemmas False) or lemmas next to the collocation arrays it is
+    counted from, in workers threads; its memory, in bytes, is about 8 for each word of each sentence (each once) and
+    the rows' counts as they are written. Returns the names of its files."""
+    ids_file, _, kind = _COUNTED[count_lemmas]
+    sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
+    df = np.load(os.path.join(colloc_dir, f"sentence_df_{kind}.npy"))
+    n_vocab, n_sentences = len(df), len(sent_offsets) - 1
+    if max(n_vocab, n_sentences) >= 2**32:
+        raise ValueError(f"Too many words or sentences for the co-occurrence table in {colloc_dir}")
+    # Ranks: the word in most sentences first, of two in as many the one earlier in the vocabulary
+    order = np.lexsort((np.arange(n_vocab), -df.astype(np.int64))).astype(np.uint32)
+    rank = np.empty(n_vocab, dtype=np.uint32)
+    rank[order] = np.arange(n_vocab, dtype=np.uint32)
+    paths = cooccurrence_paths(colloc_dir, kind)
+    with thread_pool(workers) as pool:
+        # The distinct words of each sentence, as ranks, ascending: the more common words before each
+        count_ids = np.load(os.path.join(colloc_dir, ids_file), mmap_mode="r")
+        cuts = _even_cuts(np.asarray(sent_offsets), workers)
+        distinct = np.zeros(n_sentences, dtype=np.int64)
+        for done in [
+            pool.submit(_distinct_counts, count_ids, sent_offsets, lo, hi, n_vocab, distinct)
+            for lo, hi in zip(cuts, cuts[1:])
+        ]:
+            done.result()
+        d_offsets = np.zeros(n_sentences + 1, dtype=np.int64)
+        np.cumsum(distinct, out=d_offsets[1:])
+        del distinct
+        ranks = np.empty(d_offsets[-1], dtype=np.uint32)
+        for done in [
+            pool.submit(_distinct_ranks, count_ids, sent_offsets, rank, lo, hi, n_vocab, d_offsets, ranks)
+            for lo, hi in zip(cuts, cuts[1:])
+        ]:
+            done.result()
+        del count_ids
+        # The sentences of each word (by rank), and its place in each
+        entries = np.zeros(n_vocab + 1, dtype=np.int64)
+        np.cumsum(df[order], out=entries[1:])
+        if entries[-1] != len(ranks):
+            raise RuntimeError(f"The sentence counts in {colloc_dir} are not those of its words: write them again")
+        sentence = np.empty(len(ranks), dtype=np.uint32)
+        work = np.zeros(n_vocab, dtype=np.int64)
+        cuts = _even_cuts(entries, workers)
+        found = [
+            pool.submit(_sentences_of, ranks, d_offsets, lo, hi, entries, sentence, work)
+            for lo, hi in zip(cuts, cuts[1:])
+        ]
+        if not all(done.result() for done in found):
+            raise RuntimeError(f"The sentence counts in {colloc_dir} are not those of its words: write them again")
+        # The rows, by id, in parts of about as many counts, written in order as they are done: as many parts as keep
+        # each worker busy to the end and few rows in memory
+        steps = np.zeros(n_vocab + 1, dtype=np.int64)
+        np.cumsum(work[rank] + 1, out=steps[1:])
+        del work
+        cuts = _even_cuts(steps, 16 * workers)
+        buffers = queue.SimpleQueue()
+        for _ in range(workers):
+            buffers.put((np.zeros(n_vocab, dtype=np.uint32), np.empty(n_vocab, dtype=np.uint32)))
+
+        def rows(lo, hi):
+            count, touched = buffers.get()
+            try:
+                return _pair_rows(lo, hi, rank, order, entries, sentence, ranks, d_offsets, count, touched)
+            finally:
+                buffers.put((count, touched))
+
+        files = {part: _ArrayFile(paths[part], np.uint32) for part in ("partners", "counts")}
+        try:
+            lengths = np.zeros(n_vocab, dtype=np.int64)
+            parts = list(zip(cuts, cuts[1:]))
+            pending = deque()
+            while parts or pending:
+                while parts and len(pending) < 2 * workers:  # those done wait for the earlier ones in memory
+                    lo, hi = parts.pop(0)
+                    pending.append((lo, pool.submit(rows, lo, hi)))
+                lo, done = pending.popleft()
+                row_lengths, partners, counts = done.result()
+                del done
+                lengths[lo : lo + len(row_lengths)] = row_lengths
+                files["partners"].write(partners)
+                files["counts"].write(counts)
+            for part in ("partners", "counts"):
+                files[part].finish()
+        finally:
+            for part in ("partners", "counts"):
+                files[part].discard()
+    indptr = np.zeros(n_vocab + 1, dtype=np.int64)
+    np.cumsum(lengths, out=indptr[1:])
+    # What numba's first compilation keeps of the workers' calls (the tracebacks of the types it tries, holding their
+    # arguments) is freed, so that the next table does not count its words while this one's are still in memory
+    gc.collect()
+    tmp = f"{paths['indptr']}.{os.getpid()}.tmp"  # last: the table's files are then all there, of the same length
+    try:
+        with open(tmp, "wb") as f:
+            np.save(f, indptr)
+        os.replace(tmp, paths["indptr"])
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    return [os.path.basename(paths[part]) for part in COOCCURRENCE_PARTS]
+
+
+def write_cooccurrence(colloc_dir, workers=1):
+    """Write the co-occurrence tables of the words (and of the lemmas, if the database has them) next to the
+    collocation arrays and corpus counts (write_corpus_counts) they are made from: the word senses take the corpus's
+    profiles of the query's collocates from them (word_senses.corpus_cooccurrence). philologic.utils.write_cooccurrence
+    writes them for databases loaded before. Returns the names of the files written."""
+    written = []
+    for count_lemmas in (False, True):
+        if os.path.exists(os.path.join(colloc_dir, _COUNTED[count_lemmas][0])):  # not for a database without lemmas
+            written.extend(write_cooccurrence_table(colloc_dir, count_lemmas, workers))
     return written
 
 
