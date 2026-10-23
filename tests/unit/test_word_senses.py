@@ -69,6 +69,54 @@ class TestSenses:
         is_a = np.array([sense == "a" for _, sense in specs])
         assert sorted(set(is_a[leaf.units]) for leaf in found) == [{False}, {True}]
 
+    def test_senses_grown_on_a_sample_have_every_sentence(self, monkeypatch):
+        # A query of more than _GROWN sentences: the tree grown on _GROWN of them, every sentence then placed in it
+        monkeypatch.setattr(ws, "_GROWN", 300)
+        specs = [(work, "abc"[i % 3]) for work in range(20) for i in range(45)]
+        channels, works = sentences(specs, seed=1)
+        root = ws.induce_senses(channels, works)
+        assert root.test["sentences"] == 300  # tested on the sample
+        found = leaves(root)
+        assert len(found) == 3
+        units = np.sort(np.concatenate([leaf.units for leaf in found]))
+        assert np.array_equal(units, np.arange(len(specs)))  # each sentence in one of the senses found
+        sense = np.array([s for _, s in specs])
+        for leaf in found:
+            assert len(set(sense[leaf.units])) == 1
+            assert words_of(leaf) <= set(SENSES[sense[leaf.units[0]]])
+            # its counts are those of all its sentences
+            assert np.isclose(leaf.counts[0].sum(), channels[0][0][leaf.units].sum(), rtol=0.01)
+        nodes, logp, margin = ws.node_posteriors(root, [csr_matrix(X) for X, _, _ in channels])
+        for leaf in found:
+            assert np.array_equal(np.flatnonzero(margin[:, leaf.id] > 0), leaf.units)
+
+    def test_a_split_fitted_again_on_all_its_sentences_keeps_its_halves(self):
+        # From a first pass that tells nothing apart, the split as fitted on the sample, its rates fitted again on all
+        specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
+        channels, works = sentences(specs)
+        root = ws.induce_senses(channels, works)
+        Xall = [csr_matrix(X) for X, _, _ in channels]
+        units = np.arange(len(specs))
+        pi, dists = root.model
+        alike = (pi, [[d, d] for d in root.dists])
+        pi2, dists2, side, counts = ws._fit_all(Xall, units, root.dists, alike, (pi, dists))
+        is_a = np.array([sense == "a" for _, sense in specs])
+        assert np.mean(side == is_a) in (0.0, 1.0)
+        assert np.allclose(counts[0].sum(axis=1), np.asarray(Xall[0].sum(axis=0)).ravel())
+        assert np.isclose(pi2.sum(), 1.0)
+
+    def test_a_sample_spread_evenly_over_the_sentences(self, monkeypatch):
+        monkeypatch.setattr(ws, "_GROWN", 100)
+        assert ws.growth_sample(100) is None
+        sample = ws.growth_sample(250)
+        assert len(sample) == 100 and np.all(np.diff(sample) > 0) and sample[-1] < 250
+        starts = (np.arange(101) * 250) // 100  # one in each stretch of 2 or 3 sentences
+        assert np.all((sample >= starts[:-1]) & (sample < starts[1:]))
+        assert np.array_equal(sample, ws.growth_sample(250))  # the same every time
+        # a pattern of the text with the sample's period is not left out
+        monkeypatch.setattr(ws, "_GROWN", 300)
+        assert len(set(ws.growth_sample(900) % 3)) == 3
+
     def test_the_same_senses_on_one_thread_or_more(self, monkeypatch):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
         channels, works = sentences(specs, seed=3)
