@@ -2305,6 +2305,16 @@ class _Phrases:
             self.f_blob, self.f_offsets = sentences["v_blob"], sentences["v_offsets"]
         self.filenames = {}
         self.cache = {}
+        self.sorted = {}
+
+    def _sorted(self, side):
+        """The rows of the hits next to the query on a side by word, its form, the query's form and hit, and their
+        sentences: sorted once, those of any sentences are then in order (each hit is in one row)."""
+        if side not in self.sorted:
+            nb = self.neighbors[side]
+            order = np.lexsort((nb["hit"], nb["query_form"], nb["form"], nb["word"]))
+            self.sorted[side] = order, nb["unit"][order]
+        return self.sorted[side]
 
     def near(self, units):
         """For the sentences units: {group: {vocabulary id of a word next to the query: the row of its first hit with
@@ -2316,13 +2326,12 @@ class _Phrases:
         inside[units] = True
         for side in (1, 2):
             nb = self.neighbors[side]
-            sel = np.flatnonzero(inside[nb["unit"]])
+            order, unit = self._sorted(side)
+            sel = order[inside[unit]]
             if not len(sel):  # no word on this side of the query in these sentences
                 out[side] = {}
                 continue
-            w, f, q, h = nb["word"][sel], nb["form"][sel], nb["query_form"][sel], nb["hit"][sel]
-            order = np.lexsort((h, q, f, w))
-            w, f, q, sel = w[order], f[order], q[order], sel[order]
+            w, f, q = nb["word"][sel], nb["form"][sel], nb["query_form"][sel]
             starts = np.flatnonzero(np.r_[True, (w[1:] != w[:-1]) | (f[1:] != f[:-1]) | (q[1:] != q[:-1])])
             counts = np.diff(np.r_[starts, len(w)])
             pick = np.lexsort((starts, -counts, w[starts]))  # for each word, its most common forms first
