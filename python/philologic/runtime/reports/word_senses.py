@@ -1674,17 +1674,22 @@ def node_posteriors(root, Xall):
     """Every sense of the tree, in order (each before those it splits into), given its id and parent; and for every
     sentence the log-probability of each sense (n x senses), and its margin: the smallest log-likelihood ratio, along
     the way to the sense, of the sense's side over the other (positive when the sentence is on its side of every
-    split, infinite for the whole query)."""
+    split, infinite for the whole query). Each sense's are stored together (the arrays are senses x n, turned)."""
     n = Xall[0].shape[0]
-    nodes, logp, margin = [], [], []
+    nodes = []
     ones = [bool(np.all(X.data[: X.nnz] == 1)) for X in Xall]
+
+    def size(node):
+        return 1 + sum(size(child) for child in node.children)
+
+    logp, margin = np.empty((size(root), n)), np.empty((size(root), n))
 
     def walk(node, lp, mg, parent):
         node.id = len(nodes)
         node.parent = parent
         nodes.append(node)
-        logp.append(lp)
-        margin.append(mg)
+        logp[node.id] = lp
+        margin[node.id] = mg
         if not node.children:
             return
         pi, dists = node.model
@@ -1696,7 +1701,7 @@ def node_posteriors(root, Xall):
             walk(child, lp + cond[:, child.k], np.minimum(mg, ll[:, child.k] - ll[:, 1 - child.k]), node)
 
     walk(root, np.zeros(n), np.full(n, np.inf), None)
-    return nodes, np.column_stack(logp), np.column_stack(margin)
+    return nodes, logp.T, margin.T
 
 
 def _path(root, leaf):
@@ -2529,7 +2534,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
             by_node.setdefault(a[1], []).append(a)
         for nid, items in by_node.items():
             inside = margin[:, nid] > 0
-            clear_of = np.ascontiguousarray(posteriors[:, nid])
+            clear_of = posteriors[:, nid]
             for item, _, ci, i in items:
                 col_ptr, rows = columns_of(ci)
                 rows = rows[col_ptr[i] : col_ptr[i + 1]]
