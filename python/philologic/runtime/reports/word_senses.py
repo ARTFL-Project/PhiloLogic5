@@ -68,7 +68,7 @@ from philologic.runtime.reports.collocation import (
     phrase_words,
 )
 from philologic.runtime.get_text import _get_mmap
-from philologic.runtime.word_properties import _nb_compare_keys, _nb_sentence_index, _nb_word_kept, property_masks
+from philologic.runtime.word_properties import _nb_compare_keys, _nb_word_kept, property_masks
 from philologic.runtime.reports.time_series import _corpus_year_counts, _get_doc_year_data
 
 # The conventions the method rests on: none is fitted to any corpus.
