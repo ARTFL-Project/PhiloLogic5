@@ -82,7 +82,7 @@ _MAX_WORDS = 40  # words sent for each sense and group of words (the response wo
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses27\0"  # bump when the result changes
+_CACHE_TAG = b"senses28\0"  # bump when the result changes
 
 
 class Dist:
@@ -1521,6 +1521,36 @@ def _now(fn, *args):
     return future
 
 
+def _race(racing, fits, folds, n):
+    """The candidates out of the race after the folds given (Maron and Moore 1994: models compared by
+    cross-validation, those clearly worse no longer tested): those whose held-out sentences so far gain less than the
+    best candidate's, by more than EVIDENCE standard errors of their differences (each sentence with the gain of both).
+    Clearly worse on the works held out so far, a candidate would not be the split kept: testing it on the other folds
+    would only take time. The race is first decided on two folds: the works of one alone, whose sentences share their
+    words, can favor a candidate that those of the others do not."""
+    held = np.zeros(n, dtype=bool)
+    for fold in folds:
+        held |= fold[1]
+    gains = {}
+    for s in racing:
+        g = np.zeros(n)
+        for f, fold in enumerate(folds):
+            result = fits[(s, f)].result()
+            if result is not None:
+                g[fold[1]] = result[0]
+        gains[s] = g[held]
+    best = max(racing, key=lambda s: (float(gains[s].sum()), -s))
+    behind = set()
+    for s in racing:
+        if s == best:
+            continue
+        d = gains[best] - gains[s]
+        se = float(d.std(ddof=1) / np.sqrt(len(d))) if len(d) > 1 else 0.0
+        if se > 0 and float(d.mean()) / se > EVIDENCE:
+            behind.add(s)
+    return behind
+
+
 def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit=_now):
     units = node.units
     if len(units) < 2:
@@ -1531,7 +1561,8 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit
     # so that no thread waits for the slowest of a step: the sentences' matrices packed for the EM, the seeds and the
     # folds of the test at once (the folds, the same for every split, are wasted only when no seed splits the sense),
     # each seed's search once both the first are made, each candidate's fit on a fold once its search and the fold are
-    # done. The results are the same as one after the other: each is kept in its place.
+    # done (no further than a fold ahead of the race: see _race). Each result is kept in its place,
+    # and the race decides on whole folds: the results do not depend on the order the threads finish in.
     def sentences():
         return [X[units] for X in Xall], _fold_of(groups[units], len(units))
 
@@ -1542,30 +1573,54 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit
     Xs = packed.result()
     seeds = seeding.result()
     searches = [submit(fit_split, Xs, node.dists, r, True) for r, _ in seeds]
-    candidates = {}  # by the place of their seed
+    found = {}  # by the place of their seed: the candidate, or None
     fits = {}  # (candidate, fold): its fit on the fold
-    pending = set(searches) | set(folds)
-    while pending:
-        if all(s in candidates for s in range(len(searches))) and not any(candidates.values()):
-            for fold in folds:  # no halves: no test
-                fold.cancel()
-            break
-        _, pending = wait(pending, return_when=FIRST_COMPLETED)
+    out = set()  # the candidates out of the race
+    raced = 0  # the last fold the race is decided on (never on the first alone: see _race)
+    ahead = 0 if submit is _now else 1  # folds fitted ahead of the race, for threads that would wait otherwise
+    while True:
         for s, search in enumerate(searches):
-            if not search.done() or s in candidates:
+            if s in found or not search.done():
                 continue
             fitted = search.result()
             side = None if fitted is None else fitted[2][:, 0] >= fitted[2][:, 1]
             # One sense in every sentence, more or less: no halves
-            candidates[s] = None if side is None or side.all() or not side.any() else (seeds[s][1], fitted, side)
-        for s, candidate in candidates.items():
-            for f, fold in enumerate(folds):
-                if candidate is not None and fold.done() and (s, f) not in fits:
-                    fits[(s, f)] = submit(_fold_gain, fold.result(), candidate[1][2])
-    candidates = [candidates[s] for s in range(len(searches)) if candidates[s] is not None]
+            found[s] = None if side is None or side.all() or not side.any() else (seeds[s][1], fitted, side)
+        known = len(found) == len(searches)
+        racing = [s for s in sorted(found) if found[s] is not None and s not in out]
+        if known and not racing:
+            for fold in folds:  # no halves: no test
+                fold.cancel()
+            break
+        while (
+            known
+            and len(racing) > 1
+            and raced + 1 < n_folds - 1
+            and all((s, raced + 1) in fits and fits[(s, raced + 1)].done() for s in racing)
+        ):
+            raced += 1
+            behind = _race(racing, fits, [fold.result() for fold in folds[: raced + 1]], len(units))
+            for s in behind:
+                for f in range(n_folds):
+                    if (s, f) in fits:
+                        fits[(s, f)].cancel()
+            out |= behind
+            racing = [s for s in racing if s not in behind]
+        over = known and (len(racing) < 2 or raced + 1 >= n_folds - 1)
+        for s in racing:
+            for f in range(n_folds if over else raced + 2 + ahead):
+                if (s, f) not in fits and folds[f].done():
+                    fits[(s, f)] = submit(_fold_gain, folds[f].result(), found[s][1][2])
+        pending = {search for search in searches if not search.done()}
+        pending |= {fold for fold in folds if not fold.done()}
+        pending |= {fits[key] for key in fits if key[0] in racing and not fits[key].done()}
+        if known and not pending and all((s, f) in fits for s in racing for f in range(n_folds)):
+            break
+        wait(pending, return_when=FIRST_COMPLETED)
+    candidates = [found[s] for s in racing]
     if candidates:
         folds = [fold.result() for fold in folds]
-        results = [fits[key].result() for key in sorted(fits)]
+        results = [fits[(s, f)].result() for s in racing for f in range(n_folds)]
     best = None
     for c, (seed, fitted, side) in enumerate(candidates):
         pi, dists, r, counts = fitted
