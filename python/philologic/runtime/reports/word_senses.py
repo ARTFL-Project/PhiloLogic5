@@ -1590,14 +1590,14 @@ def default_detail(nodes, number):
     return relative[k - 1]
 
 
-def marks(node, against, common=None):
+def marks(node, against, common=None, listed=None):
     """Whether a sense has something of its own to show: a word markedly more frequent in it than against (the dists
     of the sense it is told from) in any group of words, outside common (for each group, None or a mask of the words
-    that alone make no sense)."""
+    that alone make no sense). listed: for each group, those words as _described has them, if made already."""
     for ci, (c, dist) in enumerate(zip(node.counts, node.dists)):
         mask = None if common is None else common[ci]
-        listed = _described(c, dist, against[ci].p)[0]
-        if len(listed) and (mask is None or not mask[listed].all()):
+        listed_c = _described(c, dist, against[ci].p)[0] if listed is None else listed[ci]
+        if len(listed_c) and (mask is None or not mask[listed_c].all()):
             return True
     return False
 
@@ -2547,6 +2547,14 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 item["phrase"] = phrase
         return item
 
+    listed_of = {}
+
+    def listed_words_of(node, ci, against):  # _described's words, made once for a sense and those it is told from
+        key = (node.id, ci, id(against))
+        if key not in listed_of:
+            listed_of[key] = _described(node.counts[ci], node.dists[ci], against[ci].p)[0]
+        return listed_of[key]
+
     def described_words(node, ci, against, listed):  # describe's items of the words listed
         c, p = node.counts[ci], node.dists[ci].p
         counts = c[listed].astype(np.float64).tolist()
@@ -2571,7 +2579,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         hidden = []
         for ci in range(len(channels)):
             # As describe lists them, those of its words shown and those not (the filter's), only as many as are sent
-            listed = _described(node.counts[ci], node.dists[ci], against[ci].p)[0]
+            listed = listed_words_of(node, ci, against)
             if not_shown[ci] is not None:
                 hidden = described_words(node, ci, against, listed[not_shown[ci][listed]][:_MAX_WORDS])
                 listed = listed[~not_shown[ci][listed]]
@@ -2619,7 +2627,15 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     # collocation filter (whose words, mostly function words, tell the style of works more than a sense: alone, they
     # make none)
     common = [unshown[ids] for ids in names]
-    marked = {node.id: marks(node, node.parent_dists, common) for node in nodes}
+    marked = {
+        node.id: marks(
+            node,
+            node.parent_dists,
+            common,
+            [listed_words_of(node, ci, node.parent_dists) for ci in range(len(channels))],
+        )
+        for node in nodes
+    }
     out = []
     for node in nodes:
         split = None
