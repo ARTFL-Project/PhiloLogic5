@@ -342,7 +342,9 @@ class TestModel:
 
 def plain_em(Xs, parent, r, every_marker):
     """The EM of a split in plain numpy, as the compiled one must compute it: the words chosen at every step held once
-    their choice comes back to a set chosen before, after another."""
+    their choice comes back to a set chosen before, after another. The compiled one adds up what the words that mark
+    no sense tell of a sentence apart (their parent's log-rates once, their count times the log of the scale at every
+    step), so its sums differ from these in the last bits."""
     n = Xs[0].shape[0]
     previous = None
     seen, last, held = set(), None, None
@@ -382,9 +384,19 @@ def plain_em(Xs, parent, r, every_marker):
     return pi, dists, r, counts
 
 
+def assert_same_fit(mine, plain):
+    """The same fit, to rounding: the shares, the sentences' probabilities, the senses' rates and the counts."""
+    close = dict(rtol=1e-9, atol=1e-12)
+    assert np.allclose(mine[0], plain[0], **close) and np.allclose(mine[2], plain[2], **close)
+    for ds, dp in zip(mine[1], plain[1]):
+        for a, b in zip(ds, dp):
+            assert np.allclose(a.p, b.p, rtol=1e-9, atol=0) and np.isclose(a.rest, b.rest, rtol=1e-9, atol=0)
+    assert all(np.allclose(a, b, **close) for a, b in zip(mine[3], plain[3]))
+
+
 @pytest.mark.unit
 class TestCompiled:
-    def test_the_compiled_em_is_numpy_to_the_last_bit(self):
+    def test_the_compiled_em_is_numpys(self):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
         channels, works = sentences(specs, seed=4)
         X = csr_matrix(channels[0][0])
@@ -398,14 +410,9 @@ class TestCompiled:
         ]
         r = rng.dirichlet([1.0, 1.0], X.shape[0])
         for every_marker in (True, False):
-            mine, plain = ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker)
-            assert np.array_equal(mine[0], plain[0]) and np.array_equal(mine[2], plain[2])
-            for ds, dp in zip(mine[1], plain[1]):
-                for a, b in zip(ds, dp):
-                    assert np.array_equal(a.p, b.p) and a.rest == b.rest
-            assert all(np.array_equal(a, b) for a, b in zip(mine[3], plain[3]))
+            assert_same_fit(ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
 
-    def test_the_compiled_em_is_numpy_to_the_last_bit_on_a_sense_s_sentences(self):
+    def test_the_compiled_em_is_numpys_on_a_sense_s_sentences(self):
         # Some of the sentences: words they lack, sentences with none of a group's words, a group's counts above one
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
         channels, works = sentences(specs, seed=7)
@@ -423,12 +430,7 @@ class TestCompiled:
         ]
         r = rng.dirichlet([1.0, 1.0], len(rows))
         for every_marker in (True, False):
-            mine, plain = ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker)
-            assert np.array_equal(mine[0], plain[0]) and np.array_equal(mine[2], plain[2])
-            for ds, dp in zip(mine[1], plain[1]):
-                for a, b in zip(ds, dp):
-                    assert np.array_equal(a.p, b.p) and a.rest == b.rest
-            assert all(np.array_equal(a, b) for a, b in zip(mine[3], plain[3]))
+            assert_same_fit(ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
 
     def test_sums_of_the_words_the_sentences_have_are_numpys(self):
         # Over all the words of a group, those the sentences lack zero

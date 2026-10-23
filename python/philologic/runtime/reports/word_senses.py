@@ -308,13 +308,18 @@ def fit_sparse(c, parent, own=None):
     the counts of the group are, the discount of all its words shared among them as the parent's rates are (absolute
     discounting, interpolated): a word that marks the other sense of a split, and is (nearly) absent from this one,
     keeps a small rate, not its parent's."""
+    return _fit_sparse(c, parent, own)[0]
+
+
+def _fit_sparse(c, parent, own=None):
+    """fit_sparse, and the scale of the parent's rates it gives the words that are not its own (1 for the parent)."""
     total = float(c.sum())
     if total <= 0:
-        return parent
+        return parent, 1.0
     if own is None:
         own = marked(c, parent)
     if len(own) == 0:
-        return parent
+        return parent, 1.0
     kept = np.maximum(c[own] - parent.discount, 0.0) / total
     freed = float(np.minimum(c, parent.discount).sum()) / total  # the discount of every word the sense has
     p_own = kept + freed * parent.p[own]
@@ -322,7 +327,7 @@ def fit_sparse(c, parent, own=None):
     scale = (1.0 - float(p_own.sum())) / others if others > 0 else 0.0
     p = parent.p * scale
     p[own] = p_own
-    return Dist(p, parent.rest * scale, parent.markers, parent.weights, parent.discount)
+    return Dist(p, parent.rest * scale, parent.markers, parent.weights, parent.discount), scale
 
 
 def _split_words(c, parent, every_marker):
@@ -335,10 +340,14 @@ def _split_words(c, parent, every_marker):
 
 
 # The EM of a split, compiled: the words of all groups in one vocabulary (each group's words after the last group's),
-# the sentences' matrices in CSR. It computes what fit_sparse, _split_words and _mixture_loglik do, in the same order
-# (numpy's pairwise sums included), so that the results are the same to the last bit; logarithms and exponentials are
-# left to numpy, whose own implementations differ from the C library's in the last bit. Its iterations only follow the
-# words the sentences have: those of a sense's sentences are a fraction of the query's.
+# the sentences' matrices in CSR. It computes what fit_sparse and _split_words do, in the same order (numpy's pairwise
+# sums included), so that the senses' rates are the same to the last bit for the same counts; logarithms and
+# exponentials are left to numpy, whose own implementations differ from the C library's in the last bit. Its
+# iterations only follow the words the sentences have: those of a sense's sentences are a fraction of the query's. A
+# word that marks no sense has its parent's rate, scaled, under both senses of every split (fit_sparse): what such
+# words tell of a sentence is then the sum of their parent's log-rates, the same at every step, and their weighted
+# count times the log of the scale. So each step reads only the entries of the markers, from slices of their own, the
+# others once a fit: the sentences' log-probabilities are _mixture_loglik's, added up in another order (to rounding).
 
 
 class _Mats(list):
@@ -379,11 +388,14 @@ class _Mats(list):
         self.columns = _column_slices(indptr, indices, data, ones, cmp_off)
         self.words = (pos, cols, cmp_off, voc_off)
         self._marking = []
+        self._unmarked_loglik = []
 
     def marking(self, parent):
         """The markers of the groups of words (all of them; their indices; each group's first; their places among the
-        words the sentences have, -1 for none) and the weights of the words the sentences have (and the padding's): the
-        same for every sense of a tree, its root's, so made once."""
+        words the sentences have, -1 for none), and those the sentences have: their places among the words they have,
+        the place of each of those among them (-1 for none), each group's first, their weights (and the padding's),
+        the slices of their entries, and each sentence's weighted count of its other words in each group (groups x n).
+        The same for every sense of a tree, its root's, so made once."""
         key = [(d.markers, d.weights) for d in parent]
         for known, made in self._marking:
             if all(a[0] is b[0] and a[1] is b[1] for a, b in zip(known, key)):
@@ -394,9 +406,55 @@ class _Mats(list):
         mk = np.flatnonzero(markers)
         had = np.full(int(voc_off[-1]), -1, dtype=np.int64)
         had[cols] = np.arange(len(cols))
-        weights_had = np.repeat(np.append(weights[cols], 1.0), 2).reshape(-1, 2)  # both senses', for numpy's fast loop
-        made = (markers, mk, np.searchsorted(mk, voc_off), had[mk], weights_had)
+        mk_cmp = had[mk]
+        # The markers the sentences have (their places among the words they have), and their entries apart
+        mk_had = mk_cmp[mk_cmp >= 0]
+        mkh_off = np.searchsorted(mk_had, cmp_off)
+        w_had = weights[cols]
+        n = self[0].shape[0]
+        m_indptr = np.empty((len(self), n + 1), dtype=np.int64)
+        parts, unmarked = [], np.empty((len(self), n))
+        total = 0
+        for c, X in enumerate(self):
+            to_mk = np.full(X.shape[1], -1, dtype=np.int64)
+            to_mk[pos[mk_had[mkh_off[c] : mkh_off[c + 1]]]] = np.arange(mkh_off[c], mkh_off[c + 1])
+            w = np.zeros(X.shape[1])
+            w[pos[cmp_off[c] : cmp_off[c + 1]]] = w_had[cmp_off[c] : cmp_off[c + 1]]
+            ptr, idx, data, unmarked[c] = _marker_entries(X.indptr, X.indices, X.data, bool(self.ones[c]), to_mk, w)
+            m_indptr[c] = ptr + total
+            total += len(idx)
+            parts.append((idx, data))
+        m_indices = np.concatenate([idx for idx, _ in parts]) if parts else np.empty(0, np.int32)
+        m_data = np.concatenate([data for _, data in parts]) if parts else np.empty(0)
+        rows = _row_slices(m_indptr, m_indices, m_data, self.ones, len(mk_had))
+        weights_mk = np.repeat(np.append(w_had[mk_had], 1.0), 2).reshape(-1, 2)  # both senses', for numpy's fast loop
+        mk_pos = np.full(len(cols), -1, dtype=np.int64)
+        mk_pos[mk_had] = np.arange(len(mk_had))
+        made = (
+            markers,
+            mk,
+            np.searchsorted(mk, voc_off),
+            mk_cmp,
+            (mk_had, mk_pos, mkh_off, weights_mk, rows, unmarked),
+        )
         self._marking.append((key, made))
+        return made
+
+    def unmarked_loglik(self, parent):
+        """What the words that mark no sense tell of each sentence under the parent: the sum of their weighted
+        log-rates, over the groups (n), as the sentences' matrices of those words times the log-rates add them up.
+        The same for every fit from the same parent, so made once for each."""
+        for known, made in self._unmarked_loglik:
+            if known is parent:
+                return made
+        pos, cols, cmp_off, voc_off = self.words
+        mk_had, mk_pos = self.marking(parent)[4][:2]
+        evidence = np.zeros((len(cols) + 1, 2))
+        evidence[: len(cols)] = np.concatenate([_evidence(d) for d in parent])[cols, None]
+        evidence[mk_had] = 0.0  # the markers' read at every step
+        order, start, idx, sdata = self.rows
+        made = _em_loglik(order, start, idx, sdata, self.ones, evidence.reshape(-1), np.zeros(2))[:, 0].copy()
+        self._unmarked_loglik.append((parent, made))
         return made
 
 
@@ -513,6 +571,38 @@ def _column_slices(indptr, indices, data, ones, cmp_off):
                     cdata[at[j]] = data[jj]
                 at[j] += _WIDTH
     return order, start, idx, cdata, g_off
+
+
+@numba.njit(cache=True, nogil=True)
+def _marker_entries(indptr, indices, data, ones, to_mk, w):
+    """A group's entries of the markers (indptr, their index among the markers to_mk gives, -1 for the other words,
+    and their counts), and each sentence's weighted count of its other words, as the matrix of those words times
+    their weights w adds it up (in the order of its entries, from 0)."""
+    n = len(indptr) - 1
+    m_indptr = np.zeros(n + 1, dtype=np.int64)
+    unmarked = np.zeros(n)
+    m = 0
+    for i in range(n):
+        s = 0.0
+        for jj in range(indptr[i], indptr[i + 1]):
+            j = indices[jj]
+            if to_mk[j] >= 0:
+                m += 1
+            else:
+                s += (1.0 if ones else data[jj]) * w[j]
+        unmarked[i] = s
+        m_indptr[i + 1] = m
+    m_indices = np.empty(m, dtype=np.int32)
+    m_data = np.empty(m)
+    m = 0
+    for i in range(n):
+        for jj in range(indptr[i], indptr[i + 1]):
+            j = indices[jj]
+            if to_mk[j] >= 0:
+                m_indices[m] = to_mk[j]
+                m_data[m] = data[jj]
+                m += 1
+    return m_indptr, m_indices, m_data, unmarked
 
 
 @numba.njit(cache=True, nogil=True)
@@ -830,17 +920,23 @@ def _em_fit(counts, totals, thresholds, parent_p, parent_rest, markers, discount
 
 
 @numba.njit(cache=True, nogil=True)
-def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off, mk, mk_cmp, mk_off, discount, every):
-    """_em_fit for the words the sentences have, from their counts (counts), the groups' totals and sums of the counts'
-    least with the discount over all their words (least), and their parent's probabilities (parent_had): their
-    probabilities (words x 2, and 1 for the padding of the slices), whether any word tells the senses apart, and
-    which of the markers have rates of their own (chosen). mk
-    are the markers of each group (from mk_off), mk_cmp their place among the words the sentences have (-1 for none:
-    such a word may still mark a sense, as rarer in both than in the parent)."""
-    n_groups = len(cmp_off) - 1
-    n_had = len(parent_had)
-    p = np.empty((n_had + 1, 2))
-    p[n_had] = 1.0  # the padding of the slices of the sentences' entries: its evidence is 0
+def _em_fit_marked(
+    counts, totals, least, thresholds, parent_p, parent_had, mk, mk_cmp, mk_off, discount, every, marked
+):
+    """_em_fit for the markers the sentences have, from the counts of the words they have (counts), the groups' totals
+    and sums of the counts' least with the discount over all their words (least), and their parent's probabilities
+    (parent_had): the markers' probabilities (markers x 2, and 1 for the padding of the slices), the scale of either
+    sense's rates for the words not its own (groups x 2), whether any word tells the senses apart, and which of the
+    markers have rates of their own (chosen). mk are the markers of each group (from mk_off), mk_cmp their place among
+    the words the sentences have (-1 for none: such a word may still mark a sense, as rarer in both than in the
+    parent); marked, those the sentences have (Mats.marking), whose probabilities are made (the markers of the root,
+    when those chosen are held)."""
+    mk_had, mk_pos, mkh_off = marked
+    n_groups = len(mkh_off) - 1
+    n_mk = len(mk_had)
+    p = np.empty((n_mk + 1, 2))
+    p[n_mk] = 1.0  # the padding of the slices of the markers' entries: its evidence is 0
+    scales = np.ones((n_groups, 2))
     any_own = False
     chosen = np.zeros(len(mk), dtype=np.bool_)
     own = np.empty(len(mk), dtype=np.int64)
@@ -877,13 +973,13 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
                 own_cmp[n_own] = q
                 n_own += 1
         any_own = any_own or n_own > 0
-        a, b = cmp_off[c], cmp_off[c + 1]
+        a, b = mkh_off[c], mkh_off[c + 1]
         d = discount[c]
         for k in range(2):
             t = totals[c, k]
             if t <= 0 or n_own == 0:
-                for q in range(a, b):
-                    p[q, k] = parent_had[q]
+                for m in range(a, b):
+                    p[m, k] = parent_had[mk_had[m]]
                 continue
             freed = least[c, k] / t
             p_own = np.empty(n_own)
@@ -895,12 +991,13 @@ def _em_fit_had(counts, totals, least, thresholds, parent_p, parent_had, cmp_off
                 parent_own[m] = parent_p[j]
             others = 1.0 - _pairwise_sum(parent_own, 0, n_own)
             scale = (1.0 - _pairwise_sum(p_own, 0, n_own)) / others if others > 0 else 0.0
-            for q in range(a, b):
-                p[q, k] = parent_had[q] * scale
+            scales[c, k] = scale
+            for m in range(a, b):
+                p[m, k] = parent_had[mk_had[m]] * scale
             for m in range(n_own):
                 if own_cmp[m] >= 0:
-                    p[own_cmp[m], k] = p_own[m]
-    return p, any_own, chosen
+                    p[mk_pos[own_cmp[m]], k] = p_own[m]
+    return p, scales, any_own, chosen
 
 
 @numba.njit(cache=True, nogil=True)
@@ -908,11 +1005,47 @@ def _em_loglik(order, start, idx, sdata, ones, evidence, log_pi):
     """Each sentence's (weighted) log-probability under either sense of a split, with its share: n x 2, from the slices
     of the sentences' entries. evidence: words x 2, flat, the padding's last (0). Each sentence's sum of each group
     still adds its entries in order, from 0, and the groups' sums in order: _WIDTH sentences' at once."""
-    n_groups, n = order.shape
+    n = order.shape[1]
     ll = np.empty(2 * n)
     for i in range(n):
         ll[2 * i] = log_pi[0]
         ll[2 * i + 1] = log_pi[1]
+    _em_loglik_add(order, start, idx, sdata, ones, evidence, ll)
+    return ll.reshape(n, 2)
+
+
+@numba.njit(cache=True, nogil=True)
+def _em_marked_loglik(order, start, idx, sdata, ones, evidence, log_pi, unmarked_ll, unmarked, log_scale):
+    """_em_loglik from the markers' entries alone (order ... evidence: their slices and evidence), the other words'
+    from what they tell under the parent (unmarked_ll, n) and their weighted counts (unmarked, groups x n) times the log
+    of the scale of either sense's rates (log_scale, groups x 2): for each sentence, the share and the other words'
+    log-probability, each group's count times its log-scale, then each group's sum of the markers' entries, as the
+    senses' matrices of those words make them."""
+    n_groups, n = unmarked.shape
+    ll = np.empty(2 * n)
+    for i in range(n):
+        ll[2 * i] = log_pi[0] + unmarked_ll[i]
+        ll[2 * i + 1] = log_pi[1] + unmarked_ll[i]
+    for c in range(n_groups):
+        l0 = log_scale[c, 0]
+        l1 = log_scale[c, 1]
+        if np.isfinite(l0) and np.isfinite(l1):
+            for i in range(n):
+                ll[2 * i] += unmarked[c, i] * l0
+                ll[2 * i + 1] += unmarked[c, i] * l1
+        else:  # a scale of 0: nothing for a sentence without such words, not 0 times its log
+            for i in range(n):
+                if unmarked[c, i] != 0.0:
+                    ll[2 * i] += unmarked[c, i] * l0
+                    ll[2 * i + 1] += unmarked[c, i] * l1
+    _em_loglik_add(order, start, idx, sdata, ones, evidence, ll)
+    return ll.reshape(n, 2)
+
+
+@numba.njit(cache=True, nogil=True)
+def _em_loglik_add(order, start, idx, sdata, ones, evidence, ll):
+    """Each group's sum of the evidence of each sentence's entries, added to ll (n x 2, flat)."""
+    n_groups, n = order.shape
     one, two, three, four = np.uint64(1), np.uint64(2), np.uint64(3), np.uint64(4)
     for c in range(n_groups):
         for sl in range(start.shape[1] - 1):
@@ -972,7 +1105,6 @@ def _em_loglik(order, start, idx, sdata, ones, evidence, log_pi):
                 i = order[c, q + 3] * two
                 ll[i] += a3
                 ll[i + one] += b3
-    return ll.reshape(n, 2)
 
 
 @numba.njit(cache=True, nogil=True)
@@ -1024,7 +1156,6 @@ def _em(Xs, parent, r, every_marker, switch=True):
     if not isinstance(Xs, _Mats):
         Xs = _Mats(Xs)
     ones = Xs.ones
-    order, start, idx, sdata = Xs.rows
     c_order, c_start, c_idx, cdata, g_off = Xs.columns
     pos, cols, cmp_off, voc_off = Xs.words
     n = Xs[0].shape[0]
@@ -1032,7 +1163,10 @@ def _em(Xs, parent, r, every_marker, switch=True):
     parent_p = np.concatenate([d.p for d in parent]).astype(np.float64)
     parent_rest = np.array([d.rest for d in parent], dtype=np.float64)
     discount = np.array([d.discount for d in parent], dtype=np.float64)
-    markers, mk, mk_off, mk_cmp, weights_had = Xs.marking(parent)
+    markers, mk, mk_off, mk_cmp, (mk_had, mk_pos, mkh_off, weights_mk, m_rows, unmarked) = Xs.marking(parent)
+    m_order, m_start, m_idx, m_sdata = m_rows
+    marked = (mk_had, mk_pos, mkh_off)
+    unmarked_ll = Xs.unmarked_loglik(parent)
     parent_had = parent_p[cols]
     weight = _weights(r)
     padded = np.zeros((n + 1, 2))  # r, and the padding's (0)
@@ -1049,8 +1183,8 @@ def _em(Xs, parent, r, every_marker, switch=True):
         totals, least = _em_sums(counts, pos, cmp_off, voc_off, discount)
         with np.errstate(divide="ignore"):
             thresholds = np.log(totals)
-        p, any_own, chosen = _em_fit_had(
-            counts, totals, least, thresholds, parent_p, parent_had, cmp_off, mk, mk_cmp, mk_off, discount, every_marker
+        p, scales, any_own, chosen = _em_fit_marked(
+            counts, totals, least, thresholds, parent_p, parent_had, mk, mk_cmp, mk_off, discount, every_marker, marked
         )
         if not any_own:  # no word tells the senses apart: both are the parent, no split
             return None
@@ -1065,8 +1199,12 @@ def _em(Xs, parent, r, every_marker, switch=True):
             seen.add(key)
             last = key
         evidence = np.log(p, out=p)
-        np.multiply(evidence, weights_had, out=evidence)
-        ll = _em_loglik(order, start, idx, sdata, ones, evidence.reshape(-1), np.log(pi))
+        np.multiply(evidence, weights_mk, out=evidence)
+        with np.errstate(divide="ignore"):
+            log_scales = np.log(scales)
+        ll = _em_marked_loglik(
+            m_order, m_start, m_idx, m_sdata, ones, evidence.reshape(-1), np.log(pi), unmarked_ll, unmarked, log_scales
+        )
         # r = exp(ll - logsumexp(ll)): _logsumexp2's arithmetic, its passes joined
         _lse_apart(ll, lse, hi)
         with np.errstate(invalid="ignore", over="ignore"):
