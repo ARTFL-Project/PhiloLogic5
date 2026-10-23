@@ -1585,9 +1585,9 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit
     # so that no thread waits for the slowest of a step: the sentences' matrices packed for the EM, the seeds, the
     # sample of the searches' first pass and the folds of the test at once (the folds, the same for every split, are
     # wasted only when no seed splits the sense), each seed's search once the first three are made, each candidate's
-    # fit on a fold once its search and the fold are done (no further than a fold ahead of the race: see _race). Each
-    # result is kept in its place, and the race decides on whole folds: the results do not depend on the order the
-    # threads finish in.
+    # fit on a fold once its search and the fold are done and the race needs it (see _race: fitting ahead of the race,
+    # so that no thread waits, takes longer, on candidates the race then drops). Each result is kept in its place, and
+    # the race decides on whole folds: the results do not depend on the order the threads finish in.
     def sentences():
         return [X[units] for X in Xall], _fold_of(groups[units], len(units))
 
@@ -1604,7 +1604,6 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit
     fits = {}  # (candidate, fold): its fit on the fold
     out = set()  # the candidates out of the race
     raced = 0  # the last fold the race is decided on (never on the first alone: see _race)
-    ahead = 0 if submit is _now else 1  # folds fitted ahead of the race, for threads that would wait otherwise
     while True:
         for s, search in enumerate(searches):
             if s in found or not search.done():
@@ -1635,7 +1634,7 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit
             racing = [s for s in racing if s not in behind]
         over = known and (len(racing) < 2 or raced + 1 >= n_folds - 1)
         for s in racing:
-            for f in range(n_folds if over else raced + 2 + ahead):
+            for f in range(n_folds if over else raced + 2):
                 if (s, f) not in fits and folds[f].done():
                     fits[(s, f)] = submit(_fold_gain, folds[f].result(), found[s][1][2])
         pending = {search for search in searches if not search.done()}
