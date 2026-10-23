@@ -1,5 +1,8 @@
 """Unit tests for the word senses report's method (philologic.runtime.reports.word_senses), on made-up sentences."""
 
+import threading
+from concurrent.futures import Future
+
 import numpy as np
 import pytest
 from scipy.sparse import csr_matrix
@@ -57,6 +60,86 @@ class TestSenses:
         assert root.test["z"] > ws.EVIDENCE
         assert root.test["sentences_won"] > 0.9 * root.test["sentences"]
 
+    def test_senses_found_with_the_first_pass_on_a_sample(self, monkeypatch):
+        # A sense of many sentences: the searches' first pass on every _SAMPLE_EVERY-th, the second on all
+        monkeypatch.setattr(ws, "_SAMPLE_LEAST", 50)
+        specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
+        channels, works = sentences(specs)
+        assert ws.search_sample([csr_matrix(channels[0][0])]) is not None
+        root = ws.induce_senses(channels, works)
+        found = leaves(root)
+        assert len(found) == 2
+        is_a = np.array([sense == "a" for _, sense in specs])
+        assert sorted(set(is_a[leaf.units]) for leaf in found) == [{False}, {True}]
+
+    def test_no_first_pass_sample_inside_a_growth_sample(self, monkeypatch):
+        # A query grown on a sample: its searches' first pass runs on all of the sample, not on a sample of it
+        monkeypatch.setattr(ws, "_GROWN", 300)
+        monkeypatch.setattr(ws, "_SAMPLE_LEAST", 50)
+        sampled = []
+        search_sample = ws.search_sample
+
+        def spy(Xs, *args):
+            sampled.append(Xs[0].shape[0])
+            return search_sample(Xs, *args)
+
+        monkeypatch.setattr(ws, "search_sample", spy)
+        specs = [(work, "abc"[i % 3]) for work in range(20) for i in range(45)]
+        channels, works = sentences(specs, seed=1)
+        root = ws.induce_senses(channels, works)
+        assert root.test["sentences"] == 300 and len(leaves(root)) == 3
+        assert sampled == []
+        ws.induce_senses(channels, works, sample=np.arange(len(specs)))  # grown on all of them: the first pass sampled
+        assert sampled[0] == len(specs)
+
+    def test_senses_grown_on_a_sample_have_every_sentence(self, monkeypatch):
+        # A query of more than _GROWN sentences: the tree grown on _GROWN of them, every sentence then placed in it
+        monkeypatch.setattr(ws, "_GROWN", 300)
+        specs = [(work, "abc"[i % 3]) for work in range(20) for i in range(45)]
+        channels, works = sentences(specs, seed=1)
+        root = ws.induce_senses(channels, works)
+        assert root.test["sentences"] == 300  # tested on the sample
+        found = leaves(root)
+        assert len(found) == 3
+        units = np.sort(np.concatenate([leaf.units for leaf in found]))
+        assert np.array_equal(units, np.arange(len(specs)))  # each sentence in one of the senses found
+        sense = np.array([s for _, s in specs])
+        for leaf in found:
+            assert len(set(sense[leaf.units])) == 1
+            assert words_of(leaf) <= set(SENSES[sense[leaf.units[0]]])
+            # its counts are those of all its sentences
+            assert np.isclose(leaf.counts[0].sum(), channels[0][0][leaf.units].sum(), rtol=0.01)
+        nodes, logp, margin = ws.node_posteriors(root, [csr_matrix(X) for X, _, _ in channels])
+        for leaf in found:
+            assert np.array_equal(np.flatnonzero(margin[:, leaf.id] > 0), leaf.units)
+
+    def test_a_split_fitted_again_on_all_its_sentences_keeps_its_halves(self):
+        # From a first pass that tells nothing apart, the split as fitted on the sample, its rates fitted again on all
+        specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
+        channels, works = sentences(specs)
+        root = ws.induce_senses(channels, works)
+        Xall = [csr_matrix(X) for X, _, _ in channels]
+        units = np.arange(len(specs))
+        pi, dists = root.model
+        alike = (pi, [[d, d] for d in root.dists])
+        pi2, dists2, side, counts = ws._fit_all(Xall, units, root.dists, alike, (pi, dists))
+        is_a = np.array([sense == "a" for _, sense in specs])
+        assert np.mean(side == is_a) in (0.0, 1.0)
+        assert np.allclose(counts[0].sum(axis=1), np.asarray(Xall[0].sum(axis=0)).ravel())
+        assert np.isclose(pi2.sum(), 1.0)
+
+    def test_a_sample_spread_evenly_over_the_sentences(self, monkeypatch):
+        monkeypatch.setattr(ws, "_GROWN", 100)
+        assert ws.growth_sample(100) is None
+        sample = ws.growth_sample(250)
+        assert len(sample) == 100 and np.all(np.diff(sample) > 0) and sample[-1] < 250
+        starts = (np.arange(101) * 250) // 100  # one in each stretch of 2 or 3 sentences
+        assert np.all((sample >= starts[:-1]) & (sample < starts[1:]))
+        assert np.array_equal(sample, ws.growth_sample(250))  # the same every time
+        # a pattern of the text with the sample's period is not left out
+        monkeypatch.setattr(ws, "_GROWN", 300)
+        assert len(set(ws.growth_sample(900) % 3)) == 3
+
     def test_the_same_senses_on_one_thread_or_more(self, monkeypatch):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
         channels, works = sentences(specs, seed=3)
@@ -70,6 +153,49 @@ class TestSenses:
             return [(node.units.tolist(), node.reason, node.test) for node in nodes]
 
         assert tree(1) == tree(2) == tree(4)
+
+    def test_the_race_waits_for_the_folds_it_is_decided_on(self, monkeypatch):
+        # The first fold's data made last, after the candidates' fits on the second are done: the race is decided once
+        # their fits on both are, as when the threads finish in the usual order
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
+        channels, works = sentences(specs, seed=3)
+
+        class FirstFoldLast:  # runs each task at once, but the first fold's data, made a moment later
+            def __init__(self, max_workers=None):
+                self.later = []
+
+            def submit(self, fn, *args):
+                if fn is not ws._fold or args[2] != 0:
+                    return ws._now(fn, *args)
+                future = Future()
+
+                def make():
+                    if future.set_running_or_notify_cancel():
+                        future.set_result(fn(*args))
+
+                self.later.append(threading.Timer(0.05, make))
+                self.later[-1].start()
+                return future
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                for timer in self.later:
+                    timer.join()
+
+        def tree():
+            root = ws.induce_senses(channels, works)
+            nodes = [root]
+            for node in nodes:
+                nodes.extend(node.children)
+            return [(node.units.tolist(), node.reason, node.test) for node in nodes]
+
+        monkeypatch.setattr(ws.numba.config, "NUMBA_NUM_THREADS", 1)
+        alone = tree()
+        monkeypatch.setattr(ws.numba.config, "NUMBA_NUM_THREADS", 2)
+        monkeypatch.setattr(ws, "ThreadPoolExecutor", FirstFoldLast)
+        assert tree() == alone
 
     def test_sentences_go_to_their_sense(self):
         specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
@@ -178,7 +304,6 @@ def report_node(id, parent, children, share, own=True, relative=None):
         "words": [{"word": "w"}] if own else [],
         "before": [],
         "after": [],
-        "hidden": [],
         "split": None if relative is None else {"relative": relative},
     }
 
@@ -342,10 +467,14 @@ class TestModel:
 
 def plain_em(Xs, parent, r, every_marker):
     """The EM of a split in plain numpy, as the compiled one must compute it: the words chosen at every step held once
-    their choice comes back to a set chosen before, after another."""
+    their choice comes back to a set chosen before, after another, or swings back nearer the set chosen before the last
+    than the last. The compiled one adds up what the words that mark no sense tell of a sentence apart (their parent's
+    log-rates once, their count times the log of the scale at every step), so its sums differ from these in the last
+    bits."""
     n = Xs[0].shape[0]
     previous = None
     seen, last, held = set(), None, None
+    before_last = last_owns = None
     for _ in range(ws._MAX_ITER):
         weight = r.sum(axis=0)
         if weight.min() < 1.0:
@@ -360,7 +489,11 @@ def plain_em(Xs, parent, r, every_marker):
             return None
         if not every_marker and held is None:
             key = tuple(tuple(own) for own in owns)
-            if key in seen and key != last:
+            swings = before_last is not None and sum(len(np.setxor1d(a, b)) for a, b in zip(owns, before_last)) < sum(
+                len(np.setxor1d(a, b)) for a, b in zip(owns, last_owns)
+            )
+            before_last, last_owns = last_owns, owns
+            if (key in seen and key != last) or swings:
                 held = [
                     ws.Dist(d.p, d.rest, np.isin(np.arange(len(d.p)), own), d.weights, d.discount)
                     for d, own in zip(parent, owns)
@@ -382,9 +515,19 @@ def plain_em(Xs, parent, r, every_marker):
     return pi, dists, r, counts
 
 
+def assert_same_fit(mine, plain):
+    """The same fit, to rounding: the shares, the sentences' probabilities, the senses' rates and the counts."""
+    close = dict(rtol=1e-9, atol=1e-12)
+    assert np.allclose(mine[0], plain[0], **close) and np.allclose(mine[2], plain[2], **close)
+    for ds, dp in zip(mine[1], plain[1]):
+        for a, b in zip(ds, dp):
+            assert np.allclose(a.p, b.p, rtol=1e-9, atol=0) and np.isclose(a.rest, b.rest, rtol=1e-9, atol=0)
+    assert all(np.allclose(a, b, **close) for a, b in zip(mine[3], plain[3]))
+
+
 @pytest.mark.unit
 class TestCompiled:
-    def test_the_compiled_em_is_numpy_to_the_last_bit(self):
+    def test_the_compiled_em_is_numpys(self):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
         channels, works = sentences(specs, seed=4)
         X = csr_matrix(channels[0][0])
@@ -398,14 +541,9 @@ class TestCompiled:
         ]
         r = rng.dirichlet([1.0, 1.0], X.shape[0])
         for every_marker in (True, False):
-            mine, plain = ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker)
-            assert np.array_equal(mine[0], plain[0]) and np.array_equal(mine[2], plain[2])
-            for ds, dp in zip(mine[1], plain[1]):
-                for a, b in zip(ds, dp):
-                    assert np.array_equal(a.p, b.p) and a.rest == b.rest
-            assert all(np.array_equal(a, b) for a, b in zip(mine[3], plain[3]))
+            assert_same_fit(ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
 
-    def test_the_compiled_em_is_numpy_to_the_last_bit_on_a_sense_s_sentences(self):
+    def test_the_compiled_em_is_numpys_on_a_sense_s_sentences(self):
         # Some of the sentences: words they lack, sentences with none of a group's words, a group's counts above one
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
         channels, works = sentences(specs, seed=7)
@@ -423,12 +561,60 @@ class TestCompiled:
         ]
         r = rng.dirichlet([1.0, 1.0], len(rows))
         for every_marker in (True, False):
-            mine, plain = ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker)
-            assert np.array_equal(mine[0], plain[0]) and np.array_equal(mine[2], plain[2])
-            for ds, dp in zip(mine[1], plain[1]):
-                for a, b in zip(ds, dp):
-                    assert np.array_equal(a.p, b.p) and a.rest == b.rest
-            assert all(np.array_equal(a, b) for a, b in zip(mine[3], plain[3]))
+            assert_same_fit(ws._em(Xs, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
+
+    def test_a_fit_in_parts_is_numpys(self):
+        # The sentences in two parts packed apart with the words of all, their markers' entries taken from those of all
+        # the sentences, their counts from their sentences' entries: the counts of the parts added up
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
+        channels, works = sentences(specs, seed=12)
+        X = csr_matrix(channels[0][0])
+        rng = np.random.default_rng(13)
+        weights = rng.uniform(0.5, 6.0, X.shape[1])
+        Xs = [X, csr_matrix(X[:, 40:60])]
+        Xs[1].data = rng.integers(1, 4, Xs[1].nnz).astype(np.float64)
+        parent = [
+            ws.Dist(np.full(X.shape[1], 0.8 / X.shape[1]), 0.2, rng.uniform(size=X.shape[1]) > 0.2, weights, 0.6),
+            ws.Dist(np.full(20, 0.9 / 20), 0.1, None, None, 0.3),
+        ]
+        r = rng.dirichlet([1.0, 1.0], X.shape[0])
+        marked = ws._Marked(Xs, parent)
+        words = [np.flatnonzero(np.asarray(Y.getnnz(axis=0))) for Y in Xs]
+        half = X.shape[0] // 3
+        parts = ws._Parts(
+            ws._Mats([Y[rows] for Y in Xs], marked=(marked, rows), words=words, by_words=False)
+            for rows in (np.arange(half), np.arange(half, X.shape[0]))
+        )
+        for every_marker in (True, False):
+            assert_same_fit(ws._em(parts, parent, r, every_marker), plain_em(Xs, parent, r, every_marker))
+
+    def test_a_fold_is_fitted_as_on_its_training_sentences_alone(self):
+        # The sentences packed by fold once, a fold left out of each fit: as if packed without its sentences
+        specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(25)]
+        channels, works = sentences(specs, seed=10)
+        X = csr_matrix(channels[0][0])
+        rng = np.random.default_rng(11)
+        weights = rng.uniform(0.5, 6.0, X.shape[1])
+        Xs = [X, csr_matrix(X[:, 40:60])]
+        Xs[1].data = rng.integers(1, 4, Xs[1].nnz).astype(np.float64)
+        parent = [
+            ws.Dist(np.full(X.shape[1], 0.8 / X.shape[1]), 0.2, rng.uniform(size=X.shape[1]) > 0.2, weights, 0.6),
+            ws.Dist(np.full(20, 0.9 / 20), 0.1, None, None, 0.3),
+        ]
+        r = rng.dirichlet([1.0, 1.0], X.shape[0])
+        folds = ws._folds(works)
+        packed = ws._Mats(Xs, folds, parent)
+        for f in range(ws.N_FOLDS):
+            train, test = folds != f, folds == f
+            mine = ws._em(packed, parent, r, False, left_out=f)
+            plain = plain_em([Y[train] for Y in Xs], parent, r[train], False)
+            assert not mine[2][test].any()
+            assert_same_fit((mine[0], mine[1], mine[2][train], mine[3]), plain)
+            held_out = ws._mixture_loglik([Y[test] for Y in Xs], plain[0], plain[1])
+            assert np.allclose(mine[4], held_out, rtol=1e-12, atol=0)
+            unsplit = [ws.fit_sparse(np.asarray(Y[train].sum(axis=0)).ravel(), d) for Y, d in zip(Xs, parent)]
+            plain_ll = sum(Y[test] @ ws._evidence(d) for Y, d in zip(Xs, unsplit))
+            assert np.allclose(packed.block_loglik(unsplit, f), plain_ll, rtol=1e-12, atol=0)
 
     def test_sums_of_the_words_the_sentences_have_are_numpys(self):
         # Over all the words of a group, those the sentences lack zero

@@ -303,7 +303,6 @@ function label(node) {
     if (node.sense === null) return t("senseTree.restShort");
     const words = node.words.slice(0, 3).map((w) => w.word);
     if (words.length < 2) words.push(...near(node).slice(0, 2));
-    if (!words.length) words.push(...(node.hidden || []).slice(0, 3).map((w) => w.word));
     return words.join(", ") || queryWord.value;
 }
 
