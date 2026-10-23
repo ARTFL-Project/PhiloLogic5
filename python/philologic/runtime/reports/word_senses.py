@@ -25,7 +25,10 @@ senses apart, since few words of the seed's sense are marked on its side yet, th
 chosen at every step, and held if that choice cycles). A split is kept if, fitted without each of N_FOLDS groups of
 works in turn, it predicts the sentences of the works left out better than its unsplit sense, paying for saying which
 sense each is in, by more than EVIDENCE standard errors over the sentences. Holding out whole works keeps the
-sentences of a passage, which share their words, from predicting one another.
+sentences of a passage, which share their words, from predicting one another. For a query of more than _GROWN
+sentences, splits are looked for and tested on _GROWN of them, spread over all, and a split once kept is fitted again
+on all the sentences of its sense, which go to its two senses as they fit: the senses have all the sentences, their
+words and their course over time; the tests, their sample.
 
 Each split has its importance: how much it improves the prediction of the words around the query, per use of the
 word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the elbow
@@ -77,12 +80,13 @@ _TOL = 1e-6
 _MAX_ITER = 200
 FINEST = 0.10  # the finest detail that can be shown: distinctions less important are not looked for
 _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the search, not the test)
+_GROWN = 100000  # the most sentences splits are looked for and tested on (growth_sample): enough to find them as all do
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses27\0"  # bump when the result changes
+_CACHE_TAG = b"senses28\0"  # bump when the result changes
 
 
 class Dist:
@@ -1110,7 +1114,7 @@ def _em(Xs, parent, r, every_marker, switch=True):
     return pi, dists, r, [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
 
 
-def fit_split(Xs, parent, r, search=False):
+def fit_split(Xs, parent, r, search=False, first=None):
     """Fit a split of the sentences Xs (one matrix for each group of words) into two senses by expectation-maximization,
     from the probabilities r (n x 2) of each sentence being in either, each sense a sparse departure from the parent:
     both have their own rates for the words that mark either, and share the parent's for all others. A search (from a
@@ -1118,12 +1122,15 @@ def fit_split(Xs, parent, r, search=False):
     marked yet on its side, and the sense would not grow. The words that mark either are chosen again at every step;
     when the choice comes back to a set it made before, after another, that set is held: such a fit cycles, and never
     settled (stopped by _MAX_ITER). Returns (pi, dists, r, counts), or None when a sense ends up with less than a
-    sentence or none of the words tells them apart."""
+    sentence or none of the words tells them apart. first, a list, is given the senses of a search's first pass, (pi,
+    dists)."""
     if search:
-        first = _em(Xs, parent, r, every_marker=True)
-        if first is None:
+        fitted = _em(Xs, parent, r, every_marker=True)
+        if fitted is None:
             return None
-        r = first[2]
+        if first is not None:
+            first.extend(fitted[:2])
+        r = fitted[2]
     return _em(Xs, parent, r, every_marker=False)
 
 
@@ -1323,14 +1330,15 @@ def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map):
     return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
 
 
-def induce_senses(channels, groups, finest=FINEST, unseeded=None):
+def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None):
     """Grow the tree of senses of the sentences: channels are (X, corpus probabilities, corpus rest[, weights]) for each
     group of words, X a sentences x words matrix of counts, weights how much each word's evidence counts; groups is
     the work of each sentence; unseeded, for each group of words, None or a mask of its words that seed no split
     (they still mark senses). Returns the root Node; split senses have children, the others are the senses found.
     Each split has its importance: how much it improves the prediction of the words around the query, per use of the
     word (its sense's share of the sentences times its gain per sentence there). Splits less important than finest
-    times the first one are not looked for."""
+    times the first one are not looked for. The splits are looked for and tested on the sentences of sample (their
+    indices; by default growth_sample's, all of them for a query of no more than _GROWN): see _try_split."""
     Xall = [csr_matrix(c[0]) for c in channels]
     n = Xall[0].shape[0]
     corpus = [Dist(np.asarray(c[1], dtype=np.float64), float(c[2])) for c in channels]
@@ -1352,6 +1360,12 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
         return dists
 
     root = Node(np.arange(n), root_fit(counts), counts, corpus)
+    if sample is None:
+        sample = growth_sample(n)
+    grown = None
+    if sample is not None:
+        grown = np.zeros(n, dtype=np.bool_)
+        grown[sample] = True
 
     floor = {"importance": 0.0}
 
@@ -1363,7 +1377,7 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
             unsplit_fit = lambda train_counts, parents=parents: [
                 fit_sparse(c, d) for c, d in zip(train_counts, parents)
             ]
-        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, pool_map)
+        _try_split(node, Xall, n, unsplit_fit, floor, groups, seeds, grown, pool_map)
         return node
 
     def grow_with(pool_map, senses=None):
@@ -1392,6 +1406,19 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None):
     with ThreadPoolExecutor(max_workers=workers) as fits, ThreadPoolExecutor(max_workers=workers) as senses:
         grow_with(fits.map, senses)
     return root
+
+
+def growth_sample(n):
+    """The sentences splits are looked for and tested on, of a query's n: all of them (None), or for more than _GROWN,
+    one at random in each of _GROWN stretches of them of equal length, in their order (the corpus's), so that each work
+    keeps its share, and each sense its sentences in proportion (a sample of whole works would leave out the senses of
+    a few), and no sentence is left out for its place in a pattern of the text, as every k-th would be. The same sample
+    every time: the same senses."""
+    if n <= _GROWN:
+        return None
+    starts = (np.arange(_GROWN + 1, dtype=np.int64) * n) // _GROWN
+    offsets = np.random.default_rng(0).random(_GROWN) * np.diff(starts)
+    return starts[:-1] + offsets.astype(np.int64)
 
 
 def elbow(relative):
@@ -1507,51 +1534,86 @@ def marks(node, against, common=None):
     return False
 
 
-def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_map=map):
+def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, grown=None, pool_map=map):
+    """Split a sense, if a split passes: looked for and tested on its sentences, or on those of them in the sample
+    (grown, a mask of all the sentences, or None for all), then fitted again on all of them (_fit_all)."""
     units = node.units
-    if len(units) < 2:
+    tried = units if grown is None else units[grown[units]]
+    if len(tried) < 2:
         node.reason = "inseparable"
         return
 
     def prepare(_):
-        Xs = _Mats([X[units] for X in Xall])
+        Xs = _Mats([X[tried] for X in Xall])
         return Xs, seed_splits(Xs, collocates, weights=[d.weights for d in node.dists])
+
+    def search(seed):
+        first = []
+        return fit_split(Xs, node.dists, seed[0], search=True, first=first), first
 
     ((Xs, seeds),) = pool_map(prepare, (None,))  # on the pool's threads too, which alone do the work
     candidates = []
-    for (_, seed), fitted in zip(seeds, pool_map(lambda s: fit_split(Xs, node.dists, s[0], search=True), seeds)):
+    for (_, seed), (fitted, first) in zip(seeds, pool_map(search, seeds)):
         if fitted is None:
             continue
         side = fitted[2][:, 0] >= fitted[2][:, 1]
         if side.all() or not side.any():  # one sense is in every sentence, more or less: no halves
             continue
-        candidates.append((seed, fitted, side))
+        candidates.append((seed, fitted, side, first))
     best = None
     if candidates:
-        folds = _fold_data(Xs, unsplit_fit, groups[units], pool_map)
-        tasks = [(fitted[2], fold) for _, fitted, _ in candidates for fold in folds]
+        folds = _fold_data(Xs, unsplit_fit, groups[tried], pool_map)
+        tasks = [(fitted[2], fold) for _, fitted, _, _ in candidates for fold in folds]
         results = list(pool_map(lambda task: _fold_gain(task[1], task[0]), tasks))
-    for c, (seed, fitted, side) in enumerate(candidates):
+    for c, (seed, fitted, side, first) in enumerate(candidates):
         pi, dists, r, counts = fitted
-        test = _test_result(folds, results[c * len(folds) : (c + 1) * len(folds)], len(units))
+        test = _test_result(folds, results[c * len(folds) : (c + 1) * len(folds)], len(tried))
         test["seed"] = seed
         test["importance"] = float(len(units) / n_all * max(0.0, test["bits_per_sentence"]))
         passes = test["z"] > EVIDENCE and test["importance"] >= floor["importance"]
         if best is None or (passes, test["importance"]) > (best[0], best[1]["importance"]):
-            best = (passes, test, pi, dists, side, counts)
+            best = (passes, test, pi, dists, side, counts, first)
     if best is None:
         node.reason = "inseparable"
         return
-    passes, node.test, pi, dists, side, counts = best
+    passes, node.test, pi, dists, side, counts, first = best
     if not passes:
         node.reason = "no_gain" if node.test["z"] <= EVIDENCE else "faint"
         return
+    if len(tried) < len(units):
+        ((pi, dists, side, counts),) = pool_map(
+            lambda _: _fit_all(Xall, units, node.dists, first, (pi, dists)), (None,)
+        )
     node.model = (pi, dists)
     for k, members in ((0, side), (1, ~side)):
         child = Node(units[members], [d[k] for d in dists], [c[:, k] for c in counts], node.dists)
         child.k = k
         node.children.append(child)
     node.children.sort(key=lambda c: (-len(c.units), c.k))
+
+
+def _fit_all(Xall, units, parent, first, fitted):
+    """A split found on a sample of its sense's sentences, fitted again on all of them (units): its search's second
+    pass, on all of them, from the senses of its first (pi, dists), as these share them out. The second pass on the
+    sample alone chose the words that mark either sense from the sample's counts: fewer of them than all the sentences
+    have, which would hold the split to a fit less good on them. Should that fail (no halves), the split as fitted
+    (fitted: pi, dists), its senses' rates fitted again on all the sentences, as they share them out. Returns (pi,
+    dists, side: the sentences more likely in the first sense, counts)."""
+    Xs = _Mats([X[units] for X in Xall])
+    ll = _mixture_loglik(Xs, *first)
+    again = fit_split(Xs, parent, np.exp(ll - _logsumexp2(ll)[:, None]))
+    if again is not None:
+        pi, dists, r, counts = again
+        side = r[:, 0] >= r[:, 1]
+        if side.any() and not side.all():
+            return pi, dists, side, counts
+    ll = _mixture_loglik(Xs, *fitted)
+    r = np.exp(ll - _logsumexp2(ll)[:, None])
+    counts = [np.asarray(X.T @ r) for X in Xs]
+    dists = [[fit_sparse(c[:, k], d, _split_words(c, d, False)) for k in range(2)] for c, d in zip(counts, parent)]
+    pi = _weights(r) / len(units)
+    ll = _mixture_loglik(Xs, pi, dists)
+    return pi, dists, ll[:, 0] >= ll[:, 1], counts
 
 
 def node_posteriors(root, Xall):
