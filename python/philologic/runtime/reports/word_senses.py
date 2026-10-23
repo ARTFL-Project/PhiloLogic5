@@ -2041,16 +2041,20 @@ def _hit_sentences(sent_keys, rows):
     return si, found
 
 
-def _channel(flat, ptr, n_units):
-    """A sentences x words count matrix of local word indices, and the vocabulary ids of its words."""
+def _channel(flat, ptr, rows):
+    """A sentences x words count matrix of local word indices, of the sentences rows (their words flat[ptr[r] :
+    ptr[r + 1]] for each r), and the vocabulary ids of its words: those of these sentences."""
+    lengths = ptr[rows + 1] - ptr[rows]
+    kept_ptr = np.zeros(len(rows) + 1, dtype=np.int64)
+    np.cumsum(lengths, out=kept_ptr[1:])
+    flat = flat[np.arange(kept_ptr[-1]) + np.repeat(ptr[rows] - kept_ptr[:-1], lengths)]
     # np.unique(flat, return_inverse=True), by marking the ids rather than sorting the entries
     had = np.zeros(int(flat.max()) + 1 if len(flat) else 0, dtype=np.bool_)
     had[flat] = True
     ids = np.flatnonzero(had).astype(flat.dtype)
     local = np.zeros(len(had), dtype=np.int64)
     local[ids] = np.arange(len(ids))
-    cols = local[flat]
-    X = csr_matrix((np.ones(len(flat)), cols, ptr), shape=(n_units, len(ids)))
+    X = csr_matrix((np.ones(len(flat)), local[flat], kept_ptr), shape=(len(rows), len(ids)))
     X.sum_duplicates()
     return X, ids
 
@@ -2133,12 +2137,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     first = hit_index[unit_bounds[:-1]]  # the first hit of each sentence, in the hitlist
     # Identical sentences count once (repeated titles, running heads, reprints): they are one use, not many
     keep = np.sort(np.unique(hashes, return_index=True)[1])
-    channels = []
-    for flat, ptr in ((bag, bag_ptr), (left, left_ptr), (right, right_ptr)):
-        X, ids = _channel(flat, ptr, n_units)
-        X = X[keep]
-        used = np.flatnonzero(X.getnnz(axis=0))  # the words the kept sentences still have
-        channels.append((X[:, used], ids[used]))
+    channels = [_channel(flat, ptr, keep) for flat, ptr in ((bag, bag_ptr), (left, left_ptr), (right, right_ptr))]
     first = first[keep]
     # The words just before and after each hit as the text has them: their forms, and where the hit is in its text
     forms = np.load(os.path.join(colloc_dir, "token_ids.npy"), mmap_mode="r") if count_lemmas else count_ids
@@ -2147,7 +2146,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     lo, hi = positions.min(axis=1), positions.max(axis=1)
     kept_of = np.full(n_units, -1, dtype=np.int64)
     kept_of[keep] = np.arange(len(keep))
-    unit_of = kept_of[np.searchsorted(unit_bounds, np.arange(len(si)), side="right") - 1]
+    unit_of = kept_of[np.repeat(np.arange(n_units), np.diff(unit_bounds))]
     hit_bytes = rows[hit_index][:, 8::2].astype(np.int64)
     query_form = np.asarray(forms[s0 + positions[:, 0] - 1]).astype(np.int64)
     neighbors = [None]
