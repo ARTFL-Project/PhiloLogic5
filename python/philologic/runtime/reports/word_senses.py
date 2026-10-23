@@ -199,6 +199,15 @@ def _g2_over(c, parent_p, total, threshold, or_less, markers, use_markers):
 def describe(c, dist, parent_p, corpus_p):
     """The words markedly more frequent in a sense than in its parent (local indices, most significant first), with
     their count in the sense, the ratio of their probability in it to their parent's and to the corpus's, and G2."""
+    listed, g2 = _described(c, dist, parent_p)
+    return [
+        (int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(dist.p[i] / corpus_p[i]), float(g))
+        for i, g in zip(listed, g2)
+    ]
+
+
+def _described(c, dist, parent_p):
+    """The words of describe, in its order, and their G2."""
     listed, g2 = markedly_more_frequent(c, parent_p)
     if dist.markers is not None:
         keep = dist.markers[listed]
@@ -206,16 +215,19 @@ def describe(c, dist, parent_p, corpus_p):
     if dist.weights is not None:  # the strongest evidence first, as the words weigh in telling senses apart
         order = np.argsort(-g2 * dist.weights[listed], kind="stable")
         listed, g2 = listed[order], g2[order]
-    return [
-        (int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(dist.p[i] / corpus_p[i]), float(g))
-        for i, g in zip(listed, g2)
-    ]
+    return listed, g2
 
 
 def describe_rarer(c, dist, parent_p):
     """The words markedly less frequent in a sense than in its parent, among those that may mark a sense: what a sense
     that is the rest of its parent lacks. (local index, count in the sense, ratio of its probability in it to its
     parent's, weighted G2), the strongest evidence first."""
+    listed, g2 = _described_rarer(c, dist, parent_p)
+    return [(int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(g)) for i, g in zip(listed, g2)]
+
+
+def _described_rarer(c, dist, parent_p):
+    """The words of describe_rarer, in its order, and their weighted G2."""
     listed, g2 = markedly_more_frequent(c, parent_p, or_less=True)
     less = c[listed] < float(c.sum()) * parent_p[listed]
     listed, g2 = listed[less], g2[less]
@@ -225,8 +237,7 @@ def describe_rarer(c, dist, parent_p):
     if dist.weights is not None:
         g2 = g2 * dist.weights[listed]
     order = np.argsort(-g2, kind="stable")
-    listed, g2 = listed[order], g2[order]
-    return [(int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(g)) for i, g in zip(listed, g2)]
+    return listed[order], g2[order]
 
 
 def _logsumexp2(ll):
@@ -1585,9 +1596,9 @@ def marks(node, against, common=None):
     that alone make no sense)."""
     for ci, (c, dist) in enumerate(zip(node.counts, node.dists)):
         mask = None if common is None else common[ci]
-        for i, *_ in describe(c, dist, against[ci].p, against[ci].p):
-            if mask is None or not mask[i]:
-                return True
+        listed = _described(c, dist, against[ci].p)[0]
+        if len(listed) and (mask is None or not mask[listed].all()):
+            return True
     return False
 
 
@@ -2450,10 +2461,9 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
 
     v_blob, v_offsets = sentences["v_blob"], sentences["v_offsets"]
 
-    def shown(ci, local):  # the filter's words: not among a sense's words, but next to the query, where common words
-        return ci > 0 or not unshown[int(names[ci][local])]  # make the construction (homme d'esprit, mon esprit)
-
-    not_shown = [unshown[names[0]]] + [None] * (len(names) - 1)  # as shown has them, for all the words at once
+    # The filter's words: not among a sense's words, but next to the query, where common words make the construction
+    # (homme d'esprit, mon esprit). For each group of words, None or the mask of those not shown
+    not_shown = [unshown[names[0]]] + [None] * (len(names) - 1)
 
     def word(ci, local):
         tid = int(names[ci][local])
@@ -2515,29 +2525,48 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 item["phrase"] = phrase
         return item
 
+    def described_words(node, ci, against, listed):  # describe's items of the words listed
+        c, p = node.counts[ci], node.dists[ci].p
+        counts = c[listed].astype(np.float64).tolist()
+        ratios = (p[listed] / against[ci].p[listed]).tolist()
+        lifts = (p[listed] / corpus_p[ci][listed]).tolist()
+        return list(zip(listed.tolist(), counts, ratios, lifts))
+
+    def rarer_words(node, ci, against):  # describe_rarer's items of the words shown, only as many as are sent
+        listed, g2 = _described_rarer(node.counts[ci], node.dists[ci], against[ci].p)
+        if not_shown[ci] is not None:
+            keep = ~not_shown[ci][listed]
+            listed, g2 = listed[keep], g2[keep]
+        listed, g2 = listed[:_MAX_WORDS], g2[:_MAX_WORDS]
+        c, p = node.counts[ci], node.dists[ci].p
+        counts = c[listed].astype(np.float64).tolist()
+        return list(zip(listed.tolist(), counts, (p[listed] / against[ci].p[listed]).tolist(), g2.tolist()))
+
     def described(node, against):
         """A sense's words, against the dists of the sense it is told from (as a rule, its parent): those markedly more
         frequent in it, and what it lacks."""
         groups_of_words = []
         hidden = []
         for ci in range(len(channels)):
-            listed = describe(node.counts[ci], node.dists[ci], against[ci].p, corpus_p[ci])
+            # As describe lists them, those of its words shown and those not (the filter's), only as many as are sent
+            listed = _described(node.counts[ci], node.dists[ci], against[ci].p)[0]
+            if not_shown[ci] is not None:
+                hidden = described_words(node, ci, against, listed[not_shown[ci][listed]][:_MAX_WORDS])
+                listed = listed[~not_shown[ci][listed]]
+            listed = described_words(node, ci, against, listed[:_MAX_WORDS])
             if ci == 0:
-                hidden = [item for item in listed if not shown(ci, item[0])]
-            listed = [item for item in listed if shown(ci, item[0])]
-            if ci == 0:
-                listed_words[node.id] = np.array([i for i, *_ in listed[:_MAX_WORDS]], dtype=np.int64)
+                listed_words[node.id] = np.array([i for i, *_ in listed], dtype=np.int64)
 
             def entry(i, c, r, f):  # a word of the sense, as the page shows it
                 item = {"word": word(ci, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(f, 3)}
                 return with_hits(with_phrase(item, node, ci, i), node, ci, i)
 
-            groups_of_words.append([entry(i, c, r, f) for i, c, r, f, _ in listed[:_MAX_WORDS]])
+            groups_of_words.append([entry(i, c, r, f) for i, c, r, f in listed])
         # A sense with nothing else to show: the words of the filter that mark it
         if not any(groups_of_words):
             hidden = [
                 {"word": word(0, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(lift, 3)}
-                for i, c, r, lift, _ in hidden[:_MAX_WORDS]
+                for i, c, r, lift in hidden
             ]
         else:
             hidden = []
@@ -2550,8 +2579,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 (
                     (g, {"word": word(ci, i), "group": ci, "n": round(c, 2), "ratio": round(r, 4), "at": (ci, i)})
                     for ci in range(len(channels))
-                    for i, c, r, g in describe_rarer(node.counts[ci], node.dists[ci], against[ci].p)
-                    if shown(ci, i)
+                    for i, c, r, g in rarer_words(node, ci, against)
                 ),
                 key=lambda item: -item[0],
             )
