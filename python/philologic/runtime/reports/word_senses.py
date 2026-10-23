@@ -2346,11 +2346,12 @@ def _add_rows(indptr, indices, data, ones, evidence, ll):
         ll[i, 1] += s1
 
 
-def node_posteriors(root, Xall):
+def node_posteriors(root, Xall, submit=_now):
     """Every sense of the tree, in order (each before those it splits into), given its id and parent; and for every
     sentence the log-probability of each sense (n x senses), and its margin: the smallest log-likelihood ratio, along
     the way to the sense, of the sense's side over the other (positive when the sentence is on its side of every
-    split, infinite for the whole query). Each sense's are stored together (the arrays are senses x n, turned)."""
+    split, infinite for the whole query). Each sense's are stored together (the arrays are senses x n, turned). The
+    sentences' log-likelihoods under each split are made at once on the pool's threads (submit)."""
     n = Xall[0].shape[0]
     nodes = []
     ones = [bool(np.all(X.data[: X.nnz] == 1)) for X in Xall]
@@ -2358,6 +2359,18 @@ def node_posteriors(root, Xall):
     def size(node):
         return 1 + sum(size(child) for child in node.children)
 
+    def splits(node):
+        return [node] + [s for child in node.children for s in splits(child)] if node.children else []
+
+    def loglik(node):
+        pi, dists = node.model
+        ll = np.tile(np.log(pi), (n, 1))  # _mixture_loglik, compiled
+        for X, one, ds in zip(Xall, ones, dists):
+            _add_rows(X.indptr, X.indices, X.data, one, np.column_stack([_evidence(ds[0]), _evidence(ds[1])]), ll)
+        return ll
+
+    split = splits(root)
+    lls = dict(zip(map(id, split), _at_once(submit, loglik, split)))
     logp, margin = np.empty((size(root), n)), np.empty((size(root), n))
 
     def walk(node, lp, mg, parent):
@@ -2368,10 +2381,7 @@ def node_posteriors(root, Xall):
         margin[node.id] = mg
         if not node.children:
             return
-        pi, dists = node.model
-        ll = np.tile(np.log(pi), (n, 1))  # _mixture_loglik, compiled
-        for X, one, ds in zip(Xall, ones, dists):
-            _add_rows(X.indptr, X.indices, X.data, one, np.column_stack([_evidence(ds[0]), _evidence(ds[1])]), ll)
+        ll = lls.pop(id(node))
         cond = ll - _logsumexp2(ll)[:, None]
         for child in node.children:
             walk(child, lp + cond[:, child.k], np.minimum(mg, ll[:, child.k] - ll[:, 1 - child.k]), node)
@@ -3152,12 +3162,38 @@ def _filtered(sentences, filter_words):
 
 def _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, unshown=None):
     """The report of the tree of senses root, as JSON-ready data. unshown: the words of filter_words, as _filtered
-    has them (made again without)."""
+    has them (made again without). Its parts that do not depend on one another are made at once, on this thread and
+    those of a pool (as many in all as numba may use, as for induce_senses), but for the texts read for the phrases
+    next to the query, here (the database is this thread's), once all are known."""
+    workers = numba.config.NUMBA_NUM_THREADS
+    with ThreadPoolExecutor(max_workers=max(1, workers - 1)) as pool:
+        submit = pool.submit if workers > 1 else _now
+        return _senses_report_with(
+            db, sentences, channels, names, root, filter_words, metadata, year_field, unshown, submit
+        )
+
+
+def _senses_report_with(db, sentences, channels, names, root, filter_words, metadata, year_field, unshown, submit):
     unshown = _filtered(sentences, filter_words) if unshown is None else unshown
     n = sentences["n_units"]
     docs = sentences["docs"]
     Xall = [csr_matrix(c[0]) for c in channels]
-    nodes, logp, margin = node_posteriors(root, Xall)
+    phrases = _Phrases(db, sentences)
+    columns = {}
+
+    def columns_of(ci):  # the sentences of each word of a group (_pattern_columns), made once
+        if ci not in columns:
+            columns[ci] = _pattern_columns(Xall[ci].indptr, Xall[ci].indices, Xall[ci].shape[1])
+        return columns[ci]
+
+    def first(part):  # what the parts below take from: the senses' posteriors, the words' sentences, the phrases' rows
+        if part == "posteriors":
+            return node_posteriors(root, Xall, submit)
+        if part == "sorted":
+            return [phrases._sorted(side) for side in (1, 2) if phrases.neighbors is not None]
+        return columns_of(part)
+
+    (nodes, logp, margin), *_ = _at_once(submit, first, ["posteriors", 0, "sorted", 1, 2])
     posteriors = np.exp(logp)
     weights = [c[3] for c in channels]
     corpus_p = [c[1] for c in channels]
@@ -3176,20 +3212,13 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     top_importance = max((nd.test["importance"] for nd in nodes if nd.children), default=0.0)
     first_hit = sentences["first_hit"]
     listed_words = {}
-    phrases = _Phrases(db, sentences)
     near_by_node = {}
     mine_of = {}
-    columns = {}
 
     def sentences_of(node):  # its sentences: those on its side of every split on the way to it
         if node.id not in mine_of:
             mine_of[node.id] = np.flatnonzero(margin[:, node.id] > 0)
         return mine_of[node.id]
-
-    def columns_of(ci):  # the sentences of each word of a group (_pattern_columns), made once
-        if ci not in columns:
-            columns[ci] = _pattern_columns(Xall[ci].indptr, Xall[ci].indices, Xall[ci].shape[1])
-        return columns[ci]
 
     def near(node):  # the words next to the query in a sense's sentences, as the text has them (see _Phrases)
         if node.id not in near_by_node:
@@ -3202,31 +3231,32 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         asked.append((item, node.id, ci, i))
         return item
 
-    def add_hits():
+    def hits_of(items):
         """To each word of a sense, the sentences of the sense with it, the most clearly in the sense first (their
-        first hits): from the sentences of each word, a sense at a time."""
-        by_node = {}
-        for a in asked:
-            by_node.setdefault(a[1], []).append(a)
-        for nid, items in by_node.items():
-            inside = margin[:, nid] > 0
-            clear_of = posteriors[:, nid]
-            for item, _, ci, i in items:
-                col_ptr, rows = columns_of(ci)
-                rows = rows[col_ptr[i] : col_ptr[i + 1]]
-                rows = rows[inside[rows]]
-                clear = clear_of[rows]
-                if len(rows) > _WORD_EXAMPLES:  # the clearest only, without sorting them all
-                    keep = np.argpartition(-clear, _WORD_EXAMPLES)[:_WORD_EXAMPLES]
-                    rows, clear = rows[keep], clear[keep]
-                item["hits"] = first_hit[rows[np.argsort(-clear, kind="stable")]].astype(np.int64).tolist()
+        first hits): from the sentences of each word, for the words of a sense."""
+        nid = items[0][1]
+        inside = margin[:, nid] > 0
+        clear_of = posteriors[:, nid]
+        for item, _, ci, i in items:
+            col_ptr, rows = columns_of(ci)
+            rows = rows[col_ptr[i] : col_ptr[i + 1]]
+            rows = rows[inside[rows]]
+            clear = clear_of[rows]
+            if len(rows) > _WORD_EXAMPLES:  # the clearest only, without sorting them all
+                keep = np.argpartition(-clear, _WORD_EXAMPLES)[:_WORD_EXAMPLES]
+                rows, clear = rows[keep], clear[keep]
+            item["hits"] = first_hit[rows[np.argsort(-clear, kind="stable")]].astype(np.int64).tolist()
 
-    def with_phrase(item, node, ci, i):
+    def with_phrase(item, node, ci, i, read):  # its phrase, read once all are known: (item, group, row) to read
         if ci > 0:
-            phrase = phrases.text(ci, near(node).get(ci, {}).get(int(names[ci][i])))
+            read.append((item, ci, near(node).get(ci, {}).get(int(names[ci][i]))))
+        return item
+
+    def add_phrases(read):  # in the order they were asked for: the first read of a phrase is the one kept
+        for item, ci, row in read:
+            phrase = phrases.text(ci, row)
             if phrase:
                 item["phrase"] = phrase
-        return item
 
     listed_of = {}
 
@@ -3253,9 +3283,9 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         counts = c[listed].astype(np.float64).tolist()
         return list(zip(listed.tolist(), counts, (p[listed] / against[ci].p[listed]).tolist(), g2.tolist()))
 
-    def described(node, against):
+    def described(node, against, read):
         """A sense's words, against the dists of the sense it is told from (as a rule, its parent): those markedly more
-        frequent in it, and what it lacks."""
+        frequent in it, and what it lacks. read: the phrases to read, (item, group, row)."""
         groups_of_words = []
         hidden = []
         for ci in range(len(channels)):
@@ -3270,7 +3300,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
 
             def entry(i, c, r, f):  # a word of the sense, as the page shows it
                 item = {"word": word(ci, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(f, 3)}
-                return with_hits(with_phrase(item, node, ci, i), node, ci, i)
+                return with_hits(with_phrase(item, node, ci, i, read), node, ci, i)
 
             groups_of_words.append([entry(i, c, r, f) for i, c, r, f in listed])
         # A sense with nothing else to show: the words of the filter that mark it
@@ -3294,7 +3324,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 ),
                 key=lambda item: -item[0],
             )
-            rarer = [with_phrase(item, node.parent, *item.pop("at")) for _, item in rarer[:_MAX_WORDS]]
+            rarer = [with_phrase(item, node.parent, *item.pop("at"), read) for _, item in rarer[:_MAX_WORDS]]
         return {
             "words": groups_of_words[0],
             "hidden": hidden,
@@ -3317,34 +3347,37 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
         )
         for node in nodes
     }
-    out = []
-    for node in nodes:
+
+    def sense(node):  # a sense as the page shows it, and the phrases it asks for
+        read = []
         split = None
         if node.test is not None:
             split = {k: v for k, v in node.test.items() if k != "gains"}
             seed = split.pop("seed", None)
-            split["seed"] = None if seed is None else with_phrase({"word": word(*seed), "group": seed[0]}, node, *seed)
+            split["seed"] = (
+                None if seed is None else with_phrase({"word": word(*seed), "group": seed[0]}, node, *seed, read)
+            )
             split["relative"] = round(float(split["importance"] / top_importance), 4) if top_importance > 0 else 0.0
         mine = sentences_of(node)
         works_of = docs[mine]
         work_counts = np.unique(works_of, return_counts=True)[1] if len(mine) else np.zeros(1)
-        out.append(
-            {
-                "id": node.id,
-                "parent": None if node.parent is None else node.parent.id,
-                "children": [child.id for child in node.children],
-                "share": round(float(posteriors[:, node.id].mean()), 6),
-                "sentences": int(len(mine)),
-                **described(node, node.parent_dists),
-                "split": split,
-                "reason": node.reason,
-                "works": int(len(work_counts)) if len(mine) else 0,
-                "top_work_share": round(float(work_counts.max() / max(1, len(mine))), 4),
-                "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, not_shown),
-            }
-        )
+        item = {
+            "id": node.id,
+            "parent": None if node.parent is None else node.parent.id,
+            "children": [child.id for child in node.children],
+            "share": round(float(posteriors[:, node.id].mean()), 6),
+            "sentences": int(len(mine)),
+            **described(node, node.parent_dists, read),
+            "split": split,
+            "reason": node.reason,
+            "works": int(len(work_counts)) if len(mine) else 0,
+            "top_work_share": round(float(work_counts.max() / max(1, len(mine))), 4),
+            "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, not_shown),
+        }
+        return item, read
 
     timeline = None
+    years = None
     if year_field:
         try:
             year_array, year_words, _, _, _ = _get_doc_year_data(db, year_field)
@@ -3352,22 +3385,46 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
             years = np.where(docs < len(year_array), year_array[docs_ok], 0).astype(np.int64)
             if metadata:
                 year_words, _ = _corpus_year_counts(db, year_array, metadata)
-            timeline = sense_curves(posteriors, years, docs, year_words)
         except Exception:  # no year field the database can read: senses without their course over time
-            timeline = None
+            years = None
+
+    def part(task):  # the senses and their course over time, at once
+        if task is None:
+            try:
+                return sense_curves(posteriors, years, docs, year_words)
+            except Exception:  # no course the years can tell
+                return None
+        return sense(task)
+
+    made = _at_once(submit, part, ([None] if years is not None else []) + nodes)
+    if years is not None:
+        timeline, made = made[0], made[1:]
+    out = [item for item, _ in made]
+    reads = [read for _, read in made]
 
     # The senses' numbers; a sense that goes on as its parent is told from the sense its number started in (the
     # rest of a sense, after one is carved out of it, has the words of that sense, not those of none)
     number, start = sense_numbers(out, lambda item: marked[item["id"]])
     rank = {n: k + 1 for k, n in enumerate(sorted(start, key=lambda n: [int(x) for x in n.split(".")]))}
-    for node in nodes:
-        sense = number[node.id]
-        if sense is not None and start[sense] != node.id:
-            out[node.id].update(described(node, nodes[start[sense]].parent_dists))
+    again = [node for node in nodes if number[node.id] is not None and start[number[node.id]] != node.id]
+
+    def told_again(node):
+        read = []
+        return described(node, nodes[start[number[node.id]]].parent_dists, read), read
+
+    for node, (words, read) in zip(again, _at_once(submit, told_again, again) if again else []):
+        out[node.id].update(words)
+        reads.append(read)
     for item in out:
         item["sense"] = number[item["id"]]
         item["rank"] = None if item["sense"] is None else rank[item["sense"]]
-    add_hits()
+    for read in reads:
+        add_phrases(read)
+    by_node = {}
+    for a in asked:
+        by_node.setdefault(a[1], []).append(a)
+    if by_node:
+        _at_once(submit, hits_of, list(by_node.values()))
     return {
         "n_hits": int(sentences["n_hits"]),
         "n_sentences": int(n),
