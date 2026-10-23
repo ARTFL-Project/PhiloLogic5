@@ -377,15 +377,13 @@ function wordText(w, group = w.group) {
     return w.word;
 }
 
-// The words that mark a sense: its strongest marker words, else the words next to the query, else the words the
-// collocation filter hides
+// The words that mark a sense: its strongest marker words, else the words next to the query
 function markers(node) {
     const words = node.words.slice(0, 4).map((w) => w.word);
     if (words.length < 2) {
         words.push(...node.before.slice(0, 1).map((w) => wordText(w, 1)));
         words.push(...node.after.slice(0, 1).map((w) => wordText(w, 2)));
     }
-    if (!words.length) words.push(...(node.hidden || []).slice(0, 3).map((w) => w.word));
     return words;
 }
 
@@ -669,12 +667,6 @@ const WordList = defineComponent({
                     }, open.value ? t("wordSenses.fewerWords") : t("wordSenses.moreWords", { n: words.length - SHOWN })));
                 }
                 lines.push(h("div", { class: "mb-1" }, items));
-            } else if (!groups.length && props.node.hidden?.length) {
-                // Nothing else marks it: the common words the collocation filter hides, greyed
-                lines.push(h("div", { class: "mb-1" }, [
-                    h("span", { class: "small text-muted me-1" }, `${t("wordSenses.hiddenWords")}:`),
-                    ...props.node.hidden.slice(0, SHOWN).map((w) => chip(w, w.word, "hidden-chip")),
-                ]));
             } else if (!groups.length && !props.node.before.length && !props.node.after.length) {
                 // Nothing marks it: the rest of the sense it was split from, by what it lacks or what was split off
                 const rest = !props.againstCorpus && props.node.rarer?.length;
@@ -767,11 +759,6 @@ const WordList = defineComponent({
 .rest-row {
     border-left: 4px solid hsla(0, 0%, 62%, 1);
     padding-left: 0.6rem;
-}
-
-:deep(.hidden-chip) {
-    color: #595959;
-    border-style: dashed;
 }
 
 :deep(.rarer-chip) {

@@ -7,7 +7,7 @@ import SenseTree from "../src/components/collocation/SenseTree.vue";
 const word = (w, ratio = 3, n = 10) => ({ word: w, n, ratio, lift: ratio * 2 });
 const split = (relative, z = 3) => ({ relative, z, importance: relative, seed: { word: "loi", group: 0 } });
 const node = (id, parent, children, share, fields = {}) => ({
-    id, parent, children, share, sentences: Math.round(share * 100), words: [], before: [], after: [], hidden: [],
+    id, parent, children, share, sentences: Math.round(share * 100), words: [], before: [], after: [],
     rarer: [], split: null, reason: null, works: 10, top_work_share: 0.2, examples: [], sense: null, rank: null, ...fields,
 });
 
