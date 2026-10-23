@@ -82,7 +82,7 @@ _MAX_WORDS = 40  # words sent for each sense and group of words (the response wo
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses27\0"  # bump when the result changes
+_CACHE_TAG = b"senses28\0"  # bump when the result changes
 
 
 class Dist:
