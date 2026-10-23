@@ -380,9 +380,11 @@ class _Mats(list):
     every fold share one packing. parent, the sense split, whose markers are packed apart (marking); marked, when
     given, the markers' entries of all the query's sentences and the indices of these among them (_Marked), which the
     markers' entries are taken from; words, when given, the words of each group the sentences have, or more (those of
-    all the parts of a sense: see _Parts)."""
+    all the parts of a sense: see _Parts). by_words: whether the words' counts in either sense are made from slices of
+    each word's entries (columns), else from the sentences' (entries): the slices take a pass of their own to make,
+    worth it for the many fits of a sense's search and tests, not for the few of a refit on all its sentences."""
 
-    def __init__(self, Xs, blocks=None, parent=None, marked=None, words=None):
+    def __init__(self, Xs, blocks=None, parent=None, marked=None, words=None, by_words=True):
         super().__init__(csr_matrix(X) for X in Xs)
         n = self[0].shape[0]
         self.marked = marked
@@ -415,7 +417,8 @@ class _Mats(list):
         # unsplit sense (block_loglik): made for a packing by fold, else when asked for
         self._rows = None if blocks is None else _row_slices(indptr, indices, data, self.ones, len(cols), self.bounds)
         self._rows_lock = threading.Lock()
-        self.columns = _column_slices(indptr, indices, data, self.ones, cmp_off, self.bounds)
+        self.columns = _column_slices(indptr, indices, data, self.ones, cmp_off, self.bounds) if by_words else None
+        self.entries = None if by_words else (indptr, indices, data)
         self._marking = []
         self._unmarked_loglik = []
         if parent is not None:
@@ -1098,6 +1101,41 @@ def _em_counts(order, start, idx, cdata, g_off, ones, r, n_cols, blocks):
 
 
 @numba.njit(cache=True, nogil=True)
+def _em_row_counts(indptr, indices, data, ones, r, n_cols, bounds, blocks):
+    """_em_counts from the sentences' entries (indptr groups x n + 1, into the entries of all; each entry's word among
+    the n_cols the sentences have; counts, read for the groups not all ones), each added to its word's count: the same
+    sums, in each block each word's sentences in order from 0, and the blocks' sums in order."""
+    one, two = np.uint64(1), np.uint64(2)
+    counts = np.zeros(2 * (n_cols + 1))
+    many = len(blocks) > 1
+    part = np.zeros(2 * (n_cols + 1)) if many else counts  # a block's sums, from 0
+    for b in blocks:
+        for c in range(indptr.shape[0]):
+            for i in range(bounds[b], bounds[b + 1]):
+                r0 = r[2 * i]
+                r1 = r[2 * i + 1]
+                jj = np.uint64(indptr[c, i])
+                end = np.uint64(indptr[c, i + 1])
+                if ones[c]:
+                    while jj < end:
+                        j = np.uint64(indices[jj]) * two
+                        part[j] += r0
+                        part[j + one] += r1
+                        jj += one
+                else:
+                    while jj < end:
+                        j = np.uint64(indices[jj]) * two
+                        part[j] += data[jj] * r0
+                        part[j + one] += data[jj] * r1
+                        jj += one
+        if many:
+            for k in range(len(counts)):
+                counts[k] += part[k]
+                part[k] = 0.0
+    return counts.reshape(n_cols + 1, 2)
+
+
+@numba.njit(cache=True, nogil=True)
 def _em_counts_of(order, start, idx, cdata, ones, r, first, last, counts):
     """_em_counts of the slices from first to last (of a group), added to counts."""
     one, two, three, four = np.uint64(1), np.uint64(2), np.uint64(3), np.uint64(4)
@@ -1501,10 +1539,14 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
     for part in parts:
         ranges, blocks = part.ranges(left_out)
         m_rows, unmarked = part.marking(parent)[4][4:]
-        steps.append((part.columns, blocks, m_rows[:4], unmarked, part.unmarked_loglik(parent), ranges, part.ones))
+        steps.append((part, blocks, m_rows[:4], unmarked, part.unmarked_loglik(parent), ranges, part.ones))
 
     def counts_of(p):  # each word's count in either sense in a part's sentences
-        (c_order, c_start, c_idx, cdata, g_off), blocks, ones = steps[p][0], steps[p][1], steps[p][6]
+        part, blocks, ones = steps[p][0], steps[p][1], steps[p][6]
+        if part.columns is None:
+            indptr, indices, data = part.entries
+            return _em_row_counts(indptr, indices, data, ones, views[p].reshape(-1), len(cols), part.bounds, blocks)
+        c_order, c_start, c_idx, cdata, g_off = part.columns
         return _em_counts(c_order, c_start, c_idx, cdata, g_off, ones, views[p].reshape(-1), len(cols), blocks)
 
     def shares_of(p, evidence, log_pi, log_scales):  # a part's sentences' log-probabilities, and r of either sense
@@ -2303,7 +2345,7 @@ def _fit_all(Xall, units, parent, first, fitted, marked=None, submit=_now):
     words = [np.flatnonzero(np.logical_or.reduce([had[c] for _, had in made])) for c in range(len(Xall))]
 
     def packed(p):  # a part packed, and its sentences' probabilities under the first pass's senses
-        Xs = _Mats(made[p][0], marked=None if marked is None else (marked, pieces[p]), words=words)
+        Xs = _Mats(made[p][0], marked=None if marked is None else (marked, pieces[p]), words=words, by_words=False)
         Xs.unmarked_loglik(parent)
         ll = _mixture_loglik(Xs, *first)
         return Xs, np.exp(ll - _logsumexp2(ll)[:, None])
