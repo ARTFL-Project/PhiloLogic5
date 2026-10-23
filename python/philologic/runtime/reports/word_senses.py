@@ -1535,27 +1535,28 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
     padded[lo:hi] = 0.0  # the sentences left out, in no sense: they add nothing to any count
     weight = _weights(padded)
     lse, top, log2 = np.empty(n), np.empty(n), 0.0 + math.log(2.0)
-    steps = []  # each part's: its slices of the words' entries, of the markers', its other words' weighted counts...
-    for part in parts:
+    steps = []  # each part's: how its words are counted, its markers' entries and other words', its slices of r, lse...
+    for p, part in enumerate(parts):
         ranges, blocks = part.ranges(left_out)
         m_rows, unmarked = part.marking(parent)[4][4:]
-        steps.append((part, blocks, m_rows[:4], unmarked, part.unmarked_loglik(parent), ranges, part.ones))
+        flat = views[p].reshape(-1)
+        if part.columns is None:
+            counting = (_em_row_counts, (*part.entries, part.ones, flat, len(cols), part.bounds, blocks))
+        else:
+            counting = (_em_counts, (*part.columns, part.ones, flat, len(cols), blocks))
+        rows = (*m_rows[:4], part.ones)
+        others = (part.unmarked_loglik(parent), unmarked)
+        a, b = at[p], at[p + 1]
+        steps.append((counting, rows, others, ranges, lse[a:b], top[a:b], views[p][:-1], b - a))
 
     def counts_of(p):  # each word's count in either sense in a part's sentences
-        part, blocks, ones = steps[p][0], steps[p][1], steps[p][6]
-        if part.columns is None:
-            indptr, indices, data = part.entries
-            return _em_row_counts(indptr, indices, data, ones, views[p].reshape(-1), len(cols), part.bounds, blocks)
-        c_order, c_start, c_idx, cdata, g_off = part.columns
-        return _em_counts(c_order, c_start, c_idx, cdata, g_off, ones, views[p].reshape(-1), len(cols), blocks)
+        count, args = steps[p][0]
+        return count(*args)
 
     def shares_of(p, evidence, log_pi, log_scales):  # a part's sentences' log-probabilities, and r of either sense
-        (m_order, m_start, m_idx, m_sdata), unmarked, unmarked_ll, ranges, ones = steps[p][2:]
-        ll_all = _em_marked_loglik(
-            m_order, m_start, m_idx, m_sdata, ones, evidence, log_pi, unmarked_ll, unmarked, log_scales, ranges
-        )
-        a, b = at[p], at[p + 1]
-        ll, s, h, rp = ll_all[: b - a], lse[a:b], top[a:b], views[p][:-1]
+        rows, (unmarked_ll, unmarked), ranges, s, h, rp, m = steps[p][1:]
+        ll_all = _em_marked_loglik(*rows, evidence, log_pi, unmarked_ll, unmarked, log_scales, ranges)
+        ll = ll_all[:m]
         # r = exp(ll - logsumexp(ll)): _logsumexp2's arithmetic, its passes joined
         _lse_apart(ll, s, h)
         with np.errstate(invalid="ignore", over="ignore"):
@@ -1565,7 +1566,7 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
         if bad:
             s[:] = _logsumexp2(ll)
             _less(ll, s, rp)
-            total = _pairwise_sum(s, 0, b - a)
+            total = _pairwise_sum(s, 0, m)
         np.exp(rp, out=rp)
         return ll_all, total
 
@@ -1575,10 +1576,13 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
         if weight.min() < 1.0:
             return None
         pi = weight / n_fit
-        made = _at_once(submit, counts_of, range(len(parts)))
-        counts = made[0]
-        for more in made[1:]:  # each part's sums, added in order: as the blocks of one packing add them
-            counts = counts + more
+        if len(parts) == 1:
+            counts = counts_of(0)
+        else:
+            made = _at_once(submit, counts_of, range(len(parts)))
+            counts = made[0]
+            for more in made[1:]:  # each part's sums, added in order: as the blocks of one packing add them
+                counts = counts + more
         totals, least = _em_sums(counts, pos, cmp_off, voc_off, discount)
         with np.errstate(divide="ignore"):
             thresholds = np.log(totals)
@@ -1602,9 +1606,11 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
         with np.errstate(divide="ignore"):
             log_scales = np.log(scales)
         log_pi = np.log(pi)
-        made = _at_once(submit, lambda p: shares_of(p, evidence.reshape(-1), log_pi, log_scales), range(len(parts)))
-        ll_all, total = made[0]
-        if len(parts) > 1:
+        if len(parts) == 1:
+            ll_all, total = shares_of(0, evidence.reshape(-1), log_pi, log_scales)
+        else:
+            made = _at_once(submit, lambda p: shares_of(p, evidence.reshape(-1), log_pi, log_scales), range(len(parts)))
+            ll_all, total = made[0]
             total = _pairwise_sum(lse, 0, n)
         if left_out is not None:
             padded[lo:hi] = 0.0
@@ -1645,8 +1651,8 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now):
         return out
     # The sentences left out under the fit: their markers' entries too, with the same rates
     held_out = np.array([[Xs.first[left_out], Xs.first[left_out + 1]]], dtype=np.int64)
-    m_order, m_start, m_idx, m_sdata = steps[0][2]
-    _em_loglik_add(m_order, m_start, m_idx, m_sdata, Xs.ones, evidence.reshape(-1), ll_all.reshape(-1), held_out)
+    m_order, m_start, m_idx, m_sdata, ones = steps[0][1]
+    _em_loglik_add(m_order, m_start, m_idx, m_sdata, ones, evidence.reshape(-1), ll_all.reshape(-1), held_out)
     return out + (ll_all[lo:hi].copy(),)
 
 
