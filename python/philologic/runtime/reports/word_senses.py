@@ -23,10 +23,10 @@ from the others in their other collocates, the most promising are tried (none of
 next to the query: mon, le tell the register of works more than a sense), and expectation-maximization moves the
 sentences to the sense they fit, each with a probability of being in either (first letting every collocate tell the
 senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark either,
-chosen at every step, and held if that choice cycles). A split is kept if, fitted without each of N_FOLDS groups of
-works in turn, it predicts the sentences of the works left out better than its unsplit sense, paying for saying which
-sense each is in, by more than EVIDENCE standard errors over the sentences. Holding out whole works keeps the
-sentences of a passage, which share their words, from predicting one another.
+chosen at every step, and held if that choice cycles or swings back). A split is kept if, fitted without each of
+N_FOLDS groups of works in turn, it predicts the sentences of the works left out better than its unsplit sense, paying
+for saying which sense each is in, by more than EVIDENCE standard errors over the sentences. Holding out whole works
+keeps the sentences of a passage, which share their words, from predicting one another.
 
 Each split has its importance: how much it improves the prediction of the words around the query, per use of the
 word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the elbow
@@ -83,7 +83,7 @@ _MAX_WORDS = 40  # words sent for each sense and group of words (the response wo
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses28\0"  # bump when the result changes
+_CACHE_TAG = b"senses29\0"  # bump when the result changes
 
 
 class Dist:
@@ -1020,8 +1020,8 @@ def _column_sums(r):
 
 def _em(Xs, parent, r, every_marker, switch=True):
     """The EM of a split (see fit_split). The words chosen at every step (every_marker false), once the set chosen comes
-    back to one chosen before, after another, are held from then on (switch): the choice cycles, and the fit would not
-    settle."""
+    back to one chosen before, after another, or swings back (it is nearer the set chosen before the last than the
+    last), are held from then on (switch): the choice cycles, and the fit would not settle."""
     if not isinstance(Xs, _Mats):
         Xs = _Mats(Xs)
     ones = Xs.ones
@@ -1042,6 +1042,7 @@ def _em(Xs, parent, r, every_marker, switch=True):
     lse, hi, log2 = np.empty(n), np.empty(n), 0.0 + math.log(2.0)
     previous = None
     seen, last = set(), None  # the sets of words chosen
+    before_last = last_chosen = None
     for _ in range(_MAX_ITER):
         if weight.min() < 1.0:
             return None
@@ -1057,7 +1058,11 @@ def _em(Xs, parent, r, every_marker, switch=True):
             return None
         if switch and not every_marker:
             key = chosen.tobytes()
-            if key in seen and key != last:  # the choice cycles: these words, held from now on
+            swings = before_last is not None and np.count_nonzero(chosen != before_last) < np.count_nonzero(
+                chosen != last_chosen
+            )
+            before_last, last_chosen = last_chosen, chosen
+            if (key in seen and key != last) or swings:  # the choice cycles: these words, held from now on
                 mk, mk_cmp = mk[chosen], mk_cmp[chosen]
                 mk_off = np.searchsorted(mk, voc_off)
                 markers = np.zeros(n_words, dtype=np.bool_)
@@ -1117,9 +1122,10 @@ def fit_split(Xs, parent, r, search=False):
     both have their own rates for the words that mark either, and share the parent's for all others. A search (from a
     seed) first lets every one of the parent's markers tell the senses apart: few of the words of the seed's sense are
     marked yet on its side, and the sense would not grow. The words that mark either are chosen again at every step;
-    when the choice comes back to a set it made before, after another, that set is held: such a fit cycles, and never
-    settled (stopped by _MAX_ITER). Returns (pi, dists, r, counts), or None when a sense ends up with less than a
-    sentence or none of the words tells them apart."""
+    when the choice comes back to a set it made before, after another, or swings back towards the one before the last
+    (more than half the words the last step changed change back), that set is held: such a fit cycles, and never
+    settled (stopped by _MAX_ITER), or settled only after many more steps. Returns (pi, dists, r, counts), or None
+    when a sense ends up with less than a sentence or none of the words tells them apart."""
     if search:
         first = _em(Xs, parent, r, every_marker=True)
         if first is None:
