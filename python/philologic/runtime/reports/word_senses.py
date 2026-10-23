@@ -1816,6 +1816,40 @@ def _nanpercentile(smoothed, q):
     return np.percentile(smoothed[drawn], q, axis=0)
 
 
+@numba.njit(cache=True, nogil=True)
+def _work_sums(work_of, P, n_works):
+    """np.add.at(sums, work_of, P) into works x senses zeros: each work's sums of its sentences' probabilities, added
+    in the order of the sentences."""
+    sums = np.zeros((n_works, P.shape[1]))
+    for i in range(P.shape[0]):
+        for k in range(P.shape[1]):
+            sums[work_of[i], k] += P[i, k]
+    return sums
+
+
+@numba.njit(cache=True, nogil=True)
+def _year_totals(work_year, draws, work_n, work_s, n_years, finite):
+    """For each draw of the works (draws x works: how many times each is drawn), each year's sentences, each sense's
+    probabilities and works, added in the order of the works as np.bincount adds them (a work drawn no times, when the
+    sums are finite, adds zero, which changes no sum)."""
+    n_draws, n_works = draws.shape
+    n_k = work_s.shape[1]
+    n = np.zeros((n_draws, n_years))
+    y = np.zeros((n_draws, n_k, n_years))
+    works = np.zeros((n_draws, n_years))
+    for b in range(n_draws):
+        for w in range(n_works):
+            m = draws[b, w]
+            if m == 0 and finite:
+                continue
+            t = work_year[w]
+            n[b, t] += m * work_n[w]
+            for k in range(n_k):
+                y[b, k, t] += m * work_s[w, k]
+            works[b, t] += m
+    return n, y, works
+
+
 def sense_curves(posteriors, years, works, year_words=None):
     """The course over time of each sense: its share of the year's sentences and, with the words of each year
     (year_words), its uses per million words, smoothed, with bands from resampling the works. Years weigh by their
@@ -1837,21 +1871,15 @@ def sense_curves(posteriors, years, works, year_words=None):
     work_year = np.zeros(n_works, dtype=np.int64)
     work_year[work_of] = year_index
     work_n = np.bincount(work_of, minlength=n_works).astype(np.float64)
-    work_s = np.zeros((n_works, P.shape[1]))
-    np.add.at(work_s, work_of, P)
-
-    def totals(m):
-        n = np.bincount(work_year, weights=m * work_n, minlength=n_years)
-        y = np.array([np.bincount(work_year, weights=m * work_s[:, k], minlength=n_years) for k in range(P.shape[1])])
-        return n, y, np.bincount(work_year, weights=m, minlength=n_years)
-
-    n, y, works_in = totals(np.ones(n_works))
+    work_s = _work_sums(work_of, P, n_works)
     rng = np.random.default_rng(0)  # fixed: the same bands every time
     resamples = rng.multinomial(n_works, np.full(n_works, 1.0 / n_works), size=N_RESAMPLES).astype(np.float64)
-    boot = [totals(m) for m in resamples]
-    boot_n = np.array([b[0] for b in boot])
-    boot_y = np.array([b[1] for b in boot])
-    boot_works = np.array([b[2] for b in boot])
+    finite = bool(np.isfinite(work_s).all())
+    all_n, all_y, all_works = _year_totals(
+        work_year, np.vstack([np.ones(n_works), resamples]), work_n, work_s, n_years, finite
+    )
+    n, y, works_in = all_n[0], all_y[0], all_works[0]
+    boot_n, boot_y, boot_works = all_n[1:], all_y[1:], all_works[1:]
 
     def curves(z, boot_z, weight, boot_weight, digits):
         scale = weight[weight > 0].mean()
