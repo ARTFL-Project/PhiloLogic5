@@ -47,6 +47,7 @@ import json
 import math
 import os
 import tempfile
+import threading
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 
@@ -392,31 +393,22 @@ class _Mats(list):
         n_groups = len(self)
         voc_off = np.zeros(n_groups + 1, dtype=np.int64)
         cmp_off = np.zeros(n_groups + 1, dtype=np.int64)
-        nnz_off = np.zeros(n_groups + 1, dtype=np.int64)
         had = []
         for c, X in enumerate(packed):
             had.append(np.flatnonzero(np.bincount(X.indices[: X.nnz], minlength=X.shape[1])))
             voc_off[c + 1] = voc_off[c] + X.shape[1]
             cmp_off[c + 1] = cmp_off[c] + len(had[c])
-            nnz_off[c + 1] = nnz_off[c] + X.nnz
-        indptr = np.empty((n_groups, n + 1), dtype=np.int64)
-        indices = np.empty(nnz_off[-1], dtype=np.int32)
-        data = np.empty(nnz_off[-1], dtype=np.float64)
-        ones = np.empty(n_groups, dtype=np.bool_)
-        for c, X in enumerate(packed):
-            to_cmp = np.zeros(X.shape[1], dtype=np.int32)
-            to_cmp[had[c]] = np.arange(cmp_off[c], cmp_off[c + 1], dtype=np.int32)
-            indptr[c] = X.indptr + nnz_off[c]
-            indices[nnz_off[c] : nnz_off[c + 1]] = to_cmp[X.indices[: X.nnz]]
-            ones[c] = bool(np.all(X.data[: X.nnz] == 1))
-            if not ones[c]:
-                data[nnz_off[c] : nnz_off[c + 1]] = X.data[: X.nnz]
         pos = np.concatenate(had).astype(np.int64)
         cols = pos + np.repeat(voc_off[:-1], np.diff(cmp_off))
-        self.ones = ones
-        self.rows = _row_slices(indptr, indices, data, ones, len(cols), self.bounds)
-        self.columns = _column_slices(indptr, indices, data, ones, cmp_off, self.bounds)
+        self.ones = np.array([bool(np.all(X.data[: X.nnz] == 1)) for X in packed], dtype=np.bool_)
         self.words = (pos, cols, cmp_off, voc_off)
+        self.first = _block_slices(self.bounds)
+        indptr, indices, data = self._entries(packed)
+        # The slices of the sentences' entries are only read for the held-out sentences' log-probability under the
+        # unsplit sense (block_loglik): made for a packing by fold, else when asked for
+        self._rows = None if blocks is None else _row_slices(indptr, indices, data, self.ones, len(cols), self.bounds)
+        self._rows_lock = threading.Lock()
+        self.columns = _column_slices(indptr, indices, data, self.ones, cmp_off, self.bounds)
         self._marking = []
         self._unmarked_loglik = []
         if parent is not None:
@@ -425,10 +417,37 @@ class _Mats(list):
     def _packed(self):
         return list(self) if self.perm is None else [X[self.perm] for X in self]
 
+    def _entries(self, packed):
+        """The entries of the groups' matrices (packed, in the order of perm) in one: each group's indptr (groups x n +
+        1, into the entries of all), each entry's word, by its index among the words the sentences have, and the counts
+        (read only for the groups not all ones)."""
+        pos, cols, cmp_off, voc_off = self.words
+        nnz_off = np.concatenate([[0], np.cumsum([X.nnz for X in packed])]).astype(np.int64)
+        indptr = np.empty((len(packed), self[0].shape[0] + 1), dtype=np.int64)
+        indices = np.empty(nnz_off[-1], dtype=np.int32)
+        data = np.empty(nnz_off[-1], dtype=np.float64)
+        for c, X in enumerate(packed):
+            to_cmp = np.zeros(X.shape[1], dtype=np.int32)
+            to_cmp[pos[cmp_off[c] : cmp_off[c + 1]]] = np.arange(cmp_off[c], cmp_off[c + 1], dtype=np.int32)
+            indptr[c] = X.indptr + nnz_off[c]
+            indices[nnz_off[c] : nnz_off[c + 1]] = to_cmp[X.indices[: X.nnz]]
+            if not self.ones[c]:
+                data[nnz_off[c] : nnz_off[c + 1]] = X.data[: X.nnz]
+        return indptr, indices, data
+
+    @property
+    def rows(self):
+        """The slices of the sentences' entries (_row_slices), made once."""
+        with self._rows_lock:
+            if self._rows is None:
+                indptr, indices, data = self._entries(self._packed())
+                self._rows = _row_slices(indptr, indices, data, self.ones, len(self.words[1]), self.bounds)
+        return self._rows
+
     def ranges(self, left_out=None):
         """The slices of the sentences' entries of every block but left_out (k x 2, from and to, as _em_loglik takes
         them), and those blocks."""
-        first = self.rows[4]
+        first = self.first
         n_blocks = len(self.bounds) - 1
         if left_out is None:
             ranges = [(0, first[-1])]
@@ -507,17 +526,39 @@ class _Mats(list):
         for known, made in self._unmarked_loglik:
             if known is parent:
                 return made
-        pos, cols, cmp_off, voc_off = self.words
-        mk_had, mk_pos = self.marking(parent)[4][:2]
-        evidence = np.zeros((len(cols) + 1, 2))
-        evidence[: len(cols)] = np.concatenate([_evidence(d) for d in parent])[cols, None]
-        evidence[mk_had] = 0.0  # the markers' read at every step
-        order, start, idx, sdata, _ = self.rows
-        n = self[0].shape[0]
-        ll = _em_loglik(order, start, idx, sdata, self.ones, evidence.reshape(-1), np.zeros(2), n, self.ranges()[0])
-        made = ll[:n, 0].copy()
+        markers = self.marking(parent)[0]
+        ll = np.zeros(self[0].shape[0])
+        lo = 0
+        for X, d, ones in zip(self, parent, self.ones):
+            evidence = _evidence(d)
+            evidence[markers[lo : lo + len(d.p)]] = 0.0  # the markers' read at every step
+            _add_rows_one(X.indptr, X.indices, X.data, bool(ones), evidence, ll)
+            lo += len(d.p)
+        made = ll if self.perm is None else ll[self.perm]
         self._unmarked_loglik.append((parent, made))
         return made
+
+
+def _block_slices(bounds):
+    """The first slice of each block of sentences (from bounds, the first of each and n), and the number of slices:
+    _WIDTH sentences a slice, each block's apart (as _row_slices lays them out)."""
+    slices = (np.diff(bounds) + _WIDTH - 1) // _WIDTH
+    return np.concatenate([[0], np.cumsum(slices)]).astype(np.int64)
+
+
+@numba.njit(cache=True, nogil=True)
+def _add_rows_one(indptr, indices, data, ones, evidence, ll):
+    """ll += X @ evidence (n), X in CSR: each row's sum of its entries in order, from 0 (with ones, the counts are not
+    read: one times a number is that number)."""
+    for i in range(len(indptr) - 1):
+        s = 0.0
+        if ones:
+            for j in range(indptr[i], indptr[i + 1]):
+                s += evidence[np.uint64(indices[j])]
+        else:
+            for j in range(indptr[i], indptr[i + 1]):
+                s += data[j] * evidence[np.uint64(indices[j])]
+        ll[i] += s
 
 
 # The sums of the EM run over slices of the entries of the sentences' matrices (sliced ELLPACK): _WIDTH sentences
@@ -1369,7 +1410,7 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None):
     if left_out is None:
         return out
     # The sentences left out under the fit: their markers' entries too, with the same rates
-    held_out = np.array([[Xs.rows[4][left_out], Xs.rows[4][left_out + 1]]], dtype=np.int64)
+    held_out = np.array([[Xs.first[left_out], Xs.first[left_out + 1]]], dtype=np.int64)
     _em_loglik_add(m_order, m_start, m_idx, m_sdata, ones, evidence.reshape(-1), ll_all.reshape(-1), held_out)
     return out + (ll_all[lo:hi].copy(),)
 
