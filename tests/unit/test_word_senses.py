@@ -57,6 +57,18 @@ class TestSenses:
         assert root.test["z"] > ws.EVIDENCE
         assert root.test["sentences_won"] > 0.9 * root.test["sentences"]
 
+    def test_senses_found_with_the_first_pass_on_a_sample(self, monkeypatch):
+        # A sense of many sentences: the searches' first pass on every _SAMPLE_EVERY-th, the second on all
+        monkeypatch.setattr(ws, "_SAMPLE_LEAST", 50)
+        specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
+        channels, works = sentences(specs)
+        assert ws.search_sample([csr_matrix(channels[0][0])]) is not None
+        root = ws.induce_senses(channels, works)
+        found = leaves(root)
+        assert len(found) == 2
+        is_a = np.array([sense == "a" for _, sense in specs])
+        assert sorted(set(is_a[leaf.units]) for leaf in found) == [{False}, {True}]
+
     def test_the_same_senses_on_one_thread_or_more(self, monkeypatch):
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(30)]
         channels, works = sentences(specs, seed=3)

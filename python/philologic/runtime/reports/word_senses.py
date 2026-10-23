@@ -22,7 +22,8 @@ mostly function words: par, leur, mon tell the register of works more than a sen
 moves the
 sentences to the sense they fit, each with a probability of being in either (first letting every collocate tell the
 senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark either,
-chosen at every step, and held if that choice cycles). A split is kept if, fitted without each of N_FOLDS groups of
+chosen at every step, and held if that choice cycles; the first pass, on a sense of many sentences, on a sample of
+them). A split is kept if, fitted without each of N_FOLDS groups of
 works in turn, it predicts the sentences of the works left out better than its unsplit sense, paying for saying which
 sense each is in, by more than EVIDENCE standard errors over the sentences. Holding out whole works keeps the
 sentences of a passage, which share their words, from predicting one another.
@@ -77,12 +78,14 @@ _TOL = 1e-6
 _MAX_ITER = 200
 FINEST = 0.10  # the finest detail that can be shown: distinctions less important are not looked for
 _SEEDS_TRIED = 5  # seeds tried at each split, the most promising first (the search, not the test)
+_SAMPLE_EVERY = 4  # a search's first pass runs on every 4th sentence of a sense of many (search_sample)
+_SAMPLE_LEAST = 10000  # ... when that leaves at least this many (the first pass only finds where the second starts)
 _LAMBDAS = 10.0 ** np.arange(-3.0, 9.01, 0.25)  # smoothness values generalized cross-validation chooses among
 _MAX_WORDS = 40  # words sent for each sense and group of words (the response would be large otherwise)
 _MAX_EXAMPLES = 50  # example sentences sent for each sense
 _WORD_EXAMPLES = 10  # example sentences sent for each word of a sense: those of the sense with the word
 _TEXT_WINDOW = 400  # bytes of a text read on either side of a hit, to reach the word next to it
-_CACHE_TAG = b"senses28\0"  # bump when the result changes
+_CACHE_TAG = b"senses29\0"  # bump when the result changes
 
 
 class Dist:
@@ -1110,21 +1113,42 @@ def _em(Xs, parent, r, every_marker, switch=True):
     return pi, dists, r, [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
 
 
-def fit_split(Xs, parent, r, search=False):
+def fit_split(Xs, parent, r, search=False, sample=None):
     """Fit a split of the sentences Xs (one matrix for each group of words) into two senses by expectation-maximization,
     from the probabilities r (n x 2) of each sentence being in either, each sense a sparse departure from the parent:
     both have their own rates for the words that mark either, and share the parent's for all others. A search (from a
     seed) first lets every one of the parent's markers tell the senses apart: few of the words of the seed's sense are
     marked yet on its side, and the sense would not grow. The words that mark either are chosen again at every step;
     when the choice comes back to a set it made before, after another, that set is held: such a fit cycles, and never
-    settled (stopped by _MAX_ITER). Returns (pi, dists, r, counts), or None when a sense ends up with less than a
+    settled (stopped by _MAX_ITER). A search's first pass only finds where the second starts: given a sample of the
+    sentences (their indices, and their matrices: see search_sample), it runs on those alone, and the second, which
+    chooses the words, on all of them. Returns (pi, dists, r, counts), or None when a sense ends up with less than a
     sentence or none of the words tells them apart."""
     if search:
-        first = _em(Xs, parent, r, every_marker=True)
+        if sample is None:
+            first = _em(Xs, parent, r, every_marker=True)
+        else:
+            kept, Xkept = sample
+            first = _em(Xkept, parent, r[kept], every_marker=True)
         if first is None:
             return None
-        r = first[2]
+        if sample is None:
+            r = first[2]
+        else:  # every sentence's probabilities under the first pass's senses
+            ll = _mixture_loglik(Xs, first[0], first[1])
+            r = np.exp(ll - _logsumexp2(ll)[:, None])
     return _em(Xs, parent, r, every_marker=False)
+
+
+def search_sample(Xs):
+    """The sentences a search's first pass runs on (fit_split), for a sense of at least _SAMPLE_EVERY times
+    _SAMPLE_LEAST of them: every _SAMPLE_EVERY-th, so that each work keeps its share, and each sense its sentences in
+    proportion (a sample of whole works would leave out the senses of a few); (indices, matrices), or None for all."""
+    n = Xs[0].shape[0]
+    if n < _SAMPLE_EVERY * _SAMPLE_LEAST:
+        return None
+    kept = np.arange(0, n, _SAMPLE_EVERY)
+    return kept, _Mats([X[kept] for X in Xs])
 
 
 @numba.njit(cache=True)
@@ -1558,21 +1582,24 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, submit
         return
 
     # All of it on the pool's threads (submit), which alone do the work, each step as soon as what it needs is done,
-    # so that no thread waits for the slowest of a step: the sentences' matrices packed for the EM, the seeds and the
-    # folds of the test at once (the folds, the same for every split, are wasted only when no seed splits the sense),
-    # each seed's search once both the first are made, each candidate's fit on a fold once its search and the fold are
-    # done (no further than a fold ahead of the race: see _race). Each result is kept in its place,
-    # and the race decides on whole folds: the results do not depend on the order the threads finish in.
+    # so that no thread waits for the slowest of a step: the sentences' matrices packed for the EM, the seeds, the
+    # sample of the searches' first pass and the folds of the test at once (the folds, the same for every split, are
+    # wasted only when no seed splits the sense), each seed's search once the first three are made, each candidate's
+    # fit on a fold once its search and the fold are done (no further than a fold ahead of the race: see _race). Each
+    # result is kept in its place, and the race decides on whole folds: the results do not depend on the order the
+    # threads finish in.
     def sentences():
         return [X[units] for X in Xall], _fold_of(groups[units], len(units))
 
     Xs, (fold_of, n_folds) = submit(sentences).result()
     packed = submit(_Mats, Xs)
     seeding = submit(lambda: seed_splits(Xs, collocates, weights=[d.weights for d in node.dists]))
+    sampling = submit(search_sample, Xs)
     folds = [submit(_fold, Xs, unsplit_fit, fold_of, f) for f in range(n_folds)]
     Xs = packed.result()
     seeds = seeding.result()
-    searches = [submit(fit_split, Xs, node.dists, r, True) for r, _ in seeds]
+    sample = sampling.result()
+    searches = [submit(fit_split, Xs, node.dists, r, True, sample) for r, _ in seeds]
     found = {}  # by the place of their seed: the candidate, or None
     fits = {}  # (candidate, fold): its fit on the fold
     out = set()  # the candidates out of the race
