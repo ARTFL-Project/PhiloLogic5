@@ -2332,6 +2332,39 @@ _SPACES = regex.compile(r"\s+")
 _JOINING = regex.compile(r"[^\s\p{L}\p{M}\p{N}]+(?=[\p{L}\p{M}\p{N}])")  # a mark joining two words (d'un)
 
 
+@numba.njit(cache=True, nogil=True)
+def _most_common_forms(order, unit, word, form, query_form, inside):
+    """For each word of the rows (by word, form, query form and hit: order, and each of these in that order) in the
+    sentences inside, the first of its rows with its most common pair of forms, the first such pair among equals, in
+    the order of the words."""
+    words = np.empty(len(order), dtype=np.int64)
+    rows = np.empty(len(order), dtype=np.int64)
+    n = 0
+    best = 0  # the count of the current word's most common forms so far
+    count = 0  # of the current forms
+    start = -1  # their first row
+    last = -1  # the place of the last row inside
+    for t in range(len(order)):
+        if not inside[unit[t]]:
+            continue
+        new_word = last < 0 or word[t] != word[last]
+        if new_word or form[t] != form[last] or query_form[t] != query_form[last]:
+            if start >= 0 and count > best:  # the forms just counted, more common than those before
+                rows[n - 1] = order[start]
+                best = count
+            if new_word:
+                words[n] = word[t]
+                n += 1
+                best = 0
+            start = t
+            count = 0
+        count += 1
+        last = t
+    if start >= 0 and count > best:
+        rows[n - 1] = order[start]
+    return words[:n], rows[:n]
+
+
 class _Phrases:
     """The words next to the query as the text has them: "sa volonté" for the lemma son before volonté, "l'esprit"
     for le (the words of the index lose their apostrophes and capitals). For a sense, a word's most common forms next
@@ -2358,7 +2391,7 @@ class _Phrases:
         if side not in self.sorted:
             nb = self.neighbors[side]
             order = np.lexsort((nb["hit"], nb["query_form"], nb["form"], nb["word"]))
-            self.sorted[side] = order, nb["unit"][order]
+            self.sorted[side] = order, *(nb[k][order] for k in ("unit", "word", "form", "query_form"))
         return self.sorted[side]
 
     def near(self, units):
@@ -2370,19 +2403,8 @@ class _Phrases:
         inside = np.zeros(self.n_units, dtype=np.bool_)
         inside[units] = True
         for side in (1, 2):
-            nb = self.neighbors[side]
-            order, unit = self._sorted(side)
-            sel = order[inside[unit]]
-            if not len(sel):  # no word on this side of the query in these sentences
-                out[side] = {}
-                continue
-            w, f, q = nb["word"][sel], nb["form"][sel], nb["query_form"][sel]
-            starts = np.flatnonzero(np.r_[True, (w[1:] != w[:-1]) | (f[1:] != f[:-1]) | (q[1:] != q[:-1])])
-            counts = np.diff(np.r_[starts, len(w)])
-            pick = np.lexsort((starts, -counts, w[starts]))  # for each word, its most common forms first
-            words = w[starts][pick]
-            first = np.r_[True, words[1:] != words[:-1]] if len(words) else np.zeros(0, dtype=np.bool_)
-            out[side] = dict(zip(words[first].tolist(), sel[starts[pick][first]].tolist()))
+            words, rows = _most_common_forms(*self._sorted(side), inside)
+            out[side] = dict(zip(words.tolist(), rows.tolist()))
         return out
 
     def _form(self, i):
