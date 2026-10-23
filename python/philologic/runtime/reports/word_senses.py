@@ -62,7 +62,7 @@ from philologic.runtime.reports.collocation import (
     phrase_words,
 )
 from philologic.runtime.get_text import _get_mmap
-from philologic.runtime.word_properties import _nb_word_kept, property_masks
+from philologic.runtime.word_properties import _nb_compare_keys, _nb_sentence_index, _nb_word_kept, property_masks
 from philologic.runtime.reports.time_series import _corpus_year_counts, _get_doc_year_data
 
 # The conventions the method rests on: none is fitted to any corpus.
@@ -199,6 +199,15 @@ def _g2_over(c, parent_p, total, threshold, or_less, markers, use_markers):
 def describe(c, dist, parent_p, corpus_p):
     """The words markedly more frequent in a sense than in its parent (local indices, most significant first), with
     their count in the sense, the ratio of their probability in it to their parent's and to the corpus's, and G2."""
+    listed, g2 = _described(c, dist, parent_p)
+    return [
+        (int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(dist.p[i] / corpus_p[i]), float(g))
+        for i, g in zip(listed, g2)
+    ]
+
+
+def _described(c, dist, parent_p):
+    """The words of describe, in its order, and their G2."""
     listed, g2 = markedly_more_frequent(c, parent_p)
     if dist.markers is not None:
         keep = dist.markers[listed]
@@ -206,16 +215,19 @@ def describe(c, dist, parent_p, corpus_p):
     if dist.weights is not None:  # the strongest evidence first, as the words weigh in telling senses apart
         order = np.argsort(-g2 * dist.weights[listed], kind="stable")
         listed, g2 = listed[order], g2[order]
-    return [
-        (int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(dist.p[i] / corpus_p[i]), float(g))
-        for i, g in zip(listed, g2)
-    ]
+    return listed, g2
 
 
 def describe_rarer(c, dist, parent_p):
     """The words markedly less frequent in a sense than in its parent, among those that may mark a sense: what a sense
     that is the rest of its parent lacks. (local index, count in the sense, ratio of its probability in it to its
     parent's, weighted G2), the strongest evidence first."""
+    listed, g2 = _described_rarer(c, dist, parent_p)
+    return [(int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(g)) for i, g in zip(listed, g2)]
+
+
+def _described_rarer(c, dist, parent_p):
+    """The words of describe_rarer, in its order, and their weighted G2."""
     listed, g2 = markedly_more_frequent(c, parent_p, or_less=True)
     less = c[listed] < float(c.sum()) * parent_p[listed]
     listed, g2 = listed[less], g2[less]
@@ -225,8 +237,7 @@ def describe_rarer(c, dist, parent_p):
     if dist.weights is not None:
         g2 = g2 * dist.weights[listed]
     order = np.argsort(-g2, kind="stable")
-    listed, g2 = listed[order], g2[order]
-    return [(int(i), float(c[i]), float(dist.p[i] / parent_p[i]), float(g)) for i, g in zip(listed, g2)]
+    return listed[order], g2[order]
 
 
 def _logsumexp2(ll):
@@ -1127,7 +1138,7 @@ def fit_split(Xs, parent, r, search=False):
     return _em(Xs, parent, r, every_marker=False)
 
 
-@numba.njit(cache=True)
+@numba.njit(cache=True, nogil=True)
 def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_counts, total_tokens, col_weights):
     """For each candidate word f, how much better its sentences and the others predict their other candidate words
     with rates of their own than at the sense's rates: for each word more frequent on a side, its count there times
@@ -1136,13 +1147,15 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
     rate, by the Bayesian information criterion). Leaving each sentence out keeps a few sentences that share their words
     from looking like a sense of their own. The cost of saying which side each sentence is on is left to the test:
     expectation-maximization moves the sentences from the seed's side to their sense's core, which changes it. Sentences
-    x candidates in CSR (indptr, indices, data); the sentences of each candidate in col_ptr, col_rows."""
+    x candidates in CSR (indptr, indices, data; with no data, each entry counts one, a count of n as n entries); the
+    sentences of each candidate in col_ptr, col_rows."""
     m = len(node_counts)
     n = len(indptr) - 1
     scores = np.full(m, -np.inf)
     side_a = np.zeros(m, dtype=data.dtype)
     touched = np.empty(m, dtype=np.uint32)
     rates = node_counts / total_tokens
+    counted = len(data) == 0
     for f in range(m):
         n_a = col_ptr[f + 1] - col_ptr[f]
         if n_a == 0 or n_a == n:
@@ -1152,12 +1165,20 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
         for k in range(col_ptr[f], col_ptr[f + 1]):
             i = col_rows[k]
             tokens_a += row_tokens[i]
-            for j in range(indptr[i], indptr[i + 1]):
-                w = indices[j]
-                if side_a[w] == 0.0:
-                    touched[n_touched] = w
-                    n_touched += 1
-                side_a[w] += data[j]
+            if counted:
+                for j in range(indptr[i], indptr[i + 1]):
+                    w = indices[j]
+                    if side_a[w] == 0:
+                        touched[n_touched] = w
+                        n_touched += 1
+                    side_a[w] += 1
+            else:
+                for j in range(indptr[i], indptr[i + 1]):
+                    w = indices[j]
+                    if side_a[w] == 0.0:
+                        touched[n_touched] = w
+                        n_touched += 1
+                    side_a[w] += data[j]
         tokens_b = total_tokens - tokens_a
         price_a = 0.5 * np.log(tokens_a) if tokens_a > 0 else 0.0
         price_b = 0.5 * np.log(tokens_b) if tokens_b > 0 else 0.0
@@ -1187,6 +1208,84 @@ def _seed_scores(indptr, indices, data, col_ptr, col_rows, row_tokens, node_coun
     return scores
 
 
+@numba.njit(cache=True, nogil=True)
+def _seed_counts(indptr, indices, data, column, row_len, col_len, row_tokens):
+    """For one group of words: each sentence's number of entries among the candidates (column: the candidate each word
+    is, -1 for none), a count of n as n entries, added to row_len; each candidate's number of sentences, to col_len;
+    each sentence's count of all words, to row_tokens. Whether the counts are all whole numbers, none negative (else
+    the rest is not to be used)."""
+    for i in range(len(indptr) - 1):
+        tokens = 0.0
+        for j in range(indptr[i], indptr[i + 1]):
+            v = data[j]
+            if not (v >= 0 and v == np.rint(v)):
+                return False
+            tokens += v
+            f = column[indices[j]]
+            if f >= 0:
+                row_len[i] += np.int64(v)
+                col_len[f] += 1
+        row_tokens[i] += tokens
+    return True
+
+
+@numba.njit(cache=True, nogil=True)
+def _seed_fill(indptr, indices, data, column, row_at, col_at, idx, col_rows, node_counts):
+    """For one group of words, after _seed_counts: each sentence's candidates (a count of n, n times) into idx from
+    row_at, each candidate's sentences, in order, into col_rows from col_at, and the candidates' counts."""
+    for i in range(len(indptr) - 1):
+        for j in range(indptr[i], indptr[i + 1]):
+            f = column[indices[j]]
+            if f >= 0:
+                for _ in range(np.int64(data[j])):
+                    idx[row_at[i]] = f
+                    row_at[i] += 1
+                col_rows[col_at[f]] = i
+                col_at[f] += 1
+                node_counts[f] += data[j]
+
+
+def _seed_matrix(Xs, candidates):
+    """The sentences x candidates matrix _seed_scores takes, the sentences of each candidate, the candidates' counts
+    and the sentences' counts of all words; made from the groups' matrices at once when their counts are whole numbers
+    (as the sentences' are), each count of n as n entries, which add up to the same in any order, with no counts to
+    read, and the candidates' indices as small as their number allows."""
+    n = Xs[0].shape[0]
+    m = sum(len(c) for c in candidates)
+    row_len = np.zeros(n, dtype=np.int64)
+    col_len = np.zeros(m, dtype=np.int64)
+    row_tokens = np.zeros(n)
+    columns, offset, whole = [], 0, True
+    for X, cand in zip(Xs, candidates):
+        column = np.full(X.shape[1], -1, dtype=np.int64)
+        column[cand] = np.arange(offset, offset + len(cand))
+        offset += len(cand)
+        columns.append(column)
+        whole = whole and _seed_counts(X.indptr, X.indices, X.data, column, row_len, col_len, row_tokens)
+    if not whole or float(row_tokens.sum()) >= 2.0**53:
+        A = csr_matrix(hstack([X[:, cand] for X, cand in zip(Xs, candidates)]))
+        A.sum_duplicates()
+        columns = A.tocsc()
+        node_counts = np.asarray(A.sum(axis=0)).ravel()
+        row_tokens = sum(np.asarray(X.sum(axis=1)).ravel() for X in Xs)
+        # Counts that are whole numbers add up the same in integers, faster (and indices unsigned: see _WIDTH)
+        whole = bool(np.all(A.data == np.rint(A.data))) and A.nnz and float(np.abs(A.data).sum()) < 2.0**53
+        data = A.data.astype(np.int64) if whole else A.data.astype(np.float64)
+        rows = (A.indptr.astype(np.uint64), A.indices.astype(np.uint32), data)
+        return rows, columns.indptr.astype(np.uint64), columns.indices.astype(np.uint32), node_counts, row_tokens
+    indptr = np.zeros(n + 1, dtype=np.uint64)
+    np.cumsum(row_len, out=indptr[1:])
+    col_ptr = np.zeros(m + 1, dtype=np.uint64)
+    np.cumsum(col_len, out=col_ptr[1:])
+    idx = np.empty(int(indptr[-1]), dtype=np.uint16 if m <= 2**16 else np.uint32)
+    col_rows = np.empty(int(col_ptr[-1]), dtype=np.uint32)
+    node_counts = np.zeros(m)
+    row_at, col_at = indptr[:-1].astype(np.int64), col_ptr[:-1].astype(np.int64)
+    for X, column in zip(Xs, columns):
+        _seed_fill(X.indptr, X.indices, X.data, column, row_at, col_at, idx, col_rows, node_counts)
+    return (indptr, idx, np.empty(0, dtype=np.int64)), col_ptr, col_rows, node_counts, row_tokens
+
+
 def seed_splits(Xs, collocates, k=_SEEDS_TRIED, weights=None):
     """The halves splits may start from: the sentences with a seed word and the others. Seeds are among the query's
     collocates (words markedly more frequent around it than in the corpus, in any group of words) that the sense's
@@ -1194,26 +1293,22 @@ def seed_splits(Xs, collocates, k=_SEEDS_TRIED, weights=None):
     anchored by words, as in HyperLex. (A sense's own marker words, against its parent, would not do: those of the
     larger side of a split are only the words the smaller one lacks.) Returns up to k (r, (group, local index)), the
     most promising first."""
-    candidates = [cols[np.asarray(X[:, cols].getnnz(axis=0)) > 0] for X, cols in zip(Xs, collocates)]
+    candidates = [
+        cols[np.bincount(X.indices[: X.nnz], minlength=X.shape[1])[cols] > 0] for X, cols in zip(Xs, collocates)
+    ]
     if sum(len(c) for c in candidates) < 2:
         return []
-    A = csr_matrix(hstack([X[:, cand] for X, cand in zip(Xs, candidates)]))
-    A.sum_duplicates()
-    columns = A.tocsc()
-    row_tokens = sum(np.asarray(X.sum(axis=1)).ravel() for X in Xs)
-    node_counts = np.asarray(A.sum(axis=0)).ravel()
+    (indptr, indices, data), col_ptr, col_rows, node_counts, row_tokens = _seed_matrix(Xs, candidates)
     weights = weights or [None] * len(Xs)
     col_weights = np.concatenate(
         [np.ones(len(cand)) if w is None else w[cand] for cand, w in zip(candidates, weights)]
     ).astype(np.float64)
-    # Counts that are whole numbers add up the same in integers, faster (and indices unsigned: see _WIDTH)
-    whole = bool(np.all(A.data == np.rint(A.data))) and A.nnz and float(np.abs(A.data).sum()) < 2.0**53
     scores = _seed_scores(
-        A.indptr.astype(np.uint64),
-        A.indices.astype(np.uint32),
-        A.data.astype(np.int64) if whole else A.data.astype(np.float64),
-        columns.indptr.astype(np.uint64),
-        columns.indices.astype(np.uint32),
+        indptr,
+        indices,
+        data,
+        col_ptr,
+        col_rows,
         row_tokens.astype(np.float64),
         node_counts,
         float(row_tokens.sum()),
@@ -1224,8 +1319,8 @@ def seed_splits(Xs, collocates, k=_SEEDS_TRIED, weights=None):
     for best in np.argsort(-scores, kind="stable")[:k]:
         if not np.isfinite(scores[best]) or scores[best] <= 0:
             break
-        has = np.zeros(A.shape[0], dtype=bool)
-        has[columns.indices[columns.indptr[best] : columns.indptr[best + 1]]] = True
+        has = np.zeros(Xs[0].shape[0], dtype=bool)
+        has[col_rows[col_ptr[best] : col_ptr[best + 1]]] = True
         group = int(np.searchsorted(offsets, best, side="right") - 1)
         seeds.append(
             (np.column_stack([has, ~has]).astype(np.float64), (group, int(candidates[group][best - offsets[group]])))
@@ -1495,15 +1590,15 @@ def default_detail(nodes, number):
     return relative[k - 1]
 
 
-def marks(node, against, common=None):
+def marks(node, against, common=None, listed=None):
     """Whether a sense has something of its own to show: a word markedly more frequent in it than against (the dists
     of the sense it is told from) in any group of words, outside common (for each group, None or a mask of the words
-    that alone make no sense)."""
+    that alone make no sense). listed: for each group, those words as _described has them, if made already."""
     for ci, (c, dist) in enumerate(zip(node.counts, node.dists)):
         mask = None if common is None else common[ci]
-        for i, *_ in describe(c, dist, against[ci].p, against[ci].p):
-            if mask is None or not mask[i]:
-                return True
+        listed_c = _described(c, dist, against[ci].p)[0] if listed is None else listed[ci]
+        if len(listed_c) and (mask is None or not mask[listed_c].all()):
+            return True
     return False
 
 
@@ -1554,30 +1649,59 @@ def _try_split(node, Xall, n_all, unsplit_fit, floor, groups, collocates, pool_m
     node.children.sort(key=lambda c: (-len(c.units), c.k))
 
 
+@numba.njit(cache=True, nogil=True)
+def _add_rows(indptr, indices, data, ones, evidence, ll):
+    """ll += X @ evidence (n x 2), X in CSR: each row's sums of its entries in order, from 0, as scipy's product makes
+    them (with ones, the counts are not read: one times a number is that number)."""
+    for i in range(len(indptr) - 1):
+        s0 = 0.0
+        s1 = 0.0
+        if ones:
+            for j in range(indptr[i], indptr[i + 1]):
+                w = np.uint64(indices[j])
+                s0 += evidence[w, 0]
+                s1 += evidence[w, 1]
+        else:
+            for j in range(indptr[i], indptr[i + 1]):
+                w = np.uint64(indices[j])
+                s0 += data[j] * evidence[w, 0]
+                s1 += data[j] * evidence[w, 1]
+        ll[i, 0] += s0
+        ll[i, 1] += s1
+
+
 def node_posteriors(root, Xall):
     """Every sense of the tree, in order (each before those it splits into), given its id and parent; and for every
     sentence the log-probability of each sense (n x senses), and its margin: the smallest log-likelihood ratio, along
     the way to the sense, of the sense's side over the other (positive when the sentence is on its side of every
-    split, infinite for the whole query)."""
+    split, infinite for the whole query). Each sense's are stored together (the arrays are senses x n, turned)."""
     n = Xall[0].shape[0]
-    nodes, logp, margin = [], [], []
+    nodes = []
+    ones = [bool(np.all(X.data[: X.nnz] == 1)) for X in Xall]
+
+    def size(node):
+        return 1 + sum(size(child) for child in node.children)
+
+    logp, margin = np.empty((size(root), n)), np.empty((size(root), n))
 
     def walk(node, lp, mg, parent):
         node.id = len(nodes)
         node.parent = parent
         nodes.append(node)
-        logp.append(lp)
-        margin.append(mg)
+        logp[node.id] = lp
+        margin[node.id] = mg
         if not node.children:
             return
         pi, dists = node.model
-        ll = _mixture_loglik(Xall, pi, dists)
+        ll = np.tile(np.log(pi), (n, 1))  # _mixture_loglik, compiled
+        for X, one, ds in zip(Xall, ones, dists):
+            _add_rows(X.indptr, X.indices, X.data, one, np.column_stack([_evidence(ds[0]), _evidence(ds[1])]), ll)
         cond = ll - _logsumexp2(ll)[:, None]
         for child in node.children:
             walk(child, lp + cond[:, child.k], np.minimum(mg, ll[:, child.k] - ll[:, 1 - child.k]), node)
 
     walk(root, np.zeros(n), np.full(n, np.inf), None)
-    return nodes, np.column_stack(logp), np.column_stack(margin)
+    return nodes, logp.T, margin.T
 
 
 def _path(root, leaf):
@@ -1732,6 +1856,40 @@ def _nanpercentile(smoothed, q):
     return np.percentile(smoothed[drawn], q, axis=0)
 
 
+@numba.njit(cache=True, nogil=True)
+def _work_sums(work_of, P, n_works):
+    """np.add.at(sums, work_of, P) into works x senses zeros: each work's sums of its sentences' probabilities, added
+    in the order of the sentences."""
+    sums = np.zeros((n_works, P.shape[1]))
+    for i in range(P.shape[0]):
+        for k in range(P.shape[1]):
+            sums[work_of[i], k] += P[i, k]
+    return sums
+
+
+@numba.njit(cache=True, nogil=True)
+def _year_totals(work_year, draws, work_n, work_s, n_years, finite):
+    """For each draw of the works (draws x works: how many times each is drawn), each year's sentences, each sense's
+    probabilities and works, added in the order of the works as np.bincount adds them (a work drawn no times, when the
+    sums are finite, adds zero, which changes no sum)."""
+    n_draws, n_works = draws.shape
+    n_k = work_s.shape[1]
+    n = np.zeros((n_draws, n_years))
+    y = np.zeros((n_draws, n_k, n_years))
+    works = np.zeros((n_draws, n_years))
+    for b in range(n_draws):
+        for w in range(n_works):
+            m = draws[b, w]
+            if m == 0 and finite:
+                continue
+            t = work_year[w]
+            n[b, t] += m * work_n[w]
+            for k in range(n_k):
+                y[b, k, t] += m * work_s[w, k]
+            works[b, t] += m
+    return n, y, works
+
+
 def sense_curves(posteriors, years, works, year_words=None):
     """The course over time of each sense: its share of the year's sentences and, with the words of each year
     (year_words), its uses per million words, smoothed, with bands from resampling the works. Years weigh by their
@@ -1753,21 +1911,15 @@ def sense_curves(posteriors, years, works, year_words=None):
     work_year = np.zeros(n_works, dtype=np.int64)
     work_year[work_of] = year_index
     work_n = np.bincount(work_of, minlength=n_works).astype(np.float64)
-    work_s = np.zeros((n_works, P.shape[1]))
-    np.add.at(work_s, work_of, P)
-
-    def totals(m):
-        n = np.bincount(work_year, weights=m * work_n, minlength=n_years)
-        y = np.array([np.bincount(work_year, weights=m * work_s[:, k], minlength=n_years) for k in range(P.shape[1])])
-        return n, y, np.bincount(work_year, weights=m, minlength=n_years)
-
-    n, y, works_in = totals(np.ones(n_works))
+    work_s = _work_sums(work_of, P, n_works)
     rng = np.random.default_rng(0)  # fixed: the same bands every time
     resamples = rng.multinomial(n_works, np.full(n_works, 1.0 / n_works), size=N_RESAMPLES).astype(np.float64)
-    boot = [totals(m) for m in resamples]
-    boot_n = np.array([b[0] for b in boot])
-    boot_y = np.array([b[1] for b in boot])
-    boot_works = np.array([b[2] for b in boot])
+    finite = bool(np.isfinite(work_s).all())
+    all_n, all_y, all_works = _year_totals(
+        work_year, np.vstack([np.ones(n_works), resamples]), work_n, work_s, n_years, finite
+    )
+    n, y, works_in = all_n[0], all_y[0], all_works[0]
+    boot_n, boot_y, boot_works = all_n[1:], all_y[1:], all_works[1:]
 
     def curves(z, boot_z, weight, boot_weight, digits):
         scale = weight[weight > 0].mean()
@@ -1891,16 +2043,34 @@ def _sentence_words(
     return bag[:nb], bag_ptr, left[:nl], left_ptr, right[:nr], right_ptr, hashes
 
 
-def _channel(flat, ptr, n_units):
-    """A sentences x words count matrix of local word indices, and the vocabulary ids of its words."""
+@numba.njit(cache=True, nogil=True)
+def _hit_sentences(sent_keys, rows):
+    """The place of each hit's sentence among the sorted sentence keys (sent_keys_native.npy), by the first 6 fields of
+    its row, or where it would go, and whether it is there."""
+    n_sents = sent_keys.shape[0]
+    si = np.empty(rows.shape[0], dtype=np.int64)
+    found = np.zeros(rows.shape[0], dtype=np.bool_)
+    for i in range(rows.shape[0]):
+        lo = _nb_sentence_index(sent_keys, rows[i])
+        si[i] = lo
+        found[i] = lo < n_sents and _nb_compare_keys(sent_keys[lo], rows[i]) == 0
+    return si, found
+
+
+def _channel(flat, ptr, rows):
+    """A sentences x words count matrix of local word indices, of the sentences rows (their words flat[ptr[r] :
+    ptr[r + 1]] for each r), and the vocabulary ids of its words: those of these sentences."""
+    lengths = ptr[rows + 1] - ptr[rows]
+    kept_ptr = np.zeros(len(rows) + 1, dtype=np.int64)
+    np.cumsum(lengths, out=kept_ptr[1:])
+    flat = flat[np.arange(kept_ptr[-1]) + np.repeat(ptr[rows] - kept_ptr[:-1], lengths)]
     # np.unique(flat, return_inverse=True), by marking the ids rather than sorting the entries
     had = np.zeros(int(flat.max()) + 1 if len(flat) else 0, dtype=np.bool_)
     had[flat] = True
     ids = np.flatnonzero(had).astype(flat.dtype)
     local = np.zeros(len(had), dtype=np.int64)
     local[ids] = np.arange(len(ids))
-    cols = local[flat]
-    X = csr_matrix((np.ones(len(flat)), cols, ptr), shape=(n_units, len(ids)))
+    X = csr_matrix((np.ones(len(flat)), local[flat], kept_ptr), shape=(len(rows), len(ids)))
     X.sum_duplicates()
     return X, ids
 
@@ -1939,7 +2109,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
         rows = np.frombuffer(f.read(), dtype=np.uint32).reshape(-1, hits.length)
 
     colloc_dir = os.path.join(data_path, "collocations")
-    sent_keys = np.load(os.path.join(colloc_dir, "sent_keys_s24.npy"), mmap_mode="r")
+    sent_keys = np.load(os.path.join(colloc_dir, "sent_keys_native.npy"), mmap_mode="r")
     sent_offsets = np.asarray(np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r"))
     prefix = "attr_lemma_" if count_lemmas else ""
     count_ids = np.load(
@@ -1948,10 +2118,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     v_blob, v_offsets = _vocabulary(data_path, count_lemmas)
     n_vocab = len(v_offsets) - 1
 
-    keys = np.ascontiguousarray(rows[:, :6].astype(">u4")).view("S24").ravel()
-    si = np.searchsorted(sent_keys, keys)
-    n_sents = len(sent_keys)
-    matched = (si < n_sents) & (sent_keys[np.clip(si, 0, n_sents - 1)] == keys)
+    si, matched = _hit_sentences(sent_keys, rows)
     hit_index = np.flatnonzero(matched)
     if len(hit_index) == 0:
         return None
@@ -1986,12 +2153,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     first = hit_index[unit_bounds[:-1]]  # the first hit of each sentence, in the hitlist
     # Identical sentences count once (repeated titles, running heads, reprints): they are one use, not many
     keep = np.sort(np.unique(hashes, return_index=True)[1])
-    channels = []
-    for flat, ptr in ((bag, bag_ptr), (left, left_ptr), (right, right_ptr)):
-        X, ids = _channel(flat, ptr, n_units)
-        X = X[keep]
-        used = np.flatnonzero(X.getnnz(axis=0))  # the words the kept sentences still have
-        channels.append((X[:, used], ids[used]))
+    channels = [_channel(flat, ptr, keep) for flat, ptr in ((bag, bag_ptr), (left, left_ptr), (right, right_ptr))]
     first = first[keep]
     # The words just before and after each hit as the text has them: their forms, and where the hit is in its text
     forms = np.load(os.path.join(colloc_dir, "token_ids.npy"), mmap_mode="r") if count_lemmas else count_ids
@@ -2000,7 +2162,7 @@ def query_sentences(db, q, count_lemmas, properties=(), metadata=None, distance=
     lo, hi = positions.min(axis=1), positions.max(axis=1)
     kept_of = np.full(n_units, -1, dtype=np.int64)
     kept_of[keep] = np.arange(len(keep))
-    unit_of = kept_of[np.searchsorted(unit_bounds, np.arange(len(si)), side="right") - 1]
+    unit_of = kept_of[np.repeat(np.arange(n_units), np.diff(unit_bounds))]
     hit_bytes = rows[hit_index][:, 8::2].astype(np.int64)
     query_form = np.asarray(forms[s0 + positions[:, 0] - 1]).astype(np.int64)
     neighbors = [None]
@@ -2148,7 +2310,7 @@ def _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field
     channels, names = _senses_channels(sentences, count_lemmas)
     common = _filtered(sentences, filter_words)
     root = induce_senses(channels, sentences["docs"], unseeded=[common[ids] for ids in names])
-    return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field)
+    return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, common)
 
 
 def _senses_channels(sentences, count_lemmas):
@@ -2175,6 +2337,39 @@ _SPACES = regex.compile(r"\s+")
 _JOINING = regex.compile(r"[^\s\p{L}\p{M}\p{N}]+(?=[\p{L}\p{M}\p{N}])")  # a mark joining two words (d'un)
 
 
+@numba.njit(cache=True, nogil=True)
+def _most_common_forms(order, unit, word, form, query_form, inside):
+    """For each word of the rows (by word, form, query form and hit: order, and each of these in that order) in the
+    sentences inside, the first of its rows with its most common pair of forms, the first such pair among equals, in
+    the order of the words."""
+    words = np.empty(len(order), dtype=np.int64)
+    rows = np.empty(len(order), dtype=np.int64)
+    n = 0
+    best = 0  # the count of the current word's most common forms so far
+    count = 0  # of the current forms
+    start = -1  # their first row
+    last = -1  # the place of the last row inside
+    for t in range(len(order)):
+        if not inside[unit[t]]:
+            continue
+        new_word = last < 0 or word[t] != word[last]
+        if new_word or form[t] != form[last] or query_form[t] != query_form[last]:
+            if start >= 0 and count > best:  # the forms just counted, more common than those before
+                rows[n - 1] = order[start]
+                best = count
+            if new_word:
+                words[n] = word[t]
+                n += 1
+                best = 0
+            start = t
+            count = 0
+        count += 1
+        last = t
+    if start >= 0 and count > best:
+        rows[n - 1] = order[start]
+    return words[:n], rows[:n]
+
+
 class _Phrases:
     """The words next to the query as the text has them: "sa volonté" for the lemma son before volonté, "l'esprit"
     for le (the words of the index lose their apostrophes and capitals). For a sense, a word's most common forms next
@@ -2193,6 +2388,16 @@ class _Phrases:
             self.f_blob, self.f_offsets = sentences["v_blob"], sentences["v_offsets"]
         self.filenames = {}
         self.cache = {}
+        self.sorted = {}
+
+    def _sorted(self, side):
+        """The rows of the hits next to the query on a side by word, its form, the query's form and hit, and their
+        sentences: sorted once, those of any sentences are then in order (each hit is in one row)."""
+        if side not in self.sorted:
+            nb = self.neighbors[side]
+            order = np.lexsort((nb["hit"], nb["query_form"], nb["form"], nb["word"]))
+            self.sorted[side] = order, *(nb[k][order] for k in ("unit", "word", "form", "query_form"))
+        return self.sorted[side]
 
     def near(self, units):
         """For the sentences units: {group: {vocabulary id of a word next to the query: the row of its first hit with
@@ -2203,20 +2408,8 @@ class _Phrases:
         inside = np.zeros(self.n_units, dtype=np.bool_)
         inside[units] = True
         for side in (1, 2):
-            nb = self.neighbors[side]
-            sel = np.flatnonzero(inside[nb["unit"]])
-            if not len(sel):  # no word on this side of the query in these sentences
-                out[side] = {}
-                continue
-            w, f, q, h = nb["word"][sel], nb["form"][sel], nb["query_form"][sel], nb["hit"][sel]
-            order = np.lexsort((h, q, f, w))
-            w, f, q, sel = w[order], f[order], q[order], sel[order]
-            starts = np.flatnonzero(np.r_[True, (w[1:] != w[:-1]) | (f[1:] != f[:-1]) | (q[1:] != q[:-1])])
-            counts = np.diff(np.r_[starts, len(w)])
-            pick = np.lexsort((starts, -counts, w[starts]))  # for each word, its most common forms first
-            words = w[starts][pick]
-            first = np.r_[True, words[1:] != words[:-1]] if len(words) else np.zeros(0, dtype=np.bool_)
-            out[side] = dict(zip(words[first].tolist(), sel[starts[pick][first]].tolist()))
+            words, rows = _most_common_forms(*self._sorted(side), inside)
+            out[side] = dict(zip(words.tolist(), rows.tolist()))
         return out
 
     def _form(self, i):
@@ -2281,9 +2474,10 @@ def _filtered(sentences, filter_words):
     return _filter_mask(colloc_dir, prefix, filter_words, len(sentences["v_offsets"]) - 1)
 
 
-def _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field):
-    """The report of the tree of senses root, as JSON-ready data."""
-    unshown = _filtered(sentences, filter_words)
+def _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, unshown=None):
+    """The report of the tree of senses root, as JSON-ready data. unshown: the words of filter_words, as _filtered
+    has them (made again without)."""
+    unshown = _filtered(sentences, filter_words) if unshown is None else unshown
     n = sentences["n_units"]
     docs = sentences["docs"]
     Xall = [csr_matrix(c[0]) for c in channels]
@@ -2294,8 +2488,9 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
 
     v_blob, v_offsets = sentences["v_blob"], sentences["v_offsets"]
 
-    def shown(ci, local):  # the filter's words: not among a sense's words, but next to the query, where common words
-        return ci > 0 or not unshown[int(names[ci][local])]  # make the construction (homme d'esprit, mon esprit)
+    # The filter's words: not among a sense's words, but next to the query, where common words make the construction
+    # (homme d'esprit, mon esprit). For each group of words, None or the mask of those not shown
+    not_shown = [unshown[names[0]]] + [None] * (len(names) - 1)
 
     def word(ci, local):
         tid = int(names[ci][local])
@@ -2307,10 +2502,22 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     listed_words = {}
     phrases = _Phrases(db, sentences)
     near_by_node = {}
+    mine_of = {}
+    columns = {}
+
+    def sentences_of(node):  # its sentences: those on its side of every split on the way to it
+        if node.id not in mine_of:
+            mine_of[node.id] = np.flatnonzero(margin[:, node.id] > 0)
+        return mine_of[node.id]
+
+    def columns_of(ci):  # the sentences of each word of a group (_pattern_columns), made once
+        if ci not in columns:
+            columns[ci] = _pattern_columns(Xall[ci].indptr, Xall[ci].indices, Xall[ci].shape[1])
+        return columns[ci]
 
     def near(node):  # the words next to the query in a sense's sentences, as the text has them (see _Phrases)
         if node.id not in near_by_node:
-            near_by_node[node.id] = phrases.near(np.flatnonzero(margin[:, node.id] > 0))
+            near_by_node[node.id] = phrases.near(sentences_of(node))
         return near_by_node[node.id]
 
     asked = []  # the words of the senses, to which their sentences are added once all are known (with_hits)
@@ -2321,19 +2528,18 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
 
     def add_hits():
         """To each word of a sense, the sentences of the sense with it, the most clearly in the sense first (their
-        first hits): the words' columns taken out of each group's matrix at once, not the whole matrix turned."""
-        for ci in range(len(Xall)):
-            mine = [a for a in asked if a[2] == ci]
-            if not mine:
-                continue
-            cols = np.unique([i for *_, i in mine])
-            sub = Xall[ci][:, cols].tocsc()
-            where = {int(c): k for k, c in enumerate(cols)}
-            for item, nid, _, i in mine:
-                k = where[i]
-                rows = sub.indices[sub.indptr[k] : sub.indptr[k + 1]]
-                rows = rows[margin[rows, nid] > 0]
-                clear = posteriors[rows, nid]
+        first hits): from the sentences of each word, a sense at a time."""
+        by_node = {}
+        for a in asked:
+            by_node.setdefault(a[1], []).append(a)
+        for nid, items in by_node.items():
+            inside = margin[:, nid] > 0
+            clear_of = posteriors[:, nid]
+            for item, _, ci, i in items:
+                col_ptr, rows = columns_of(ci)
+                rows = rows[col_ptr[i] : col_ptr[i + 1]]
+                rows = rows[inside[rows]]
+                clear = clear_of[rows]
                 if len(rows) > _WORD_EXAMPLES:  # the clearest only, without sorting them all
                     keep = np.argpartition(-clear, _WORD_EXAMPLES)[:_WORD_EXAMPLES]
                     rows, clear = rows[keep], clear[keep]
@@ -2346,34 +2552,61 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 item["phrase"] = phrase
         return item
 
+    listed_of = {}
+
+    def listed_words_of(node, ci, against):  # _described's words, made once for a sense and those it is told from
+        key = (node.id, ci, id(against))
+        if key not in listed_of:
+            listed_of[key] = _described(node.counts[ci], node.dists[ci], against[ci].p)[0]
+        return listed_of[key]
+
+    def described_words(node, ci, against, listed):  # describe's items of the words listed
+        c, p = node.counts[ci], node.dists[ci].p
+        counts = c[listed].astype(np.float64).tolist()
+        ratios = (p[listed] / against[ci].p[listed]).tolist()
+        lifts = (p[listed] / corpus_p[ci][listed]).tolist()
+        return list(zip(listed.tolist(), counts, ratios, lifts))
+
+    def rarer_words(node, ci, against):  # describe_rarer's items of the words shown, only as many as are sent
+        listed, g2 = _described_rarer(node.counts[ci], node.dists[ci], against[ci].p)
+        if not_shown[ci] is not None:
+            keep = ~not_shown[ci][listed]
+            listed, g2 = listed[keep], g2[keep]
+        listed, g2 = listed[:_MAX_WORDS], g2[:_MAX_WORDS]
+        c, p = node.counts[ci], node.dists[ci].p
+        counts = c[listed].astype(np.float64).tolist()
+        return list(zip(listed.tolist(), counts, (p[listed] / against[ci].p[listed]).tolist(), g2.tolist()))
+
     def described(node, against):
         """A sense's words, against the dists of the sense it is told from (as a rule, its parent): those markedly more
         frequent in it, and what it lacks."""
         groups_of_words = []
         hidden = []
         for ci in range(len(channels)):
-            listed = describe(node.counts[ci], node.dists[ci], against[ci].p, corpus_p[ci])
+            # As describe lists them, those of its words shown and those not (the filter's), only as many as are sent
+            listed = listed_words_of(node, ci, against)
+            if not_shown[ci] is not None:
+                hidden = described_words(node, ci, against, listed[not_shown[ci][listed]][:_MAX_WORDS])
+                listed = listed[~not_shown[ci][listed]]
+            listed = described_words(node, ci, against, listed[:_MAX_WORDS])
             if ci == 0:
-                hidden = [item for item in listed if not shown(ci, item[0])]
-            listed = [item for item in listed if shown(ci, item[0])]
-            if ci == 0:
-                listed_words[node.id] = np.array([i for i, *_ in listed[:_MAX_WORDS]], dtype=np.int64)
+                listed_words[node.id] = np.array([i for i, *_ in listed], dtype=np.int64)
 
             def entry(i, c, r, f):  # a word of the sense, as the page shows it
                 item = {"word": word(ci, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(f, 3)}
                 return with_hits(with_phrase(item, node, ci, i), node, ci, i)
 
-            groups_of_words.append([entry(i, c, r, f) for i, c, r, f, _ in listed[:_MAX_WORDS]])
+            groups_of_words.append([entry(i, c, r, f) for i, c, r, f in listed])
         # A sense with nothing else to show: the words of the filter that mark it
         if not any(groups_of_words):
             hidden = [
                 {"word": word(0, i), "n": round(c, 2), "ratio": round(r, 3), "lift": round(lift, 3)}
-                for i, c, r, lift, _ in hidden[:_MAX_WORDS]
+                for i, c, r, lift in hidden
             ]
         else:
             hidden = []
         # Its words that go together in its sentences, across the works, around hub words (as in HyperLex)
-        groups = _word_groups(node, groups_of_words[0], margin, Xall[0], docs, listed_words.get(node.id))
+        groups = _word_groups(sentences_of(node), columns_of(0), docs, listed_words.get(node.id))
         # What it lacks, against the sense it was split from, in any group of words (the strongest evidence first)
         rarer = []
         if node.parent is not None:
@@ -2381,8 +2614,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 (
                     (g, {"word": word(ci, i), "group": ci, "n": round(c, 2), "ratio": round(r, 4), "at": (ci, i)})
                     for ci in range(len(channels))
-                    for i, c, r, g in describe_rarer(node.counts[ci], node.dists[ci], against[ci].p)
-                    if shown(ci, i)
+                    for i, c, r, g in rarer_words(node, ci, against)
                 ),
                 key=lambda item: -item[0],
             )
@@ -2400,7 +2632,15 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
     # collocation filter (whose words, mostly function words, tell the style of works more than a sense: alone, they
     # make none)
     common = [unshown[ids] for ids in names]
-    marked = {node.id: marks(node, node.parent_dists, common) for node in nodes}
+    marked = {
+        node.id: marks(
+            node,
+            node.parent_dists,
+            common,
+            [listed_words_of(node, ci, node.parent_dists) for ci in range(len(channels))],
+        )
+        for node in nodes
+    }
     out = []
     for node in nodes:
         split = None
@@ -2409,8 +2649,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
             seed = split.pop("seed", None)
             split["seed"] = None if seed is None else with_phrase({"word": word(*seed), "group": seed[0]}, node, *seed)
             split["relative"] = round(float(split["importance"] / top_importance), 4) if top_importance > 0 else 0.0
-        # Its sentences: those on its side of every split on the way to it
-        mine = np.flatnonzero(margin[:, node.id] > 0)
+        mine = sentences_of(node)
         works_of = docs[mine]
         work_counts = np.unique(works_of, return_counts=True)[1] if len(mine) else np.zeros(1)
         out.append(
@@ -2425,7 +2664,7 @@ def _senses_report(db, sentences, channels, names, root, filter_words, metadata,
                 "reason": node.reason,
                 "works": int(len(work_counts)) if len(mine) else 0,
                 "top_work_share": round(float(work_counts.max() / max(1, len(mine))), 4),
-                "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, shown),
+                "examples": _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, not_shown),
             }
         )
 
@@ -2623,54 +2862,101 @@ def hub_groups(X, works=None):
     return out
 
 
-def _word_groups(node, words, margin, X, docs, listed):
-    """The groups of a sense's listed words (positions in words) around hub words: [{"hub": position, "members":
-    [positions]}], words linked in its sentences across the works (hub_groups)."""
-    mine = np.flatnonzero(margin[:, node.id] > 0)
+@numba.njit(cache=True, nogil=True)
+def _pattern_columns(indptr, indices, n_cols):
+    """The sentences of each word of a sentences x words matrix in CSR, in order (its columns' row indices, without
+    the counts), and where each word's begin."""
+    n = len(indptr) - 1
+    col_ptr = np.zeros(n_cols + 1, dtype=np.int64)
+    for j in range(indptr[0], indptr[n]):
+        col_ptr[indices[j] + 1] += 1
+    for c in range(n_cols):
+        col_ptr[c + 1] += col_ptr[c]
+    at = col_ptr[:-1].copy()
+    rows = np.empty(col_ptr[n_cols], dtype=np.int32)
+    for i in range(n):
+        for j in range(indptr[i], indptr[i + 1]):
+            rows[at[indices[j]]] = i
+            at[indices[j]] += 1
+    return col_ptr, rows
+
+
+def _word_groups(mine, columns, docs, listed):
+    """The groups of a sense's listed words (positions in its words) around hub words: [{"hub": position, "members":
+    [positions]}], words linked in its sentences mine across the works (hub_groups). columns: the sentences of each
+    word of the group (_pattern_columns), of which the matrix of its sentences and listed words is made."""
     if listed is None or len(listed) < 2 or len(mine) < 2:
         return []
-    sub = csr_matrix(X)[mine][:, listed]
+    col_ptr, rows = columns
+    parts = [rows[col_ptr[j] : col_ptr[j + 1]] for j in listed]
+    at = np.concatenate(parts)
+    word = np.repeat(np.arange(len(listed)), [len(part) for part in parts])
+    inside = np.zeros(len(docs), dtype=np.bool_)
+    inside[mine] = True
+    rank = np.cumsum(inside) - 1
+    keep = inside[at]
+    sub = csr_matrix((np.ones(int(keep.sum())), (rank[at[keep]], word[keep])), shape=(len(mine), len(listed)))
     return [{"hub": int(hub), "members": [int(m) for m in members]} for hub, members in hub_groups(sub, docs[mine])]
 
 
-def _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, shown=lambda ci, i: True):
+def _first(key, among, k):
+    """The k of among first by key, then by among: among[np.lexsort((among, key))][:k], without sorting them all."""
+    if len(key) > k and not np.isnan(key).any():
+        near = key <= np.partition(key, k - 1)[k - 1]
+        key, among = key[near], among[near]
+    return among[np.lexsort((among, key))][:k]
+
+
+def _examples(node, root, Xall, weights, posteriors, margin, mine, first_hit, word, hidden=None):
     """The sentences most clearly in a sense, with the words that decided it: for a split sense, those with the
     largest margin, and for each the words whose (weighted) evidence most favoured its side along the way; for the
-    whole query, those with the most evidence of its collocates."""
+    whole query, those with the most evidence of its collocates. hidden: for each group of words, None or a mask of
+    its words not shown."""
     path = _path(root, node)
     if path:
-        top = mine[np.lexsort((mine, -margin[mine, node.id]))][:_MAX_EXAMPLES]
+        top = _first(-margin[mine, node.id], mine, _MAX_EXAMPLES)
     else:  # the whole query: the sentences with the most evidence of its collocates against the corpus
         score = sum(
             X @ ((1.0 if d.weights is None else d.weights) * np.log(d.p / parent.p))
             for X, d, parent in zip(Xall, node.dists, node.parent_dists)
         )
-        top = np.argsort(-score, kind="stable")[:_MAX_EXAMPLES]
+        top = _first(-score, np.arange(len(score)), _MAX_EXAMPLES)
+    # The evidence of every word of the sentences, all at once: of each, in order, the groups' words in order
+    sentence, group, local, evidence = [], [], [], []
+    for ci, X in enumerate(Xall):
+        lo, hi = X.indptr[top].astype(np.int64), X.indptr[top + 1].astype(np.int64)
+        lengths = hi - lo
+        at = np.arange(int(lengths.sum())) + np.repeat(lo - np.cumsum(lengths) + lengths, lengths)
+        indices, data = X.indices[at], X.data[at]
+        w = 1.0 if weights[ci] is None else weights[ci][indices]
+        contribution = np.zeros(len(at))
+        if path:
+            for split_node, k in path:
+                dists = split_node.model[1][ci]
+                contribution += data * w * (np.log(dists[k].p[indices]) - np.log(dists[1 - k].p[indices]))
+        else:
+            contribution = data * w * np.log(node.dists[ci].p[indices] / node.parent_dists[ci].p[indices])
+        keep = contribution > 0
+        if hidden is not None and hidden[ci] is not None:
+            keep &= ~hidden[ci][indices]
+        sentence.append(np.repeat(np.arange(len(top)), lengths)[keep])
+        group.append(np.full(int(keep.sum()), ci))
+        local.append(indices[keep])
+        evidence.append(contribution[keep])
+    sentence, group, local, evidence = (np.concatenate(a) for a in (sentence, group, local, evidence))
+    order = np.lexsort((np.arange(len(sentence)), -evidence, sentence))  # the strongest first, as found among equals
+    starts = np.searchsorted(sentence[order], np.arange(len(top) + 1))
     examples = []
-    for u in top:
-        evidence = {}
-        for ci, X in enumerate(Xall):
-            lo, hi = X.indptr[u], X.indptr[u + 1]  # the sentence's row, as getrow has it
-            if hi == lo:
-                continue
-            indices, data = X.indices[lo:hi], X.data[lo:hi]
-            w = 1.0 if weights[ci] is None else weights[ci][indices]
-            contribution = np.zeros(hi - lo)
-            if path:
-                for split_node, k in path:
-                    dists = split_node.model[1][ci]
-                    contribution += data * w * (np.log(dists[k].p[indices]) - np.log(dists[1 - k].p[indices]))
-            else:
-                contribution = data * w * np.log(node.dists[ci].p[indices] / node.parent_dists[ci].p[indices])
-            for i, c in zip(indices, contribution):
-                if c > 0 and shown(ci, int(i)):
-                    evidence[(ci, int(i))] = evidence.get((ci, int(i)), 0.0) + float(c)
-        strongest = sorted(evidence.items(), key=lambda kv: -kv[1])[:8]
+    for s, u in enumerate(top):
+        strongest = order[starts[s] : starts[s + 1]][:8]
         examples.append(
             {
                 "hit": int(first_hit[u]),
                 "p": round(float(posteriors[u, node.id]), 4),
-                "evidence": [{"word": word(ci, i), "group": ci} for (ci, i), _ in strongest],
+                "evidence": [
+                    {"word": word(int(ci), int(i)), "group": int(ci)}
+                    for ci, i in zip(group[strongest], local[strongest])
+                ],
             }
         )
     return examples
