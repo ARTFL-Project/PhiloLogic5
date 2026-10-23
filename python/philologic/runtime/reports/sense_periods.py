@@ -34,7 +34,7 @@ from scipy.special import xlogy
 from philologic.runtime.reports import word_senses as ws
 from philologic.runtime.reports.time_series import _get_doc_year_data
 
-_CACHE_TAG = b"periods2\0"  # bump when the result changes
+_CACHE_TAG = b"periods5\0"  # bump when the result changes (or the senses' membership: word_senses._CACHE_TAG)
 _WORDS = 8  # the new words listed for a period, the strongest first
 _FADING = 5  # the fading words listed for a period
 _WORKS = 3  # the representative works of a period

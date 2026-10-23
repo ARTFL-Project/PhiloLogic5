@@ -17,8 +17,8 @@ def get_word_senses(request, config):
         year_field = validate_column(config.time_series_year_field, db)
     except Exception:  # no year to place the sentences in time
         year_field = None
-    # Rarer words weigh more, and only the query's collocates mark senses, whatever the filter (whose words seed no
-    # split)
+    # The filter's words are left out of the sentence's words (next to the query they are read, but seed no split);
+    # rarer words weigh more, and only the query's collocates mark senses
     result = word_senses(
         db,
         q,
