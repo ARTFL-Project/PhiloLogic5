@@ -40,8 +40,6 @@ and its uses per million words are smoothed by a Whittaker-Henderson smoother wh
 cross-validation chooses, with a band from resampling the works.
 """
 
-import contextlib
-import contextvars
 import hashlib
 import html
 import json
@@ -375,21 +373,6 @@ def _split_words(c, parent, every_marker):
 # words of the query's own texts, such as an author's spellings, with few sentences outside them), the profiles are
 # made from few counts, and the prior is worth no more than those.
 
-_CORPUS = contextvars.ContextVar("word_senses_corpus", default=None)
-
-
-@contextlib.contextmanager
-def corpus_profiles(cooccurrence):
-    """Within this context, induce_senses gives the senses priors from the corpus. cooccurrence(columns), for some of
-    the sentence's words (columns of the first group's matrix), is the number of the corpus's sentences outside the
-    query's with each pair of them (the diagonal: with each), a square array. (A context rather than an argument of
-    induce_senses, whose arguments the method's benchmark reads as they are.)"""
-    token = _CORPUS.set(cooccurrence)
-    try:
-        yield
-    finally:
-        _CORPUS.reset(token)
-
 
 class _Profiles:
     """The corpus profiles of some of the sentence's words (columns of the first group's matrix): for each that the
@@ -610,70 +593,183 @@ def _prior_rates(p, counts, set_m, set_cmp, q, strengths, by_word):
                 p[set_m[i], k] = (N * p[set_m[i], k] + a * pi * q[k, i]) / (N + a)
 
 
+def _load_cooccurrence(data_path, count_lemmas):
+    """The co-occurrence table of the corpus's words, or lemmas, the loader wrote next to the collocation arrays
+    (PostFilters.write_cooccurrence): for each, the words it is in a sentence with and in how many sentences, each pair
+    in the row of one of its words only. Mapped, not read, for each request, as the corpus counts are. Returns indptr,
+    partners and counts: a word's partners and their counts from indptr[word] to indptr[word + 1]."""
+    kind = "lemma" if count_lemmas else "word"
+    colloc_dir = os.path.join(data_path, "collocations")
+    script = "python3 -m philologic.utils.write_cooccurrence"
+    try:
+        indptr, partners, counts = (
+            np.load(os.path.join(colloc_dir, f"cooccurrence_{kind}_{part}.npy"), mmap_mode="r")
+            for part in ("indptr", "partners", "counts")
+        )
+    except FileNotFoundError:
+        raise FileNotFoundError(
+            f"No co-occurrence table of the {kind}s in {colloc_dir}: the database was loaded before the loader wrote "
+            f"it. Write it with {script} <database>"
+        ) from None
+    if not len(partners) == len(counts) == indptr[-1]:
+        raise ValueError(f"The co-occurrence table in {colloc_dir} is not whole: write it again with {script} --force")
+    return indptr, partners, counts
+
+
 def corpus_cooccurrence(data_path, count_lemmas, words, skipped):
     """For the vocabulary ids words, the number of the corpus's sentences with each pair of them (the diagonal: with
     each), but those of skipped (their indices in the collocation index: the query's), each word once a sentence, as
-    the query's sentences count them. One pass over the corpus's sentences, in as many parts as numba has threads,
-    each counting the pairs whose first word (the one of lower place) is one of its own, so that they share one array:
-    words x words."""
+    the query's sentences count them: words x words. The loader's table has the pairs of all the corpus's sentences
+    (_load_cooccurrence), its corpus counts the words' (sentence_df); the skipped sentences' are counted on those
+    alone, and taken off. Each step in as many parts as numba has threads, of about as much work, each part of its own
+    rows."""
+    indptr, partners, counts = _load_cooccurrence(data_path, count_lemmas)
+    df, _ = _load_sentence_df(data_path, count_lemmas)
+    if len(indptr) != len(df) + 1:
+        raise ValueError(
+            f"The co-occurrence table of {data_path} is not of its vocabulary: write it again with "
+            "python3 -m philologic.utils.write_cooccurrence --force"
+        )
     colloc_dir = os.path.join(data_path, "collocations")
     sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
     count_ids = np.load(
         os.path.join(colloc_dir, "attr_lemma_ids.npy" if count_lemmas else "token_ids.npy"), mmap_mode="r"
     )
-    prefix = "attr_lemma_" if count_lemmas else ""
-    n_vocab = len(np.load(os.path.join(colloc_dir, f"{prefix}vocab_offsets.npy"), mmap_mode="r")) - 1
-    slot = np.full(n_vocab, -1, dtype=np.int32)
-    slot[np.asarray(words, dtype=np.int64)] = np.arange(len(words), dtype=np.int32)
-    skip = np.zeros(len(sent_offsets) - 1, dtype=np.bool_)
-    skip[np.asarray(skipped, dtype=np.int64)] = True
-    cooc = np.zeros((len(words), len(words)), dtype=np.int32)
+    words = np.asarray(words, dtype=np.int64)
+    n = len(words)
+    slot = np.full(len(df), -1, dtype=np.int32)
+    slot[words] = np.arange(n, dtype=np.int32)
+    cooc = np.zeros((n, n), dtype=np.int32)
     parts = max(1, int(numba.config.NUMBA_NUM_THREADS))
+
+    def cut(work):  # from, to: parts of about as much work
+        total = np.concatenate([[0], np.cumsum(work, dtype=np.float64)])
+        cuts = np.unique(np.searchsorted(total, np.linspace(0, total[-1], parts + 1)[1:-1]))
+        return list(zip(np.concatenate([[0], cuts]), np.concatenate([cuts, [len(work)]])))
+
+    skipped = np.asarray(skipped, dtype=np.int64)
     with ThreadPoolExecutor(max_workers=parts) as pool:
-        for done in [
-            pool.submit(_cooccurrence, sent_offsets, count_ids, slot, skip, part, parts, cooc) for part in range(parts)
-        ]:
-            done.result()
-    _mirror(cooc)
+
+        def each(kernel, cuts, *args):
+            return [done.result() for done in [pool.submit(kernel, *args, lo, hi) for lo, hi in cuts if hi > lo]]
+
+        each(_table_pairs, cut(indptr[words + 1] - indptr[words]), indptr, partners, counts, words, slot, cooc)
+        triangle = cut(n - np.arange(n))  # the rows' parts of as much of the upper triangle
+        each(_symmetric, triangle, cooc)  # each pair of the table is in one of its rows
+        # The skipped sentences' words of these, each once, ascending; for each word the skipped sentences with it
+        tokens = (sent_offsets[skipped + 1] - sent_offsets[skipped]).astype(np.int64)
+        offsets, places = [np.zeros(1, dtype=np.int64)], [np.zeros(0, dtype=np.int32)]
+        for part_offsets, part_places in each(_own_words, cut(tokens), sent_offsets, count_ids, slot, skipped, n):
+            offsets.append(part_offsets[1:] + sum(len(p) for p in places))
+            places.append(part_places)
+        offsets, places = np.concatenate(offsets), np.concatenate(places)
+        starts, after, ends, work = _sentences_with(offsets, places, n)
+        each(_less_own, cut(work), cooc, places, starts, after, ends)  # above the diagonal
+        cooc[np.arange(n), np.arange(n)] = df[words] - np.diff(starts)
+        each(_mirror, triangle, cooc)
     return cooc
 
 
 @numba.njit(cache=True, nogil=True)
-def _cooccurrence(sent_offsets, count_ids, slot, skip, part, parts, cooc):
-    """corpus_cooccurrence's counts of the pairs (a, b), a < b (and of a alone: the diagonal), whose a is of this part
-    (its place modulo parts)."""
-    n = cooc.shape[0]
+def _own_words(sent_offsets, count_ids, slot, skipped, n, lo, hi):
+    """The words of slot (their places, -1 for none) in each of the sentences skipped[lo:hi], each once, ascending:
+    (offsets, places) of each sentence's."""
+    bound = 0
+    for q in range(lo, hi):
+        bound += np.int64(sent_offsets[skipped[q] + 1] - sent_offsets[skipped[q]])
+    places = np.empty(bound, dtype=np.int32)
+    offsets = np.zeros(hi - lo + 1, dtype=np.int64)
     stamp = np.full(n, -1, dtype=np.int64)
-    present = np.empty(n, dtype=np.int64)
-    for s in range(len(sent_offsets) - 1):
-        if skip[s]:
-            continue
-        m = 0
-        for k in range(sent_offsets[s], sent_offsets[s + 1]):
+    e = 0
+    for q in range(lo, hi):
+        for k in range(sent_offsets[skipped[q]], sent_offsets[skipped[q] + 1]):
             w = slot[count_ids[k]]
-            if w >= 0 and stamp[w] != s:
-                stamp[w] = s
-                i = m  # in order, as they are few: each row's counts then in order too
-                while i > 0 and present[i - 1] > w:
-                    present[i] = present[i - 1]
-                    i -= 1
-                present[i] = w
-                m += 1
-        for i in range(m):
-            a = present[i]
-            if a % parts != part:
-                continue
-            for j in range(i, m):
-                cooc[a, present[j]] += 1
+            if w >= 0 and stamp[w] != q:
+                stamp[w] = q
+                places[e] = w
+                e += 1
+        places[offsets[q - lo] : e].sort()
+        offsets[q - lo + 1] = e
+    return offsets, places[:e]
 
 
 @numba.njit(cache=True, nogil=True)
-def _mirror(cooc):
-    """The upper triangle copied onto the lower."""
+def _sentences_with(offsets, places, n):
+    """For each place (word) of _own_words' sentences, from starts[w] to starts[w + 1], the sentences with it, by
+    where the words after it in each start and end in places (after, ends); and their number, summed (the work of its
+    row in _less_own)."""
+    starts = np.zeros(n + 1, dtype=np.int64)
+    for e in range(len(places)):
+        starts[places[e] + 1] += 1
+    for w in range(n):
+        starts[w + 1] += starts[w]
+    cursor = starts[:-1].copy()
+    after = np.empty(len(places), dtype=np.int64)
+    ends = np.empty(len(places), dtype=np.int64)
+    work = np.zeros(n, dtype=np.int64)
+    for q in range(len(offsets) - 1):
+        for e in range(offsets[q], offsets[q + 1]):
+            w = places[e]
+            after[cursor[w]] = e + 1
+            ends[cursor[w]] = offsets[q + 1]
+            cursor[w] += 1
+            work[w] += offsets[q + 1] - e
+    return starts, after, ends, work
+
+
+@numba.njit(cache=True, nogil=True)
+def _table_pairs(indptr, partners, counts, words, slot, cooc, lo, hi):
+    """The table's counts of the pairs of words in the rows of words lo..hi (cooc's rows; each pair is in one of its
+    two)."""
+    for i in range(lo, hi):
+        row = cooc[i]
+        for e in range(indptr[words[i]], indptr[words[i] + 1]):
+            j = slot[partners[e]]
+            if j >= 0:
+                row[j] = counts[e]
+
+
+_BLOCK = 64  # rows and columns of cooc added to their mirror at once: a square of each in a core's first cache
+
+
+@numba.njit(cache=True, nogil=True)
+def _symmetric(cooc, lo, hi):
+    """Each count of rows lo..hi above the diagonal and its mirror below set to their sum (one of them is 0), in squares
+    of _BLOCK."""
     n = cooc.shape[0]
-    for a in range(n):
-        for b in range(a + 1, n):
-            cooc[b, a] = cooc[a, b]
+    for i0 in range(lo, hi, _BLOCK):
+        i1 = min(hi, i0 + _BLOCK)
+        for j0 in range(i0, n, _BLOCK):
+            j1 = min(n, j0 + _BLOCK)
+            for i in range(i0, i1):
+                for j in range(max(j0, i + 1), j1):
+                    v = cooc[i, j] + cooc[j, i]
+                    cooc[i, j] = v
+                    cooc[j, i] = v
+
+
+@numba.njit(cache=True, nogil=True)
+def _less_own(cooc, places, starts, after, ends, lo, hi):
+    """Rows lo..hi, above the diagonal, less the pairs of the sentences with their word (_sentences_with): the words
+    after it in each (whose places are in order), each row at once."""
+    for i in range(lo, hi):
+        row = cooc[i]
+        for x in range(starts[i], starts[i + 1]):
+            for e in range(after[x], ends[x]):
+                row[places[e]] -= 1
+
+
+@numba.njit(cache=True, nogil=True)
+def _mirror(cooc, lo, hi):
+    """Rows lo..hi above the diagonal copied onto their mirror below, in squares of _BLOCK."""
+    n = cooc.shape[0]
+    for i0 in range(lo, hi, _BLOCK):
+        i1 = min(hi, i0 + _BLOCK)
+        for j0 in range(i0, n, _BLOCK):
+            j1 = min(n, j0 + _BLOCK)
+            for i in range(i0, i1):
+                for j in range(max(j0, i + 1), j1):
+                    cooc[j, i] = cooc[i, j]
 
 
 # The EM of a split, compiled: the words of all groups in one vocabulary (each group's words after the last group's),
@@ -2331,7 +2427,7 @@ def test_split(Xs, unsplit_fit, r, groups, folds=None, pool_map=map, prior=None)
     return _test_result(folds, list(pool_map(lambda fold: _fold_gain(fold, r), folds)), Xs[0].shape[0])
 
 
-def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None):
+def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None, cooccurrence=None):
     """Grow the tree of senses of the sentences: channels are (X, corpus probabilities, corpus rest[, weights]) for each
     group of words, X a sentences x words matrix of counts, weights how much each word's evidence counts; groups is
     the work of each sentence; unseeded, for each group of words, None or a mask of its words that seed no split
@@ -2339,9 +2435,11 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None):
     Each split has its importance: how much it improves the prediction of the words around the query, per use of the
     word (its sense's share of the sentences times its gain per sentence there). Splits less important than finest
     times the first one are not looked for. The splits are looked for and tested on the sentences of sample (their
-    indices; by default growth_sample's, all of them for a query of no more than _GROWN): see _try_split. Within
-    corpus_profiles, the senses' rates for the collocates that may seed a split, of the sentence's words, have the
-    prior of their corpus profiles (see _with_prior and _em)."""
+    indices; by default growth_sample's, all of them for a query of no more than _GROWN): see _try_split. Given the
+    corpus's cooccurrence, the senses' rates for the collocates that may seed a split, of the sentence's words, have
+    the prior of their corpus profiles (see _with_prior and _em): cooccurrence(columns), for some of the sentence's
+    words (columns of the first group's matrix), is the number of the corpus's sentences outside the query's with each
+    pair of them (the diagonal: with each), a square array (corpus_cooccurrence's)."""
     Xall = [csr_matrix(c[0]) for c in channels]
     n = Xall[0].shape[0]
     corpus = [Dist(np.asarray(c[1], dtype=np.float64), float(c[2])) for c in channels]
@@ -2363,7 +2461,6 @@ def induce_senses(channels, groups, finest=FINEST, unseeded=None, sample=None):
         return dists
 
     root = Node(np.arange(n), root_fit(counts), counts, corpus)
-    cooccurrence = _CORPUS.get()
     profiles = None
     if cooccurrence is not None and len(seeds[0]):
         profiles = _Profiles(seeds[0], cooccurrence(seeds[0]), Xall[0].shape[1])
@@ -3587,8 +3684,9 @@ def _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field
     def cooccurrence(columns):  # of the corpus's sentences outside the query's
         return corpus_cooccurrence(sentences["data_path"], count_lemmas, names[0][columns], sentences["sentence_index"])
 
-    with corpus_profiles(cooccurrence):
-        root = induce_senses(channels, sentences["docs"], unseeded=[common[ids] for ids in names])
+    root = induce_senses(
+        channels, sentences["docs"], unseeded=[common[ids] for ids in names], cooccurrence=cooccurrence
+    )
     return _senses_report(db, sentences, channels, names, root, filter_words, metadata, year_field, common)
 
 

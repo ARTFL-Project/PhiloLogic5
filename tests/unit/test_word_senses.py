@@ -8,6 +8,7 @@ import pytest
 from scipy.sparse import csr_matrix
 from scipy.special import logsumexp
 
+from philologic.loadtime.PostFilters import write_cooccurrence, write_corpus_counts
 from philologic.runtime.reports import word_senses as ws
 
 SHARED = [f"w{i}" for i in range(40)]  # words of every sense
@@ -710,7 +711,7 @@ class TestSmoothing:
 
 def corpus_of(specs, columns, seed=1):
     """The co-occurrence of the words of columns in made-up sentences of the corpus outside the query's (specs as
-    sentences'): as cooccurrence(columns) gives it to induce_senses within corpus_profiles."""
+    sentences'): as induce_senses's cooccurrence(columns) gives it."""
     X = sentences(specs, seed)[0][0][0]
     B = (X[:, columns] > 0).astype(np.int64)
     return np.asarray((B.T @ B).todense()).astype(np.int32)
@@ -718,7 +719,7 @@ def corpus_of(specs, columns, seed=1):
 
 @pytest.mark.unit
 class TestCorpusPrior:
-    def test_the_corpus_pass_counts_each_pair_once_a_sentence(self, tmp_path):
+    def test_the_corpus_counts_each_pair_once_a_sentence(self, tmp_path):
         colloc = tmp_path / "collocations"
         colloc.mkdir()
         text = [[0, 1, 2, 1], [1, 2], [3, 0, 3], [0, 2], [2, 2, 0, 1]]
@@ -726,6 +727,10 @@ class TestCorpusPrior:
         np.save(colloc / "sent_offsets.npy", offsets)
         np.save(colloc / "attr_lemma_ids.npy", np.concatenate(text).astype(np.uint32))
         np.save(colloc / "attr_lemma_vocab_offsets.npy", np.arange(6, dtype=np.int64))
+        np.save(colloc / "token_ids.npy", np.concatenate(text).astype(np.uint32))
+        np.save(colloc / "vocab_offsets.npy", np.arange(6, dtype=np.int64))
+        write_corpus_counts(str(colloc))
+        write_cooccurrence(str(colloc))
         words = np.array([2, 0, 1])
         cooc = ws.corpus_cooccurrence(str(tmp_path), True, words, skipped=[3])
         expected = np.zeros((3, 3), dtype=np.int64)
@@ -780,8 +785,7 @@ class TestCorpusPrior:
         specs = [(work, "a" if i % 2 else "b") for work in range(20) for i in range(30)]
         channels, works = sentences(specs)
         corpus = [(work, "a" if i % 2 else "b") for work in range(50) for i in range(40)]
-        with ws.corpus_profiles(lambda columns: corpus_of(corpus, columns)):
-            root = ws.induce_senses(channels, works)
+        root = ws.induce_senses(channels, works, cooccurrence=lambda columns: corpus_of(corpus, columns))
         assert root.prior is not None and root.prior["strength"] > 0
         found = leaves(root)
         assert len(found) == 2
@@ -793,6 +797,7 @@ class TestCorpusPrior:
         specs = [(work, "abc"[i % 3]) for work in range(12) for i in range(15)]
         channels, works = sentences(specs)
         plain = ws.node_posteriors(ws.induce_senses(channels, works), [csr_matrix(c[0]) for c in channels])[1]
-        with ws.corpus_profiles(lambda columns: np.zeros((len(columns), len(columns)), dtype=np.int32)):
-            none = ws.node_posteriors(ws.induce_senses(channels, works), [csr_matrix(c[0]) for c in channels])[1]
+        nothing = lambda columns: np.zeros((len(columns), len(columns)), dtype=np.int32)  # noqa: E731
+        none = ws.induce_senses(channels, works, cooccurrence=nothing)
+        none = ws.node_posteriors(none, [csr_matrix(c[0]) for c in channels])[1]
         assert np.array_equal(plain, none)  # a corpus without any sentence of the words gives no prior
