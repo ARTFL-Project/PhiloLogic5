@@ -2122,10 +2122,11 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, pr
     discount = np.array([d.discount for d in parent], dtype=np.float64)
     markers, mk, mk_off, mk_cmp, (mk_had, mk_pos, mkh_off, w_mk, _, _) = Xs.marking(parent)
     marked = (mk_had, mk_pos, mkh_off)
-    parent_had = np.concatenate([d.p[pos[cmp_off[c] : cmp_off[c + 1]]] for c, d in enumerate(parent)])
-    parent_mk = np.concatenate([d.p[mk[mk_off[c] : mk_off[c + 1]] - voc_off[c]] for c, d in enumerate(parent)])
-    parent_had = parent_had.astype(np.float64)
-    parent_mk = parent_mk.astype(np.float64)
+    # The parent's rates of the words the sentences have, and of the markers
+    parent_had = np.concatenate([d.p[pos[cmp_off[c] : cmp_off[c + 1]]] for c, d in enumerate(parent)], dtype=np.float64)
+    parent_mk = np.concatenate(
+        [d.p[mk[mk_off[c] : mk_off[c + 1]] - voc_off[c]] for c, d in enumerate(parent)], dtype=np.float64
+    )
     no_prior = (_NO_INDEX, _NO_INDEX, _NO_PROFILES, _NO_INDEX, _NO_RATES, 0.0, np.empty((2, 0)), np.zeros(2))
     prior_args = no_prior + (np.ones(1, dtype=np.bool_),)
     if prior is not None and prior[1] > 0:
