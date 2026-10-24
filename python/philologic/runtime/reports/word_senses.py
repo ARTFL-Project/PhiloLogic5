@@ -490,19 +490,22 @@ def _centre(Q, slots, w, parent_p, out, tokens):
         if w[i] > 0.0 and t > 0:
             spread += w[i] * w[i] / t
             evidenced += w[i]
-    for i in range(n):
-        out[i] = 0.0
     if sw <= 0.0:
         for i in range(n):
             out[i] = parent_p[i]
     else:
+        # Each profile's whole row added in (a pass the processor makes several numbers at a time), then the words'
+        # places read: the same sums, in the same order, as adding up each word's place in turn
+        acc = np.zeros(Q.shape[1])
         for a in range(n):
             if w[a] <= 0.0:
                 continue
             wa = w[a] / sw
             row = Q[slots[a]]
-            for i in range(n):
-                out[i] += wa * row[slots[i]]
+            for j in range(Q.shape[1]):
+                acc[j] += wa * row[j]
+        for i in range(n):
+            out[i] = acc[slots[i]]
     s = 0.0
     for i in range(n):
         s += out[i]
