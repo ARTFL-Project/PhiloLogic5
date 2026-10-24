@@ -3611,7 +3611,9 @@ def word_senses(
     if os.path.exists(path):
         try:
             with open(path, encoding="utf-8") as f:
-                return json.load(f)
+                report = json.load(f)
+            _touch(path)
+            return report
         except (OSError, ValueError):
             pass
     began = time.perf_counter()
@@ -3651,11 +3653,22 @@ def senses_with_membership(
         _cache_path(db, q, bool(count_lemmas), properties, metadata, distance, year_field, filter_words)
     )
     membership = _load_membership(path)
+    if membership is not None:
+        _touch(path)
     if membership is None or membership.shape[1] != len(report["nodes"]):  # a report cached before its membership
         fresh = _word_senses(db, q, count_lemmas, properties, metadata, distance, year_field, filter_words)
         membership = fresh["_membership"]
         _save_membership(path, membership)
     return report, membership
+
+
+def _touch(path):
+    """Marks a cached result as just used: the hitlist cleanup keeps the senses tabs' results until they take too much
+    room, and then removes those used least recently first (see www/middleware.py)."""
+    try:
+        os.utime(path)
+    except OSError:
+        pass
 
 
 def _membership_path(report_path):

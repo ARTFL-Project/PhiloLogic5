@@ -85,6 +85,7 @@ def sense_periods(
         try:
             with open(path, encoding="utf-8") as f:
                 found[i] = json.load(f)
+            ws._touch(path)
         except (OSError, ValueError):
             pass
     missing = [i for i in nodes if i not in found]

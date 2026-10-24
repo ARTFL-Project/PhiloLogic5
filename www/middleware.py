@@ -135,9 +135,22 @@ class CORSMiddleware:
         resp.set_header("Access-Control-Allow-Origin", origin)
 
 
+# The senses tabs' results (a query's senses report, which of its sentences are in each sense, and the senses' periods:
+# <hash>.senses.json, <hash>.membership.npz, <hash>.periods-<n>.json) cost seconds to minutes to compute and take little
+# room: they are kept for the database's load rather than 10 minutes, up to this many bytes for each database, those
+# used least recently going first past it (a result read again is marked as just used: see word_senses._touch)
+SENSES_RESULTS_LIMIT = 10 * 10**9
+
+
+def is_senses_result(name):
+    """Whether a file of a hitlist directory is one of the senses tabs' results"""
+    return name.endswith((".senses.json", ".membership.npz")) or (".periods-" in name and name.endswith(".json"))
+
+
 class CleanupMiddleware:
-    """Opportunistic hitlist cleanup (1-in-10 chance per request): files more than 10 minutes old, and the directories
-    of the database's earlier loads (see philologic.runtime.hitlist_dir) once they are left empty."""
+    """Opportunistic hitlist cleanup (1-in-10 chance per request): files more than 10 minutes old, but the senses tabs'
+    results (see SENSES_RESULTS_LIMIT), and the directories of the database's earlier loads (see
+    philologic.runtime.hitlist_dir) once they are left empty."""
 
     def process_response(self, req, resp, resource, req_succeeded):
         if randint(0, 10) != 1:
@@ -149,7 +162,7 @@ class CleanupMiddleware:
         db_locals = Config(os.path.join(data_path, "db.locals.py"), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
         hitlist_dir = get_hitlist_dir(data_path, db_locals)
         cutoff = datetime.datetime.now() - datetime.timedelta(minutes=10)
-        remove_old_files(hitlist_dir, cutoff)
+        clean_hitlist_dir(hitlist_dir, cutoff)
         database_dir = database_hitlist_dir(data_path, db_locals)
         if database_dir == hitlist_dir:
             return
@@ -165,6 +178,39 @@ class CleanupMiddleware:
                     os.rmdir(entry.path)  # only once empty: a request still running on the old load may write in it
                 except OSError:
                     pass
+
+
+def clean_hitlist_dir(directory, cutoff, limit=SENSES_RESULTS_LIMIT):
+    """Removes the files of a load's hitlist directory last modified before cutoff, but the senses tabs' results, which
+    stay until they take more than limit bytes: then those used least recently go first, until they take no more."""
+    try:
+        entries = list(os.scandir(directory))
+    except OSError:
+        return
+    kept = []
+    for entry in entries:
+        try:
+            if not entry.is_file():
+                continue
+            stat = entry.stat()
+        except OSError:  # removed meanwhile
+            continue
+        if is_senses_result(entry.name):
+            kept.append((stat.st_mtime, stat.st_size, entry.path))
+        elif datetime.datetime.fromtimestamp(stat.st_mtime) < cutoff:
+            try:
+                os.remove(entry.path)
+            except OSError:
+                pass
+    total = sum(size for _, size, _ in kept)
+    for _, size, path in sorted(kept):
+        if total <= limit:
+            break
+        try:
+            os.remove(path)
+        except OSError:
+            continue
+        total -= size
 
 
 def remove_old_files(directory, cutoff):
