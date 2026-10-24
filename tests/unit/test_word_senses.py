@@ -612,22 +612,16 @@ class TestCompiled:
             plain_ll = sum(Y[test] @ ws._evidence(d) for Y, d in zip(Xs, unsplit))
             assert np.allclose(packed.block_loglik(unsplit, f), plain_ll, rtol=1e-12, atol=0)
 
-    def test_sums_of_the_words_the_sentences_have_are_numpys(self):
-        # Over all the words of a group, those the sentences lack zero
+    def test_exponentials_and_logarithms_are_numpys_to_the_last_bits(self):
+        # The compiled EM's own, made with the arithmetic alone: within a unit or two in the last place
         rng = np.random.default_rng(9)
-        for n in list(range(0, 300, 7)) + [1000, 8193, 100003]:
-            for density in (0.0, 0.05, 0.5, 1.0):
-                pos = np.flatnonzero(rng.uniform(size=n) < density)
-                counts = rng.lognormal(-1, 2, (len(pos), 2))
-                every = np.zeros((n, 2))
-                every[pos] = counts
-                out = np.empty(4)
-                ws._sums_at(counts, 0.6, pos, n, out)
-                least = np.minimum(every, 0.6)
-                assert list(out) == [float(every[:, 0].sum()), float(every[:, 1].sum())] + [
-                    float(least[:, 0].sum()),
-                    float(least[:, 1].sum()),
-                ]
+        x = np.concatenate([-rng.exponential(30, 20000), -rng.uniform(0, 1e-8, 1000), [0.0, -1e-300, -708.39]])
+        mine, numpys = np.array([ws._exp(v) for v in x]), np.exp(x)
+        assert np.all(np.abs(mine - numpys) <= np.spacing(numpys))
+        assert [ws._exp(v) for v in (-708.4, -745.2, -1000.0, -np.inf)] == [0.0] * 4  # below the least normal double
+        p = np.concatenate([np.exp(-rng.exponential(10, 20000)), [1.0, np.nextafter(1.0, 0), 0.5, 1e-300, 2.3e-308]])
+        mine, numpys = np.array([ws._log(v) for v in p]), np.log(p)
+        assert np.all(np.abs(mine - numpys) <= 2 * np.spacing(np.abs(numpys))) and ws._log(1.0) == 0.0
 
     def test_logsumexp_is_scipys(self):
         rng = np.random.default_rng(10)
