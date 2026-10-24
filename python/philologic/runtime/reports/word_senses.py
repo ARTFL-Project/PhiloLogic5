@@ -1509,6 +1509,28 @@ def _log(x):
 
 
 @numba.njit(cache=True, nogil=True)
+def _em_start(r, perm, spans, unmarked, unmarked_ll, r0, r1, U):
+    """A part's sentences' probabilities of either sense to start from (r0, r1: r's, n x 2, in the order of its packing,
+    perm, or as they are when perm is empty) for the sentences fitted on (spans: the others' stay 0), and what the words
+    that mark no sense tell of those (each group's weighted count of them, unmarked, added to U). Returns the sums of r0
+    and r1, and of the sentences' log-probabilities under the parent from those words (unmarked_ll)."""
+    w0 = 0.0
+    w1 = 0.0
+    ll = 0.0
+    for s in range(spans.shape[0]):
+        for i in range(spans[s, 0], spans[s, 1]):
+            j = perm[i] if len(perm) else i
+            r0[i] = r[j, 0]
+            r1[i] = r[j, 1]
+            w0 += r0[i]
+            w1 += r1[i]
+            ll += unmarked_ll[i]
+            for c in range(U.shape[0]):
+                U[c] += unmarked[c, i]
+    return w0, w1, ll
+
+
+@numba.njit(cache=True, nogil=True)
 def _em_counts(order, start, idx, cdata, g_off, ones, r0, blocks, counts):
     """Each word's (soft) count in the first sense (X.T @ r0 for each group), in the sentences of the blocks given,
     for the words the sentences have (and one more, for the slices' empty places), into counts (n_cols + 1), from the
@@ -2151,16 +2173,14 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, pr
         spans = np.array([[bounds[k], bounds[k + 1]] for k in blocks], dtype=np.int64).reshape(-1, 2)
         m_rows, unmarked = part.marking(parent)[4][4:]
         unmarked_ll = part.unmarked_loglik(parent)
-        mine = r[a:b] if part.perm is None else r[a:b][part.perm]
         r0, r1 = np.zeros(b - a + 1), np.zeros(b - a + 1)
-        fitted = np.zeros(b - a, dtype=np.bool_)
-        for s, e in spans:
-            fitted[s:e] = True
-        r0[:-1][fitted], r1[:-1][fitted] = mine[fitted, 0], mine[fitted, 1]
+        perm = _NO_INDEX if part.perm is None else part.perm
+        w0, w1, ll = _em_start(
+            np.ascontiguousarray(r[a:b], dtype=np.float64), perm, spans, unmarked, unmarked_ll, r0, r1, U
+        )
+        weight += [w0, w1]
+        L += ll
         T += part.word_counts(blocks)
-        U += unmarked[:, fitted].sum(axis=1)
-        L += float(unmarked_ll[fitted].sum())
-        weight += [r0.sum(), r1.sum()]
         rows = (*m_rows[:4], part.ones)
         steps.append((part, blocks, r0, r1, (rows, ranges, spans, unmarked, np.empty(b - a + 1)), unmarked_ll))
     T_mk = np.append(T[mk_had], 0.0)
