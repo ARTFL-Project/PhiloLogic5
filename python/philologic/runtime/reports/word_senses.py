@@ -17,18 +17,28 @@ word's evidence weighs by its inverse document frequency, so that frequent words
 than rarer ones.
 
 A split starts from the sentences with one of the query's collocates, the seed: of those whose sentences differ most
-from the others in their other collocates, the most promising are tried (none of the collocation filter's words,
-mostly function words: par, leur, mon tell the register of works more than a sense), and expectation-maximization
-moves the sentences to the sense they fit, each with a probability of being in either (first letting every collocate
-tell the senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark
-either, chosen at every step, and held if that choice cycles; the first pass, on a sense of many sentences, on a
-sample of them). A split is kept if, fitted without each of N_FOLDS groups of works in turn, it predicts the sentences
-of the works left out better than its unsplit sense, paying for saying which sense each is in, by more than EVIDENCE
-standard errors over the sentences. Holding out whole works keeps the sentences of a passage, which share their words,
-from predicting one another. For a query of more than _GROWN sentences, splits are looked for and tested on _GROWN of
-them, spread over all, and a split once kept is fitted again on all the sentences of its sense, which go to its two
-senses as they fit: the senses have all the sentences, their words and their course over time; the tests, their
-sample.
+from the others in their other collocates, the most promising are tried (none of the collocation filter's words, mostly
+function words: par, leur, mon tell the register of works more than a sense), and expectation-maximization moves the
+sentences to the sense they fit, each with a probability of being in either (first letting every collocate tell the
+senses apart, since few words of the seed's sense are marked on its side yet, then only those that mark either, chosen
+at every step, and held if that choice cycles; the first pass, on a sense of many sentences, on a sample of them). A
+split is kept if, fitted without each of N_FOLDS groups of works in turn, it predicts the sentences of the works left
+out better than its unsplit sense, paying for saying which sense each is in, by more than EVIDENCE standard errors over
+the sentences. Holding out whole works keeps the sentences of a passage, which share their words, from predicting one
+another. But the gain is reckoned with the same IDF weights as the evidence, which is not a likelihood: with weights
+above 1, a mixture of the two senses fits any sentence at least as well as one sense, so almost every split passes
+(99.9% of the splits of sentences whose words were shuffled, in a study of October 2026), and what decides how far the
+tree goes is FINEST, the importance under which splits are not looked for. A test on the plain likelihood is honest but
+finds fewer senses on thin data and costs more time; it was left for later. For a query of more than _GROWN sentences,
+splits are looked for and tested on _GROWN of them, spread over all, and a split once kept is fitted again on all the
+sentences of its sense, which go to its two senses as they fit: the senses have all the sentences, their words and their
+course over time; the tests, their sample.
+
+Where the query has few sentences, the senses' rates for its collocates lean on the whole corpus: each sense's rates are
+drawn toward the corpus profile of the words that mark it (the other words of the corpus's sentences with them, the
+query's own sentences left out), by a Dirichlet prior whose strength the sense's own counts decide (empirical Bayes) and
+the corpus's counts behind the profile cap. The profiles come from a table of the sentences each pair of words is in,
+written at load time.
 
 Each split has its importance: how much it improves the prediction of the words around the query, per use of the
 word. The distinctions are shown from the most important down, to the detail asked for: at first, down to the elbow
