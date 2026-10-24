@@ -2121,6 +2121,34 @@ def _column_sums(r):
     return out
 
 
+class _Fit:
+    """A split fitted (_em): (pi, dists, r, counts), and the log-probabilities of the sentences left out when a block
+    was, read as a tuple is (indexed, sliced, unpacked); the senses' rates for every word (dists) and their counts are
+    made when first read: of the candidate splits of a sense, only the one kept needs them."""
+
+    def __init__(self, pi, r, held_out, senses):
+        self._items = [pi, None, r, None] + ([] if held_out is None else [held_out])
+        self._senses = senses
+        self._lock = threading.Lock()
+
+    def __len__(self):
+        return len(self._items)
+
+    def __getitem__(self, k):
+        if isinstance(k, slice):
+            return tuple(self[i] for i in range(*k.indices(len(self))))
+        k = range(len(self))[k]
+        if k in (1, 3):
+            with self._lock:
+                if self._senses is not None:
+                    self._items[1], self._items[3] = self._senses()
+                    self._senses = None
+        return self._items[k]
+
+    def __iter__(self):
+        return iter(self[:])
+
+
 def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, prior=None, held_only=False):
     """The EM of a split (see fit_split), from r, each sentence's probabilities of either sense (summing to 1). The
     words chosen at every step (every_marker false), once the set chosen comes back to one chosen before, after
@@ -2271,43 +2299,45 @@ def _em(Xs, parent, r, every_marker, switch=True, left_out=None, submit=_now, pr
         held_out = ll[lo:hi].copy()
         if held_only:
             return held_out
-    # The last fit again, for every word
-    counts_had = np.column_stack([c0[:n_cols], np.maximum(T[:n_cols] - c0[:n_cols], 0.0)])
-    counts = np.zeros((int(voc_off[-1]), 2))
-    counts[cols] = counts_had
-    parent_p = np.concatenate([d.p for d in parent]).astype(np.float64)
-    parent_rest = np.array([d.rest for d in parent], dtype=np.float64)
-    p, rest, is_parent, _ = _em_fit(
-        counts, totals, thresholds, parent_p, parent_rest, markers, discount, voc_off, every_marker
-    )
-    if len(prior_args[0]):  # the same rates for the profiled words as the last step's
-        set_cmp, centre, strengths = prior_args[1], prior_args[6], prior_args[7]
-        _prior_rates(p, counts_had, np.ascontiguousarray(cols[set_cmp]), set_cmp, centre, strengths, True)
-        is_parent[0] = False
-    dists = [
-        [
-            (
-                parent[c]
-                if is_parent[c, k]
-                else Dist(
-                    p[k, voc_off[c] : voc_off[c + 1]].copy(),
-                    float(rest[c, k]),
-                    parent[c].markers,
-                    parent[c].weights,
-                    parent[c].discount,
-                )
-            )
-            for k in range(2)
-        ]
-        for c in range(len(parent))
-    ]
-    counts = [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
     r = []
     for part, _, r0, r1, _, _ in steps:
         rp = np.column_stack([r0[:-1], r1[:-1]])
         r.append(rp if part.perm is None else rp[part.inv])
-    out = pi, dists, r[0] if len(r) == 1 else np.concatenate(r), counts
-    return out if left_out is None else out + (held_out,)
+
+    def senses():  # the last fit again, for every word: the senses' rates, and their counts
+        counts_had = np.column_stack([c0[:n_cols], np.maximum(T[:n_cols] - c0[:n_cols], 0.0)])
+        counts = np.zeros((int(voc_off[-1]), 2))
+        counts[cols] = counts_had
+        parent_p = np.concatenate([d.p for d in parent]).astype(np.float64)
+        parent_rest = np.array([d.rest for d in parent], dtype=np.float64)
+        p, rest, is_parent, _ = _em_fit(
+            counts, totals, thresholds, parent_p, parent_rest, markers, discount, voc_off, every_marker
+        )
+        if len(prior_args[0]):  # the same rates for the profiled words as the last step's
+            set_cmp, centre, strengths = prior_args[1], prior_args[6], prior_args[7]
+            _prior_rates(p, counts_had, np.ascontiguousarray(cols[set_cmp]), set_cmp, centre, strengths, True)
+            is_parent[0] = False
+        dists = [
+            [
+                (
+                    parent[c]
+                    if is_parent[c, k]
+                    else Dist(
+                        p[k, voc_off[c] : voc_off[c + 1]].copy(),
+                        float(rest[c, k]),
+                        parent[c].markers,
+                        parent[c].weights,
+                        parent[c].discount,
+                    )
+                )
+                for k in range(2)
+            ]
+            for c in range(len(parent))
+        ]
+        counts = [counts[voc_off[c] : voc_off[c + 1]].copy() for c in range(len(parent))]
+        return dists, counts
+
+    return _Fit(pi, r[0] if len(r) == 1 else np.concatenate(r), held_out, senses)
 
 
 def fit_split(Xs, parent, r, search=False, sample=None, first=None, prior=None):
@@ -2320,8 +2350,8 @@ def fit_split(Xs, parent, r, search=False, sample=None, first=None, prior=None):
     settled (stopped by _MAX_ITER). A search's first pass only finds where the second starts: given a sample of the
     sentences (their indices, and their matrices: see search_sample), it runs on those alone, and the second, which
     chooses the words, on all of them. Returns (pi, dists, r, counts), or None when a sense ends up with less than a
-    sentence or none of the words tells them apart. first, a list, is given the senses of a search's first pass, (pi,
-    dists). prior: see _em."""
+    sentence or none of the words tells them apart. first, a list, is given the fit of a search's first pass (whose
+    pi, dists are its senses). prior: see _em."""
     if search:
         if sample is None:
             fitted = _em(Xs, parent, r, every_marker=True, prior=prior)
@@ -2331,7 +2361,7 @@ def fit_split(Xs, parent, r, search=False, sample=None, first=None, prior=None):
         if fitted is None:
             return None
         if first is not None:
-            first.extend(fitted[:2])
+            first.append(fitted)
         if sample is None:
             r = fitted[2]
         else:  # every sentence's probabilities under the first pass's senses
@@ -2938,7 +2968,7 @@ def _try_split(
         node.prior = {"strength": strength, "tokens": tokens}
     seeds = seeding.result()
     sample = None if sampling is None else sampling.result()
-    firsts = [[] for _ in seeds]  # the senses of each search's first pass, for _fit_all
+    firsts = [[] for _ in seeds]  # each search's first pass (its fit), whose senses _fit_all starts from
     searches = [
         submit(fit_split, Xs, node.dists, r, True, sample, first, prior) for (r, _), first in zip(seeds, firsts)
     ]
@@ -2993,7 +3023,6 @@ def _try_split(
         results = [fits[(s, f)].result() for s in racing for f in range(n_folds)]
     best = None
     for c, (seed, fitted, side, first) in enumerate(candidates):
-        pi, dists, r, counts = fitted
         test = _test_result(folds, results[c * len(folds) : (c + 1) * len(folds)], len(tried))
         test["seed"] = seed
         test["importance"] = float(len(units) / n_all * max(0.0, test["bits_per_sentence"]))
@@ -3005,19 +3034,21 @@ def _try_split(
             }
         passes = test["z"] > EVIDENCE and test["importance"] >= floor["importance"]
         if best is None or (passes, test["importance"]) > (best[0], best[1]["importance"]):
-            best = (passes, test, pi, dists, side, counts, first)
+            best = (passes, test, fitted, side, first)
     if best is None:
         node.reason = "inseparable"
         return
-    passes, node.test, pi, dists, side, counts, first = best
+    passes, node.test, fitted, side, first = best
     if not passes:
         node.reason = "no_gain" if node.test["z"] <= EVIDENCE else "faint"
         return
     if len(tried) < len(units):
         whole = None if marked is None else marked.result()
         pi, dists, side, counts = submit(
-            _fit_all, Xall, units, node.dists, first, (pi, dists), whole, submit, prior
+            _fit_all, Xall, units, node.dists, first[0][:2], fitted, whole, submit, prior
         ).result()
+    else:
+        pi, dists, _, counts = fitted  # the senses' rates and counts of the split kept, made now (_Fit)
     node.model = (pi, dists)
     for k, members in ((0, side), (1, ~side)):
         child = Node(units[members], [d[k] for d in dists], [c[:, k] for c in counts], node.dists)
@@ -3031,7 +3062,7 @@ def _fit_all(Xall, units, parent, first, fitted, marked=None, submit=_now, prior
     pass, on all of them, from the senses of its first (pi, dists), as these share them out. The second pass on the
     sample alone chose the words that mark either sense from the sample's counts: fewer of them than all the sentences
     have, which would hold the split to a fit less good on them. Should that fail (no halves), the split as fitted
-    (fitted: pi, dists), its senses' rates fitted again on all the sentences, as they share them out. Returns (pi,
+    (fitted: pi, dists, ...), its senses' rates fitted again on all the sentences, as they share them out. Returns (pi,
     dists, side: the sentences more likely in the first sense, counts). marked: the markers' entries of all the
     sentences (_Marked), or None. The sentences are in _PARTS parts of about as many entries, each packed and fitted
     at once on the pool's threads (submit), so that the refit of the first split, which nothing else can run beside,
@@ -3063,7 +3094,7 @@ def _fit_all(Xall, units, parent, first, fitted, marked=None, submit=_now, prior
         if side.any() and not side.all():
             return pi, dists, side, counts
     Xs = [X[units] for X in Xall]
-    ll = _mixture_loglik(Xs, *fitted)
+    ll = _mixture_loglik(Xs, *fitted[:2])
     r = np.exp(ll - _logsumexp2(ll)[:, None])
     counts = [np.asarray(X.T @ r) for X in Xs]
     dists = [[fit_sparse(c[:, k], d, _split_words(c, d, False)) for k in range(2)] for c, d in zip(counts, parent)]
