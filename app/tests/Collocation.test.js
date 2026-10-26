@@ -54,7 +54,7 @@ describe("Collocation", () => {
         expect(wrapper.find("#compare-tab").exists()).toBe(true);
         expect(wrapper.find("#similar-tab").exists()).toBe(true);
         expect(wrapper.find("#word-senses-tab").exists()).toBe(true);
-        expect(wrapper.find("#sense-tree-tab").exists()).toBe(true);
+        expect(wrapper.find("#sense-overview-tab").exists()).toBe(true);
         expect(wrapper.find("#time-series-tab").exists()).toBe(false); // usage patterns over time: replaced by the senses
         expect(wrapper.find("#word-map-tab").exists()).toBe(false);
     });
@@ -134,16 +134,16 @@ describe("Collocation", () => {
         expect(wrapper.find("#similar-tab").attributes("aria-selected")).toBe("true");
     });
 
-    it("switches to the sense tree on tab click", async () => {
+    it("switches to the senses at a glance on tab click", async () => {
         const wrapper = mountCollocation();
         await flushPromises();
         await nextTick();
 
-        await wrapper.find("#sense-tree-tab").trigger("click");
+        await wrapper.find("#sense-overview-tab").trigger("click");
         await nextTick();
 
-        expect(wrapper.find("#sense-tree-tab").classes()).toContain("active");
-        expect(wrapper.find("#sense-tree-tab").attributes("aria-selected")).toBe("true");
+        expect(wrapper.find("#sense-overview-tab").classes()).toContain("active");
+        expect(wrapper.find("#sense-overview-tab").attributes("aria-selected")).toBe("true");
     });
 
     it("switches back to frequency view", async () => {
@@ -452,25 +452,25 @@ describe("Collocation", () => {
     });
 
     it("fetches a tab loaded on demand once, shown again after the search changed", async () => {
-        await import("../src/components/collocation/SenseTree.vue");  // loaded, as once its tab was shown
+        await import("../src/components/collocation/SenseOverview.vue");  // loaded, as once its tab was shown
         const http = keptTabsHttp();
         const wrapper = await searched(http);
-        await showTab(wrapper, "#sense-tree-tab");
+        await showTab(wrapper, "#sense-overview-tab");
         await showTab(wrapper, "#frequency-tab");
         await newSearch(wrapper, "freedom");
-        await showTab(wrapper, "#sense-tree-tab");  // it fetches as it mounts, and the page asks too
+        await showTab(wrapper, "#sense-overview-tab");  // it fetches as it mounts, and the page asks too
 
         expect(sensesOf(http).map((c) => c[1].params.q)).toEqual(["liberty", "freedom"]);
     });
 
     it("fetches the senses once when a link's shorter URL opens a tab", async () => {
-        await import("../src/components/collocation/SenseTree.vue");  // loaded, as once its tab was shown
+        await import("../src/components/collocation/SenseOverview.vue");  // loaded, as once its tab was shown
         const http = keptTabsHttp();
         const wrapper = await mountCollocationWithRoute(http, { q: "liberty", report: "collocation" }, { asApp: true });
         await flushPromises();
-        await showTab(wrapper, "#sense-tree-tab");  // the tab's URL, longer, is another search
+        await showTab(wrapper, "#sense-overview-tab");  // the tab's URL, longer, is another search
         await showTab(wrapper, "#frequency-tab");
-        await showTab(wrapper, "#sense-tree-tab");
+        await showTab(wrapper, "#sense-overview-tab");
 
         expect(sensesOf(http).length).toBe(1);
     });

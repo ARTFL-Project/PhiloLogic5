@@ -92,7 +92,7 @@
             :start_date="formData.start_date" :end_date="formData.end_date"
             :removeMetadata="removeMetadata"></bibliography-criteria>
         <div v-if="queryReport === 'collocation'">
-            <template v-if="['senses', 'senseTree', 'sensePeriods', 'senseOverview'].includes(collocMethod)">
+            <template v-if="['senses', 'senseOverview'].includes(collocMethod)">
                 {{ $t("resultsSummary.totalOccurrences", { n: resultsLength }) }}
             </template>
             <template v-else>
@@ -154,7 +154,7 @@ const selectedTerm = computed(() => {
     return description.value.approximateGroups?.[index]?.term ?? wordGroups.value?.[index] ?? "";
 });
 
-// Sub-mode within the collocation report — frequency / compare / similar / senses / senseTree. Used to pick the right
+// Sub-mode within the collocation report — frequency / compare / similar / senses / senseOverview. Used to pick the right
 // "occurrences" wording: the senses show no list of the top collocates.
 const collocMethod = computed(() => route.query.collocation_method || "frequency");
 

@@ -12,8 +12,6 @@
                 <option value="compare">{{ $t("collocation.compareTo") }}</option>
                 <option value="similar">{{ $t("collocation.similarUsage") }}</option>
                 <option value="senses">{{ $t("collocation.wordSenses") }}</option>
-                <option value="senseTree">{{ $t("collocation.senseTree") }}</option>
-                <option value="sensePeriods">{{ $t("collocation.sensePeriods") }}</option>
                 <option value="senseOverview">{{ $t("collocation.senseOverview") }}</option>
             </select>
         </div>
@@ -55,22 +53,6 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link shadow-sm" id="sense-tree-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'senseTree' }" data-bs-target="#sense-tree-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'senseTree'"
-                        @click="setMode('senseTree')">
-                        {{ $t("collocation.senseTree") }}
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
-                    <button class="nav-link shadow-sm" id="sense-periods-tab" data-bs-toggle="tab"
-                        :class="{ active: mode === 'sensePeriods' }" data-bs-target="#sense-periods-tab-pane" type="button"
-                        role="tab" :aria-selected="mode === 'sensePeriods'"
-                        @click="setMode('sensePeriods')">
-                        {{ $t("collocation.sensePeriods") }}
-                    </button>
-                </li>
-                <li class="nav-item" role="presentation">
                     <button class="nav-link shadow-sm" id="sense-overview-tab" data-bs-toggle="tab"
                         :class="{ active: mode === 'senseOverview' }" data-bs-target="#sense-overview-tab-pane" type="button"
                         role="tab" :aria-selected="mode === 'senseOverview'"
@@ -83,7 +65,7 @@
 
         <results-summary :filter-list="filterList" :colloc-method="mode"
             :stopwords-missing="stopwordsMissing"
-            v-if="['frequency', 'senses', 'senseTree', 'sensePeriods', 'senseOverview'].includes(mode)"
+            v-if="['frequency', 'senses', 'senseOverview'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
         <div role="region" :aria-label="$t('collocation.collocationResults')">
@@ -128,16 +110,6 @@
                     @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
             </KeepAlive>
 
-            <KeepAlive :key="tabKeys.senseTree">
-                <SenseTree v-if="mode === 'senseTree'" ref="senseTreeRef"
-                    @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
-            </KeepAlive>
-
-            <KeepAlive :key="tabKeys.sensePeriods">
-                <SensePeriods v-if="mode === 'sensePeriods'" ref="sensePeriodsRef"
-                    @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
-            </KeepAlive>
-
             <KeepAlive :key="tabKeys.senseOverview">
                 <SenseOverview v-if="mode === 'senseOverview'" ref="senseOverviewRef"
                     @filter-list="filterList = $event" @stopwords-missing="stopwordsMissing = $event" />
@@ -167,9 +139,7 @@ import Compare from "./collocation/Compare.vue";
 import Frequency from "./collocation/Frequency.vue";
 import Similar from "./collocation/Similar.vue";
 import WordSenses from "./collocation/WordSenses.vue";
-// Lazy-loaded: the sense tree only ships when the user opens its tab, not on entry to Collocation.
-const SenseTree = defineAsyncComponent(() => import("./collocation/SenseTree.vue"));
-const SensePeriods = defineAsyncComponent(() => import("./collocation/SensePeriods.vue"));
+// Lazy-loaded: the senses at a glance only ships when the user opens its tab, not on entry to Collocation.
 const SenseOverview = defineAsyncComponent(() => import("./collocation/SenseOverview.vue"));
 
 //  Injects, route, router, store
@@ -191,8 +161,6 @@ const frequencyRef = useTemplateRef("frequencyRef");
 const compareRef = useTemplateRef("compareRef");
 const similarRef = useTemplateRef("similarRef");
 const wordSensesRef = useTemplateRef("wordSensesRef");
-const senseTreeRef = useTemplateRef("senseTreeRef");
-const sensePeriodsRef = useTemplateRef("sensePeriodsRef");
 const senseOverviewRef = useTemplateRef("senseOverviewRef");
 
 //  Shared state
@@ -212,10 +180,11 @@ function showTab(tab) {
 }
 
 // The collocation method a URL asks for; links to the usage patterns over time and the word map, which the senses
-// replaced, open the senses
+// replaced, open the senses, and links to the sense tree and the senses over time open the senses at a glance
 function methodOf(query) {
     const method = query.collocation_method || "frequency";
-    return method === "timeSeries" || method === "wordMap" ? "senses" : method;
+    if (method === "timeSeries" || method === "wordMap") return "senses";
+    return method === "senseTree" || method === "sensePeriods" ? "senseOverview" : method;
 }
 const filterList = ref([]);
 const stopwordsMissing = ref(false);
@@ -363,7 +332,7 @@ function updateCollocationUrl() {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
-    if (["senses", "senseTree", "sensePeriods", "senseOverview"].includes(mode.value)) {
+    if (["senses", "senseOverview"].includes(mode.value)) {
         delete urlParams.similarity_by;
         delete urlParams.time_series_interval;
     }
@@ -488,16 +457,6 @@ watch(
                 wordSensesRef.value?.runDetection();
                 return;
             }
-            if (newMode === "senseTree") {
-                await nextTick();
-                senseTreeRef.value?.runDetection();
-                return;
-            }
-            if (newMode === "sensePeriods") {
-                await nextTick();
-                sensePeriodsRef.value?.runDetection();
-                return;
-            }
             if (newMode === "senseOverview") {
                 await nextTick();
                 senseOverviewRef.value?.runDetection();
@@ -521,18 +480,12 @@ watch(
         primaryFetched.value = false;
         // A senses tab doesn't fetch them again: their collocates go, or Frequency, shown next, would fetch its
         // outliers as it mounts with them, and again once runPostFetchModeAction has the new ones
-        if (["senses", "senseTree", "sensePeriods", "senseOverview"].includes(newMode)) sortedList.value = [];
+        if (["senses", "senseOverview"].includes(newMode)) sortedList.value = [];
 
         // Refetch the right path for the active mode.
         if (newMode === "senses") {
             await nextTick();
             wordSensesRef.value?.runDetection();
-        } else if (newMode === "senseTree") {
-            await nextTick();
-            senseTreeRef.value?.runDetection();
-        } else if (newMode === "sensePeriods") {
-            await nextTick();
-            sensePeriodsRef.value?.runDetection();
         } else if (newMode === "senseOverview") {
             await nextTick();
             senseOverviewRef.value?.runDetection();
@@ -570,14 +523,6 @@ onMounted(async () => {
         case "senses":
             await nextTick();
             wordSensesRef.value?.runDetection();
-            break;
-        case "senseTree":
-            await nextTick();
-            senseTreeRef.value?.runDetection();
-            break;
-        case "sensePeriods":
-            await nextTick();
-            sensePeriodsRef.value?.runDetection();
             break;
         case "senseOverview":
             await nextTick();
