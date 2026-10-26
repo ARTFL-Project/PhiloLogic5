@@ -1,4 +1,4 @@
-"""The hitlist cleanup keeps the senses tabs' results for the database's load, up to a limit of room, the least recently
+"""The hitlist cleanup keeps the senses reports for the database's load, up to a limit of room, the least recently
 used going first past it, and removes every other file after 10 minutes (www/middleware.py)."""
 
 import datetime
@@ -32,8 +32,8 @@ def cutoff():
 
 def test_the_senses_results_are_told_by_their_names():
     assert is_senses_result("ab12.senses.json")
-    assert is_senses_result("ab12.membership.npz")
-    assert is_senses_result("ab12.periods-3.json")
+    assert not is_senses_result("ab12.membership.npz")
+    assert not is_senses_result("ab12.periods-3.json")
     assert not is_senses_result("ab12.hitlist")
     assert not is_senses_result("ab12.hitlist.done")
     assert not is_senses_result("ab12.colloc.json")
@@ -46,12 +46,12 @@ def test_old_files_go_but_the_senses_results_stay(tmp_path):
     flag = write(tmp_path, "a.hitlist.done", 1, old)
     fresh = write(tmp_path, "b.hitlist", 10, 5)
     report = write(tmp_path, "c.senses.json", 10, old)
-    membership = write(tmp_path, "c.membership.npz", 10, old)
+    membership = write(tmp_path, "c.membership.npz", 10, old)  # no longer written: an ordinary file
     periods = write(tmp_path, "c.periods-1.json", 10, old)
     clean_hitlist_dir(str(tmp_path), cutoff(), limit=1000)
     assert not hitlist.exists() and not flag.exists()
     assert fresh.exists()
-    assert report.exists() and membership.exists() and periods.exists()
+    assert report.exists() and not membership.exists() and not periods.exists()
 
 
 def test_past_the_limit_the_least_recently_used_results_go_first(tmp_path):
@@ -63,7 +63,7 @@ def test_past_the_limit_the_least_recently_used_results_go_first(tmp_path):
 
 
 def test_under_the_limit_nothing_of_the_senses_goes(tmp_path):
-    used = [write(tmp_path, f"{i}.periods-0.json", 100, 10**6) for i in range(3)]
+    used = [write(tmp_path, f"{i}.senses.json", 100, 10**6) for i in range(3)]
     clean_hitlist_dir(str(tmp_path), cutoff(), limit=300)
     assert all(p.exists() for p in used)
 
