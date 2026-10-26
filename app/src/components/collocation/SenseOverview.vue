@@ -456,7 +456,7 @@ function about(node) {
     return parts.join(" ");
 }
 
-// ---- A word looked for, as in the sense tree tab ----
+// ---- A word looked for, as in the Word senses tab ----
 const searchable = computed(() => searchableWords(nodes.value));
 const found = computed(() => findWord(nodes.value, search.value, queryWord.value));
 
@@ -546,7 +546,7 @@ function openSenseWord(node, w, group) {
 function openExamples(node) {
     if (!node.examples?.length) return;
     openPassages(`${queryWord.value} · ${t("wordSenses.senseN", { n: node.sense })}`,
-        node.examples.slice(0, EXAMPLES).map((e) => e.hit), t("wordSenses.examplesNote"));
+        node.examples.slice(0, EXAMPLES).map((e) => e.hit), t("senseOverview.examplesNote"));
 }
 </script>
 

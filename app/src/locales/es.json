@@ -250,6 +250,7 @@
         "firstView": "Volver a la primera vista",
         "restShort": "el resto",
         "restExplained": "El resto de las oraciones, una vez separados los sentidos de al lado: no se desprende de ellas ningún sentido claro.",
+        "examplesNote": "Las oraciones más claramente en este sentido, las más claras primero.",
         "chart": "Los sentidos de «{word}»: su árbol, y su parte de las oraciones a lo largo de los años",
         "rowPeak": "Su parte de las oraciones de la palabra alcanza su máximo hacia {year} ({share}).",
         "views": "Vista",

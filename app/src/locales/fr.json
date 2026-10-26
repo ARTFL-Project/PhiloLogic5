@@ -250,6 +250,7 @@
         "firstView": "Revenir à la première vue",
         "restShort": "le reste",
         "restExplained": "Le reste des phrases, une fois séparés les sens à côté : aucun sens clair ne s'en dégage.",
+        "examplesNote": "Les phrases les plus nettement dans ce sens, les plus nettes d'abord.",
         "chart": "Les sens de « {word} » : leur arbre, et leur part des phrases au fil des années",
         "rowPeak": "Sa part des phrases du mot culmine vers {year} ({share}).",
         "views": "Vue",

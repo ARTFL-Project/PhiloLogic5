@@ -250,6 +250,7 @@
         "firstView": "Back to the first view",
         "restShort": "the rest",
         "restExplained": "The rest of the sentences, once the senses beside it are split off: no clear sense emerges in it.",
+        "examplesNote": "The sentences most clearly in this sense, the clearest first.",
         "chart": "The senses of “{word}”: their tree, and their share of the sentences over the years",
         "rowPeak": "Its share of the word's sentences is highest around {year} ({share}).",
         "views": "View",
