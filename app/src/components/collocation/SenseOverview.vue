@@ -16,7 +16,7 @@
                     <InfoButton :label="$t('senseOverview.howToRead')">
                         <span class="d-block mb-1">{{ $t("senseOverview.treeExplained") }}</span>
                         <span class="d-block mb-1">{{ $t("senseOverview.timeExplained") }}</span>
-                        <span class="d-block">{{ $t("senseOverview.periodsExplained") }}</span>
+                        <span class="d-block">{{ $t("senseOverview.clickExplained") }}</span>
                     </InfoButton>
                 </h2>
 
@@ -27,7 +27,7 @@
                         min="0" :max="splits.length" step="1" :aria-valuetext="detailText" />
                     <span class="small text-muted" aria-hidden="true">{{ $t("wordSenses.finer") }}</span>
                     <button type="button" class="btn btn-sm btn-link p-0" :disabled="position === defaultPosition"
-                        @click="position = defaultPosition">{{ $t("senseTree.firstView") }}</button>
+                        @click="position = defaultPosition">{{ $t("senseOverview.firstView") }}</button>
                     <span class="small text-muted" aria-live="polite">{{ detailText }}</span>
                     <span class="find d-flex align-items-center gap-1 flex-wrap">
                         <label for="sense-overview-find" class="small fw-semibold mb-0">{{ $t("wordSenses.findWord") }}</label>
@@ -40,7 +40,6 @@
                 </div>
                 <p v-if="search.trim()" class="small mb-1" aria-live="polite">{{ foundText }}</p>
                 <p v-if="!time" class="small text-muted mb-1">{{ $t("wordSenses.noTime") }}</p>
-                <p class="visually-hidden" aria-live="polite">{{ periodsStatus }}</p>
 
                 <!-- On a narrow screen, the tree and the years take turns -->
                 <div v-if="!wide && time" class="nav nav-tabs mb-2" role="tablist" :aria-label="$t('senseOverview.views')">
@@ -51,8 +50,7 @@
                 </div>
 
                 <!-- The senses, one on each row: the tree and the senses' names on the left half; on the right half, how the
-                     word's sentences divide between them over the years, each sense a layer in the rows' order, cut into
-                     its periods -->
+                     word's sentences divide between them over the years, each sense a layer in the rows' order -->
                 <div id="sense-overview-chart" ref="box" class="overview"
                     :class="{ wide, 'with-tree': showTree, 'time-only': showTime && !showTree }"
                     :role="wide || !time ? null : 'tabpanel'"
@@ -77,7 +75,7 @@
                                 @click="select(row)" @mouseenter="pointed = row.id" @mouseleave="pointed = null"
                                 @focus="pointed = row.id" @blur="pointed = null">
                                 <span class="swatch" aria-hidden="true"></span>
-                                <span class="name">{{ row.sense ? $t("wordSenses.senseN", { n: row.sense }) : $t("senseTree.restShort") }}</span>
+                                <span class="name">{{ row.sense ? $t("wordSenses.senseN", { n: row.sense }) : $t("senseOverview.restShort") }}</span>
                                 <span class="sep"> · </span>
                                 <!-- Beside the tree, the share is on the sense's branch: here it is for screen readers -->
                                 <span class="what"><span class="share">{{ percent(row.share) }}<span v-if="row.sense"
@@ -94,8 +92,6 @@
                         <path v-for="layer in stack.layers" :key="layer.node.id" class="layer" :d="layer.path"
                             :fill="senseColor(layer.node.sense, 1)" @click="select(layer.node)"
                             @mouseenter="pointed = layer.node.id" @mouseleave="pointed = null" />
-                        <line v-for="tick in stack.ticks" :key="tick.key" class="period-tick" :x1="tick.x" :x2="tick.x"
-                            :y1="tick.y0" :y2="tick.y1" :stroke="senseInk(tick.sense, shades)" />
                         <template v-if="stack.marked">
                             <path class="layer-mark-halo" :d="stack.marked.path" />
                             <path class="layer-mark" :d="stack.marked.path" />
@@ -118,13 +114,13 @@
                 </div>
             </div>
 
-            <!-- A sense picked: its words, and its periods in full -->
+            <!-- A sense picked: its words, and its clearest example sentences -->
             <section v-if="selected" id="sense-overview-panel" class="card shadow-sm p-3 mb-3 selected-sense"
                 :style="{ borderLeft: `4px solid ${senseColor(selected.sense, 1)}` }" aria-labelledby="sense-overview-panel-title">
                 <h3 id="sense-overview-panel-title" class="h6 mb-2">
                     <span class="legend-swatch" :style="{ backgroundColor: senseColor(selected.sense, 1) }" aria-hidden="true"></span>
                     <span :style="{ color: senseTextColor(selected.sense, shades) }">{{ selected.sense
-                        ? $t("wordSenses.senseN", { n: selected.sense }) : $t("senseTree.restShort") }}</span>
+                        ? $t("wordSenses.senseN", { n: selected.sense }) : $t("senseOverview.restShort") }}</span>
                     {{ " " }}<span class="fw-normal text-muted">&middot; {{ $t("wordSenses.shareOfSentences",
                         { share: percent(selected.share) }) }}</span>
                 </h3>
@@ -138,19 +134,11 @@
                     <button v-for="w in selected.after.slice(0, 4)" :key="`a-${w.word}`" type="button" class="word-chip"
                         :disabled="!w.hits?.length" @click="openSenseWord(selected, w, 2)">{{ wordText(w, 2) }}</button>
                 </p>
-                <p v-if="!selected.sense" class="small text-muted mb-0">{{ $t("senseTree.restExplained") }}</p>
-                <template v-else-if="time">
-                    <p v-if="periodsById[selected.id] === undefined" class="small text-muted mb-0">{{ $t("senseOverview.periodsLoading") }}</p>
-                    <p v-else-if="periodsById[selected.id] === null" class="small text-muted mb-0">{{ $t("senseOverview.noPeriods") }}</p>
-                    <template v-else>
-                        <p class="small text-muted mb-1">{{ periodsById[selected.id].periods.length > 1
-                            ? $t("sensePeriods.nPeriods", { n: periodsById[selected.id].periods.length })
-                            : $t("sensePeriods.onePeriod") }}</p>
-                        <PeriodColumns :periods="periodsById[selected.id].periods" :sense="selected.sense" :shades="shades"
-                            :query-word="queryWord" @word="(p, w) => openPeriodWord(selected, p, w)"
-                            @work="(p, w) => openPeriodWork(selected, p, w)" />
-                    </template>
-                </template>
+                <p v-if="!selected.sense" class="small text-muted mb-0">{{ $t("senseOverview.restExplained") }}</p>
+                <p v-if="selected.sense" class="mb-0">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" :disabled="!selected.examples?.length"
+                        @click="openExamples(selected)">{{ $t("wordSenses.examples") }} &rarr;</button>
+                </p>
             </section>
         </div>
 
@@ -171,8 +159,7 @@ import { debug, paramsFilter } from "../../utils.js";
 import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import ProgressSpinner from "../ProgressSpinner";
 import InfoButton from "./InfoButton.vue";
-import PeriodColumns, { periodWord, periodYears } from "./PeriodColumns.vue";
-import { senseColor as colorOf, senseInk, senseShades, senseTextColor } from "./senseColors.js";
+import { senseColor as colorOf, senseShades, senseTextColor } from "./senseColors.js";
 import { findWord, inSense, searchableWords } from "./senseSearch.js";
 import { useKeptTab } from "./keptTab.js";
 
@@ -190,7 +177,6 @@ const { wanted, giveFilters } = useKeptTab(emit, result, loading);
 const position = ref(0); // how many distinctions are shown, the most important first
 const selected = ref(null);
 const search = ref("");
-const periodsById = ref({}); // each sense's periods once fetched (null: too few works to cut)
 let fetchToken = 0;
 
 const queryWord = computed(() => (formData.value.q || "").replace(/lemma:/g, "").replace(/"/g, "").trim());
@@ -211,7 +197,6 @@ function runDetection() {
     failed.value = false;
     result.value = null;
     selected.value = null;
-    periodsById.value = {};
     $http
         .get(`${$dbUrl}/scripts/get_word_senses.py`, { params })
         .then((response) => {
@@ -453,23 +438,11 @@ const stack = computed(() => {
         const up = xs.map((x, i) => `${x} ${bottom[i].toFixed(1)}`).reverse();
         return { node, top, bottom, path: `M ${down.join(" L ")} L ${up.join(" L ")} Z` };
     });
-    // A period's cut, across its sense's layer, between the last year of one period and the first of the next
-    const ticks = [];
-    layers.forEach(({ node, top, bottom }) => {
-        const entry = periodsById.value[node.id];
-        if (!entry || entry.periods.length < 2) return;
-        entry.periods.slice(1).forEach((p, j) => {
-            const cut = (entry.periods[j].end + p.start) / 2;
-            const i = Math.min(n - 1, Math.max(0, Math.round(cut - start)));
-            if (bottom[i] - top[i] < 1) return;
-            ticks.push({ key: `${node.id}-${p.start}`, sense: node.sense, x: xYear(cut), y0: top[i], y1: bottom[i] });
-        });
-    });
     const markedId = pointed.value ?? selected.value?.id;
-    return { layers, ticks, marked: layers.find((l) => l.node.id === markedId) || null };
+    return { layers, marked: layers.find((l) => l.node.id === markedId) || null };
 });
 
-// What the drawing of a row tells, in words: when the sense is most used, and its periods
+// What the drawing of a row tells, in words: when the sense is most used
 function about(node) {
     const values = time.value?.share.value[node.id] || [];
     const parts = [];
@@ -480,50 +453,10 @@ function about(node) {
         });
         parts.push(t("senseOverview.rowPeak", { year: time.value.start + best, share: percent(values[best]) }));
     }
-    const entry = periodsById.value[node.id];
-    if (entry && entry.periods.length > 1) {
-        parts.push(t("senseOverview.rowPeriods", { periods: entry.periods.map((p) => periodYears(p)).join(", ") }));
-    } else if (entry && entry.periods.length === 1) {
-        parts.push(t("sensePeriods.onePeriod"));
-    }
     return parts.join(" ");
 }
 
-// ---- The periods of the senses shown: fetched once each, after the rows are drawn ----
-let periodsTimer = null;
-const periodsPending = ref(false);
-
-function fetchPeriods() {
-    if (!time.value) return;
-    const wanted = rows.value.filter((n) => n.sense && periodsById.value[n.id] === undefined);
-    if (!wanted.length) return;
-    const query = fetchToken;
-    periodsPending.value = true;
-    $http
-        .get(`${$dbUrl}/scripts/get_sense_periods.py`, {
-            params: { ...paramsFilter(formData.value), nodes: wanted.map((n) => n.id).join(",") },
-        })
-        .then((response) => {
-            if (query !== fetchToken) return;
-            const got = { ...periodsById.value };
-            for (const n of wanted) got[n.id] = null; // asked for, not cut: too few works
-            for (const s of response.data?.senses || []) got[s.id] = s;
-            periodsById.value = got;
-        })
-        .catch((error) => debug({ $options: { name: "sense-overview" } }, error))
-        .finally(() => {
-            if (query === fetchToken) periodsPending.value = false;
-        });
-}
-
-const periodsStatus = computed(() => (periodsPending.value ? t("senseOverview.periodsLoading") : ""));
-
-watch([result, position], () => {
-    clearTimeout(periodsTimer);
-    periodsTimer = setTimeout(fetchPeriods, result.value && Object.keys(periodsById.value).length ? 300 : 0);
-});
-
-// ---- A word looked for, as in the sense tree tab ----
+// ---- A word looked for, as in the Word senses tab ----
 const searchable = computed(() => searchableWords(nodes.value));
 const found = computed(() => findWord(nodes.value, search.value, queryWord.value));
 
@@ -540,7 +473,10 @@ const foundText = computed(() => {
 
 // ---- Words and senses ----
 function wordText(w, group = w.group) {
-    return periodWord({ ...w, group }, queryWord.value);
+    if (w.phrase) return w.phrase;
+    if (group === 1) return `${w.word} ${queryWord.value}`;
+    if (group === 2) return `${queryWord.value} ${w.word}`;
+    return w.word;
 }
 
 // A sense's name in the tree: its first four words; with fewer, the words just before and after the query word make up
@@ -596,6 +532,9 @@ async function openPassages(groupName, hits, note) {
     }
 }
 
+// As many examples as the Word senses tab shows at a time
+const EXAMPLES = 25;
+
 function openSenseWord(node, w, group) {
     if (!w.hits?.length) return;
     const text = wordText(w, group);
@@ -603,17 +542,11 @@ function openSenseWord(node, w, group) {
         t("wordSenses.wordExamplesNote", { word: text }));
 }
 
-function openPeriodWord(node, p, w) {
-    if (!w.hits?.length) return;
-    const name = `${t("wordSenses.senseN", { n: node.sense })} · ${periodYears(p)}`;
-    openPassages(`${queryWord.value} · ${name} · “${wordText(w)}”`, w.hits,
-        t("sensePeriods.wordNote", { word: wordText(w), years: periodYears(p) }));
-}
-
-function openPeriodWork(node, p, w) {
-    const name = `${t("wordSenses.senseN", { n: node.sense })} · ${periodYears(p)}`;
-    const work = [w.author, w.title].filter(Boolean).join(", ");
-    openPassages(`${queryWord.value} · ${name} · ${work}`, w.hits, t("sensePeriods.workNote", { years: periodYears(p) }));
+// The sense's sentences, the most clearly in it first
+function openExamples(node) {
+    if (!node.examples?.length) return;
+    openPassages(`${queryWord.value} · ${t("wordSenses.senseN", { n: node.sense })}`,
+        node.examples.slice(0, EXAMPLES).map((e) => e.hit), t("senseOverview.examplesNote"));
 }
 </script>
 
@@ -803,13 +736,6 @@ function openPeriodWork(node, p, w) {
     stroke-width: 2;
 }
 
-/* A period's cut, white or dark, whichever stands out from its sense's color */
-.period-tick {
-    stroke-width: 1.5;
-    stroke-dasharray: 3 3;
-    pointer-events: none;
-}
-
 /* ---- The years above the rows ---- */
 .years-row {
     margin-bottom: 0.2rem;
@@ -882,7 +808,6 @@ function openPeriodWork(node, p, w) {
         stroke: Canvas;
     }
 
-    .period-tick,
     .trunk,
     .branch,
     .branch-casing {

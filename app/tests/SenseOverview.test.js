@@ -15,7 +15,7 @@ const senses = {
     n_hits: 120, n_sentences: 100, n_works: 30, detail: 1, finest: 0.1, filter_list: [],
     nodes: [
         node(0, null, [1, 2], 1, { split: { relative: 1, z: 3, importance: 1, seed: { word: "loi", group: 0 } } }),
-        node(1, 0, [], 0.6, { sense: "1", rank: 1, words: ["peuple", "nation", "loi", "roi", "assemblée"].map(word) }),
+        node(1, 0, [], 0.6, { sense: "1", rank: 1, examples: [{ hit: "7" }, { hit: "8" }], words: ["peuple", "nation", "loi", "roi", "assemblée"].map(word) }),
         node(2, 0, [], 0.4, {
             sense: "2", rank: 2, words: [word("astre"), word("globe")], before: [word("grande")], after: [word("globe"), word("céleste")],
         }),
@@ -24,19 +24,6 @@ const senses = {
         start: 1700, end: 1900, sentences: flat(201, 1), works: flat(201, 1),
         share: { smoothness: 1, value: [flat(201, 1), flat(201, 0.6), flat(201, 0.4)], low: [], high: [] }, rate: null,
     },
-};
-
-const periods = {
-    n_hits: 120, n_sentences: 100, n_works: 30, nodes: senses.nodes,
-    senses: [
-        {
-            id: 1, sense: "1", tried: [[2, true], [3, false]],
-            periods: [
-                { start: 1700, end: 1790, sentences: 50, works: 15, authors: 12, characteristic: [{ word: "étrange", group: 0, ratio: 5, hits: [1] }], representative: [] },
-                { start: 1791, end: 1900, sentences: 50, works: 15, authors: 13, new: [{ word: "assemblée", group: 0, ratio: 4, corpus: 1.2, hits: [5] }], fading: [], representative: [] },
-            ],
-        },
-    ],
 };
 
 // jsdom lays nothing out: the box's width and every element's height are given, the rest measures as zero
@@ -54,7 +41,7 @@ afterAll(() => {
 });
 
 async function loaded() {
-    const http = createMockHttp({ "get_word_senses.py": senses, "get_sense_periods.py": periods, "get_sense_passages.py": { passages: [] } });
+    const http = createMockHttp({ "get_word_senses.py": senses, "get_sense_passages.py": { passages: [] } });
     const global = createGlobalConfig({
         http,
         route: { name: "collocation", path: "/collocation", query: { q: "lemma:révolution", report: "collocation" } },
@@ -73,7 +60,7 @@ async function loaded() {
 }
 
 describe("SenseOverview", () => {
-    it("draws the tree with each sense's course over the years, cut into its periods", async () => {
+    it("draws the tree with each sense's course over the years", async () => {
         const { wrapper, http } = await loaded();
         expect(wrapper.find(".overview").classes()).toContain("wide");
         const rows = wrapper.findAll(".sense-rows .sense-row");
@@ -81,10 +68,8 @@ describe("SenseOverview", () => {
         expect(rows[0].find("button.sense-name").text()).toContain("Sense 1");
         expect(wrapper.findAll(".stack .layer")).toHaveLength(2); // one layer for each row, in their order
         expect(wrapper.findAll(".tree .branch")).toHaveLength(2);
-        const call = http.get.mock.calls.find(([url]) => url.includes("get_sense_periods.py"));
-        expect(call[1].params.nodes).toBe("1,2");
-        expect(wrapper.findAll(".stack .period-tick")).toHaveLength(1); // sense 1's two periods
-        expect(wrapper.find(".period-word").exists()).toBe(false); // the opened sense lists the words
+        expect(http.get.mock.calls.some(([url]) => url.includes("get_sense_periods.py"))).toBe(false);
+        expect(wrapper.find(".period-tick").exists()).toBe(false);
         expect(wrapper.find('[role="tablist"]').exists()).toBe(false); // wide: the tree and the years side by side
         wrapper.unmount();
     });
@@ -117,13 +102,13 @@ describe("SenseOverview", () => {
         wrapper.unmount();
     });
 
-    it("says in words what the layers and the periods draw", async () => {
+    it("says in words what the layers draw", async () => {
         const { wrapper } = await loaded();
         const name = wrapper.findAll("button.sense-name")[0];
         const about = wrapper.find(`#${name.attributes("aria-describedby")}`);
         expect(about.classes()).toContain("visually-hidden");
         expect(about.text()).toContain("highest around 1700 (60%)");
-        expect(about.text()).toContain("Periods: 1700–1790, 1791–1900.");
+        expect(about.text()).not.toContain("Periods");
         expect(wrapper.findAll(".stack, .tree, .years-row").every((e) => e.attributes("aria-hidden") === "true")).toBe(true);
         wrapper.unmount();
     });
@@ -157,8 +142,8 @@ describe("SenseOverview", () => {
         wrapper.unmount();
     });
 
-    it("opens a sense's words and periods, and keeps the explanation in a popover", async () => {
-        const { wrapper } = await loaded();
+    it("opens a sense's words and a way to its examples, and keeps the explanation in a popover", async () => {
+        const { wrapper, http } = await loaded();
         expect(wrapper.find(".info-pop").exists()).toBe(false);
         await wrapper.find(".info-button").trigger("click");
         expect(wrapper.find(".info-pop").text()).toContain("The tree of the senses: each branch is a sense");
@@ -174,11 +159,16 @@ describe("SenseOverview", () => {
         expect(names()[0].attributes("aria-controls")).toBe("sense-overview-panel");
         const panel = wrapper.find("#sense-overview-panel");
         expect(panel.text()).toContain("peuple");
-        expect(panel.findAll(".period")).toHaveLength(2);
-        expect(panel.text()).toContain("2 periods");
+        expect(panel.text()).not.toContain("periods");
+        const examples = panel.find("button.btn");
+        expect(examples.text()).toContain("Clearest examples");
+        await examples.trigger("click");
+        await flushPromises();
+        const call = http.get.mock.calls.find(([url]) => url.includes("get_sense_passages.py"));
+        expect(call[1].params.hits).toBe("7,8");
         await names()[1].trigger("click");
         expect(names()[0].attributes("aria-expanded")).toBe("false");
-        expect(wrapper.find(".selected-sense").text()).toContain("Too few dated works");
+        expect(wrapper.find(".selected-sense button.btn").attributes("disabled")).toBeDefined(); // sense 2 has none
         expect(wrapper.find(".info-pop").exists()).toBe(false); // the click elsewhere closed it
         wrapper.unmount();
     });
