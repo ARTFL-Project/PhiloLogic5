@@ -135,21 +135,20 @@ class CORSMiddleware:
         resp.set_header("Access-Control-Allow-Origin", origin)
 
 
-# The senses tabs' results (a query's senses report, which of its sentences are in each sense, and the senses' periods:
-# <hash>.senses.json, <hash>.membership.npz, <hash>.periods-<n>.json) cost seconds to minutes to compute and take little
-# room: they are kept for the database's load rather than 10 minutes, up to this many bytes for each database, those
-# used least recently going first past it (a result read again is marked as just used: see word_senses._touch)
+# The senses reports (<hash>.senses.json) cost seconds to minutes to compute and take little room: they are kept for the
+# database's load rather than 10 minutes, up to this many bytes for each database, those used least recently going first
+# past it (a report read again is marked as just used: see word_senses._touch)
 SENSES_RESULTS_LIMIT = 10 * 10**9
 
 
 def is_senses_result(name):
-    """Whether a file of a hitlist directory is one of the senses tabs' results"""
-    return name.endswith((".senses.json", ".membership.npz")) or (".periods-" in name and name.endswith(".json"))
+    """Whether a file of a hitlist directory is a senses report"""
+    return name.endswith(".senses.json")
 
 
 class CleanupMiddleware:
-    """Opportunistic hitlist cleanup (1-in-10 chance per request): files more than 10 minutes old, but the senses tabs'
-    results (see SENSES_RESULTS_LIMIT), and the directories of the database's earlier loads (see
+    """Opportunistic hitlist cleanup (1-in-10 chance per request): files more than 10 minutes old, but the senses
+    reports (see SENSES_RESULTS_LIMIT), and the directories of the database's earlier loads (see
     philologic.runtime.hitlist_dir) once they are left empty."""
 
     def process_response(self, req, resp, resource, req_succeeded):
@@ -181,7 +180,7 @@ class CleanupMiddleware:
 
 
 def clean_hitlist_dir(directory, cutoff, limit=SENSES_RESULTS_LIMIT):
-    """Removes the files of a load's hitlist directory last modified before cutoff, but the senses tabs' results, which
+    """Removes the files of a load's hitlist directory last modified before cutoff, but the senses reports, which
     stay until they take more than limit bytes: then those used least recently go first, until they take no more."""
     try:
         entries = list(os.scandir(directory))
