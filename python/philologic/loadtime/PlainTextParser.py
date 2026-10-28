@@ -134,6 +134,7 @@ class PlainTextParser:
                     word = word.replace(" ", "")
                     if word:
                         if self.defined_words_to_index is True and word not in self.words_to_index:
+                            start_byte += len(word_in_utf8)
                             continue
                         self.v.push("word", word, start_byte)
                         if self.lemmas is not None:
