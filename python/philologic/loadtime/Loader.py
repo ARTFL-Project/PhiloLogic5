@@ -904,7 +904,7 @@ class Loader:
         ):
             new_file_path = os.path.join(self.textdir, os.path.basename(f).replace(" ", "_").replace("'", "_"))
             shutil.copy2(f, new_file_path)
-            os.chmod(new_file_path, 775)
+            os.chmod(new_file_path, 0o775)
             self.filenames.append(f)
         os.system(f"chmod -R 775 {self.textdir}")
         print("Copying files to database directory... done.", flush=True)
