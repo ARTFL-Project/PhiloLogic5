@@ -289,15 +289,14 @@ let modalInstance = null;
 let passagesFetchToken = 0;
 
 function onViewPassages(item, field) {
-    const [name, , explainers] = item;
+    const [name, , explainers, weights] = item;
     const escapedValue = quoteMetadataValue(name);
     modal.value = {
         groupName: name,
         field,
         value: escapedValue,
-        // explainers from GroupRanking are bare words (no z); endpoint accepts
-        // signature_weights optional and falls back to unweighted coverage if absent.
-        signature: (explainers || []).map((w) => ({ word: w, z: null })),
+        // Each explainer with its z-score, which weighs it in the passages' scores
+        signature: (explainers || []).map((w, i) => ({ word: w, z: weights?.[i] ?? null })),
         passages: [],
         loading: true,
         hasMore: false,
@@ -336,6 +335,7 @@ async function fetchPassages({ append }) {
             restrict_to_field: modal.value.field,
             restrict_to_value: modal.value.value,
             signature_tokens: modal.value.signature.map((s) => s.word).join(","),
+            signature_weights: modal.value.signature.map((s) => s.z).join(","),
             top_n: modal.value.pageSize,
             offset: modal.value.offset,
         };

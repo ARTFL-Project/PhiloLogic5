@@ -42,6 +42,10 @@
                                         <citations :citation="p.citation" :result-number="i + 1"></citations>
                                     </span>
                                 </div>
+                                <!-- the sum of the z-scores of the signature collocates it contains, which orders it -->
+                                <div v-if="typeof p.score === 'number'" class="col-auto passage-score">
+                                    {{ $t('distinctivePassages.score', { score: p.score.toFixed(1) }) }}
+                                </div>
                             </div>
                             <p v-if="p.note" class="passage-note mx-3 mt-2 mb-0">{{ p.note }}</p>
                             <div class="row">
@@ -138,6 +142,13 @@ onBeforeUnmount(() => {
     border-radius: 0.5rem;
     color: theme.$link-color;
     font-size: 0.85rem;
+}
+
+.passage-score {
+    align-self: center;
+    padding: 0 0.75rem;
+    font-size: 0.85rem;
+    color: #495057;
 }
 
 .passage-note {
