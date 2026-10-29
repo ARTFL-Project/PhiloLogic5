@@ -72,6 +72,9 @@
                     <input id="min-hits-input" type="number" class="form-control form-control-sm"
                         style="width: 3.75rem" min="1" max="100" step="1" v-model.number="minHits"
                         @input="onMinHitsChange" />
+                    <InfoButton class="ms-auto" :label="$t('collocation.distinctiveScoresHow')">
+                        {{ $t('collocation.distinctiveScoresExplained') }}
+                    </InfoButton>
                 </div>
                 <div class="visually-hidden" role="status" aria-live="polite" aria-atomic="true">
                     {{ outlierStatus }}
@@ -95,7 +98,7 @@
                             :explainer-label="$t('collocation.distinctiveCollocates')"
                             :select-aria-label-prefix="$t('collocation.compareTo')"
                             :region-aria-label="$t('collocation.outlierResults', { field: panel.label })"
-                            :format-score="(n) => n.toFixed(1)"
+                            :format-score="(n) => `${n.toFixed(2)}×`"
                             :score-label="$t('collocation.distinctiveScore')"
                             :enable-view-passages="true"
                             :view-passages-label="$t('distinctivePassages.viewFor')"
@@ -133,6 +136,7 @@ import DistinctivePassagesModal from "../DistinctivePassagesModal.vue";
 import GroupRanking from "../GroupRanking.vue";
 import ProgressSpinner from "../ProgressSpinner";
 import WordCloud from "../WordCloud.vue";
+import InfoButton from "./InfoButton.vue";
 
 const props = defineProps({
     sortedList: { type: Array, required: true },

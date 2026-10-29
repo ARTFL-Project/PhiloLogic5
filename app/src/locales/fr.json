@@ -220,6 +220,8 @@
         "similarNeedsFilter": "L'usage similaire trouve les groupes qui emploient vos termes de recherche le plus comme une partie du corpus : filtrez votre recherche (par auteur, titre, date…) pour choisir cette partie.",
         "distinctiveScore": "score de distinction",
         "similarityScore": "similarité",
+        "distinctiveScoresHow": "Ce que mesurent les scores",
+        "distinctiveScoresExplained": "Combien de fois les collocations d'un groupe sont plus distinctives que ce qui est typique des groupes de sa taille ici (1× est typique). Le caractère distinctif additionne les scores z des collocations distinctives du groupe, listées sous son nom, par rapport au reste des résultats (log-odds avec un a priori informatif, Monroe et al. 2008), en ne comptant que les collocations présentes dans au moins deux œuvres, ce qui écarte les noms propres et les mots isolés. L'avance d'un petit groupe est moins sûre : elle est ramenée vers le typique.",
         "collocatesTable": "Tableau de fréquence des collocants",
         "noCollocates": "Aucun collocatif de ces occurrences ne reste une fois les mots filtrés écartés.",
         "collocatesTableCaption": "Tableau montrant les collocants et leurs nombres de fréquence. Cliquez sur n'importe quelle ligne pour voir les concordances.",

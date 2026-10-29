@@ -1,8 +1,10 @@
 """Identify outlier groups (e.g. titles, authors) in a map_field collocation cache.
 
-Each group is scored by fightin' words z-scores against the rest of the corpus.
-The outlier score is the sum of the top-k positive z-scores -- captures both
-breadth (how many distinctively over-used collocates) and strength. Each outlier
+Each group's distinctiveness is the sum of its top-k positive fightin' words z-scores against the rest of the corpus
+-- captures both breadth (how many distinctively over-used collocates) and strength -- counting only the collocates
+found in more than one work: the others are names and words used once, which every group of a work has. As z grows with
+the evidence, bigger groups have more of it for the same lean: the outlier score is how far a group's distinctiveness
+rises above that typical of groups of its size (see size_neutral_scores), as a ratio (1 is typical). Each outlier
 is [name, score, explainers, their z-scores]: the z-scores weigh the explainers
 in the group's representative passages (get_representative_passages.py).
 """
@@ -14,6 +16,7 @@ import numpy as np
 from philologic.runtime.reports.collocation import (
     cache_file_path,
     fightin_words_zscores_vs_rest,
+    load_collocate_works,
     load_group_hits,
     load_map_field_cache,
     score_with_top_k_positive,
@@ -26,6 +29,7 @@ def get_outlier_groups(request, config):
     file_path = cache_file_path(config.db_path, request.file_path, ".npz")
     tids, counts, group_bounds, group_names, count_lemmas = load_map_field_cache(file_path)
     group_hits = load_group_hits(file_path)  # None for legacy caches
+    works = load_collocate_works(file_path)  # None for legacy caches: every collocate counts
 
     min_hits = whole_number("min_hits", request.min_hits, 10)
     top_n = whole_number("top_n", request.top_n, 50)
@@ -78,6 +82,8 @@ def get_outlier_groups(request, config):
         y_b = corpus_vec[g_tids] - y_a  # rest-of-corpus on the group's tids
 
         z = fightin_words_zscores_vs_rest(y_a, y_b, n_a, n_b)
+        if works is not None:
+            z = np.where(works[gs:ge] >= 2, z, -np.inf)  # a collocate of one work is no use of the group's
         score, exp_tids, exp_z = score_with_top_k_positive(z, g_tids, top_k, min_distinctive=1)
         if score == -np.inf:
             continue
@@ -85,10 +91,14 @@ def get_outlier_groups(request, config):
         explainer_tids[g] = exp_tids
         explainer_z[g] = exp_z
 
-    # Pick top-N eligible groups
-    ranked = [int(g) for g in np.argsort(scores)[::-1] if scores[g] != -np.inf][:top_n]
-    if not ranked:
+    # Pick top-N eligible groups, by how much more distinctive they are than their size makes typical (then by
+    # distinctiveness, when that can't be told)
+    scored = np.flatnonzero(scores != -np.inf)
+    if len(scored) == 0:
         return {"outliers": []}
+    above = size_neutral_scores(scores[scored], group_totals[scored])
+    ranked = scored[np.lexsort((-scores[scored], -above))][:top_n].tolist()
+    ratio = dict(zip(scored.tolist(), np.exp(above).tolist()))
 
     # Decode vocab strings only for the displayed explainers
     colloc_dir = os.path.join(config.db_path, "data", "collocations")
@@ -116,10 +126,28 @@ def get_outlier_groups(request, config):
     outliers = [
         (
             group_names[g],
-            round(float(scores[g]), 3),
+            round(ratio[g], 3),
             [display_word(int(t)) for t in explainer_tids[g]],
             [round(float(z), 3) for z in explainer_z[g]],
         )
         for g in ranked
     ]
     return {"outliers": outliers}
+
+
+def size_neutral_scores(scores, sizes):
+    """How far each group's score rises above the scores typical of groups of its size (sizes, its collocates), in log:
+    its distance to the least-squares line of the log scores on the log sizes, pulled toward the line as far as noise
+    could explain it (empirical Bayes). On average the squared distances are tau2 + c / size (least squares), tau2 the
+    spread of the groups' own leans and c / size the noise of a group of that size, and each distance is weighed by
+    tau2 / (tau2 + c / size): a small group's lead counts less. With fewer than 3 groups, or no spread beyond the
+    noise, no group can be told from its size's typical score: all are 0."""
+    x, y = np.log(sizes), np.log(scores)
+    if len(x) < 3:
+        return np.zeros(len(x))
+    slope, intercept = np.polyfit(x, y, 1) if np.ptp(x) > 0 else (0.0, float(y.mean()))
+    distance = y - (intercept + slope * x)
+    (tau2, c), *_ = np.linalg.lstsq(np.c_[np.ones_like(x), 1 / sizes], distance**2, rcond=None)
+    if tau2 <= 0:
+        return np.zeros(len(x))
+    return tau2 / (tau2 + max(c, 0.0) / sizes) * distance

@@ -220,6 +220,8 @@
         "similarNeedsFilter": "El uso similar encuentra los grupos que emplean sus términos de búsqueda de la manera más parecida a una parte del corpus: filtre su búsqueda (por autor, título, fecha…) para elegir esa parte.",
         "distinctiveScore": "puntuación de distinción",
         "similarityScore": "similitud",
+        "distinctiveScoresHow": "Qué miden las puntuaciones",
+        "distinctiveScoresExplained": "Cuántas veces más distintivas son las colocaciones de un grupo que lo típico de los grupos de su tamaño aquí (1× es lo típico). Lo distintivo suma las puntuaciones z de las colocaciones distintivas del grupo, listadas debajo, frente al resto de los resultados (log-odds con una distribución a priori informativa, Monroe et al. 2008), contando solo las colocaciones presentes en al menos dos obras, lo que deja fuera los nombres propios y las palabras aisladas. La ventaja de un grupo pequeño es menos segura, por lo que se acerca a lo típico.",
         "collocatesTable": "Tabla de frecuencia de colocaciones",
         "noCollocates": "No queda ningún colocado de estas ocurrencias una vez excluidas las palabras filtradas.",
         "collocatesTableCaption": "La Tabla muestra las colocaciones y el recuento de sus frecuencia. Pulsar sobre cualquier línea para visualizar concordancias.",

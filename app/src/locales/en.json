@@ -220,6 +220,8 @@
         "similarNeedsFilter": "Similar usage finds the groups that use your search terms most like a part of the corpus: filter your search (by author, title, date…) to choose that part.",
         "distinctiveScore": "distinctiveness score",
         "similarityScore": "similarity",
+        "distinctiveScoresHow": "What the scores mean",
+        "distinctiveScoresExplained": "How many times more distinctive a group's collocates are than is typical of groups of its size here (1× is typical). Distinctiveness adds up the z-scores of the group's distinctive collocates, listed under it, against the rest of the results (log-odds with an informative prior, Monroe et al. 2008), counting only collocates found in at least two works, which leaves out names and one-off words. A small group's lead is less certain, so it is pulled back toward the typical.",
         "collocatesTable": "Collocates frequency table",
         "noCollocates": "No collocates of these occurrences remain once the filtered words are left out.",
         "collocatesTableCaption": "Table showing collocates and their frequency counts. Click on any row to view concordances.",

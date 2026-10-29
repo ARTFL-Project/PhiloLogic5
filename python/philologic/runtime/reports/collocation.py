@@ -229,6 +229,23 @@ def _nb_gather_grouped(
 
 
 @numba.njit(cache=True)
+def _nb_works_counted(out_tokens, out_valid, hit_word_offsets, hit_docs, hit_order, vocab_size):
+    """The number of works (documents) each token is counted in: the words of the hits (see _nb_gather_grouped), taken
+    in hit_order, which puts the hits of each document together."""
+    works = np.zeros(vocab_size, dtype=np.int32)
+    last = np.full(vocab_size, -1, dtype=np.int64)
+    for h in hit_order:
+        doc = np.int64(hit_docs[h])
+        for w in range(hit_word_offsets[h], hit_word_offsets[h + 1]):
+            if out_valid[w]:
+                token = out_tokens[w]
+                if last[token] != doc:
+                    last[token] = doc
+                    works[token] += 1
+    return works
+
+
+@numba.njit(cache=True)
 def _nb_grouped_bincount(vg_sorted, vt_sorted, group_bounds, n_groups, max_tid):
     """Per-group bincount using a reusable counts buffer with dirty-list tracking.
 
@@ -516,6 +533,7 @@ def _vectorized_collocation(
     v_qp = np.ascontiguousarray(hit_q_pos[valid_mask])
     v_qe = np.ascontiguousarray(hit_q_end[valid_mask])
     v_gids = np.ascontiguousarray(hit_gids[valid_mask])
+    v_docs = np.ascontiguousarray(all_hits[match, 0][valid_mask])
 
     # Pre-compute per-hit word ranges
     lengths = (sent_offsets_arr[v_si + 1] - sent_offsets_arr[v_si]).astype(np.int64)
@@ -566,12 +584,16 @@ def _vectorized_collocation(
 
     # Per-group query-word hit counts (used by outlier scoring as a representativeness floor)
     group_hits = np.bincount(v_gids, minlength=n_groups).astype(np.int32)
+    # The number of works each collocate is counted in (outlier scoring leaves out those of one work: names...)
+    works = _nb_works_counted(
+        out_tokens, out_valid, hit_word_offsets, v_docs, np.argsort(v_docs, kind="stable"), count_vocab_size
+    )
 
     # Return raw numpy arrays — string decode is deferred to downstream scripts
     group_bounds = np.searchsorted(unique_gids, np.arange(n_groups + 1, dtype=np.int32))
     # Ensure group_names are strings (metadata values may be int, e.g. year)
     group_names = [str(n) for n in group_names]
-    return unique_tids, unique_counts, group_bounds, group_names, group_hits
+    return unique_tids, unique_counts, group_bounds, group_names, group_hits, works[unique_tids]
 
 def _filter_hashes(words):
     """The hashes of words, as the vocabularies have them (vocab_hashes.npy), sorted for _nb_build_filter"""
@@ -795,6 +817,7 @@ def collocation_results(request, config):
                 np.zeros(1, dtype=np.int64),
                 [],
                 np.empty(0, dtype=np.int32),
+                np.empty(0, dtype=np.int32),
             )
     else:
         result = _vectorized_collocation(
@@ -822,7 +845,7 @@ def collocation_results(request, config):
         collocation_object["collocates"] = all_collocates.most_common(100)
         collocation_object["file_path"] = file_path
     else:
-        unique_tids, unique_counts, group_bounds, group_names, group_hits = result
+        unique_tids, unique_counts, group_bounds, group_names, group_hits, works = result
         file_path = create_file_path(request, map_field, db.hitlist_dir, ext=".npz", filters=filters)
         save_map_field_cache(
             file_path,
@@ -832,6 +855,7 @@ def collocation_results(request, config):
             group_names,
             filters.count_lemmas,
             group_hits=group_hits,
+            works=works,
         )
         collocation_object["file_path"] = file_path
 
@@ -867,7 +891,7 @@ def atomic_pickle_dump(data, file_path):
 
 
 def save_map_field_cache(
-    file_path, unique_tids, unique_counts, group_bounds, group_names, count_lemmas, group_hits=None
+    file_path, unique_tids, unique_counts, group_bounds, group_names, count_lemmas, group_hits=None, works=None
 ):
     """Save map_field results as numpy arrays (no string decode, no pickle overhead)."""
     dir_path = os.path.dirname(file_path)
@@ -883,6 +907,8 @@ def save_map_field_cache(
             }
             if group_hits is not None:
                 arrays["group_hits"] = group_hits.astype(np.int32)
+            if works is not None:  # of each entry's collocate: the number of works it is counted in, in all groups
+                arrays["works"] = works.astype(np.int32)
             np.savez(f, **arrays)
         os.replace(tmp_path, file_path)
     except BaseException:
@@ -908,6 +934,15 @@ def load_group_hits(file_path):
     if "group_hits" not in data.files:
         return None
     return data["group_hits"]
+
+
+def load_collocate_works(file_path):
+    """Load, for each entry of a map_field cache, the number of works (documents) its collocate is counted in, in all
+    the groups, or None if absent (legacy cache)."""
+    data = np.load(file_path, allow_pickle=False)
+    if "works" not in data.files:
+        return None
+    return data["works"]
 
 
 def decode_group_collocates(tids, counts, group_bounds, group_index, db_path, count_lemmas):
