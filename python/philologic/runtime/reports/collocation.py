@@ -360,22 +360,23 @@ def score_with_top_k_positive(z, candidate_tids, top_k, min_distinctive=1):
 
     Take the tokens with z > 0, keep the top-k by z, sum their z-scores. The
     selected token ids are returned as explainers — the actual evidence behind
-    the score.
+    the score — with their z-scores.
 
-    Returns (score, explainer_tids):
+    Returns (score, explainer_tids, explainer_z):
       - score: float, sum of top-k positive z-scores, or -np.inf if fewer than
         min_distinctive tokens have positive z (caller can use this as a skip).
       - explainer_tids: int64 array of the corresponding token ids, in
         z-descending order, length min(top_k, n_positive).
+      - explainer_z: float64 array of their z-scores, in the same order.
     """
     pos_mask = z > 0
     n_positive = int(pos_mask.sum())
     if n_positive < min_distinctive:
-        return -np.inf, np.empty(0, dtype=np.int64)
+        return -np.inf, np.empty(0, dtype=np.int64), np.empty(0, dtype=np.float64)
     z_pos = z[pos_mask]
     t_pos = candidate_tids[pos_mask]
     order = np.argsort(z_pos)[::-1][:top_k]
-    return float(z_pos[order].sum()), t_pos[order].astype(np.int64)
+    return float(z_pos[order].sum()), t_pos[order].astype(np.int64), z_pos[order].astype(np.float64)
 
 
 def _vectorized_collocation(

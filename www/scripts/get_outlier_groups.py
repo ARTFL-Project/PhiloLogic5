@@ -2,7 +2,9 @@
 
 Each group is scored by fightin' words z-scores against the rest of the corpus.
 The outlier score is the sum of the top-k positive z-scores -- captures both
-breadth (how many distinctively over-used collocates) and strength.
+breadth (how many distinctively over-used collocates) and strength. Each outlier
+is [name, score, explainers, their z-scores]: the z-scores weigh the explainers
+in the group's representative passages (get_representative_passages.py).
 """
 
 import os
@@ -55,6 +57,7 @@ def get_outlier_groups(request, config):
     # giving the closed form below.
     scores = np.full(n_groups, -np.inf, dtype=np.float64)
     explainer_tids = [None] * n_groups
+    explainer_z = [None] * n_groups
 
     for g in range(n_groups):
         # Representativeness floor: minimum query-word hits in this group.
@@ -75,11 +78,12 @@ def get_outlier_groups(request, config):
         y_b = corpus_vec[g_tids] - y_a  # rest-of-corpus on the group's tids
 
         z = fightin_words_zscores_vs_rest(y_a, y_b, n_a, n_b)
-        score, exp_tids = score_with_top_k_positive(z, g_tids, top_k, min_distinctive=1)
+        score, exp_tids, exp_z = score_with_top_k_positive(z, g_tids, top_k, min_distinctive=1)
         if score == -np.inf:
             continue
         scores[g] = score
         explainer_tids[g] = exp_tids
+        explainer_z[g] = exp_z
 
     # Pick top-N eligible groups
     ranked = [int(g) for g in np.argsort(scores)[::-1] if scores[g] != -np.inf][:top_n]
@@ -114,6 +118,7 @@ def get_outlier_groups(request, config):
             group_names[g],
             round(float(scores[g]), 3),
             [display_word(int(t)) for t in explainer_tids[g]],
+            [round(float(z), 3) for z in explainer_z[g]],
         )
         for g in ranked
     ]
