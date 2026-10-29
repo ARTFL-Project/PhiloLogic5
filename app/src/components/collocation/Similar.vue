@@ -20,11 +20,14 @@
                         </li>
                     </ul>
                 </div>
-                <span class="ms-2">{{ $t("collocation.mostSimilarUsage") }}</span>
+                <!-- without metadata criteria, the collocates compared with are those of the whole corpus -->
+                <span class="ms-2">{{ biblio.length
+                    ? $t("collocation.mostSimilarUsage") : $t("collocation.mostSimilarUsageWholeCorpus") }}</span>
             </div>
 
-            <bibliography-criteria class="ms-2 mt-3" :biblio="biblio" :query-report="formData.report"
-                :results-length="resultsLength" :hide-criteria-string="true"></bibliography-criteria>
+            <bibliography-criteria v-if="biblio.length" class="ms-2 mt-3" :biblio="biblio"
+                :query-report="formData.report" :results-length="resultsLength"
+                :hide-criteria-string="true"></bibliography-criteria>
 
             <div class="mt-2" style="display: flex; align-items: center;" v-if="similarSearching">
                 <div class="alert alert-info p-1 mb-0 d-inline-block" style="width: fit-content" role="alert"

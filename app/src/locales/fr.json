@@ -217,6 +217,7 @@
         "senseOverview": "Sens en un coup d'œil (bêta)",
         "similarUsage": "Usage similaire",
         "mostSimilarUsage": "avec l'emploi le plus similaire à",
+        "mostSimilarUsageWholeCorpus": "avec l'emploi le plus similaire à celui de tout le corpus",
         "distinctiveScore": "score de distinction",
         "similarityScore": "similarité",
         "collocatesTable": "Tableau de fréquence des collocants",

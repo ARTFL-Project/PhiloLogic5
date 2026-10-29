@@ -217,6 +217,7 @@
         "senseOverview": "Senses at a glance (beta)",
         "similarUsage": "Similar Usage",
         "mostSimilarUsage": "with most similar usage to",
+        "mostSimilarUsageWholeCorpus": "with most similar usage to the whole corpus",
         "distinctiveScore": "distinctiveness score",
         "similarityScore": "similarity",
         "collocatesTable": "Collocates frequency table",
