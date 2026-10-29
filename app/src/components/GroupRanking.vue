@@ -13,7 +13,8 @@
                     @keydown.space.prevent="$emit('select', item[0])">
                     <!-- its name: what choosing it does, then what it shows (the spaces between, on their lines) -->
                     <span v-if="selectAriaLabelPrefix" class="visually-hidden">{{ selectAriaLabelPrefix }}</span> <span
-                        class="group-name">{{ item[0] }}</span> <span class="badge text-bg-secondary position-absolute"
+                        class="group-name">{{ item[0] }}</span> <span v-if="scoreLabel" class="visually-hidden">{{
+                        scoreLabel }}</span> <span class="badge text-bg-secondary position-absolute"
                         style="right: 1rem; top: 0.5rem">{{ formatScore(item[1]) }}</span>
                     <template v-if="item[2] && item[2].length > 0">
                         <br> <small class="explainer-line"><strong>{{ explainerLabel }}:</strong> {{ item[2].join(', ')
@@ -41,6 +42,8 @@ defineProps({
     regionAriaLabel: { type: String, default: "" },
     hiddenHeader: { type: String, default: "" },
     formatScore: { type: Function, default: (n) => n },
+    // What the score is, for screen readers (the badge only shows the number)
+    scoreLabel: { type: String, default: "" },
     embedded: { type: Boolean, default: false },
     enableViewPassages: { type: Boolean, default: false },
     viewPassagesLabel: { type: String, default: "View representative passages" },

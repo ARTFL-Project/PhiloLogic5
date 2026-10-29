@@ -217,6 +217,8 @@
         "senseOverview": "Sens en un coup d'œil (bêta)",
         "similarUsage": "Usage similaire",
         "mostSimilarUsage": "avec l'emploi le plus similaire à",
+        "distinctiveScore": "score de distinction",
+        "similarityScore": "similarité",
         "collocatesTable": "Tableau de fréquence des collocants",
         "noCollocates": "Aucun collocatif de ces occurrences ne reste une fois les mots filtrés écartés.",
         "collocatesTableCaption": "Tableau montrant les collocants et leurs nombres de fréquence. Cliquez sur n'importe quelle ligne pour voir les concordances.",

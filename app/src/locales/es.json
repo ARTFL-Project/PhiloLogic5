@@ -217,6 +217,8 @@
         "senseOverview": "Sentidos de un vistazo (beta)",
         "similarUsage": "Uso Similar",
         "mostSimilarUsage": "con el patrón mas similar de uso",
+        "distinctiveScore": "puntuación de distinción",
+        "similarityScore": "similitud",
         "collocatesTable": "Tabla de frecuencia de colocaciones",
         "noCollocates": "No queda ningún colocado de estas ocurrencias una vez excluidas las palabras filtradas.",
         "collocatesTableCaption": "La Tabla muestra las colocaciones y el recuento de sus frecuencia. Pulsar sobre cualquier línea para visualizar concordancias.",

@@ -96,6 +96,7 @@
                             :select-aria-label-prefix="$t('collocation.compareTo')"
                             :region-aria-label="$t('collocation.outlierResults', { field: panel.label })"
                             :format-score="(n) => n.toFixed(1)"
+                            :score-label="$t('collocation.distinctiveScore')"
                             :enable-view-passages="true"
                             :view-passages-label="$t('distinctivePassages.viewFor')"
                             @select="(name) => onOutlierSelect(name, panel.field)"

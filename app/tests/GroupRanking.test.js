@@ -22,4 +22,18 @@ describe("GroupRanking", () => {
         expect(button.text().replace(/\s+/g, " ")).toBe(`Comparative Collocation ${visible}`);
         wrapper.unmount();
     });
+
+    it("says what the score is to screen readers, before the number", () => {
+        const wrapper = mount(GroupRanking, {
+            props: {
+                items: [["Voltaire", 12.3, ["raison", "esprit"]]],
+                explainerLabel: "Top collocates",
+                scoreLabel: "distinctiveness score",
+            },
+        });
+        const button = wrapper.find(".list-group-item");
+        expect(button.find(".badge").text()).toBe("12.3");
+        expect(button.text().replace(/\s+/g, " ")).toBe("Voltaire distinctiveness score 12.3 Top collocates: raison, esprit");
+        wrapper.unmount();
+    });
 });
