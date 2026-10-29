@@ -4,7 +4,8 @@ metadata selects (the reference), with the collocates that make them alike as ex
 Each use is profiled by what it over-uses: the positive part of the fightin' words z-scores (Monroe et al. 2008) of its
 collocates against the rest of the corpus, as the distinctive groups have them. What every text does around the query
 cancels out, and the similarity of two uses is the cosine of their profiles: they are alike when they over-use the same
-collocates. Each group is taken outside the reference: its collocates in the whole corpus (file_path) less those in the
+collocates. Only the collocates found in more than one work of the corpus count: the others are names and words used
+once. Each group is taken outside the reference: its collocates in the whole corpus (file_path) less those in the
 reference (inside_file_path, counted with the search's metadata). So the reference is compared with what the groups do
 elsewhere, and the groups all inside it, its own, are left out."""
 
@@ -16,6 +17,7 @@ from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.reports.collocation import (
     cache_file_path,
     fightin_words_zscores_vs_rest,
+    load_collocate_works,
     load_map_field_cache,
     safe_pickle_load,
 )
@@ -28,6 +30,7 @@ def get_similar_collocate_distributions(request, config):
     tids, counts, group_bounds, group_names, count_lemmas = load_map_field_cache(
         cache_file_path(config.db_path, request.file_path, ".npz")
     )
+    works = load_collocate_works(cache_file_path(config.db_path, request.file_path, ".npz"))  # None: legacy cache
     inside = load_map_field_cache(cache_file_path(config.db_path, request.inside_file_path, ".npz"))
     reference_collocates = safe_pickle_load(cache_file_path(config.db_path, request.primary_file_path, ".pickle"))
     names, bounds, group_tids, group_counts = _outside_counts(tids, counts, group_bounds, group_names, inside)
@@ -73,14 +76,19 @@ def get_similar_collocate_distributions(request, config):
     if n_rest == 0:  # the reference is the whole corpus: there is no rest to compare it with
         return {"similar": []}
 
-    # Profiles: max(0, z) of each collocate against the rest of the corpus
+    # Profiles: max(0, z) of each collocate against the rest of the corpus, but of those of one work
     ref_profile = np.zeros(len(ref_counts), dtype=np.float64)
     support = np.flatnonzero(ref_counts)
     ref_profile[support] = _over_use(ref_counts[support], outside[support], n_ref, n_rest)
+    several_works = np.ones(len(ref_counts), dtype=bool)
+    if works is not None:
+        several_works[tids] = works >= 2
+        ref_profile[~several_works] = 0.0
     ref_norm = np.sqrt(np.square(ref_profile).sum() + np.square(_over_use(only_ref, 0.0, n_ref, n_rest)).sum())
     entry_group = np.repeat(np.arange(len(names)), np.diff(bounds))
     n_group = np.bincount(entry_group, weights=group_counts, minlength=len(names))[entry_group]
     profiles = _over_use(group_counts, corpus[group_tids] - group_counts, n_group, n_ref + n_rest - n_group)
+    profiles[~several_works[group_tids]] = 0.0
 
     # Cosine of each group's profile with the reference's; the parts of their shared collocates explain it
     parts = profiles * ref_profile[group_tids]

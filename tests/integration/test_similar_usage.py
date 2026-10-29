@@ -1,6 +1,6 @@
 """Integration tests for similar usage: the groups whose collocates, outside the part of the corpus a search's metadata
 selects, over-use what that part's over-use (cosine of the positive fightin' words z-scores against the rest of the
-corpus), and the shared collocates that explain it."""
+corpus, of the collocates of more than one work), and the shared collocates that explain it."""
 
 import math
 import os
@@ -37,14 +37,17 @@ def call(fn, db, **params):
 
 
 def similar_usage(db, field, **metadata):
-    """The similar usage of the search with metadata by field, and the counts it is made from"""
+    """The similar usage of the search with metadata by field, the counts it is made from, and the number of works of
+    the corpus each collocate is counted in (by title: a title is one work in this corpus)"""
     primary = call(collocation_results, db, **COLLOCATES, **metadata)["file_path"]
     inside = call(collocation_results, db, **COLLOCATES, **metadata, map_field=field)["file_path"]
     whole = call(collocation_results, db, **COLLOCATES, map_field=field)["file_path"]
+    by_title = call(collocation_results, db, **COLLOCATES, map_field="title")["file_path"]
+    works = Counter(word for counts in groups(db, by_title).values() for word in counts)
     similar = call(
         get_similar_collocate_distributions, db, primary_file_path=primary, file_path=whole, inside_file_path=inside
     )["similar"]
-    return similar, safe_pickle_load(primary), groups(db, inside), groups(db, whole)
+    return similar, safe_pickle_load(primary), groups(db, inside), groups(db, whole), works
 
 
 def groups(db, file_path):
@@ -59,8 +62,9 @@ def z_positive(y_a, y_b, n_a, n_b):
     return max(0.0, delta / math.sqrt(1 / (2 * y_a + y_b) + 1 / (y_a + 2 * y_b)))
 
 
-def expected(reference, inside, whole):
-    """Each group outside the reference with its similarity, and its z-score profile and the reference's"""
+def expected(reference, inside, whole, works):
+    """Each group outside the reference with its similarity, and its z-score profile and the reference's, of the
+    collocates of more than one work"""
     outside = {name: whole[name] - inside.get(name, Counter()) for name in whole}
     outside = {name: counts for name, counts in outside.items() if counts}
     corpus = Counter(reference)
@@ -70,7 +74,7 @@ def expected(reference, inside, whole):
 
     def profile(counts):
         n = sum(counts.values())
-        return {word: z_positive(c, corpus[word] - c, n, total - n) for word, c in counts.items()}
+        return {word: z_positive(c, corpus[word] - c, n, total - n) for word, c in counts.items() if works[word] >= 2}
 
     ref = profile(reference)
     ref_norm = math.sqrt(sum(z * z for z in ref.values()))
@@ -83,8 +87,8 @@ def expected(reference, inside, whole):
     return result, ref
 
 
-def check(similar, reference, inside, whole):
-    want, ref = expected(reference, inside, whole)
+def check(similar, reference, inside, whole, works):
+    want, ref = expected(reference, inside, whole, works)
     alike = [s for s, _ in want.values() if s > 0]
     assert len(similar) == min(50, len(alike))
     similarities = [similarity for _, similarity, _ in similar]
@@ -94,6 +98,7 @@ def check(similar, reference, inside, whole):
     for name, similarity, words in similar:
         assert similarity == pytest.approx(want[name][0], abs=1e-3)
         group = want[name][1]
+        assert all(works[f"lemma:{word}"] >= 2 for word in words)
         parts = [group[f"lemma:{word}"] * ref[f"lemma:{word}"] for word in words]
         assert words and all(part > 0 for part in parts) and parts == sorted(parts, reverse=True)
     return want
@@ -103,15 +108,15 @@ def test_own_group_left_out(eltec_db):
     """An author's search compared by author: the others, the author's own group being all inside the search"""
     con = sqlite3.connect(os.path.join(eltec_db.path, "toms.db"))
     author = con.execute("select author from toms where philo_type='doc' and author like 'Dickens%'").fetchone()[0]
-    similar, reference, inside, whole = similar_usage(eltec_db, "author", author=f'"{author}"')
+    similar, reference, inside, whole, works = similar_usage(eltec_db, "author", author=f'"{author}"')
     assert similar and author not in {name for name, _, _ in similar}
-    check(similar, reference, inside, whole)
+    check(similar, reference, inside, whole, works)
 
 
 def test_groups_partly_inside(eltec_db):
     """A period compared by author: authors all inside it are left out, the others are taken outside it"""
-    similar, reference, inside, whole = similar_usage(eltec_db, "author", year="1850-1870")
-    want = check(similar, reference, inside, whole)
+    similar, reference, inside, whole, works = similar_usage(eltec_db, "author", year="1850-1870")
+    want = check(similar, reference, inside, whole, works)
     all_inside = {name for name in inside if not whole[name] - inside[name]}
     partly_inside = {name for name in inside if whole[name] - inside[name]}
     assert all_inside and partly_inside
@@ -121,5 +126,5 @@ def test_groups_partly_inside(eltec_db):
 
 def test_needs_a_part_of_the_corpus(eltec_db):
     """The whole corpus has no rest to compare it with"""
-    similar, _, _, _ = similar_usage(eltec_db, "author")
+    similar, *_ = similar_usage(eltec_db, "author")
     assert similar == []
