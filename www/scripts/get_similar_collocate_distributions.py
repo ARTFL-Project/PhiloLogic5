@@ -134,7 +134,8 @@ def get_similar_collocate_distributions(request, config):
     ref_excess_lookup = np.zeros(max_tid + 1, dtype=np.float64)
     ref_excess_lookup[ref_tids] = excess_ref
 
-    top_indices = _top_similar_indices(sims, 50)
+    reference_groups = _reference_groups(reference_collocates, name_to_tid, tids, counts, group_bounds)
+    top_indices = _top_similar_indices(sims, 50, reference_groups)
     similar = []
     for idx in top_indices:
         gs, ge = int(group_bounds[idx]), int(group_bounds[idx + 1])
@@ -150,16 +151,27 @@ def get_similar_collocate_distributions(request, config):
     return {"similar": similar}
 
 
-def _top_similar_indices(similarities, n):
-    """Return indices of top-n groups by similarity, skipping self-matches."""
+def _reference_groups(reference_collocates, name_to_tid, tids, counts, group_bounds):
+    """The groups whose collocates are the reference's, count for count: the reference itself, when one group has all
+    its hits (as when the primary query's metadata picks one value of the field compared by)."""
+    ref_counts = {name_to_tid.get(word): count for word, count in reference_collocates.items()}
+    if None in ref_counts:  # a word of the reference no group has: no group is the reference
+        return set()
+    total = sum(ref_counts.values())
+    same = set()
+    for g in np.nonzero(np.diff(group_bounds) == len(ref_counts))[0].tolist():
+        gs, ge = int(group_bounds[g]), int(group_bounds[g + 1])
+        if int(counts[gs:ge].sum()) == total and all(
+            ref_counts.get(t) == c for t, c in zip(tids[gs:ge].tolist(), counts[gs:ge].tolist())
+        ):
+            same.add(g)
+    return same
+
+
+def _top_similar_indices(similarities, n, excluded):
+    """Return indices of top-n groups by similarity, without the excluded ones (the reference itself)."""
     order = np.argsort(similarities)[::-1]
-    result = []
-    for idx in order:
-        if float(similarities[idx]) < 0.99:
-            result.append(int(idx))
-            if len(result) == n:
-                break
-    return result
+    return [int(idx) for idx in order if int(idx) not in excluded][:n]
 
 
 def _top_shared_collocates(ref_excess_lookup, group_tids, group_excess, tid_to_name, n_words=20):
