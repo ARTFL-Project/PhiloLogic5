@@ -1,10 +1,11 @@
 """Representative passages — passages within a group whose immediate context
 contains the most of the group's distinctive-collocate signature.
 
-Approach: a cooc query ("main_word AND (sig1 | sig2 | ... | sigK)") run with
+Approach: a cooc query ("main query AND (sig1 | sig2 | ... | sigK)") run with
 the same metadata filters plus the drill-down restriction. PhiloLogic's query
 engine handles lemma expansion, ASCII folding and case for free. Each hit row
-carries the byte offsets and word positions of every matched word; we merge
+carries the byte offsets and word positions of every matched word (each word of
+the main query, quoted phrases included, then the signature word); we merge
 hits by sentence philo_id, recover the signature token id at each signature
 position from the corpus per-position arrays, sum z-weights over distinct
 matched signature tokens (formula A1), and re-sort by weighted score.
@@ -88,21 +89,19 @@ def get_representative_passages(request, config):
     if len(hits) == 0:
         return _empty_response(request, total_in_group=0)
 
-    # Build the set of token ids for the main word from the cooc query's
-    # expansion (group 0 in the .terms file). This handles regex/case-variants
-    # the same way the cooc engine does — ensures we can tell main from sig
-    # at each hit position even when the main word is also in the signature
-    # (e.g. main_q="lemma:citoyen" with "citoyen" present as a sig token).
+    # Build the set of token ids for the main query's words from the cooc query's
+    # expansion (every group of the .terms file but the last, the signature's). This
+    # handles regex/case-variants the same way the cooc engine does — ensures we can
+    # tell main from sig at each hit position even when a main word is also in the
+    # signature (e.g. main_q="lemma:citoyen" with "citoyen" present as a sig token).
     main_tids = _resolve_main_tids(config.db_path, hits.filename)
 
-    # Bulk-read the multi-word hitlist as a uint32 matrix.
-    # Layout for a 2-word query (length = 7 + 2*2 = 11):
+    # Bulk-read the multi-word hitlist as a uint32 matrix: for n words (the main
+    # query's, then the signature's), length = 9 + 2*(n-1):
     #   [0..5]  sentence philo_id
     #   [6]     page
-    #   [7]     word_pos of word 1 (main)
-    #   [8]     byte_offset of word 1 (main)
-    #   [9]     word_pos of word 2 (sig)
-    #   [10]    byte_offset of word 2 (sig)
+    #   [7]     word_pos of the first word, [8] its byte_offset
+    #   [9]     word_pos of the next word, [10] its byte_offset, and so on
     with hits.open_raw() as f:
         raw = f.read()
     if not raw:
@@ -120,21 +119,19 @@ def get_representative_passages(request, config):
     per_word_ids = word_ids[count_lemmas]
 
     def is_main(word):
-        """Whether the word at an index of the collocation arrays is the main word, by its form or its lemma"""
+        """Whether the word at an index of the collocation arrays is a word of the main query, by its form or its lemma"""
         return any(int(word_ids[lemmas][word]) in tids for lemmas, tids in main_tids.items())
 
     sent_idx, matched = _np_searchsorted_keys(sent_keys_s24, rows[:, :6])
     if not matched.any():
         return _empty_response(request, total_in_group=0)
 
-    # The cooc engine writes byte offsets in DOCUMENT ORDER (by word position
-    # in sentence), not query order. So col 8 may be either the main word's
-    # byte or the signature word's byte depending on which appears first in
-    # the sentence. Classify each via token-id lookup at the word position.
-    word_pos_a = rows[:, 7]
-    byte_a = rows[:, 8]
-    word_pos_b = rows[:, 9] if hits.length >= 11 else np.zeros(len(rows), dtype=np.uint32)
-    byte_b = rows[:, 10] if hits.length >= 11 else np.zeros(len(rows), dtype=np.uint32)
+    # The cooc engine writes positions and byte offsets in DOCUMENT ORDER (by word
+    # position in sentence), not query order. So any of the row's words may be the
+    # signature word, depending on where each appears in the sentence. Classify each
+    # via token-id lookup at the word position.
+    word_positions = rows[:, 7::2]
+    byte_offsets = rows[:, 8::2]
 
     # Group by sentence philo_id.
     groups = {}
@@ -142,30 +139,19 @@ def get_representative_passages(request, config):
         if not matched[i]:
             continue
         sent_start = int(sent_offsets[int(sent_idx[i])])
-        wpa = int(word_pos_a[i])
-        wpb = int(word_pos_b[i])
-        if wpa == 0 or wpb == 0:
-            continue
-        tid_a = int(per_word_ids[sent_start + wpa - 1])
-        tid_b = int(per_word_ids[sent_start + wpb - 1])
-
-        # Classify by which position is the main word (from cooc-query expansion).
-        # The other position is the signature candidate; only score it if its tid
-        # carries a sig weight.
-        a_is_main = is_main(sent_start + wpa - 1)
-        b_is_main = is_main(sent_start + wpb - 1)
-        if a_is_main and not b_is_main:
-            main_byte_i = int(byte_a[i])
-            sig_tid = tid_b
-            sig_byte_i = int(byte_b[i])
-        elif b_is_main and not a_is_main:
-            main_byte_i = int(byte_b[i])
-            sig_tid = tid_a
-            sig_byte_i = int(byte_a[i])
-        else:
-            # Both positions are the main word, or neither is — skip.
-            continue
-        if sig_tid not in sig_weight_by_tid:
+        main_bytes = []
+        sig_tid = sig_byte_i = None
+        for word_pos, byte in zip(word_positions[i].tolist(), byte_offsets[i].tolist()):
+            if word_pos == 0:
+                continue
+            word = sent_start + word_pos - 1
+            if is_main(word):
+                main_bytes.append(byte)
+            else:
+                # The signature candidate; only score it if its tid carries a sig weight.
+                sig_tid = int(per_word_ids[word])
+                sig_byte_i = byte
+        if not main_bytes or sig_tid not in sig_weight_by_tid:
             continue
 
         key = tuple(int(v) for v in rows[i, :6])
@@ -178,7 +164,7 @@ def get_representative_passages(request, config):
                 "sig_tids": set(),
             }
             groups[key] = g
-        g["main_offsets"].add(main_byte_i)
+        g["main_offsets"].update(main_bytes)
         g["sig_offsets"].add(sig_byte_i)
         g["sig_tids"].add(sig_tid)
 
@@ -283,9 +269,10 @@ def _np_searchsorted_keys(sent_keys_s24, hit_keys_native):
 
 
 def _resolve_main_tids(db_path, hitlist_filename):
-    """Read the cooc query's `.terms` file and resolve group 0 (the main word's
-    expanded forms) to vocab token ids: those of its lemmas in the lemma vocab, of its
-    word forms in the word vocab (a key with properties, aimer:pos:VERB, as its word).
+    """Read the cooc query's `.terms` file and resolve the main query's groups (every
+    group but the last, the signature's: the expanded forms of each of its words) to
+    vocab token ids: those of its lemmas in the lemma vocab, of its word forms in the
+    word vocab (a key with properties, aimer:pos:VERB, as its word).
     Returns {True: lemma ids, False: word ids}, without an empty one.
 
     The .terms file is written by `expand_query_not` during db.query(); groups
@@ -294,10 +281,10 @@ def _resolve_main_tids(db_path, hitlist_filename):
     """
     terms_path = f"{hitlist_filename}.terms"
     groups = get_word_groups(terms_path) if os.path.exists(terms_path) else []
-    if not groups or not groups[0]:
+    if len(groups) < 2:
         return {}
     names = property_names(os.path.join(db_path, "data"))
-    words = {split_properties(key, names)[0] for key in groups[0]}
+    words = {split_properties(key, names)[0] for group in groups[:-1] for key in group}
     main = {}
     for lemmas in (False, True):
         needed = {word for word in words if word.startswith("lemma:") == lemmas}
