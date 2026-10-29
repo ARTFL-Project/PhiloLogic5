@@ -207,8 +207,10 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
     if start_cutoff and removed_from_start + start_cutoff.end(0) <= first_hit:
         removed_from_start += len(start_cutoff.group(0))
         text_in_utf8 = text_in_utf8[start_cutoff.end(0) :]
+    # Likewise the partial tag the text may end in: a "<" before the last hit is text, and cutting at it takes the hit
+    last_hit = max(byte_offsets) if byte_offsets else -1
     end = END_MATCH.search(text_in_utf8)
-    if end:
+    if end and removed_from_start + end.start(0) > last_hit:
         text_in_utf8 = text_in_utf8[: end.start(0)]
     if byte_offsets is not None:
         byte_offsets = [b - removed_from_start for b in byte_offsets]
@@ -280,8 +282,10 @@ def format_strip(text, word_regex, byte_offsets=None):
     if start_cutoff and removed_from_start + start_cutoff.end(0) <= first_hit:
         removed_from_start += len(start_cutoff.group(0))
         text = text[start_cutoff.end(0) :]
+    # Likewise the partial tag the text may end in: a "<" before the last hit is text, and cutting at it takes the hit
+    last_hit = max(byte_offsets) if byte_offsets else -1
     end = END_MATCH.search(text)
-    if end:
+    if end and removed_from_start + end.start(0) > last_hit:
         text = text[: end.start(0)]
     if byte_offsets is not None:
         byte_offsets = [b - removed_from_start for b in byte_offsets]
