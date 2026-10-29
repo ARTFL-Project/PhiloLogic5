@@ -217,7 +217,7 @@
         "senseOverview": "Senses at a glance (beta)",
         "similarUsage": "Similar Usage",
         "mostSimilarUsage": "with most similar usage to",
-        "mostSimilarUsageWholeCorpus": "with most similar usage to the whole corpus",
+        "similarNeedsFilter": "Similar usage finds the groups that use your search terms most like a part of the corpus: filter your search (by author, title, date…) to choose that part.",
         "distinctiveScore": "distinctiveness score",
         "similarityScore": "similarity",
         "collocatesTable": "Collocates frequency table",

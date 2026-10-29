@@ -2,7 +2,9 @@
     <div>
         <!-- Field selector + criteria -->
         <div class="card mx-2 p-3" style="border-top-width: 0;">
-            <div class="d-flex align-items-center flex-wrap mt-2">
+            <!-- what the groups are compared with is the part of the corpus the search's metadata selects -->
+            <p v-if="!biblio.length" class="mt-2 mb-0" role="note">{{ $t("collocation.similarNeedsFilter") }}</p>
+            <div v-else class="d-flex align-items-center flex-wrap mt-2">
                 <label for="similarity-field-select" class="me-2 fw-bold">
                     {{ $t("collocation.compareBy") }}
                 </label>
@@ -20,9 +22,7 @@
                         </li>
                     </ul>
                 </div>
-                <!-- without metadata criteria, the collocates compared with are those of the whole corpus -->
-                <span class="ms-2">{{ biblio.length
-                    ? $t("collocation.mostSimilarUsage") : $t("collocation.mostSimilarUsageWholeCorpus") }}</span>
+                <span class="ms-2">{{ $t("collocation.mostSimilarUsage") }}</span>
             </div>
 
             <bibliography-criteria v-if="biblio.length" class="ms-2 mt-3" :biblio="biblio"
@@ -86,39 +86,45 @@ const similarFieldSelected = ref("");
 const similarSearchProgress = ref("");
 const similarSearching = ref(false);
 
-function runSimilar(fieldValue) {
-    if (!fieldValue) return;
+let similarToken = 0;
+
+// The groups' use of the query, outside the part of the corpus the search's metadata selects, compared with that part's:
+// none without metadata
+async function runSimilar(fieldValue) {
+    if (!fieldValue || !props.biblio.length) return;
+    const myToken = ++similarToken;
     similarFieldSelected.value = fieldValue;
     emit("field-selected", fieldValue);
     similarSearching.value = true;
     similarSearchProgress.value = t("collocation.similarCollocGatheringMessage");
     similarDistributions.value = [];
-    $http.get(`${$dbUrl}/reports/collocation.py`, {
-        // The primary report's query, metadata and filters, so that the distributions compare with its collocates
-        params: { ...collocationParams(formData.value, philoConfig), map_field: fieldValue },
-    }).then((response) => {
-        getMostSimilarCollocDistribution(response.data.file_path);
-    }).catch((error) => {
-        similarSearching.value = false;
-        debug({ $options: { name: "collocation-similar" } }, error);
-    });
-}
-
-function getMostSimilarCollocDistribution(filePath) {
-    similarSearchProgress.value = t("collocation.similarCollocCompareMessage");
-    $http.get(`${$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
-        params: {
-            primary_file_path: props.collocatesFilePath,
-            file_path: filePath,
-        },
-    }).then((response) => {
+    try {
+        // Each group's collocates inside the search's metadata, then in the whole corpus: with the primary report's
+        // query and filters, so that they compare with its collocates
+        const inside = await $http.get(`${$dbUrl}/reports/collocation.py`, {
+            params: { ...collocationParams(formData.value, philoConfig), map_field: fieldValue },
+        });
+        if (myToken !== similarToken) return;
+        const whole = await $http.get(`${$dbUrl}/reports/collocation.py`, {
+            params: { ...collocationParams(formData.value, philoConfig, {}), map_field: fieldValue },
+        });
+        if (myToken !== similarToken) return;
+        similarSearchProgress.value = t("collocation.similarCollocCompareMessage");
+        const response = await $http.get(`${$dbUrl}/scripts/get_similar_collocate_distributions.py`, {
+            params: {
+                primary_file_path: props.collocatesFilePath,
+                file_path: whole.data.file_path,
+                inside_file_path: inside.data.file_path,
+            },
+        });
+        if (myToken !== similarToken) return;
         similarDistributions.value = response.data.similar || [];
-        cachedDistributions.value = filePath;
-        similarSearching.value = false;
-    }).catch((error) => {
-        similarSearching.value = false;
+        cachedDistributions.value = whole.data.file_path;
+    } catch (error) {
         debug({ $options: { name: "collocation-similar" } }, error);
-    });
+    } finally {
+        if (myToken === similarToken) similarSearching.value = false;
+    }
 }
 
 function onSimilarSelect(name) {
@@ -140,6 +146,8 @@ function onSimilarSelect(name) {
 }
 
 function reset() {
+    similarToken++;
+    similarSearching.value = false;
     similarDistributions.value = [];
     similarFieldSelected.value = "";
 }

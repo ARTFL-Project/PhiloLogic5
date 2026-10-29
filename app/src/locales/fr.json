@@ -217,7 +217,7 @@
         "senseOverview": "Sens en un coup d'œil (bêta)",
         "similarUsage": "Usage similaire",
         "mostSimilarUsage": "avec l'emploi le plus similaire à",
-        "mostSimilarUsageWholeCorpus": "avec l'emploi le plus similaire à celui de tout le corpus",
+        "similarNeedsFilter": "L'usage similaire trouve les groupes qui emploient vos termes de recherche le plus comme une partie du corpus : filtrez votre recherche (par auteur, titre, date…) pour choisir cette partie.",
         "distinctiveScore": "score de distinction",
         "similarityScore": "similarité",
         "collocatesTable": "Tableau de fréquence des collocants",

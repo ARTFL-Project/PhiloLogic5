@@ -323,7 +323,11 @@ def test_everything_cached_in_hitlist_dir(served_read_only):
     )["file_path"]
     get_json(server, "scripts/comparative_collocations.py",
              {"primary_file_path": whole, "other_file_path": distribution, "whole_corpus": "false"})
-    get_json(server, "scripts/get_similar_collocate_distributions.py", {"primary_file_path": whole, "file_path": by_author})
+    get_json(
+        server,
+        "scripts/get_similar_collocate_distributions.py",
+        {"primary_file_path": whole, "file_path": by_author, "inside_file_path": by_author},
+    )
 
     load_cache = served_read_only.load_cache
     for file_path in (whole, by_author, distribution):

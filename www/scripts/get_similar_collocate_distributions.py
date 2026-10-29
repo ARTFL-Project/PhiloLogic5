@@ -1,60 +1,38 @@
-"""Get similar collocate distributions using excess-over-median cosine similarity
-with top shared collocates as explanations."""
+"""The groups (authors, titles...) whose use of the query is most like that of the part of the corpus a search's
+metadata selects (the reference), with the collocates that make them alike as explanations.
+
+Each use is profiled by what it over-uses: the positive part of the fightin' words z-scores (Monroe et al. 2008) of its
+collocates against the rest of the corpus, as the distinctive groups have them. What every text does around the query
+cancels out, and the similarity of two uses is the cosine of their profiles: they are alike when they over-use the same
+collocates. Each group is taken outside the reference: its collocates in the whole corpus (file_path) less those in the
+reference (inside_file_path, counted with the search's metadata). So the reference is compared with what the groups do
+elsewhere, and the groups all inside it, its own, are left out."""
 
 import os
 
-import numba
 import numpy as np
 
+from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.reports.collocation import (
     cache_file_path,
+    fightin_words_zscores_vs_rest,
     load_map_field_cache,
     safe_pickle_load,
 )
 
-@numba.njit(cache=True)
-def _nb_cosine_similarities(ref_tids, ref_weights, all_tids, all_weights, group_bounds, n_groups, max_tid):
-    """Cosine similarity between a reference vector and each group's vector."""
-    ref_lookup = np.zeros(max_tid + 1, dtype=np.float64)
-    ref_norm_sq = 0.0
-    for i in range(len(ref_tids)):
-        ref_lookup[ref_tids[i]] = float(ref_weights[i])
-        ref_norm_sq += float(ref_weights[i]) ** 2
-    ref_norm = np.sqrt(ref_norm_sq)
-
-    similarities = np.empty(n_groups, dtype=np.float64)
-    for g in range(n_groups):
-        gs = group_bounds[g]
-        ge = group_bounds[g + 1]
-        dot = 0.0
-        norm_sq = 0.0
-        for j in range(gs, ge):
-            c = float(all_weights[j])
-            norm_sq += c * c
-            dot += ref_lookup[all_tids[j]] * c
-        g_norm = np.sqrt(norm_sq)
-        if ref_norm > 0.0 and g_norm > 0.0:
-            similarities[g] = dot / (ref_norm * g_norm)
-        else:
-            similarities[g] = 0.0
-
-    for i in range(len(ref_tids)):
-        ref_lookup[ref_tids[i]] = 0.0
-
-    return similarities
-
 
 def get_similar_collocate_distributions(request, config):
     """Get similar collocate distributions"""
-    # Load the map_field numpy cache (all groups)
+    if not request.primary_file_path or not request.inside_file_path:
+        raise BadRequest("Similar usage needs the search's collocates and those of the groups inside and outside it")
     tids, counts, group_bounds, group_names, count_lemmas = load_map_field_cache(
         cache_file_path(config.db_path, request.file_path, ".npz")
     )
-
-    # Load reference collocates (Counter from a previous collocation query)
-    if not request.primary_file_path:
-        return {"similar": []}
+    inside = load_map_field_cache(cache_file_path(config.db_path, request.inside_file_path, ".npz"))
     reference_collocates = safe_pickle_load(cache_file_path(config.db_path, request.primary_file_path, ".pickle"))
+    names, bounds, group_tids, group_counts = _outside_counts(tids, counts, group_bounds, group_names, inside)
+    if not names or not reference_collocates:
+        return {"similar": []}
 
     # Build name<->tid lookups (use lemma vocab when counting lemmas)
     colloc_dir = os.path.join(config.db_path, "data", "collocations")
@@ -66,130 +44,93 @@ def get_similar_collocate_distributions(request, config):
         count_offsets = np.load(os.path.join(colloc_dir, "vocab_offsets.npy"), mmap_mode="r")
         with open(os.path.join(colloc_dir, "vocab_strings.bin"), "rb") as f:
             vocab_data = f.read()
-    used_tids = np.unique(tids)
     name_to_tid = {}
     tid_to_name = {}
-    for tid in used_tids.tolist():
+    for tid in np.unique(tids).tolist():
         s = int(count_offsets[tid])
         e = int(count_offsets[tid + 1])
         name = vocab_data[s:e].decode("utf-8")
         name_to_tid[name] = tid
         tid_to_name[tid] = name
 
-    # Convert reference Counter to sparse arrays: its keys are the vocab strings
-    ref_tids_list = []
-    ref_counts_list = []
+    # The reference's collocates: those of the groups' vocabulary (by tid), and the others, which only its hits without
+    # a value of the field have
+    ref_counts = np.zeros(int(tids.max()) + 1, dtype=np.float64)
+    only_ref = []
     for word, count in reference_collocates.items():
         tid = name_to_tid.get(word)
-        if tid is not None:
-            ref_tids_list.append(tid)
-            ref_counts_list.append(count)
+        if tid is None:
+            only_ref.append(count)
+        else:
+            ref_counts[tid] = count
+    only_ref = np.array(only_ref, dtype=np.float64)
 
-    if not ref_tids_list:
+    # The corpus: the reference and every group outside it. A profile is against the rest of it.
+    outside = np.bincount(group_tids, weights=group_counts, minlength=len(ref_counts))
+    corpus = ref_counts + outside
+    n_ref = float(ref_counts.sum() + only_ref.sum())
+    n_rest = float(outside.sum())
+    if n_rest == 0:  # the reference is the whole corpus: there is no rest to compare it with
         return {"similar": []}
 
-    ref_tids = np.array(ref_tids_list, dtype=np.uint32)
-    ref_counts_arr = np.array(ref_counts_list, dtype=np.int32)
-    max_tid = max(int(tids.max()), int(ref_tids.max()))
-    n_groups = len(group_names)
-    counts_f64 = counts.astype(np.float64)
-    ref_f64 = ref_counts_arr.astype(np.float64)
+    # Profiles: max(0, z) of each collocate against the rest of the corpus
+    ref_profile = np.zeros(len(ref_counts), dtype=np.float64)
+    support = np.flatnonzero(ref_counts)
+    ref_profile[support] = _over_use(ref_counts[support], outside[support], n_ref, n_rest)
+    ref_norm = np.sqrt(np.square(ref_profile).sum() + np.square(_over_use(only_ref, 0.0, n_ref, n_rest)).sum())
+    entry_group = np.repeat(np.arange(len(names)), np.diff(bounds))
+    n_group = np.bincount(entry_group, weights=group_counts, minlength=len(names))[entry_group]
+    profiles = _over_use(group_counts, corpus[group_tids] - group_counts, n_group, n_ref + n_rest - n_group)
 
-    # --- Excess-over-median cosine ---
-    # Per-tid median count across all groups (tids with df <= n_groups/2 have median 0)
-    tids_i64 = tids.astype(np.int64)
-    df = np.zeros(max_tid + 1, dtype=np.int32)
-    np.add.at(df, tids_i64, 1)
+    # Cosine of each group's profile with the reference's; the parts of their shared collocates explain it
+    parts = profiles * ref_profile[group_tids]
+    dots = np.bincount(entry_group, weights=parts, minlength=len(names))
+    norms = np.sqrt(np.bincount(entry_group, weights=np.square(profiles), minlength=len(names)))
+    similarities = np.zeros(len(names), dtype=np.float64)
+    alike = (dots > 0) & (norms > 0) & (ref_norm > 0)
+    similarities[alike] = dots[alike] / (norms[alike] * ref_norm)
 
-    median_per_tid = np.zeros(max_tid + 1, dtype=np.float64)
-    high_df_tids = np.where(df > n_groups // 2)[0]
-    if len(high_df_tids) > 0:
-        tid_order = np.argsort(tids)
-        sorted_tids = tids_i64[tid_order]
-        sorted_counts = counts_f64[tid_order]
-        unique_tids, starts = np.unique(sorted_tids, return_index=True)
-        ends = np.append(starts[1:], len(sorted_tids))
-        high_set = set(high_df_tids.tolist())
-        for i in range(len(unique_tids)):
-            t = int(unique_tids[i])
-            if t not in high_set:
-                continue
-            vals = np.sort(sorted_counts[starts[i]:ends[i]])
-            n_zeros = n_groups - len(vals)
-            if n_zeros > 0:
-                vals = np.concatenate([np.zeros(n_zeros, dtype=np.float64), vals])
-            median_per_tid[t] = np.median(vals)
-
-    log_median = np.log1p(median_per_tid)
-
-    # Excess: how much each group exceeds corpus median (log scale, clamped to 0)
-    excess_all = np.maximum(0.0, np.log1p(counts_f64) - log_median[tids_i64])
-    excess_ref = np.maximum(0.0, np.log1p(ref_f64) - log_median[ref_tids.astype(np.int64)])
-
-    sims = _nb_cosine_similarities(
-        ref_tids, excess_ref, tids, excess_all, group_bounds, n_groups, max_tid,
-    )
-
-    # --- Collect top-50 with shared collocate explanations ---
-    ref_excess_lookup = np.zeros(max_tid + 1, dtype=np.float64)
-    ref_excess_lookup[ref_tids] = excess_ref
-
-    reference_groups = _reference_groups(reference_collocates, name_to_tid, tids, counts, group_bounds)
-    top_indices = _top_similar_indices(sims, 50, reference_groups)
     similar = []
-    for idx in top_indices:
-        gs, ge = int(group_bounds[idx]), int(group_bounds[idx + 1])
-        words = _top_shared_collocates(
-            ref_excess_lookup,
-            tids[gs:ge], excess_all[gs:ge],
-            tid_to_name,
-        )
-        similar.append(
-            (group_names[idx], round(float(sims[idx]), 3), words)
-        )
-
+    for g in [g for g in np.argsort(-similarities, kind="stable").tolist() if similarities[g] > 0][:50]:
+        gs, ge = int(bounds[g]), int(bounds[g + 1])
+        shared = [gs + i for i in np.argsort(-parts[gs:ge], kind="stable")[:20].tolist() if parts[gs + i] > 0]
+        similar.append((names[g], round(float(similarities[g]), 3), [_display(tid_to_name[group_tids[i]]) for i in shared]))
     return {"similar": similar}
 
 
-def _reference_groups(reference_collocates, name_to_tid, tids, counts, group_bounds):
-    """The groups whose collocates are the reference's, count for count: the reference itself, when one group has all
-    its hits (as when the primary query's metadata picks one value of the field compared by)."""
-    ref_counts = {name_to_tid.get(word): count for word, count in reference_collocates.items()}
-    if None in ref_counts:  # a word of the reference no group has: no group is the reference
-        return set()
-    total = sum(ref_counts.values())
-    same = set()
-    for g in np.nonzero(np.diff(group_bounds) == len(ref_counts))[0].tolist():
-        gs, ge = int(group_bounds[g]), int(group_bounds[g + 1])
-        if int(counts[gs:ge].sum()) == total and all(
-            ref_counts.get(t) == c for t, c in zip(tids[gs:ge].tolist(), counts[gs:ge].tolist())
-        ):
-            same.add(g)
-    return same
+def _outside_counts(tids, counts, group_bounds, group_names, inside):
+    """Each group's collocate counts outside the reference: its counts in the whole corpus less those inside the
+    reference (inside, a map_field cache of the same groups counted with the reference's metadata). The groups with no
+    collocate left, all inside the reference, are left out. Returns (names, bounds, tids, counts), with the bounds of
+    each group in tids and counts (floats)."""
+    in_tids, in_counts, in_bounds, in_names, _ = inside
+    index = {name: g for g, name in enumerate(group_names)}
+    in_groups = np.array([index.get(name, -1) for name in in_names], dtype=np.int64)
+    if (in_groups < 0).any():
+        raise BadRequest("The groups inside the search are not those of the whole corpus: count them the same way")
+    n_tids = int(max(tids.max(initial=0), in_tids.max(initial=0))) + 1
+    keys = np.repeat(np.arange(len(group_names), dtype=np.int64), np.diff(group_bounds)) * n_tids + tids
+    in_keys = np.repeat(in_groups, np.diff(in_bounds)) * n_tids + in_tids
+    unique_keys, inverse = np.unique(np.concatenate([keys, in_keys]), return_inverse=True)
+    left = np.bincount(
+        inverse.ravel(),
+        weights=np.concatenate([counts.astype(np.float64), -in_counts.astype(np.float64)]),
+        minlength=len(unique_keys),
+    )
+    kept = left > 0
+    unique_keys, left = unique_keys[kept], left[kept]
+    kept_groups, starts = np.unique(unique_keys // n_tids, return_index=True)
+    names = [group_names[g] for g in kept_groups.tolist()]
+    return names, np.append(starts, len(unique_keys)), unique_keys % n_tids, left
 
 
-def _top_similar_indices(similarities, n, excluded):
-    """Return indices of top-n groups by similarity, without the excluded ones (the reference itself)."""
-    order = np.argsort(similarities)[::-1]
-    return [int(idx) for idx in order if int(idx) not in excluded][:n]
+def _over_use(y_a, y_b, n_a, n_b):
+    """How much more a profile uses its collocates (y_a of its n_a) than the rest of the corpus (y_b of n_b): max(0, z)"""
+    if len(y_a) == 0:
+        return np.zeros(0, dtype=np.float64)
+    return np.maximum(0.0, fightin_words_zscores_vs_rest(y_a, y_b, n_a, n_b))
 
 
-def _top_shared_collocates(ref_excess_lookup, group_tids, group_excess, tid_to_name, n_words=20):
-    """Return the top shared collocates ranked by min excess-over-median.
-
-    For each word both the reference and the group use above the corpus
-    median, rank by min(excess_ref, excess_group) -- the bottleneck value.
-    """
-    shared = []
-    for i in range(len(group_tids)):
-        tid = int(group_tids[i])
-        ref_w = ref_excess_lookup[tid]
-        g_w = float(group_excess[i])
-        if ref_w > 0 and g_w > 0:
-            shared.append((tid, min(ref_w, g_w)))
-
-    if not shared:
-        return []
-
-    shared.sort(key=lambda x: x[1], reverse=True)
-    return [tid_to_name.get(tid, "") for tid, _ in shared[:n_words]]
+def _display(name):
+    """A collocate as the explanations show it: a lemma without its prefix"""
+    return name[6:] if name.startswith("lemma:") else name

@@ -217,7 +217,7 @@
         "senseOverview": "Sentidos de un vistazo (beta)",
         "similarUsage": "Uso Similar",
         "mostSimilarUsage": "con el patrón mas similar de uso",
-        "mostSimilarUsageWholeCorpus": "con el uso más similar al de todo el corpus",
+        "similarNeedsFilter": "El uso similar encuentra los grupos que emplean sus términos de búsqueda de la manera más parecida a una parte del corpus: filtre su búsqueda (por autor, título, fecha…) para elegir esa parte.",
         "distinctiveScore": "puntuación de distinción",
         "similarityScore": "similitud",
         "collocatesTable": "Tabla de frecuencia de colocaciones",
