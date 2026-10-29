@@ -170,6 +170,25 @@ describe("ResultsSummary", () => {
         expect(filterBtn.length).toBeGreaterThanOrEqual(0);
     });
 
+    it.each([
+        [{ type: "df", pct: 2 }, "Words appearing in over 2% of sentences"],
+        [{ type: "top_n", n: 100 }, "The 100 most common words"],
+        [null, "Words appearing in over 1% of sentences"],
+    ])("says which common words were filtered for %j", async (frequencyFilter, label) => {
+        const wrapper = mountResultsSummary({
+            report: "collocation",
+            props: { description: { start: 1, end: 25, results_per_page: 25 }, filterList: ["the"], frequencyFilter },
+        });
+        const store = useMainStore();
+        store.formData.report = "collocation";
+        store.formData.colloc_filter_choice = "frequency";
+        store.formData.filter_df_pct = "1";
+        await nextTick();
+        const button = wrapper.find("button[aria-controls='filter-list']");
+        expect(button.text()).toBe(label);
+        expect(button.attributes("aria-label")).toContain(label);
+    });
+
     it("toggles filter word list visibility on click", async () => {
         const wrapper = mountResultsSummary({
             report: "collocation",

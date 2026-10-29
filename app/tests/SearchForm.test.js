@@ -28,7 +28,7 @@ function mountSearchForm(overrides = {}) {
     store.reportValues = {
         concordance: new Set(["q", "method", "cooc_order", "method_arg", "results_per_page", "sort_by", "start", "end", ...webConfig.metadata]),
         kwic: new Set(["q", "method", "cooc_order", "method_arg", "results_per_page", ...webConfig.metadata]),
-        collocation: new Set(["q", "colloc_filter_choice", "colloc_within", "filter_frequency", ...webConfig.metadata]),
+        collocation: new Set(["q", "colloc_filter_choice", "colloc_within", "filter_frequency", "filter_df_pct", ...webConfig.metadata]),
         time_series: new Set(["q", "method", "cooc_order", "method_arg", "start_date", "end_date", "year_interval", ...webConfig.metadata]),
         aggregation: new Set(["q", "method", "cooc_order", "method_arg", "group_by", ...webConfig.metadata]),
     };
@@ -235,6 +235,26 @@ describe("SearchForm", () => {
         await wrapper.find("#show-search-form").trigger("click");
         await nextTick();
         expect(wrapper.find("#collocation-params").exists()).toBe(true);
+    });
+
+    it("sets the share of sentences above which collocate words are filtered, with a slider read out in full", async () => {
+        const wrapper = mountSearchForm();
+        const store = useMainStore();
+        store.currentReport = "collocation";
+        await wrapper.find("#show-search-form").trigger("click");
+        await nextTick();
+        const common = wrapper.findAll(".dropdown-item").find((item) => item.text() === "common words");
+        await common.trigger("click");
+        await nextTick();
+        const slider = wrapper.find("#filter-df-pct");
+        expect(slider.exists()).toBe(true);
+        expect(slider.attributes("min")).toBe("0.5");
+        expect(slider.attributes("max")).toBe("5");
+        expect(slider.element.value).toBe("1");
+        expect(slider.attributes("aria-valuetext")).toBe("Drop words appearing in more than 1 percent of sentences");
+        await slider.setValue("2.5");
+        expect(store.formData.filter_df_pct).toBe("2.5");
+        expect(wrapper.find("#filter-df-pct").attributes("aria-valuetext")).toContain("2.5 percent");
     });
 
     // --- Time series params shown when report is time_series ---

@@ -59,6 +59,8 @@ describe("Main Store", () => {
         expect(store.reportValues.concordance.has("author")).toBe(true);
         expect(store.reportValues.kwic.has("first_kwic_sorting_option")).toBe(true);
         expect(store.reportValues.collocation.has("colloc_within")).toBe(true);
+        expect(store.reportValues.collocation.has("filter_df_pct")).toBe(true);
+        expect(store.defaultFields.filter_df_pct).toBe("1");
         expect(store.reportValues.time_series.has("year_interval")).toBe(true);
         expect(store.reportValues.aggregation.has("group_by")).toBe(true);
     });

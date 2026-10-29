@@ -12,6 +12,7 @@ from collections import Counter, defaultdict
 import lmdb
 import lz4.frame
 import multiprocess as mp
+import numba
 import numpy as np
 import pandas as pd
 import regex as re
@@ -340,7 +341,76 @@ def make_collocation_database(loader_obj, db_destination):
             with open(os.path.join(db_destination, "attr_lemma_vocab_strings.bin"), "wb") as f:
                 f.write(attr_flat)
 
+    print(f"{time.ctime()}: Counting the sentences and occurrences of each word...")
+    write_corpus_counts(db_destination)
+
     print(f"{time.ctime()}: Collocation database built successfully.")
+
+
+# What the corpus counts are counted from, for words and for lemmas: the id of each running word, the offsets of the
+# vocabulary (its size), and the name the counts are saved under
+_COUNTED = {
+    False: ("token_ids.npy", "vocab_offsets.npy", "word"),
+    True: ("attr_lemma_ids.npy", "attr_lemma_vocab_offsets.npy", "lemma"),
+}
+
+
+@numba.njit(nogil=True)
+def _sentence_df_kernel(count_ids, sent_offsets, n_vocab):
+    """The number of sentences each id is in, in one pass over the ids: those seen in a sentence are reset after it."""
+    df = np.zeros(n_vocab, dtype=np.int64)
+    seen = np.zeros(n_vocab, dtype=np.bool_)
+    for si in range(len(sent_offsets) - 1):
+        start = sent_offsets[si]
+        end = sent_offsets[si + 1]
+        for k in range(start, end):
+            tid = count_ids[k]
+            if not seen[tid]:
+                seen[tid] = True
+                df[tid] += 1
+        for k in range(start, end):
+            seen[count_ids[k]] = False
+    return df
+
+
+@numba.njit(nogil=True)
+def _count_tokens(count_ids, n_vocab):
+    """The number of times each id occurs."""
+    counts = np.zeros(n_vocab, dtype=np.int64)
+    for i in range(len(count_ids)):
+        counts[count_ids[i]] += 1
+    return counts
+
+
+def write_corpus_counts(colloc_dir):
+    """Write the corpus-wide counts of the words (and of the lemmas, if the database has them) next to the collocation
+    arrays they are counted from: the number of sentences each is in (sentence_df_*.npy) and of times it occurs
+    (token_counts_*.npy), which the collocation report's frequency filter weighs words by
+    (collocation._load_sentence_df). philologic.utils.write_corpus_counts writes them for databases loaded before.
+    Returns the names of the files written."""
+    sent_offsets = np.load(os.path.join(colloc_dir, "sent_offsets.npy"), mmap_mode="r")
+    written = []
+    for count_lemmas in (False, True):
+        ids_file, voff_file, kind = _COUNTED[count_lemmas]
+        if not os.path.exists(os.path.join(colloc_dir, ids_file)):  # a database without lemmas
+            continue
+        count_ids = np.load(os.path.join(colloc_dir, ids_file), mmap_mode="r")
+        n_vocab = len(np.load(os.path.join(colloc_dir, voff_file), mmap_mode="r")) - 1
+        for name, counts in (
+            (f"sentence_df_{kind}.npy", _sentence_df_kernel(count_ids, sent_offsets, n_vocab)),
+            (f"token_counts_{kind}.npy", _count_tokens(count_ids, n_vocab)),
+        ):
+            path = os.path.join(colloc_dir, name)
+            tmp = f"{path}.{os.getpid()}.tmp"  # written whole, then put in place: no worker reads half of it
+            try:
+                with open(tmp, "wb") as f:
+                    np.save(f, counts)
+                os.replace(tmp, path)
+            finally:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+            written.append(name)
+    return written
 
 
 def word_frequencies(loader_obj):

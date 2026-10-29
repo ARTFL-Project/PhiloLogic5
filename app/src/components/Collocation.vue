@@ -54,7 +54,7 @@
             </ul>
         </div>
         <results-summary :description="results.description" :filter-list="filterList" :colloc-method="mode"
-            :stopwords-missing="stopwordsMissing"
+            :stopwords-missing="stopwordsMissing" :frequency-filter="frequencyFilter"
             v-if="mode === 'frequency'" style="margin-top:0 !important;"></results-summary>
         <div role="region" :aria-label="$t('collocation.collocationResults')">
             <div class="card shadow-sm mx-2 p-3" style="border-top-width: 0;" v-if="mode == 'compare'" role="region"
@@ -424,6 +424,8 @@ const mode = ref("frequency");
 const results = ref({});
 const filterList = ref([]);
 const stopwordsMissing = ref(false);
+// The filter of common words the server applied: {type: "df", pct} or {type: "top_n", n}; null before the results
+const frequencyFilter = ref(null);
 const biblio = ref({});
 const sortedList = ref([]);
 const collocatesFilePath = ref("");
@@ -556,6 +558,7 @@ function updateCollocation() {
             resultsLength.value = response.data.results_length;
             filterList.value = response.data.filter_list;
             stopwordsMissing.value = Boolean(response.data.stopwords_missing);
+            frequencyFilter.value = response.data.frequency_filter || null;
             collocatesFilePath.value = response.data.file_path;
             searching.value = false;
             if (resultsLength.value) {
@@ -618,6 +621,7 @@ function getOtherCollocates() {
         colloc_filter_choice: formData.value.colloc_filter_choice,
         colloc_within: formData.value.colloc_within,
         filter_frequency: formData.value.filter_frequency,
+        filter_df_pct: formData.value.filter_df_pct,
         q_attribute: formData.value.q_attribute || "",
         q_attribute_value: formData.value.q_attribute_value || "",
         ...comparedMetadataValues,
@@ -679,6 +683,7 @@ function similarCollocDistributions(field) {
             colloc_filter_choice: formData.value.colloc_filter_choice,
             colloc_within: formData.value.colloc_within,
             filter_frequency: formData.value.filter_frequency,
+            filter_df_pct: formData.value.filter_df_pct,
             map_field: field.value,
             q_attribute: formData.value.q_attribute || "",
             q_attribute_value: formData.value.q_attribute_value || "",

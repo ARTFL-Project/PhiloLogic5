@@ -102,9 +102,9 @@
                                 <span>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                         v-if="formData.colloc_filter_choice === 'frequency'"
-                                        :aria-label="$t('resultsSummary.commonWords', { n: formData.filter_frequency }) + ' ' + $t('resultsSummary.filtered')"
+                                        :aria-label="$t(commonWords.key, commonWords.params) + ' ' + $t('resultsSummary.filtered')"
                                         :aria-expanded="showFilteredWords" aria-controls="filter-list">
-                                        {{ $t("resultsSummary.commonWords", { n: formData.filter_frequency }) }}
+                                        {{ $t(commonWords.key, commonWords.params) }}
                                     </button>
                                     <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                         v-if="formData.colloc_filter_choice === 'stopwords' && !stopwordsMissing"
@@ -235,7 +235,7 @@ import {
     paramsToUrlString,
 } from "../utils.js";
 
-const props = defineProps(["description", "filterList", "groupLength", "stopwordsMissing"]);
+const props = defineProps(["description", "filterList", "groupLength", "stopwordsMissing", "frequencyFilter"]);
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");
@@ -261,6 +261,16 @@ const groupByLabel = computed(() =>  // of the current grouping, which the form 
     route.query.group_by in philoConfig.metadata_aliases
         ? philoConfig.metadata_aliases[route.query.group_by]
         : route.query.group_by
+);
+// The common words filtered: the n most common if the server applied that filter (it does for a database without the
+// sentence counts), else those in over the percentage of the sentences the form gives
+const commonWords = computed(() =>
+    props.frequencyFilter && props.frequencyFilter.type === "top_n"
+        ? { key: "resultsSummary.commonWords", params: { n: props.frequencyFilter.n } }
+        : {
+            key: "resultsSummary.commonWordsDf",
+            params: { pct: props.frequencyFilter ? props.frequencyFilter.pct : formData.value.filter_df_pct },
+        }
 );
 const showFilteredWords = ref(false);
 const currentQuery = ref({});
