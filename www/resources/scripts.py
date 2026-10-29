@@ -18,7 +18,6 @@ JSON_SCRIPTS = {
     "alignment_to_text",
     "autocomplete_metadata",
     "autocomplete_term",
-    "collocation_time_series",
     "comparative_collocations",
     "get_academic_citation",
     "get_bibliography",

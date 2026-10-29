@@ -315,11 +315,6 @@ def test_everything_cached_in_hitlist_dir(served_read_only):
     by_author = get_json(
         server, "reports/collocation.py", {**colloc, "filter_frequency": "100", "map_field": "author"}
     )["file_path"]
-    by_year = get_json(
-        server,
-        "reports/collocation.py",
-        {**colloc, "collocation_method": "timeSeries", "time_series_interval": "10", "map_field": "year"},
-    )["file_path"]
     from philologic.runtime.reports.collocation import load_map_field_cache
 
     one_author = load_map_field_cache(by_author)[3][0]
@@ -329,10 +324,9 @@ def test_everything_cached_in_hitlist_dir(served_read_only):
     get_json(server, "scripts/comparative_collocations.py",
              {"primary_file_path": whole, "other_file_path": distribution, "whole_corpus": "false"})
     get_json(server, "scripts/get_similar_collocate_distributions.py", {"primary_file_path": whole, "file_path": by_author})
-    get_json(server, "scripts/collocation_time_series.py", {"file_path": by_year, "year_interval": "10", "period_number": "0"})
 
     load_cache = served_read_only.load_cache
-    for file_path in (whole, by_author, by_year, distribution):
+    for file_path in (whole, by_author, distribution):
         assert os.path.dirname(file_path) == str(load_cache)
     assert sorted(os.listdir(cache.parent)) == [corpus.name]
     assert os.listdir(cache) == [load_cache.name]

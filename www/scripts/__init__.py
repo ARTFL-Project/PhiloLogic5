@@ -1,7 +1,6 @@
 from .alignment_to_text import alignment_to_text
 from .autocomplete_metadata import autocomplete_metadata
 from .autocomplete_term import autocomplete_term
-from .collocation_time_series import collocation_time_series
 from .comparative_collocations import comparative_collocations
 from .get_academic_citation import get_academic_citation
 from .get_bibliography import get_bibliography
