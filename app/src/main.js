@@ -8,9 +8,14 @@ import App from "./App.vue";
 import router from "./router";
 
 import i18n from "./i18n";
-import { databaseUrl, dbUrlOnThisHost } from "./utils";
+import { databaseUrl } from "./utils";
 
-const dbUrl = dbUrlOnThisHost(databaseUrl());
+if (import.meta.env.DEV && !import.meta.env.VITE_DB_URL) {
+    console.error(
+        "npm run host needs the database to work with: set VITE_DB_URL to its URL in app/.env.development.local"
+    );
+}
+const dbUrl = databaseUrl();
 
 axios
     .get(`${dbUrl}/scripts/get_web_config.py`, {})

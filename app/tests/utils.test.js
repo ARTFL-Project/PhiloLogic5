@@ -413,15 +413,35 @@ describe("whenTallEnough", () => {
 // databaseUrl
 // ---------------------------------------------------------------------------
 describe("databaseUrl", () => {
-    it("is the <base href> the server gives the page: the client is built for no path", () => {
+    function docWithBase(href) {
         const doc = document.implementation.createHTMLDocument("");
         const base = doc.createElement("base");
-        base.href = "http://localhost:8000/philologic5/frantext-01-26/";
+        base.href = href;
         doc.head.appendChild(base);
-        expect(databaseUrl(doc, undefined)).toBe("http://localhost:8000/philologic5/frantext-01-26/");
+        return doc;
+    }
+
+    it("is the <base href> the server gives the page: the client is built for no path", () => {
+        const doc = docWithBase("http://localhost:8000/philologic5/frantext-01-26/");
+        const location = { origin: "http://localhost:8000", href: "http://localhost:8000/philologic5/frantext-01-26/" };
+        expect(databaseUrl(doc, undefined, location)).toBe("http://localhost:8000/philologic5/frantext-01-26/");
     });
 
-    it("is VITE_DB_URL with npm run dev", () => {
-        expect(databaseUrl(document, "http://localhost:8000/philologic5/mydb/")).toBe("http://localhost:8000/philologic5/mydb/");
+    it("is the <base href> on the host the page came from, as behind EZproxy", () => {
+        const doc = docWithBase("https://artflsrv04.uchicago.edu/philologic5/frantext-01-26/");
+        const location = {
+            origin: "https://artflsrv04-uchicago-edu.ezproxy.princeton.edu",
+            href: "https://artflsrv04-uchicago-edu.ezproxy.princeton.edu/philologic5/frantext-01-26/",
+        };
+        expect(databaseUrl(doc, undefined, location)).toBe(
+            "https://artflsrv04-uchicago-edu.ezproxy.princeton.edu/philologic5/frantext-01-26/"
+        );
+    });
+
+    it("is VITE_DB_URL as it is with npm run host, on the database's server rather than the dev server", () => {
+        const location = { origin: "http://marat.uchicago.edu:5173", href: "http://marat.uchicago.edu:5173/philologic5/mydb/" };
+        expect(databaseUrl(document, "http://marat.uchicago.edu/philologic5/mydb/", location)).toBe(
+            "http://marat.uchicago.edu/philologic5/mydb/"
+        );
     });
 });
