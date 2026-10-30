@@ -21,6 +21,13 @@ nav.navbar {
 nav.navbar a, #academic-citation-link {
     color: #fff !important;
 }
+footer.footer-bar {
+    background-color: $header-color;
+    color: #fff;
+}
+footer.footer-bar a {
+    color: #fff !important;
+}
 
 // Hamburger menu styling
 .navbar-toggler {

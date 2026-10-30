@@ -34,17 +34,8 @@
         <access-control :client-ip="clientIp" :domain-name="domainName" v-if="!accessAuthorized && !checkingAccess"
             role="navigation" :aria-label="$t('common.accessControlLabel')" />
     </main>
-    <!-- Footer -->
-    <footer class="container-fluid" v-if="accessAuthorized">
-        <div class="text-center mb-4">
-            <hr class="mb-3" style="width: 20%; margin: auto" />
-            <p>{{ $t('common.poweredBy') }}</p>
-            <a href="https://artfl-project.uchicago.edu/" :title="$t('common.philoTitle')"
-                :aria-label="$t('common.philoLinkLabel')">
-                <img src="./assets/philo.png" :alt="$t('common.philoAlt')" height="40" width="110" />
-            </a>
-        </div>
-    </footer>
+    <!-- Also under the login screen: whoever can't get in may need the accessibility link the most -->
+    <Footer v-if="!checkingAccess" />
 </template>
 
 <script setup>
@@ -53,6 +44,7 @@ import { storeToRefs } from "pinia";
 import { defineAsyncComponent, inject, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
+import Footer from "./components/Footer.vue";
 import Header from "./components/Header.vue";
 import ProgressSpinner from "./components/ProgressSpinner.vue";
 import { useMainStore } from "./stores/main";
@@ -217,6 +209,17 @@ watch(accessAuthorized, (authorized) => {
 <style lang="scss">
 @use "../node_modules/bootstrap/scss/bootstrap.scss";
 @use "./assets/styles/theme.module.scss" as theme;
+
+/* A column, so that the footer stays at the bottom of the window on pages shorter than it */
+#app {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+#main {
+    margin-bottom: 2rem;
+}
 
 a {
     text-decoration: none;

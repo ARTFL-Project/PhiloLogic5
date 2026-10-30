@@ -811,6 +811,10 @@ WEB_CONFIG_DEFAULTS = {
         "value": "",
         "comment": "# The link should start with http:// or https://. This will display an error report link in the header and in document navigation",
     },
+    "accessibility_link": {
+        "value": "https://accessibility.uchicago.edu/",
+        "comment": '# The link should start with http:// or https://. This will display an accessibility link in the footer of every page. Set to "" to hide it',
+    },
     "academic_citation": {
         "value": {"collection": "", "citation": [], "custom_url": ""},
         "comment": "\n".join(

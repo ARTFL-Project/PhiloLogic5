@@ -9,6 +9,7 @@
         "philoTitle": "PhiloLogic 5 : Moteur de recherche et de récupération ARTFL open source",
         "philoLinkLabel": "Visiter le site web PhiloLogic",
         "philoAlt": "PhiloLogic - Moteur de recherche et de récupération ARTFL open source",
+        "accessibility": "Accessibilité",
         "documentTitle": "{dbname} sous PhiloLogic - Une plateforme d'analyse de texte",
         "documentTitleWithReport": "{dbname} sous PhiloLogic - Une plateforme d'analyse de texte - {report}",
         "invalidConfigTitle": "Fichier de configuration web invalide : {path}",

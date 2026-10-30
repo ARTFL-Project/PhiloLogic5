@@ -9,6 +9,7 @@
         "philoTitle": "PhiloLogic 5: Open Source ARTFL Search and Retrieval Engine",
         "philoLinkLabel": "Visit PhiloLogic website",
         "philoAlt": "PhiloLogic - Open Source ARTFL Search and Retrieval Engine",
+        "accessibility": "Accessibility",
         "documentTitle": "{dbname} under PhiloLogic - A Text Analysis Platform",
         "documentTitleWithReport": "{dbname} under PhiloLogic - A Text Analysis Platform - {report} Report",
         "invalidConfigTitle": "Invalid web config file: {path}",

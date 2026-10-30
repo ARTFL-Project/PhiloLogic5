@@ -52,6 +52,7 @@ export function createTestConfig(overrides = {}) {
         collocation_fields_to_compare: ["author", "title"],
         academic_citation: { link: "", collection: "", citation: [], custom_url: "" },
         report_error_link: "",
+        accessibility_link: "https://accessibility.uchicago.edu/",
         header_in_footer: false,
         header_in_toc: false,
         concordance_biblio_sorting: [],

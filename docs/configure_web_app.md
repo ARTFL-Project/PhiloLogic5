@@ -55,13 +55,13 @@ Changing the Web Application theme requires editing the `theme.module.scss` file
 The `theme.module.scss` file is a Sass stylesheet which uses global variables to define the main colors used in the web app. The key variables are:
 
 ```scss
-$header-color: rgb(95, 2, 2);          // Navigation bar background
+$header-color: rgb(95, 2, 2);          // Navigation bar and footer background
 $button-color: rgb(173, 66, 66);       // Primary buttons, form elements
 $button-color-active: rgba(160, 55, 55, 0.9);  // Active/hover state
 $link-color: rgb(156, 60, 60);         // Hyperlinks, text accents, and focus indicators
 $passage-color: rgb(155, 65, 55);      // Search result highlights
 $card-header-color: rgb(173, 66, 66);  // Card and table headers
-$focus-on-dark-color: #fff;            // Focus indicator on dark backgrounds (e.g. navbar)
+$focus-on-dark-color: #fff;            // Focus indicator on dark backgrounds (navbar and footer)
 ```
 
 Once you've edited the theme file, rebuild the web application by running:
