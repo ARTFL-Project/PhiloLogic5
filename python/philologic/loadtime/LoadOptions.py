@@ -68,6 +68,8 @@ class LoadOptions:
         self.values["metadata_sql_types"] = {}
         self.values["lemma_file"] = None
         self.values["spacy_model"] = None
+        self.values["page_marker_regex"] = None
+        self.values["plain_text_section_length"] = PlainTextParser.SECTION_LENGTH
 
     def setup_parser(self):
         """Set up parser options"""
@@ -247,5 +249,5 @@ class LoadConfig:
                         self.config["words_to_index"] = word_list
                     else:
                         self.config[a] = value
-                elif a == "sort_order":
+                elif a in ("sort_order", "plain_text_section_length"):  # 0 or None turns plain text sections off
                     self.config[a] = value

@@ -74,6 +74,8 @@ PARSER_OPTIONS = [
     "file_type",
     "metadata_sql_types",
     "lowercase_index",
+    "page_marker_regex",
+    "plain_text_section_length",
 ]
 
 
@@ -645,6 +647,8 @@ class Loader:
             "sentence_breakers",
             "metadata_sql_types",
             "lowercase_index",
+            "page_marker_regex",
+            "plain_text_section_length",
         ]:
             try:
                 options[option] = cls.parser_config[option]
