@@ -758,6 +758,17 @@ WEB_CONFIG_DEFAULTS = {
             ]
         ),
     },
+    "navigation_window_length": {
+        "value": 500000,
+        "comment": "\n".join(
+            [
+                "# The navigation_window_length variable sets the length in bytes of the largest part of a text object shown at once",
+                "# in the navigation report: a longer object is shown in parts of at most this length, each ending at a paragraph.",
+                "# Bytes, not characters: about as many characters in English or French, half as many in Greek or Russian, a third",
+                "# as many in Chinese. Set it to 0 to show every object whole, as browsers may not manage to display the largest.",
+            ]
+        ),
+    },
     "dictionary_lookup": {
         "value": {"url_root": "", "keywords": False},
         "comment": "\n".join(

@@ -1,16 +1,63 @@
 #!/var/lib/philologic5/philologic_env/bin/python3
 """Navigate inside objects"""
 
+from bisect import bisect_right
+
 import regex as re
 
 from philologic.runtime.citations import citation_links, citations
 from philologic.runtime.DB import DB
 from philologic.runtime.exceptions import BadRequest, NotFound
-from philologic.runtime.get_text import get_text_obj
+from philologic.runtime.get_text import get_text_obj, window_bounds
+from philologic.runtime.WSGIHandler import whole_number
+
+
+def window_length(config):
+    """The navigation_window_length of the web config: 0 (objects shown whole) if it is no positive whole number."""
+    try:
+        length = int(config["navigation_window_length"] or 0)
+    except (KeyError, TypeError, ValueError):
+        return 0
+    return max(length, 0)
+
+
+def text_window(obj, config, request):
+    """The part of a text object the navigation report shows, if the object is longer than navigation_window_length:
+    the window of its fixed partition (see get_text.window_bounds) holding the byte of window_start, else the first
+    highlighted word (byte) in the object, else the start of the highlighted passage (start_byte), else the first.
+    None for an object shown whole."""
+    length = window_length(config)
+    if not length or int(obj.end_byte) - int(obj.start_byte) <= length:
+        return None
+    bounds = window_bounds(obj, config, length)
+    starts = bounds[:-1]
+    target = None
+    if request["window_start"] != "":
+        target = whole_number("window_start", request["window_start"], None)
+    else:
+        try:
+            offsets = sorted(int(byte) for byte in request.byte)
+        except ValueError:  # an empty byte: no highlight, as get_text_obj has it
+            offsets = []
+        in_object = [offset for offset in offsets if bounds[0] <= offset < bounds[-1]]
+        if in_object:
+            target = in_object[0]
+        elif isinstance(request.start_byte, int) and bounds[0] <= request.start_byte < bounds[-1]:
+            target = request.start_byte
+    part = 0 if target is None else max(bisect_right(starts, target) - 1, 0)
+    return {
+        "start_byte": bounds[part],
+        "end_byte": bounds[part + 1],
+        "prev_start_byte": bounds[part - 1] if part > 0 else None,
+        "next_start_byte": bounds[part + 1] if part + 1 < len(starts) else None,
+        "part": part + 1,
+        "part_count": len(starts),
+    }
 
 
 def generate_text_object(request, config, note=False):
-    """Return text object given an philo_id"""
+    """Return text object given an philo_id. A client that can show it a part at a time (windowed=1) gets, of an
+    object longer than navigation_window_length, the part text_window picks, and its bounds and neighbors as window."""
     # Block doc-level text rendering to prevent scraping
     parts = request.philo_id.split()
     non_zero = [p for p in parts if p != "0"]
@@ -59,12 +106,22 @@ def generate_text_object(request, config, note=False):
         citation_hrefs = citation_links(db, config, doc_obj)
         citation = citations(doc_obj, citation_hrefs, config, report="navigation")
     text_object["citation"] = citation
-    text, imgs = get_text_obj(obj, config, request, db.locals["token_regex"], note=note)
+    window = None
+    if request["windowed"] not in ("", "0", "false") and note is not True:
+        window = text_window(obj, config, request)
+    if window is None:
+        text, imgs = get_text_obj(obj, config, request, db.locals["token_regex"], note=note)
+    else:
+        text, imgs = get_text_obj(
+            obj, config, request, db.locals["token_regex"], note=note, window=(window["start_byte"], window["end_byte"])
+        )
     if config.navigation_formatting_regex:
         for pattern, replacement in config.navigation_formatting_regex:
             text = re.sub(r"%s" % pattern, "%s" % replacement, text)
     text_object["text"] = text
     text_object["imgs"] = imgs
+    if window is not None:
+        text_object["window"] = window
     return text_object
 
 

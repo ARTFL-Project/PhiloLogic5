@@ -31,3 +31,24 @@ class TestAccessibilityLink:
         written = str(MakeWebConfig(str(tmp_path / "web_config.cfg")))
         exec(written, loaded := {})
         assert loaded["accessibility_link"] == ACCESSIBILITY_SITE
+
+
+@pytest.mark.unit
+class TestNavigationWindowLength:
+    def test_default_for_a_config_without_it(self, tmp_path):
+        config = web_config(tmp_path, 'dbname = "old load"\n')
+        assert config.navigation_window_length == 500000
+
+    def test_set_in_the_config(self, tmp_path):
+        assert web_config(tmp_path, "navigation_window_length = 200000\n").navigation_window_length == 200000
+
+    def test_written_in_the_config_of_new_loads(self, tmp_path):
+        written = str(MakeWebConfig(str(tmp_path / "web_config.cfg")))
+        exec(written, loaded := {})
+        assert loaded["navigation_window_length"] == 500000
+
+    @pytest.mark.parametrize("value, length", [("0", 0), ("None", 0), ("-5", 0), ('"abc"', 0), ("1000", 1000)])
+    def test_what_the_navigation_report_reads(self, tmp_path, value, length):
+        from philologic.runtime.reports.navigation import window_length
+
+        assert window_length(web_config(tmp_path, f"navigation_window_length = {value}\n")) == length

@@ -387,7 +387,16 @@
         "viewGraphic": "Voir le graphique {number}",
         "mainTextContent": "Contenu du texte principal",
         "nextPageImages": "Images de pages suivantes",
-        "nextGraphics": "Graphiques suivants"
+        "nextGraphics": "Graphiques suivants",
+        "textParts": "Parties du texte",
+        "textPartsEnd": "Parties du texte, à la fin de cette partie",
+        "partOf": "Partie {part} sur {count}",
+        "previousPart": "Partie précédente",
+        "nextPart": "Partie suivante",
+        "previousPartLabel": "Partie précédente : partie {part} sur {count}",
+        "nextPartLabel": "Partie suivante : partie {part} sur {count}",
+        "goToPreviousPart": "Aller à la partie précédente",
+        "goToNextPart": "Aller à la partie suivante"
     },
     "timeSeries": {
         "chartTitle": "Graphique de Série Temporelle",

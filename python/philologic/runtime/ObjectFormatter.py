@@ -314,8 +314,10 @@ def format_text_object(
     note=False,
     images=True,
     start_end_pairs=None,
+    window=False,
 ):
-    """Format text objects"""
+    """Format text objects. With window, the text is the part of the object starting at object_start_byte, and its
+    first page image is the one there."""
     philo_id = obj.philo_id
     if byte_offsets is not None:
         new_text = b""
@@ -688,16 +690,18 @@ def format_text_object(
         return (output, {})
 
     ## Page images
-    output, images = page_images(config, output, current_obj_img, current_graphic_img, philo_id)
+    output, images = page_images(
+        config, output, current_obj_img, current_graphic_img, philo_id, start_byte=object_start_byte if window else None
+    )
     return output, images
 
 
-def page_images(config, output, current_obj_img, current_graphic_img, philo_id):
-    """Get page images"""
+def page_images(config, output, current_obj_img, current_graphic_img, philo_id, start_byte=None):
+    """Get page images. start_byte, where the text starts when it is a part of the object, has its first page."""
     # first get first page info in case the object doesn't start with a page tag
     if not config.page_images_url_root:
         return output, {}
-    first_page_object = get_first_page(philo_id, config)
+    first_page_object = get_first_page(philo_id, config, start_byte=start_byte)
     if not first_page_object["filename"]:
         return output, {}
     if not current_obj_img:
@@ -752,15 +756,16 @@ def page_images(config, output, current_obj_img, current_graphic_img, philo_id):
     return output, img_obj
 
 
-def get_first_page(philo_id, config):
+def get_first_page(philo_id, config, start_byte=None):
     """This function will fetch the first page of any given text object in case there's no <pb>
-    starting the object"""
+    starting the object: the page of start_byte, if given, for a part of it"""
     db = DB(config.db_path + "/data/")
     c = db.dbh.cursor()
     if len(philo_id) < 9:
         c.execute("select start_byte, end_byte from toms where philo_id=?", (" ".join([str(i) for i in philo_id]),))
         result = c.fetchone()
-        start_byte = result["start_byte"]
+        if start_byte is None:
+            start_byte = result["start_byte"]
         approx_id = f"{philo_id[0]} 0 0 0 0 0 0 %"
         try:
             c.execute(
