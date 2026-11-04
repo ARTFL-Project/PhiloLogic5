@@ -121,6 +121,45 @@ def passage_spans(html):
     return re.findall(r'<span class="passage-0" n="0">([^<]*)</span>', html)
 
 
+def passage_text(html):
+    """The text of the spans of passage 0, as the browser shows it"""
+    return Html("".join(passage_spans(html))).text
+
+
+@pytest.mark.unit
+class TestPassageWithHighlights:
+    """The highlights of hits (byte) and a passage (start_byte and end_byte) on the same page. Each highlight was
+    inserted in the text before the passage was cut out of it at its byte offsets, and moved the bounds of the passage
+    after it 17 bytes (a <philoHighlight/>) early: into a word, or a tag, whose text was then shown in the passage."""
+
+    @pytest.mark.parametrize("before", [0, 1, 3])
+    def test_the_passage_where_its_bytes_are(self, tmp_path, before):
+        """With none, one or three hits before the passage, and one in it"""
+        text = book()
+        root = make_database(tmp_path, text)
+        start, end = byte_of(text, "in a text"), byte_of(text, "with words")
+        hits = [byte_of(text, word) for word in ("Before", "Words", "first")[3 - before :]] + [byte_of(text, "second")]
+        query = {"philo_id": "1 1", "byte": [str(hit) for hit in hits]}
+        page = navigate(root, start_byte=str(start), end_byte=str(end), **query)
+        assert passage_text(page) == Html(text[start:end]).text
+        assert f'data-offsets="{start}-{end}"' in page  # the byte offsets of the file
+        for word in ("Before", "Words", "first")[3 - before :]:
+            assert f'<span class="highlight">{word}</span>' in page
+        assert HIGHLIGHT.format("second") in page
+        assert Html(page).text == Html(navigate(root, **query)).text
+
+    def test_highlights_at_the_bounds(self, tmp_path):
+        """A hit at the start of the passage is in it, one at its end after it"""
+        text = book()
+        root = make_database(tmp_path, text)
+        start, end = byte_of(text, "Words"), byte_of(text, "with words")
+        hits = [byte_of(text, "Before"), start, byte_of(text, "second"), end]
+        page = navigate(root, philo_id="1 1", start_byte=str(start), end_byte=str(end), byte=[str(hit) for hit in hits])
+        assert passage_text(page) == Html(text[start:end]).text
+        assert HIGHLIGHT.format("Words") in page and HIGHLIGHT.format("second") in page
+        assert '<span n="0" id="end-passage-0"></span><span class="highlight">with</span>' in page
+
+
 HIGHLIGHT = '<span class="highlight"><span class="passage-0" n="0">{}</span></span>'
 # The escapes after the highlight, in the text of the <hi> and in its tail
 AFTER = '<span class="passage-0" n="0">&lt;/b&gt; &amp; &lt;img src=x onerror=alert(1)&gt; and &amp;lt;i&amp;gt; in a '

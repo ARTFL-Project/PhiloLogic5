@@ -4,6 +4,7 @@
 
 import os
 import sqlite3
+from bisect import bisect_left
 
 import regex as re
 from lxml import etree, html
@@ -24,6 +25,7 @@ STRIP_START_PUNCTUATION = re.compile(r"^[,?;.:!']")
 # Attribute values are escaped already, as in the source, but for the double quotes a single-quoted value may have, and
 # the ">" that would end a tag for the patterns that skip them
 ATTRIBUTE_ESCAPES = str.maketrans({'"': "&quot;", ">": "&gt;"})
+HIGHLIGHT = b"<philoHighlight/>"  # inserted in the text of a text object at each highlight, before it is parsed
 
 
 # Source: https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/HTML5/HTML5_element_list
@@ -353,13 +355,22 @@ def format_text_object(
         text, position = escape_plain_text(text)
         if byte_offsets is not None:
             byte_offsets = [position(offset) for offset in byte_offsets]
+    highlights = []  # where the highlights go in the text, in order
     if byte_offsets is not None:
+        highlights = sorted(byte_offsets)
         new_text = b""
         last_offset = 0
-        for b in byte_offsets:
-            new_text += text[last_offset:b] + b"<philoHighlight/>"
+        for b in highlights:
+            new_text += text[last_offset:b] + HIGHLIGHT
             last_offset = b
         text = new_text + text[last_offset:]
+
+    def passage_position(offset):
+        """Where the passage bound at a byte offset of the file is in the highlighted text: after the highlights
+        inserted before it (uncounted, each put it 17 bytes early, into a word or a tag), before those at it"""
+        at = position(offset)
+        return at + len(HIGHLIGHT) * bisect_left(highlights, at)
+
     if start_end_pairs is not None:
         new_text = b""
         last_offset = 0
@@ -371,18 +382,18 @@ def format_text_object(
                 start_byte = last_offset
             count += 1
             new_text += (
-                text[position(last_offset) : position(start_byte)]
+                text[passage_position(last_offset) : passage_position(start_byte)]
                 + b'<span class="passage-marker" '
                 + f"""data-offsets="{start_byte+object_start_byte}-{end_byte+object_start_byte}" n="{count}">""".encode(
                     "utf8"
                 )
                 + b"</span>"
                 + f"""<start-passage n="{count}"/>""".encode("utf8")
-                + text[position(start_byte) : position(end_byte)]
+                + text[passage_position(start_byte) : passage_position(end_byte)]
                 + f"""<end-passage n="{count}"/>""".encode("utf8")
             )
             last_offset = end_byte
-        text = new_text + text[position(last_offset) :]
+        text = new_text + text[passage_position(last_offset) :]
     current_obj_img = []
     current_graphic_img = []
     text = (
