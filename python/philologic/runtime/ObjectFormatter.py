@@ -896,7 +896,6 @@ def clean_tags(element, word_regex):
                 + "</span>"
                 + element.tail[word_match.end() :]
             )
-        text = element.text + text + element.tail
         return '<span class="highlight">' + element.text + text + "</span>" + element.tail
     if element.tag == "w":
         attributes = "".join(f' {k}="{v.translate(ATTRIBUTE_ESCAPES)}"' for k, v in element.items() if k != "lang")
