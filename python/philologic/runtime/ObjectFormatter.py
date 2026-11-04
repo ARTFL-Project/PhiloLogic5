@@ -332,6 +332,18 @@ def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None, fi
     return output
 
 
+def highlight_offsets(byte_offsets, length, request):
+    """The byte offsets of the highlights of a text object of length bytes (or of the part of it shown): those in it.
+    One before it repeated part of the text, and one past it made an empty highlight at its end, which the client
+    scrolled to. But the clients built before windowed=1, which they don't send (see navigation), scroll to the first
+    highlight without checking that there is one, and stop with an error, the page half set up, if there is none: they
+    keep that empty highlight at the end when none of the offsets is in the text."""
+    in_text = [offset for offset in byte_offsets if 0 <= offset < length]
+    if byte_offsets and not in_text and request["windowed"] in ("", "0", "false"):
+        return [length]
+    return in_text
+
+
 def format_text_object(
     obj,
     text,
@@ -351,6 +363,8 @@ def format_text_object(
     philo_id = obj.philo_id
     plain_text = obj.db.locals["file_type"] == "plain_text"
     position = same_position  # where a byte offset of the file is in the text
+    if byte_offsets is not None:
+        byte_offsets = highlight_offsets(byte_offsets, len(text), request)
     if plain_text:
         text, position = escape_plain_text(text)
         if byte_offsets is not None:

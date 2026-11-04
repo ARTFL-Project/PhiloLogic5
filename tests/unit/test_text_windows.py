@@ -298,3 +298,56 @@ class TestPlainTextNavigation:
         response = navigate(root, 0, philo_id="1 1")
         assert "\n&lt;abducere: see abduce.]\t1. The act of\n" in response["text"]
         assert "Chapter 40\n" in response["text"]
+
+
+@pytest.mark.unit
+class TestHighlightsOutsideTheObject:
+    """The byte offsets of hits outside the object shown, such as those of a hit in another section: they were
+    inserted at offsets out of its text, and one before it repeated a part of the text, one past it left an empty
+    highlight at its end, which the client scrolled to. They are left out, as in the parts of a windowed object, but
+    for the clients built before windowed=1, which don't send it: they scroll to the first highlight without checking
+    that there is one, and broke off with an error, the page half set up, without any; they keep an empty highlight at
+    the end of the object when none of the hits is in it."""
+
+    PARAGRAPH = "1 1 1 1 10"  # the words of Chapter 5
+    OUTSIDE = {"before": [0], "at_the_end": [2], "after": [3], "all": [0, 2, 3]}
+
+    def page(self, root, hits, **query):
+        return navigate(root, 0, philo_id=self.PARAGRAPH, byte=[str(hit) for hit in hits], **query)["text"]
+
+    @staticmethod
+    def hits():
+        """A word of Chapter 2, one of Chapter 5, the first byte of Chapter 6 (where the paragraph ends), Chapter 9"""
+        words = BOOK.index(b"Chapter 5\n") + len(b"Chapter 5\n\n")
+        return (BOOK.index(b"word", BOOK.index(b"Chapter 2\n")), BOOK.index(b"word", words + 100),
+                BOOK.index(b"Chapter 6\n"), BOOK.index(b"Chapter 9\n"))  # fmt: skip
+
+    @pytest.mark.parametrize("outside", OUTSIDE.values(), ids=OUTSIDE.keys())
+    def test_left_out(self, tmp_path, outside):
+        root = make_database(tmp_path, BOOK)
+        assert bounds_of(root, 10**6, self.PARAGRAPH)[-1] == self.hits()[2]
+        hits = self.hits()
+        text = self.page(root, [hits[i] for i in outside], windowed="1")
+        assert "highlight" not in text
+        assert text == navigate(root, 0, philo_id=self.PARAGRAPH, windowed="1")["text"]
+
+    @pytest.mark.parametrize("windowed", ["1", ""], ids=["windowed", "old_client"])
+    @pytest.mark.parametrize("outside", OUTSIDE.values(), ids=OUTSIDE.keys())
+    def test_with_a_hit_in_the_object(self, tmp_path, outside, windowed):
+        """Only that hit is highlighted, and no text is repeated"""
+        root = make_database(tmp_path, BOOK)
+        hits = self.hits()
+        text = self.page(root, sorted([hits[1]] + [hits[i] for i in outside]), windowed=windowed)
+        assert text == self.page(root, [hits[1]], windowed=windowed)
+        assert text.count("highlight") == 1
+
+    @pytest.mark.parametrize("query", [{}, {"windowed": "0"}], ids=["no_windowed", "windowed_0"])
+    @pytest.mark.parametrize("outside", OUTSIDE.values(), ids=OUTSIDE.keys())
+    def test_old_clients_get_an_empty_highlight_at_the_end(self, tmp_path, outside, query):
+        root = make_database(tmp_path, BOOK)
+        hits = self.hits()
+        text = self.page(root, [hits[i] for i in outside], **query)
+        whole = navigate(root, 0, philo_id=self.PARAGRAPH)["text"]
+        assert text.count("highlight") == 1
+        assert whole.endswith("</div></div>")  # of the text and of the fragment
+        assert text == whole[: -len("</div></div>")] + '<span class="highlight"></span></div></div>'
