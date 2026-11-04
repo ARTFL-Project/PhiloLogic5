@@ -28,6 +28,7 @@ from orjson import loads
 from tqdm import tqdm
 
 from philologic.Config import MakeDBConfig, MakeWebConfig
+from philologic.loadtime.PlainTextParser import PlainTextParser
 from philologic.loadtime.PostFilters import make_collocation_database, make_sql_table
 from philologic.utils import (
     convert_entities,
@@ -1183,6 +1184,10 @@ class Loader:
             "metadata_sql_types": metadata_sql_types,
         }
         db_values["token_regex"] = self.token_regex
+        # The plain-text parser made page breaks of the lines it matches: the runtime shows them as such
+        parser_factory = self.parser_config.get("parser_factory")
+        if isinstance(parser_factory, type) and issubclass(parser_factory, PlainTextParser):
+            db_values["page_marker_regex"] = self.parser_config.get("page_marker_regex")
         db_values["default_object_level"] = self.default_object_level
         db_values["word_attributes"] = self.word_attributes
         db_values["overflow_words"] = self.overflow_words

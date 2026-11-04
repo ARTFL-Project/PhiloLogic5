@@ -256,9 +256,10 @@ class TestSections:
         assert sections[0][3]["head"] == "Pages 1–3125"
 
 
-@pytest.mark.unit
-def test_load_config_options_reach_the_parser(tmp_path, monkeypatch):
-    """Test that page_marker_regex and plain_text_section_length of a load_config get to the plain text parser."""
+@pytest.fixture
+def new_load(tmp_path, monkeypatch):
+    """A function setting up a load of a plain text of 5 pages with a load_config, as philoload5 -l does, with
+    the options of a file type (-t): the Loader it returns has parsed nothing yet."""
     from philologic.loadtime import LoadFilters
     from philologic.loadtime.Loader import Loader
     from philologic.loadtime.LoadOptions import LoadOptions
@@ -274,10 +275,10 @@ def test_load_config_options_reach_the_parser(tmp_path, monkeypatch):
     (tmp_path / "t.txt").write_text(pages_text(5), encoding="utf8")
     load_config = tmp_path / "load_config.py"
 
-    def parse_with(config):
+    def new_load(config, file_type="plain_text"):
         load_config.write_text(config, encoding="utf8")
         load_options = LoadOptions()
-        load_options.parse(["philoload5", "-t", "plain_text", "-l", str(load_config), "db", str(tmp_path / "t.txt")])
+        load_options.parse(["philoload5", "-t", file_type, "-l", str(load_config), "db", str(tmp_path / "t.txt")])
         destination = tmp_path / f"db{len(list(tmp_path.glob('db*')))}"
         load_options["db_destination"] = str(destination)
         load_options["data_destination"] = str(destination / "data")
@@ -286,9 +287,20 @@ def test_load_config_options_reach_the_parser(tmp_path, monkeypatch):
         loader = Loader.set_class_attributes(load_options.values)
         loader.add_files(load_options.files)
         loader.set_file_data(None, loader.textdir, loader.workdir)
-        Loader.parse_file(0)
+        return loader
+
+    return new_load
+
+
+@pytest.mark.unit
+def test_load_config_options_reach_the_parser(new_load):
+    """Test that page_marker_regex and plain_text_section_length of a load_config get to the plain text parser."""
+
+    def parse_with(config):
+        loader = new_load(config)
+        loader.parse_file(0)
         records = []
-        for line in Path(Loader.filequeue[0]["raw"]).read_text(encoding="utf8").splitlines():
+        for line in Path(loader.filequeue[0]["raw"]).read_text(encoding="utf8").splitlines():
             philo_type, name, philo_id, attrib = line.split("\t")
             records.append((philo_type, name, philo_id.split(), json.loads(attrib)))
         return records
@@ -304,3 +316,39 @@ def test_load_config_options_reach_the_parser(tmp_path, monkeypatch):
     records = parse_with("words_to_index = ''\n")
     assert section_heads(records) == ["Section 1"]
     assert not of_type(records, "page")
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "config, file_type, expected",
+    [
+        (f'page_marker_regex = r"{HATHI_MARKERS}"\n', "plain_text", HATHI_MARKERS),
+        ("words_to_index = ''\n", "plain_text", None),
+        # The XML parser leaves the lines of page_marker_regex as they are: the runtime must too
+        (f'page_marker_regex = r"{HATHI_MARKERS}"\n', "xml", None),
+    ],
+)
+def test_db_locals_get_the_page_marker_regex(new_load, config, file_type, expected):
+    """Test that db.locals.py has the page_marker_regex the plain-text parser made page breaks with, which the runtime
+    shows those lines as page breaks with."""
+    from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
+
+    loader = new_load(config, file_type)
+    loader.write_db_config()
+    db_locals_path = Path(loader.destination) / "db.locals.py"
+    assert Config(str(db_locals_path), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)["page_marker_regex"] == expected
+    # Written as a value, which is read without the defaults
+    written = {}
+    exec(db_locals_path.read_text(encoding="utf8"), {}, written)
+    assert written["page_marker_regex"] == expected
+
+
+@pytest.mark.unit
+def test_db_locals_without_a_page_marker_regex(tmp_path):
+    """Test that the db.locals.py of the databases loaded before page_marker_regex was written there reads None."""
+    from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
+
+    (tmp_path / "db.locals.py").write_text('metadata_fields = []\ntoken_regex = "\\\\w+"\n', encoding="utf8")
+    db_locals = Config(str(tmp_path / "db.locals.py"), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
+    assert db_locals["page_marker_regex"] is None
+    assert db_locals.page_marker_regex is None

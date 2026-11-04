@@ -98,7 +98,7 @@ page_marker_regex = r"^\{(?:[^{}]*_)?(\d+)\}$"
 plain_text_section_length = 100_000
 ```
 
-`page_marker_regex` (`None` by default) defines the lines which mark page breaks: a line which, stripped of surrounding whitespace, matches the whole regex is not indexed, ends the paragraph before it, and starts a new page, whose number (`n`) is the regex's first group, without its leading zeros. These pages are stored and cited as the pages of XML files are.
+`page_marker_regex` (`None` by default) defines the lines which mark page breaks: a line which, stripped of surrounding whitespace, matches the whole regex is not indexed, ends the paragraph before it, and starts a new page, whose number (`n`) is the regex's first group, without its leading zeros. These pages are stored and cited as the pages of XML files are. The regex is written to the database's `data/db.locals.py`, and the text shows these lines as it shows the `<pb>` of XML files (`--12--`), while concordances and KWIC leave them out. A database loaded before `page_marker_regex` was written there shows them as text until it is reloaded, or given the same `page_marker_regex` in its `data/db.locals.py`.
 
 `plain_text_section_length` (100,000 characters by default) splits each text into `div1` sections, so that a search result opens its section, not the whole text, which a browser can be slow to display. The length counts characters (letters, spaces, punctuation, line breaks), blank lines and page marker lines included. A section ends at the first page break once it holds that many characters or, failing a page break, at the first paragraph once it holds twice as many. Each section is labeled after the pages it spans, such as "Pages 12–48", or "Section 3" when it has no pages.
 

@@ -74,7 +74,9 @@ def get_concordance_text(db, hit, path, context_size):
     length = context_size + byte_distance + context_size
     byte_offsets, start_byte = adjust_bytes(byte_offsets, context_size)
     conc_text = get_text(hit, start_byte, length, path)
-    conc_text = format_concordance(conc_text, db.locals["token_regex"], byte_offsets)
+    conc_text = format_concordance(
+        conc_text, db.locals["token_regex"], byte_offsets, page_marker_regex=db.locals["page_marker_regex"]
+    )
     return conc_text
 
 
