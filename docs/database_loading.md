@@ -88,6 +88,8 @@ To use the plain text parser, you will need to specify the `t plain_text` comman
 
 Note that the plain text parser is fairly rudimentary and does not detect structure within the files themselves, with the sole exception being paragraphs when there is an empty line between blocks of text. In order for better structure detection, you will need to convert your files to TEI.
 
+The text of plain text files has no markup: its `&`, `<` and `>` are shown as they are in the text, concordances and KWIC, where an XML file's would be markup, so that the stray `<` of OCR'd text doesn't hide the text after it. The loader writes the file type to the database's `data/db.locals.py` (`file_type = "plain_text"`). A plain text database loaded before `file_type` was written there takes these characters for markup until it is reloaded, or given `file_type = "plain_text"` in its `data/db.locals.py`.
+
 Two options of the load config file (passed with `-l`) apply to plain text files:
 
 ```python

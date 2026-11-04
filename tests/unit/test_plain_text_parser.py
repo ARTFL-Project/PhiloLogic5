@@ -352,3 +352,44 @@ def test_db_locals_without_a_page_marker_regex(tmp_path):
     db_locals = Config(str(tmp_path / "db.locals.py"), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
     assert db_locals["page_marker_regex"] is None
     assert db_locals.page_marker_regex is None
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "config, file_type, expected",
+    [
+        ("words_to_index = ''\n", "plain_text", "plain_text"),
+        ("words_to_index = ''\n", "xml", "xml"),
+        ("words_to_index = ''\n", "html", "html"),
+        # The parser of a load_config decides: the texts were read as text, whichever the -t option
+        ("from philologic.loadtime.PlainTextParser import PlainTextParser\nparser_factory = PlainTextParser\n", "xml",
+         "plain_text"),
+        # As -t plain_text does over the XMLParser of a load_config, as scold_bridle's
+        ("from philologic.loadtime.Parser import XMLParser\nparser_factory = XMLParser\n", "plain_text", "plain_text"),
+    ],
+)
+def test_db_locals_get_the_file_type(new_load, config, file_type, expected):
+    """Test that db.locals.py has the file type the texts were parsed as, with which the runtime shows the "&", "<" and
+    ">" of plain texts as text."""
+    from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
+
+    loader = new_load(config, file_type)
+    loader.write_db_config()
+    db_locals_path = Path(loader.destination) / "db.locals.py"
+    assert Config(str(db_locals_path), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)["file_type"] == expected
+    # Written as a value, which is read without the defaults
+    written = {}
+    exec(db_locals_path.read_text(encoding="utf8"), {}, written)
+    assert written["file_type"] == expected
+
+
+@pytest.mark.unit
+def test_db_locals_without_a_file_type(tmp_path):
+    """Test that the db.locals.py of the databases loaded before file_type was written there reads "xml", as the
+    runtime showed all of them."""
+    from philologic.Config import DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER, Config
+
+    (tmp_path / "db.locals.py").write_text('metadata_fields = []\ntoken_regex = "\\\\w+"\n', encoding="utf8")
+    db_locals = Config(str(tmp_path / "db.locals.py"), DB_LOCALS_DEFAULTS, DB_LOCALS_HEADER)
+    assert db_locals["file_type"] == "xml"
+    assert db_locals.file_type == "xml"

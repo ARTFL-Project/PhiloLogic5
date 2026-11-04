@@ -75,7 +75,11 @@ def get_concordance_text(db, hit, path, context_size):
     byte_offsets, start_byte = adjust_bytes(byte_offsets, context_size)
     conc_text = get_text(hit, start_byte, length, path)
     conc_text = format_concordance(
-        conc_text, db.locals["token_regex"], byte_offsets, page_marker_regex=db.locals["page_marker_regex"]
+        conc_text,
+        db.locals["token_regex"],
+        byte_offsets,
+        page_marker_regex=db.locals["page_marker_regex"],
+        file_type=db.locals["file_type"],
     )
     return conc_text
 
@@ -136,8 +140,11 @@ def _paragraph_starts(cursor, philo_id, start_byte, end_byte):
     return starts
 
 
-def _open_tag_start(chunk, position):
-    """Where the markup tag that position (in chunk, which starts outside any tag) is inside of starts, or -1."""
+def _open_tag_start(chunk, position, plain_text=False):
+    """Where the markup tag that position (in chunk, which starts outside any tag) is inside of starts, or -1. Always -1
+    in a plain text, where no "<" starts a tag."""
+    if plain_text:
+        return -1
     tag_end = chunk.rfind(b">", 0, position)
     tag_start = chunk.rfind(b"<", tag_end + 1, position)
     while tag_start != -1 and not _TAG_OPENERS.match(chunk, tag_start + 1):
@@ -145,10 +152,11 @@ def _open_tag_start(chunk, position):
     return tag_start
 
 
-def _end_without_paragraph(mm, window_start, limit, end_byte):
+def _end_without_paragraph(mm, window_start, limit, end_byte, plain_text=False):
     """Where to end a window starting at window_start, which no paragraph starting past it and by limit can end: after
     its last line break outside a tag, else after its last space, else at the last character outside a tag and an
-    entity. A window with none of these up to limit (a single word or tag longer) ends at the first one past it."""
+    entity. A window with none of these up to limit (a single word or tag longer) ends at the first one past it. A
+    plain text has no tags or entities: its "<" and "&" are text."""
     chunk = mm[window_start : limit + 1]  # the byte after limit says whether a < there opens a tag
     length = limit - window_start
     for separators in ((b"\n",), _WHITESPACE + (b"\n",)):
@@ -157,15 +165,15 @@ def _end_without_paragraph(mm, window_start, limit, end_byte):
             index = max(chunk.rfind(separator, 0, position) for separator in separators)
             if index == -1:
                 break
-            tag_start = _open_tag_start(chunk, index + 1)
+            tag_start = _open_tag_start(chunk, index + 1, plain_text)
             if tag_start == -1:
                 return window_start + index + 1
             position = tag_start
     position = length
-    tag_start = _open_tag_start(chunk, position)
+    tag_start = _open_tag_start(chunk, position, plain_text)
     if tag_start != -1:
         position = tag_start
-    entity_start = chunk.rfind(b"&", max(0, position - 12), position)
+    entity_start = -1 if plain_text else chunk.rfind(b"&", max(0, position - 12), position)
     if entity_start != -1 and chunk.find(b";", entity_start, position) == -1:
         position = entity_start
     while 0 < position < len(chunk) and 0x80 <= chunk[position] < 0xC0:  # no UTF-8 character cut in two
@@ -185,7 +193,8 @@ def window_bounds(obj, config, length):
     if end_byte - start_byte <= length:
         return [start_byte, end_byte]
     path = text_file_path(obj, config)
-    key = (config.db_path, " ".join(map(str, obj.philo_id)), start_byte, end_byte, length)
+    plain_text = obj.db.locals["file_type"] == "plain_text"  # with no tags to cut inside of
+    key = (config.db_path, " ".join(map(str, obj.philo_id)), start_byte, end_byte, length, plain_text)
     signatures = (_file_signature(os.path.join(config.db_path, "data", "toms.db")), _file_signature(path))
     with _window_cache_lock:
         cached = _window_cache.get(key)
@@ -202,7 +211,7 @@ def window_bounds(obj, config, length):
         if last >= 0 and paragraphs[last] > window_start:
             window_start = int(paragraphs[last])
         else:
-            window_start = _end_without_paragraph(mm, window_start, limit, end_byte)
+            window_start = _end_without_paragraph(mm, window_start, limit, end_byte, plain_text)
         if window_start < end_byte:
             bounds.append(window_start)
     bounds.append(end_byte)

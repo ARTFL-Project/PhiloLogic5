@@ -173,6 +173,10 @@ DB_LOCALS_DEFAULTS = {
         "value": None,
         "comment": "# A directory for this database's search results caches (hitlists), which go in a subdirectory named after the database.\n# When None, the hitlist_dir of the global config (philologic5.cfg) is used.",
     },
+    "file_type": {
+        "value": "xml",
+        "comment": '# The file type the texts were loaded as (philoload5 -t): "xml", "html" or "plain_text". The "&", "<" and ">" of plain texts\n# are text, shown as they are, not markup. A plain-text database loaded before it was written here is "xml" until it is set.',
+    },
     "page_marker_regex": {
         "value": None,
         "comment": "# The page_marker_regex plain texts were loaded with: the lines it matches are page breaks, which the text shows as those of XML texts.\n# None for texts loaded without one, and XML texts.",

@@ -12,7 +12,7 @@ from philologic.runtime.DB import DB
 from philologic.runtime.FragmentParser import parse as FragmentParserParse
 from philologic.runtime.link import make_absolute_query_link
 from philologic.utils import convert_entities
-from philologic.utils.page_markers import cut_page_marker_start, page_markers_to_pb
+from philologic.utils.page_markers import cut_page_marker_start, escape_plain_text, page_markers_to_pb, same_position
 
 BEGIN_MATCH = re.compile(rb"^[^<]*?>")
 START_CUTOFF_MATCH = re.compile(rb"^[^ |\n<]+")
@@ -194,8 +194,22 @@ def adjust_bytes(bytes, padding):
     return new_bytes, start_byte
 
 
-def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_regex=None):
-    """Formatting concordances. The page markers of page_marker_regex are page breaks, which are not shown."""
+def escape_plain_text_hits(text, byte_offsets):
+    """The bytes of a plain text escaped (see escape_plain_text), and the byte offsets of its hits in them. Escaped
+    before anything else: the formatters then read it as the XML text which has the same characters, where the partial
+    tags they cut at its ends are no more, and they insert their own tags where the hits are."""
+    text, position = escape_plain_text(text)
+    if byte_offsets is not None:
+        byte_offsets = [position(offset) for offset in byte_offsets]
+    return text, byte_offsets
+
+
+def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_regex=None, file_type="xml"):
+    """Formatting concordances. The page markers of page_marker_regex are page breaks, which are not shown. The text of
+    a file_type "plain_text" is text: its "&", "<" and ">" are shown as they are, and none is taken for a tag."""
+    plain_text = file_type == "plain_text"
+    if plain_text:
+        text_in_utf8, byte_offsets = escape_plain_text_hits(text_in_utf8, byte_offsets)
     removed_from_start = 0
     # The partial tag and word the text may start with are cut, but never past the first hit: a ">" before it is
     # text (OCR has them), not the end of a tag
@@ -214,7 +228,7 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_
     if end and removed_from_start + end.start(0) > last_hit:
         text_in_utf8 = text_in_utf8[: end.start(0)]
     # And the page marker it may end in the middle of, which is no page marker line any more
-    marker_start = cut_page_marker_start(text_in_utf8, page_marker_regex)
+    marker_start = cut_page_marker_start(text_in_utf8, page_marker_regex, escaped=plain_text)
     if marker_start is not None and removed_from_start + marker_start > last_hit:
         text_in_utf8 = text_in_utf8[:marker_start]
     if byte_offsets is not None:
@@ -226,7 +240,7 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_
                 new_text += text_in_utf8[last_offset:b] + b"<philoHighlight/>"
                 last_offset = b
         text_in_utf8 = new_text + text_in_utf8[last_offset:]
-    text = page_markers_to_pb(text_in_utf8.decode("utf8", "ignore"), page_marker_regex)
+    text = page_markers_to_pb(text_in_utf8.decode("utf8", "ignore"), page_marker_regex, escaped=plain_text)
     xml = FragmentParserParse(text)
     allowed_tags = set(["philoHighlight", "l", "ab", "ln", "w", "sp", "speaker", "stage", "i", "sc", "scx", "br"])
     for el in xml.iter():
@@ -272,9 +286,13 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_
     return output
 
 
-def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None):
-    """Remove formatting for HTML rendering, the page markers of page_marker_regex included
+def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None, file_type="xml"):
+    """Remove formatting for HTML rendering, the page markers of page_marker_regex included. The text of a file_type
+    "plain_text" is text, as in format_concordance.
     Called from KWIC only"""
+    plain_text = file_type == "plain_text"
+    if plain_text:
+        text, byte_offsets = escape_plain_text_hits(text, byte_offsets)
     removed_from_start = 0
     # The partial tag and word the text may start with are cut, but never past the first hit: a ">" before it is
     # text (OCR has them), not the end of a tag
@@ -293,7 +311,7 @@ def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None):
     if end and removed_from_start + end.start(0) > last_hit:
         text = text[: end.start(0)]
     # And the page marker it may end in the middle of, which is no page marker line any more
-    marker_start = cut_page_marker_start(text, page_marker_regex)
+    marker_start = cut_page_marker_start(text, page_marker_regex, escaped=plain_text)
     if marker_start is not None and removed_from_start + marker_start > last_hit:
         text = text[:marker_start]
     if byte_offsets is not None:
@@ -305,7 +323,7 @@ def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None):
                 new_text += text[last_offset:b] + b"<philoHighlight/>"
                 last_offset = b
         text = new_text + text[last_offset:]
-    xml = FragmentParserParse(page_markers_to_pb(text.decode("utf8", "ignore"), page_marker_regex))
+    xml = FragmentParserParse(page_markers_to_pb(text.decode("utf8", "ignore"), page_marker_regex, escaped=plain_text))
     output = clean_tags(xml, word_regex)
     ## remove spaces around hyphens and apostrophes
     output = SPACE_MATCH.sub(r"\1\2", output)
@@ -327,8 +345,14 @@ def format_text_object(
 ):
     """Format text objects. With window, the text is the part of the object starting at object_start_byte, and its
     first page image is the one there. The page markers of the page_marker_regex of the object's database are page
-    breaks, as <pb> tags."""
+    breaks, as <pb> tags. The text of a database of file_type "plain_text" is text, as in format_concordance."""
     philo_id = obj.philo_id
+    plain_text = obj.db.locals["file_type"] == "plain_text"
+    position = same_position  # where a byte offset of the file is in the text
+    if plain_text:
+        text, position = escape_plain_text(text)
+        if byte_offsets is not None:
+            byte_offsets = [position(offset) for offset in byte_offsets]
     if byte_offsets is not None:
         new_text = b""
         last_offset = 0
@@ -347,21 +371,25 @@ def format_text_object(
                 start_byte = last_offset
             count += 1
             new_text += (
-                text[last_offset:start_byte]
+                text[position(last_offset) : position(start_byte)]
                 + b'<span class="passage-marker" '
                 + f"""data-offsets="{start_byte+object_start_byte}-{end_byte+object_start_byte}" n="{count}">""".encode(
                     "utf8"
                 )
                 + b"</span>"
                 + f"""<start-passage n="{count}"/>""".encode("utf8")
-                + text[start_byte:end_byte]
+                + text[position(start_byte) : position(end_byte)]
                 + f"""<end-passage n="{count}"/>""".encode("utf8")
             )
             last_offset = end_byte
-        text = new_text + text[last_offset:]
+        text = new_text + text[position(last_offset) :]
     current_obj_img = []
     current_graphic_img = []
-    text = "<div>" + page_markers_to_pb(text.decode("utf8", "ignore"), obj.db.locals["page_marker_regex"]) + "</div>"
+    text = (
+        "<div>"
+        + page_markers_to_pb(text.decode("utf8", "ignore"), obj.db.locals["page_marker_regex"], escaped=plain_text)
+        + "</div>"
+    )
     xml: etree.Element = FragmentParserParse(text)
     c = obj.db.dbh.cursor()
     passage_number = None
@@ -595,9 +623,7 @@ def format_text_object(
             elif el.tag == "start-passage":
                 passage_number = el.attrib["n"]
                 el.tag = "span"
-                text_element_wrapper = create_element(
-                    f"""<span class="passage-{passage_number}" n="{passage_number}">{el.tail[:]}</span>"""
-                )
+                text_element_wrapper = passage_span(f"passage-{passage_number}", passage_number, el.tail[:], plain_text)
                 el.tail = ""
                 parent = el.getparent()
                 parent.insert(parent.index(el) + 1, text_element_wrapper)
@@ -613,21 +639,21 @@ def format_text_object(
             if passage_number is not None:
                 if is_page is False:
                     if el.text:
-                        text_element_wrapper = create_element(
-                            f"""<span class="passage-{passage_number}" n="{passage_number}">{el.text[:]}</span>"""
+                        text_element_wrapper = passage_span(
+                            f"passage-{passage_number}", passage_number, el.text[:], plain_text
                         )
                         el.text = ""
                         el.insert(0, text_element_wrapper)
                     if el.tail:
-                        text_element_wrapper = create_element(
-                            f"""<span class="passage-{passage_number}" n="{passage_number}">{el.tail[:]}</span>"""
+                        text_element_wrapper = passage_span(
+                            f"passage-{passage_number}", passage_number, el.tail[:], plain_text
                         )
                         el.tail = ""
                         parent = el.getparent()
                         parent.insert(parent.index(el) + 1, text_element_wrapper)
                 elif el.tail:
-                    text_element_wrapper = create_element(
-                        f"""<span class="passage-{passage_number}" n="{passage_number}">{el.tail[:]}</span>"""
+                    text_element_wrapper = passage_span(
+                        f"passage-{passage_number}", passage_number, el.tail[:], plain_text
                     )
                     el.tail = ""
                     parent = el.getparent()
@@ -663,16 +689,12 @@ def format_text_object(
                         match = False
             if match:
                 if isinstance(el.tail, str) and el.tail.strip():
-                    text_element_wrapper = create_element(
-                        f"""<span class="{class_name}" n="{n_marker}">{el.tail[:]}</span>"""
-                    )
+                    text_element_wrapper = passage_span(class_name, n_marker, el.tail[:], plain_text)
                     el.tail = ""
                     parent = el.getparent()
                     parent.insert(parent.index(el) + 1, text_element_wrapper)
             if in_passage is True and el.tail:
-                text_element_wrapper = create_element(
-                    f"""<span class="passage-{n_marker}" n="{n_marker}">{el.tail[:]}</span>"""
-                )
+                text_element_wrapper = passage_span(f"passage-{n_marker}", n_marker, el.tail[:], plain_text)
                 el.tail = ""
                 parent = el.getparent()
                 parent.insert(parent.index(el) + 1, text_element_wrapper)
@@ -883,3 +905,14 @@ def create_element(content):
         return etree.fromstring(content)
     except:
         return html.fromstring(content)
+
+
+def passage_span(class_name, n, text, plain_text=False):
+    """The span of class_name and n (of a passage) around text, the text or tail of an element. The text of a plain text
+    is kept as the others are in the tree, escaped: parsed, its "&lt;" would be a "<" which the convert_entities of the
+    output would make markup of."""
+    if plain_text:
+        span = etree.Element("span", {"class": class_name, "n": n})
+        span.text = text
+        return span
+    return create_element(f"""<span class="{class_name}" n="{n}">{text}</span>""")
