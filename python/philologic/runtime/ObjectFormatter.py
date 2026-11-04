@@ -908,11 +908,11 @@ def create_element(content):
 
 
 def passage_span(class_name, n, text, plain_text=False):
-    """The span of class_name and n (of a passage) around text, the text or tail of an element. The text of a plain text
-    is kept as the others are in the tree, escaped: parsed, its "&lt;" would be a "<" which the convert_entities of the
-    output would make markup of."""
-    if plain_text:
-        span = etree.Element("span", {"class": class_name, "n": n})
+    """The span of class_name and n (of a passage) around text, the text or tail of an element, kept as the others are
+    in the tree: escaped, as in the file. Parsed again, its "&lt;" and "&gt;" were a "<" and a ">" which the
+    convert_entities of the output made markup of (an "&lt;img onerror=...&gt;" ran), and its "&amp;" a bare "&". The
+    empty text of an XML text is no text, as parsing it made it (<span/>); a plain text's stays empty (<span></span>)."""
+    span = etree.Element("span", {"class": class_name, "n": n})
+    if text or plain_text:
         span.text = text
-        return span
-    return create_element(f"""<span class="{class_name}" n="{n}">{text}</span>""")
+    return span
