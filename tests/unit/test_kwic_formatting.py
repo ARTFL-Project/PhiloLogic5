@@ -3,6 +3,7 @@ hit_bounds, which finds the hit in it."""
 
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -11,7 +12,8 @@ REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime.ObjectFormatter import format_concordance, format_strip
-from philologic.runtime.reports.kwic import hit_bounds
+from philologic.runtime.reports import kwic as kwic_module
+from philologic.runtime.reports.kwic import hit_bounds, kwic_hit_object
 
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 
@@ -91,6 +93,17 @@ class TestHitBounds:
     def test_no_highlight(self):
         with pytest.raises(ValueError):
             hit_bounds('<span class="xml-w">my</span> love')
+
+    def test_hit_at_the_start(self):
+        """Right after the partial tag cut from the start: nothing before it"""
+        assert columns('n="1" who="#a #b">hit and the rest</sp>', "hit") == (
+            "", '<span class="highlight">hit</span>', " and the rest"
+        )
+
+    def test_hit_at_the_start_before_word_tags(self):
+        assert columns('xml:id="w1" n="1.1">hit</w> <w>two</w>', "hit") == (
+            "", '<span class="highlight">hit</span>', ' <span class="xml-w">two</span>'
+        )
 
 
 HIT = '<span class="highlight">{}</span>'
@@ -178,3 +191,86 @@ class TestPartialTagAtTheEnd:
         """The "<" is at the last hit: it is not after it, so the text is kept"""
         output = self.run(formatter, "see <zz marker", None, [4])
         assert "marker" in output
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("formatter", [format_concordance, format_strip], ids=["concordance", "strip"])
+class TestHitAtTheStart:
+    """The partial tag and word the text starts with are cut up to the first hit at most: a cut ending at it makes it
+    the first byte of the text, which is highlighted as any other."""
+
+    run = staticmethod(TestPartialTagAtTheEnd.run)
+
+    def test_hit_right_after_a_cut_partial_tag(self, formatter):
+        """The context starts in a tag (a long who= of a <sp>), which ends right before the hit"""
+        output = self.run(formatter, 'n="1" who="#a #b #c">hit and the rest</sp>', ["hit"])
+        assert HIT.format("hit") + " and the rest" in output
+        assert "who" not in output
+
+    def test_hit_right_after_a_greater_than_in_the_text(self, formatter):
+        """The ">" of OCR right before the hit, with no "<" before it, taken for the end of a tag"""
+        output = self.run(formatter, "the word ce>hit est pas", ["hit"])
+        assert HIT.format("hit") + " est pas" in output
+        assert "the word" not in output
+
+    def test_hit_right_after_a_cut_partial_word(self, formatter):
+        """The cut of the partial word stops at a space, "|", line break or "<", which no word starts with: a hit at
+        the "<" of a tag there is at the start, and marked as it is at any other tag"""
+        output = self.run(formatter, "rd<hi>hit</hi> more", None, [2])
+        assert "rd" not in output and "more" in output
+        assert output.count('<span class="highlight">') == 1
+        assert output == self.run(formatter, "<hi>hit</hi> more", None, [0])
+
+    def test_two_hits_the_first_at_the_start(self, formatter):
+        output = self.run(formatter, 'n="1">hit and then hit2 here', ["hit", "hit2"])
+        assert HIT.format("hit") + " and then " + HIT.format("hit2") + " here" in output
+
+    @pytest.mark.parametrize("file_type", ["xml", "plain_text"])
+    def test_hit_at_the_first_byte(self, formatter, file_type):
+        """A hit at the first byte of the file, as a plain text's first word is: nothing was cut before it"""
+        output = formatter(b"hit at the start & more", TOKEN_REGEX, [0], file_type=file_type)
+        assert HIT.format("hit") + " at the start" in output
+
+    def test_no_hit_before_the_text(self, formatter):
+        """A hit before the first byte, which the text does not have, is no highlight at its start"""
+        assert "highlight" not in formatter(b"word and more", TOKEN_REGEX, [-3])
+
+
+class Hit(SimpleNamespace):
+    def __getitem__(self, key):
+        return getattr(self, key)
+
+
+@pytest.mark.unit
+class TestKwicLineWithTheHitAtTheStart:
+    """kwic_hit_object, whose context (concordance_length bytes on each side of the hit) starts in a tag that ends right
+    before the hit"""
+
+    TEXT = 'Words before. <sp who="#a #b #c">hit and the end.</sp> More after it.'
+
+    def line(self, monkeypatch, concordance_length):
+        data = self.TEXT.encode("utf8")
+        monkeypatch.setattr(kwic_module, "get_text", lambda hit, start, length, path: data[start : start + length])
+        monkeypatch.setattr(kwic_module, "citation_links", lambda *args, **kwargs: {})
+        monkeypatch.setattr(kwic_module, "citations", lambda *args, **kwargs: [])
+        config = SimpleNamespace(concordance_length=concordance_length, db_path="", kwic_formatting_regex=[])
+        db = SimpleNamespace(
+            locals={"metadata_fields": [], "token_regex": TOKEN_REGEX, "page_marker_regex": None, "file_type": "xml"}
+        )
+        return kwic_hit_object(Hit(bytes=[data.index(b"hit")], philo_id=[1, 1, 1, 1, 1, 1, 1]), config, db)
+
+    def test_aligned_with_nothing_before_the_hit(self, monkeypatch):
+        result = self.line(monkeypatch, 15)  # from the 'who="' of the <sp>
+        assert result["context"] == (
+            '<span class="kwic-text"><span class="kwic-before"><span class="inner-before"></span></span>&nbsp;'
+            '<span class="kwic-highlight"><span class="highlight">hit</span></span>&nbsp;'
+            '<span class="kwic-after"> and the end</span></span>'
+        )
+        assert result["highlighted_text"] == "hit"
+
+    def test_aligned_as_with_the_tag_before_it(self, monkeypatch):
+        """The same line as when the context starts before the tag, but for the text before the hit"""
+        whole = self.line(monkeypatch, 30)["context"].split('<span class="kwic-after">')[0]
+        assert '<span class="inner-before"> before. </span>' in whole
+        cut = self.line(monkeypatch, 15)["context"].split('<span class="kwic-after">')[0]
+        assert cut == whole.replace(" before. ", "")
