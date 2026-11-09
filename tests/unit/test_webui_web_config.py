@@ -191,6 +191,7 @@ def test_restricted_users(db_path):
     for changes, message in (
         ({"citations": citations}, "HTML"),
         ({"link_to_home_page": "javascript:alert(1)"}, "http"),
+        ({"accessibility_link": "javascript:alert(1)"}, "http"),
         ({"dictionary_lookup": {"url_root": " JavaScript:x", "keywords": False}}, "http"),
         ({"landing_page_browsing": "templates/landing.html"}, "templates"),
     ):

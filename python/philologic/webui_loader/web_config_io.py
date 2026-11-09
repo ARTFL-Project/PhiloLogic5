@@ -65,6 +65,7 @@ KINDS = {
     "link_to_home_page": ("general", "string", ()),
     "logo": ("general", "string", ()),
     "report_error_link": ("general", "string", ()),
+    "accessibility_link": ("general", "string", ()),
     "academic_citation": ("general", "record", ()),
     "search_reports": ("search", "reports", REPORTS),
     "metadata": ("search", "fields", ()),
@@ -135,6 +136,7 @@ def service_file_problem(key, value):
 URL_OPTIONS = (
     "link_to_home_page",
     "report_error_link",
+    "accessibility_link",
     "logo",
     "page_images_url_root",
     "dictionary_lookup",
