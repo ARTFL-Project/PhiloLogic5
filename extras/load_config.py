@@ -249,6 +249,20 @@ flatten_ligatures = True
 # lowercase and a capitalized word, a pilcrow (¶) and the end of a list item end sentences too.
 sentence_breakers = []
 
+# ---------------------- Plain Text Parser ---------------------------
+# These two options only apply to plain text files (loaded with -t plain_text).
+# Define a regex for the lines which mark page breaks. Such a line (stripped of surrounding whitespace) must match
+# the whole regex: it is not indexed, and starts a new page numbered by the regex's first group. None means no pages.
+# For the HathiTrust page markers {UCAL_C3470619_00000001}, {00000001} and {39002007368898_000000}, use:
+# page_marker_regex = r"^\{(?:[^{}]*_)?(\d+)\}$"
+page_marker_regex = None
+
+# Split each text into div1 sections of about this many characters (letters, spaces, punctuation...), so that
+# a search result opens its section rather than the whole text. A section ends at the first page break once it
+# holds this many characters, or at the first paragraph once it holds twice as many. Each section is labeled
+# with the pages it spans. 0 or None keeps each text in a single section.
+plain_text_section_length = 100_000
+
 # Defines whether words should be stored in lowercase form in the index.
 lowercase_index = True
 

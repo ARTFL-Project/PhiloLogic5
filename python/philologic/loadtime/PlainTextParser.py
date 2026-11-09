@@ -14,6 +14,7 @@ from philologic.utils.ligatures import ligatures_as_letters
 
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 PUNCTUATION = r"""[;,:=+()"]"""
+SECTION_LENGTH = 100_000  # in characters
 
 check_if_char_word = re.compile(r"\p{L}", re.I)
 cap_char_or_num = re.compile(r"[A-Z0-9]")  # Capitals
@@ -36,6 +37,8 @@ class PlainTextParser:
         words_to_index=None,
         paragraph_on_newline=False,  # TODO: make this configurable from load_config.py
         lemmas=None,
+        page_marker_regex=None,
+        plain_text_section_length=SECTION_LENGTH,
         **parse_options,
     ):
         self.types = ["doc", "div1", "div2", "div3", "para", "sent", "word"]
@@ -66,6 +69,16 @@ class PlainTextParser:
             self.punct_regex = re.compile(rf"{PUNCTUATION}")
 
         self.paragraph_on_newline = paragraph_on_newline
+
+        # Lines which match page_marker_regex are page breaks, numbered by the regex's first group
+        if page_marker_regex:
+            self.page_marker_regex = re.compile(page_marker_regex)
+        else:
+            self.page_marker_regex = None
+        # Split the text into div1 sections of about section_length characters. 0 or None keeps one virtual div1.
+        self.section_length = plain_text_section_length
+        self.section_start = 0  # in characters, as section_length
+        self.section_pages = []  # page numbers the open section spans
 
         self.xpaths = xpaths[:]
         self.metadata_xpaths = metadata_xpaths[:]
@@ -100,6 +113,7 @@ class PlainTextParser:
     def parse(self, input_file: TextIOWrapper):
         """Top level function for reading a file and printing out the output."""
         bytes_read_in: int = 0
+        chars_read_in: int = 0  # for the length of sections
         # Begin by creating a document level object, just call it "text" for now.
         self.v.push("doc", "text", bytes_read_in)
         self.v["doc"].attrib["philo_doc_id"] = str(self.v["doc"].id[0])
@@ -108,22 +122,40 @@ class PlainTextParser:
             # we can attach it to the newly created doc object here.
             # you can attach metadata to an object at any time between push() and pull().
             self.v["doc"][k] = v
+        if self.section_length:
+            self.open_section(bytes_read_in, chars_read_in)
         open_para: bool = False
         previous_line_empty = False
         for line in input_file:  # TODO: recognize divs on lines with all characters in CAPS?
+            if self.page_marker_regex is not None:
+                page_marker = self.page_marker_regex.fullmatch(line.strip())
+                if page_marker is not None:  # a page break: not indexed, and the end of the paragraph
+                    self.v.pull("para", bytes_read_in)
+                    open_para = False
+                    self.page_break(page_marker, bytes_read_in, chars_read_in)
+                    bytes_read_in += len(line.encode("utf8"))
+                    chars_read_in += len(line)
+                    previous_line_empty = True
+                    continue
             if line == "\n" or not check_if_char_word.search(line):
                 bytes_read_in += len(line.encode("utf8"))
+                chars_read_in += len(line)
                 previous_line_empty = True
                 continue
             if previous_line_empty is True or self.paragraph_on_newline is True:
                 if open_para is True:
                     self.v.pull("para", bytes_read_in)
+                # A section which got this long without a page break ends with the paragraph
+                if self.section_length and chars_read_in - self.section_start >= 2 * self.section_length:
+                    self.close_section(bytes_read_in)
+                    self.open_section(bytes_read_in, chars_read_in)
                 self.v.push("para", "p", bytes_read_in)  # we assume a new paragraph for each line break
                 open_para = True
             previous_line_empty = False
             if self.tokenizer is not None:
                 self.index_tokens(line, bytes_read_in, input_file)
                 bytes_read_in += len(line.encode("utf8"))
+                chars_read_in += len(line)
                 continue
             start_byte = bytes_read_in
             last_word = ""
@@ -167,7 +199,48 @@ class PlainTextParser:
                 self.index_between_words(word, start_byte, end_byte, is_sent)
                 start_byte += len(word_in_utf8)
             bytes_read_in += len(line.encode("utf8"))
+            chars_read_in += len(line)
+        if self.section_length:
+            self.close_section(self.filesize)
+        self.v.pull("page", self.filesize)
         self.v.pull("doc", self.filesize)
+
+    def page_break(self, page_marker, start_byte, start_char):
+        """Start a new page at a page marker, and a new section if the current one is long enough."""
+        try:
+            n = str(int(page_marker.group(1)))
+        except (IndexError, TypeError, ValueError):
+            n = "na"
+        new_section = self.section_length and start_char - self.section_start >= self.section_length
+        if new_section:
+            self.close_section(start_byte)
+        self.v.push("page", "pb", start_byte)  # this also ends the previous page
+        self.v["page"]["n"] = n
+        if new_section:
+            self.open_section(start_byte, start_char)  # after the page, which it starts with
+        else:
+            self.section_pages.append(n)
+
+    def open_section(self, start_byte, start_char):
+        """Start a div1 section at start_byte, which is the start_char-th character of the text."""
+        self.v.push("div1", "div", start_byte)
+        self.section_start = start_char
+        if "page" in self.v:
+            self.section_pages = [self.v["page"]["n"]]
+        else:
+            self.section_pages = []
+
+    def close_section(self, end_byte):
+        """End the current div1 section, with the pages it spans as its head."""
+        if not self.section_pages:
+            head = f"Section {self.v['div1'].id[1]}"
+        elif self.section_pages[0] == self.section_pages[-1]:
+            head = f"Page {self.section_pages[0]}"
+        else:
+            head = f"Pages {self.section_pages[0]}–{self.section_pages[-1]}"
+        self.v["div1"]["head"] = head
+        self.v["div1"].attrib["philo_div1_id"] = " ".join(str(i) for i in self.v["div1"].id[:2])
+        self.v.pull("div1", end_byte)
 
     def push_word(self, word, start_byte, end_byte, token=None):
         """Store a word, with its lemma, and its token (as a spaCy model tags it), if given"""

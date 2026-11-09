@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 import regex
 
-from philologic.loadtime import Loader, Parser
+from philologic.loadtime import Loader, Parser, PlainTextParser
 
 OBJECT_TYPES = ("doc", "div1", "div2", "div3", "para")
 
@@ -123,6 +123,23 @@ OPTIONS = [
         "Metadata fields by which files are sorted in the database, which sets the order in which results are "
         "displayed. An empty list keeps the order of the files.",
         basic=True,
+    ),
+    Option(
+        "page_marker_regex",
+        "regex",
+        None,
+        "structure",
+        "Plain text only: lines matching this regex are page breaks, numbered by its first group, and not indexed. "
+        "For the HathiTrust page markers: ^\\{(?:[^{}]*_)?(\\d+)\\}$",
+    ),
+    Option(
+        "plain_text_section_length",
+        "int",
+        PlainTextParser.SECTION_LENGTH,
+        "structure",
+        "Plain text only: length in characters of the sections each text is split into, at a page break or a "
+        "paragraph. 0 keeps each text in one section.",
+        minimum=0,
     ),
     Option(
         "doc_xpaths",

@@ -80,6 +80,20 @@ To use the plain text parser, you will need to specify the `t plain_text` comman
 
 Note that the plain text parser is fairly rudimentary and does not detect structure within the files themselves, with the sole exception being paragraphs when there is an empty line between blocks of text. In order for better structure detection, you will need to convert your files to TEI.
 
+Two options of the load config file (passed with `-l`) apply to plain text files:
+
+```python
+# Lines which mark page breaks, e.g. the HathiTrust page markers {UCAL_C3470619_00000001}, {00000001} and {39002007368898_000000}
+page_marker_regex = r"^\{(?:[^{}]*_)?(\d+)\}$"
+
+# Length in characters of the sections each text is split into. 0 or None keeps each text in a single section.
+plain_text_section_length = 100_000
+```
+
+`page_marker_regex` (`None` by default) defines the lines which mark page breaks: a line which, stripped of surrounding whitespace, matches the whole regex is not indexed, ends the paragraph before it, and starts a new page, whose number (`n`) is the regex's first group, without its leading zeros. These pages are stored and cited as the pages of XML files are.
+
+`plain_text_section_length` (100,000 characters by default) splits each text into `div1` sections, so that a search result opens its section, not the whole text, which a browser can be slow to display. The length counts characters (letters, spaces, punctuation, line breaks), blank lines and page marker lines included. A section ends at the first page break once it holds that many characters or, failing a page break, at the first paragraph once it holds twice as many. Each section is labeled after the pages it spans, such as "Pages 12–48", or "Section 3" when it has no pages.
+
 
 ### Configuring the XML Parser
 
