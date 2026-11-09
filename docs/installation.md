@@ -145,6 +145,7 @@ database_root = "/Library/WebServer/Documents/philologic/"
 
 There is no URL to set: a database is served under whatever host and URL prefix your web server passes to Gunicorn
 (`/philologic5/` in the examples below), so it can also be copied to another machine and served there as it is.
+At the end of a load, `philoload5` prints the first of the usual URLs on this machine (its host name or `localhost` under `/philologic5/`, or Gunicorn's own port) that answers with the database.
 
 Make sure the `database_root` directory exists and is writable by your user:
 
