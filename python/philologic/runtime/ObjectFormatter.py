@@ -236,7 +236,7 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_
         new_text = b""
         last_offset = 0
         for b in byte_offsets:
-            if b > 0 and b < len(text_in_utf8):
+            if 0 <= b < len(text_in_utf8):  # at 0 too: the first hit, once the cuts end at it
                 new_text += text_in_utf8[last_offset:b] + b"<philoHighlight/>"
                 last_offset = b
         text_in_utf8 = new_text + text_in_utf8[last_offset:]
@@ -334,9 +334,9 @@ def format_concordance_distinctive(text_in_utf8, word_regex,
     main_set = set(b - removed_from_start for b in (main_byte_offsets or []))
     sig_set = set(b - removed_from_start for b in (distinctive_byte_offsets or []))
     sig_set -= main_set  # disjoint
-    markers = sorted(
-        [(b, "M") for b in main_set if 0 < b < len(text_in_utf8)]
-        + [(b, "S") for b in sig_set if 0 < b < len(text_in_utf8)]
+    markers = sorted(  # at 0 too: the first hit, once the cuts end at it
+        [(b, "M") for b in main_set if 0 <= b < len(text_in_utf8)]
+        + [(b, "S") for b in sig_set if 0 <= b < len(text_in_utf8)]
     )
 
     if markers:
@@ -428,7 +428,7 @@ def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None, fi
         new_text = b""
         last_offset = 0
         for b in byte_offsets:
-            if b > 0 and b < len(text):
+            if 0 <= b < len(text):  # at 0 too: the first hit, once the cuts end at it
                 new_text += text[last_offset:b] + b"<philoHighlight/>"
                 last_offset = b
         text = new_text + text[last_offset:]
