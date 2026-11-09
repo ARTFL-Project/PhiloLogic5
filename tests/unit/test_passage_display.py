@@ -188,10 +188,75 @@ class TestPassageText:
 
 @pytest.mark.unit
 class TestPassageSpan:
-    @pytest.mark.parametrize("plain_text", [False, True])
-    @pytest.mark.parametrize("text", ["&lt;b&gt;bold&lt;/b&gt;", "a &amp; b", "caf&eacute; &lt;i&gt;", "&#233; &amp;lt;"])
-    def test_its_text_as_in_the_tree(self, text, plain_text):
-        """Serialized as the text page is, the text is that of the file, escaped as it is"""
-        span = passage_span("passage-0", "0", text, plain_text)
+    @pytest.mark.parametrize(
+        "text", ["&lt;b&gt;bold&lt;/b&gt;", "a &amp; b", "caf&eacute; &lt;i&gt;", "&#233; &amp;lt;", ""]
+    )
+    def test_its_text_as_in_the_tree(self, text):
+        """Serialized as the text page is, the text is that of the file, escaped as it is; an empty one has an end tag
+        too (HTML reads <span/> as an open span)"""
+        span = passage_span("passage-0", "0", text)
         assert (span.tag, dict(span.attrib), span.text) == ("span", {"class": "passage-0", "n": "0"}, text)
         assert convert_entities(etree.tostring(span, encoding="unicode")) == f'<span class="passage-0" n="0">{text}</span>'
+
+
+# The elements HTML has no end tag for: any other tag written <tag/> is an open one to the browser
+VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+
+
+class Browser(HTMLParser):
+    """The text of some HTML as a browser reads it, and the part of it in the spans of the passages: a <span .../> is
+    an open span to it, which ends with its parent"""
+
+    def __init__(self, html):
+        super().__init__(convert_charrefs=True)
+        self.open, self.text, self.in_passage = [], [], []
+        self.feed(html)
+        self.close()
+        self.text, self.in_passage = "".join(self.text), "".join(self.in_passage)
+
+    def handle_starttag(self, tag, attrs):
+        if tag not in VOID_ELEMENTS:
+            self.open.append((tag, dict(attrs).get("class") or ""))
+
+    handle_startendtag = handle_starttag  # the "/" ignored
+
+    def handle_endtag(self, tag):
+        for index in range(len(self.open) - 1, -1, -1):
+            if self.open[index][0] == tag:
+                del self.open[index:]
+                break
+
+    def handle_data(self, data):
+        self.text.append(data)
+        if any(re.fullmatch(r"passage-\d+", class_name) for _, class_name in self.open):
+            self.in_passage.append(data)
+
+
+@pytest.mark.unit
+class TestPassageStartingAtATag:
+    """A passage starting right before a tag, or the highlight of a hit there, starts with an empty passage span (the
+    text of the start of the passage, which is the tag's): it has an end tag. HTML has no self-closing span, and the
+    browser read the <span class="passage-0" n="0"/> lxml writes of an element with no text as an open span, which
+    coloured all the rest of the paragraph, past the end of the passage."""
+
+    @staticmethod
+    def between_its_markers(page):
+        """The text of the page from the passage's marker to its end, as the browser shows it"""
+        start = page.index("</span>", page.index('class="passage-marker"')) + len("</span>")
+        return Browser(page[start : page.index('<span n="0" id="end-passage-0"></span>')]).text
+
+    @pytest.mark.parametrize("hit", [False, True], ids=["tag", "highlight"])
+    def test_the_passage_coloured_up_to_its_end(self, tmp_path, hit):
+        text = book()
+        root = make_database(tmp_path, text)
+        start, end = byte_of(text, "first") if hit else byte_of(text, "<hi>"), byte_of(text, "second")
+        query = {"byte": [str(start)]} if hit else {}
+        page = navigate(root, philo_id="1 1", start_byte=str(start), end_byte=str(end), **query)
+        assert not re.search(r"<span[^>]*/>", page)
+        assert '<span class="passage-0" n="0"></span>' in page
+        coloured = Browser(page).in_passage
+        assert coloured == self.between_its_markers(page)
+        assert coloured.startswith(SHOWN.replace("bold", "first")[3:] if hit else SHOWN.replace("bold", "first"))
+        if not hit:  # the text of its bytes, and that of the page without it (with hits: TestPassageWithHighlights)
+            assert coloured == Browser(text[start:end]).text
+            assert Browser(page).text == Browser(navigate(root, philo_id="1 1")).text

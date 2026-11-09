@@ -732,7 +732,7 @@ def format_text_object(
             elif el.tag == "start-passage":
                 passage_number = el.attrib["n"]
                 el.tag = "span"
-                text_element_wrapper = passage_span(f"passage-{passage_number}", passage_number, el.tail[:], plain_text)
+                text_element_wrapper = passage_span(f"passage-{passage_number}", passage_number, el.tail[:])
                 el.tail = ""
                 parent = el.getparent()
                 parent.insert(parent.index(el) + 1, text_element_wrapper)
@@ -748,22 +748,16 @@ def format_text_object(
             if passage_number is not None:
                 if is_page is False:
                     if el.text:
-                        text_element_wrapper = passage_span(
-                            f"passage-{passage_number}", passage_number, el.text[:], plain_text
-                        )
+                        text_element_wrapper = passage_span(f"passage-{passage_number}", passage_number, el.text[:])
                         el.text = ""
                         el.insert(0, text_element_wrapper)
                     if el.tail:
-                        text_element_wrapper = passage_span(
-                            f"passage-{passage_number}", passage_number, el.tail[:], plain_text
-                        )
+                        text_element_wrapper = passage_span(f"passage-{passage_number}", passage_number, el.tail[:])
                         el.tail = ""
                         parent = el.getparent()
                         parent.insert(parent.index(el) + 1, text_element_wrapper)
                 elif el.tail:
-                    text_element_wrapper = passage_span(
-                        f"passage-{passage_number}", passage_number, el.tail[:], plain_text
-                    )
+                    text_element_wrapper = passage_span(f"passage-{passage_number}", passage_number, el.tail[:])
                     el.tail = ""
                     parent = el.getparent()
                     parent.insert(parent.index(el) + 1, text_element_wrapper)
@@ -798,12 +792,12 @@ def format_text_object(
                         match = False
             if match:
                 if isinstance(el.tail, str) and el.tail.strip():
-                    text_element_wrapper = passage_span(class_name, n_marker, el.tail[:], plain_text)
+                    text_element_wrapper = passage_span(class_name, n_marker, el.tail[:])
                     el.tail = ""
                     parent = el.getparent()
                     parent.insert(parent.index(el) + 1, text_element_wrapper)
             if in_passage is True and el.tail:
-                text_element_wrapper = passage_span(f"passage-{n_marker}", n_marker, el.tail[:], plain_text)
+                text_element_wrapper = passage_span(f"passage-{n_marker}", n_marker, el.tail[:])
                 el.tail = ""
                 parent = el.getparent()
                 parent.insert(parent.index(el) + 1, text_element_wrapper)
@@ -1016,12 +1010,13 @@ def create_element(content):
         return html.fromstring(content)
 
 
-def passage_span(class_name, n, text, plain_text=False):
+def passage_span(class_name, n, text):
     """The span of class_name and n (of a passage) around text, the text or tail of an element, kept as the others are
     in the tree: escaped, as in the file. Parsed again, its "&lt;" and "&gt;" were a "<" and a ">" which the
-    convert_entities of the output made markup of (an "&lt;img onerror=...&gt;" ran), and its "&amp;" a bare "&". The
-    empty text of an XML text is no text, as parsing it made it (<span/>); a plain text's stays empty (<span></span>)."""
+    convert_entities of the output made markup of (an "&lt;img onerror=...&gt;" ran), and its "&amp;" a bare "&". An
+    empty text is kept too, so that the span has an end tag (<span ...></span>): HTML has no self-closing span, and the
+    browser took the <span .../> of an element with no text for an open one, which coloured the rest of its parent as
+    the passage, past its end. A passage starting right before a tag or a highlight starts with one."""
     span = etree.Element("span", {"class": class_name, "n": n})
-    if text or plain_text:
-        span.text = text
+    span.text = text
     return span
