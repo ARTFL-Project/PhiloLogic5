@@ -179,6 +179,7 @@
         "noResults": "No hay resultado para su búsqueda",
         "fromTheseTitles": "en estos títulos",
         "groupByOccurrences": "{total} total apariciones distribuidas en {n} {label}(s)",
+        "commonWords": "Las {n} palabras más comunes",
         "commonWordsDf": "Las palabras que aparecen en más del {pct}% de las oraciones",
         "commonStopwords": "Las palabras funcionales más comunes",
         "filtered": "se está filtrando desde este informe",

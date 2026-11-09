@@ -37,6 +37,8 @@ from philologic.runtime.word_properties import (
 DEFAULT_DF_PCT = 1.0
 MIN_DF_PCT = 0.5
 MAX_DF_PCT = 5.0
+# Without the sentence counts of a database (PostFilters.write_corpus_counts), the filter drops this many words
+DEFAULT_FILTER_FREQUENCY = 100
 
 
 @numba.njit(parallel=True, cache=True)
@@ -707,12 +709,13 @@ def collocate_filters(request, db):
     )
 
 
-def common_words(request, config, filters):
-    """The common words filters leave out, and whether the stopwords list was not found (it is then left out)"""
+def common_words(request, config, filters, frequency_filter=None):
+    """The common words filters leave out, and whether the stopwords list was not found (it is then left out).
+    frequency_filter is the filter of frequent words, as resolve_frequency_filter gives it, unless resolved here."""
     words = []
     missing = False
     for choice in filters.common:
-        found = build_filter_list(request, config, filters.count_lemmas, choice)
+        found = build_filter_list(request, config, filters.count_lemmas, choice, frequency_filter)
         if found is None:
             missing = True
         else:
@@ -791,7 +794,11 @@ def collocation_results(request, config):
     # Bare query_words must be in filter_list so the count-side identity hash
     # matches the (un-suffixed) count vocab keys.
     filter_list, other_list = query_exclusions(query_words, filters, db)
-    common, stopwords_missing = common_words(request, config, filters)
+    frequency_filter = None  # the filter of the most frequent words, if one is applied (resolve_frequency_filter)
+    if "frequency" in filters.common:
+        frequency_filter = resolve_frequency_filter(request, config, filters.count_lemmas)
+        collocation_object["frequency_filter"] = frequency_filter_description(frequency_filter)
+    common, stopwords_missing = common_words(request, config, filters, frequency_filter)
     if stopwords_missing:  # the stopwords list was not found: it is left out
         collocation_object["stopwords_missing"] = True
     filter_list.update(common)
@@ -840,13 +847,15 @@ def collocation_results(request, config):
         if None in all_collocates:
             del all_collocates[None]
         # Cache full Counter to disk; return only top 100 for display
-        file_path = create_file_path(request, "", db.hitlist_dir, filters=filters)
+        file_path = create_file_path(request, "", db.hitlist_dir, filters=filters, frequency_filter=frequency_filter)
         atomic_pickle_dump(all_collocates, file_path)
         collocation_object["collocates"] = all_collocates.most_common(100)
         collocation_object["file_path"] = file_path
     else:
         unique_tids, unique_counts, group_bounds, group_names, group_hits, works = result
-        file_path = create_file_path(request, map_field, db.hitlist_dir, ext=".npz", filters=filters)
+        file_path = create_file_path(
+            request, map_field, db.hitlist_dir, ext=".npz", filters=filters, frequency_filter=frequency_filter
+        )
         save_map_field_cache(
             file_path,
             unique_tids,
@@ -994,20 +1003,41 @@ def _load_sentence_df(db_path, count_lemmas):
     return _corpus_counts(db_path, "sentence_df", count_lemmas), len(sent_offsets) - 1
 
 
-def _df_threshold_pct(request):
-    """Return the document-frequency threshold percent, or None if unset.
+def has_sentence_df(db_path, count_lemmas):
+    """Whether the database (its data directory) has the sentence counts of its words, or of its lemmas, each of the
+    vocabulary's length: written at load time, or for databases loaded before by
+    python3 -m philologic.utils.write_corpus_counts."""
+    colloc_dir = os.path.join(db_path, "collocations")
+    voff_file = "attr_lemma_vocab_offsets.npy" if count_lemmas else "vocab_offsets.npy"
+    try:
+        n_vocab = len(np.load(os.path.join(colloc_dir, voff_file), mmap_mode="r")) - 1
+        df, _ = _load_sentence_df(db_path, count_lemmas)
+    except (OSError, ValueError):
+        return False
+    return len(df) == n_vocab
 
-    Clamped to [MIN_DF_PCT, MAX_DF_PCT]. Empty/invalid values return None so
-    callers can fall back to the legacy top-N frequency filter.
-    """
+
+def _df_threshold_pct(request):
+    """The document-frequency threshold percent the request gives (filter_df_pct), clamped to [MIN_DF_PCT, MAX_DF_PCT];
+    None if it gives none. BadRequest if it is not a number."""
     raw = request["filter_df_pct"]
     if raw in (None, ""):
         return None
     try:
         pct = float(raw)
     except (ValueError, TypeError):
-        return None
+        raise BadRequest(f"The percentage of sentences above which words are filtered must be a number: {raw}")
+    if pct != pct:  # NaN: float() takes "nan", which clamps to nothing
+        raise BadRequest(f"The percentage of sentences above which words are filtered must be a number: {raw}")
     return max(MIN_DF_PCT, min(MAX_DF_PCT, pct))
+
+
+def _top_n(request):
+    """The number of most frequent words to filter out: that of filter_frequency, or the default."""
+    try:
+        return int(request.filter_frequency) if request.filter_frequency else DEFAULT_FILTER_FREQUENCY
+    except ValueError:
+        raise BadRequest(f"The number of most frequent words to filter must be a number: {request.filter_frequency}")
 
 
 def _df_filter_list(db_path, count_lemmas, pct):
@@ -1043,10 +1073,36 @@ def _df_filter_list(db_path, count_lemmas, pct):
     return out
 
 
-def build_filter_list(request, config, count_lemmas, choice=None):
-    """The words to filter out: the database's stopwords (choice "stopwords"), or its most frequent words (or lemmas).
-    None if the stopwords list is not found, or the database has none. choice is the request's colloc_filter_choice
-    unless given."""
+def resolve_frequency_filter(request, config, count_lemmas):
+    """The filter of frequent words a request is answered with: ("df", pct), the words in more than pct percent of the
+    sentences, or ("top_n", n), the n most frequent words.
+
+    A client that gives no filter_df_pct but a filter_frequency (the clients built before the df filter always send
+    100) gets the top n, as it always did. One that gives filter_df_pct, or neither, gets the df filter, unless the
+    database has no sentence counts of its words (or of its lemmas, when they are counted): it was loaded before they
+    were written. The top n is then filtered, n being filter_frequency or the default, which is what the client
+    would have got before. BadRequest if filter_df_pct or filter_frequency is not a number."""
+    df_pct = _df_threshold_pct(request)
+    if df_pct is None and request.filter_frequency:
+        return ("top_n", _top_n(request))
+    if df_pct is None:
+        df_pct = DEFAULT_DF_PCT
+    if has_sentence_df(os.path.join(config.db_path, "data"), count_lemmas):
+        return ("df", df_pct)
+    return ("top_n", _top_n(request))
+
+
+def frequency_filter_description(frequency_filter):
+    """The filter of frequent words as the report tells the client it was applied."""
+    kind, value = frequency_filter
+    return {"type": kind, "pct" if kind == "df" else "n": value}
+
+
+def build_filter_list(request, config, count_lemmas, choice=None, frequency_filter=None):
+    """The words to filter out: the database's stopwords (choice "stopwords"), or its most frequent words (or lemmas):
+    those in over filter_df_pct percent of the sentences, or the filter_frequency most frequent
+    (resolve_frequency_filter, unless given as frequency_filter). None if the stopwords list is not found, or the
+    database has none. choice is the request's colloc_filter_choice unless given."""
     if choice is None:
         choice = request.colloc_filter_choice
     if choice == "stopwords":
@@ -1062,25 +1118,16 @@ def build_filter_list(request, config, count_lemmas, choice=None):
             return None
         filter_num = float("inf")
     else:
-        df_pct = _df_threshold_pct(request)
-        # Legacy top-N frequency filter is preserved for backward compatibility:
-        # only taken when an explicit filter_frequency is supplied without a
-        # df threshold. Otherwise the document-frequency filter is the default.
-        if df_pct is None and request.filter_frequency:
-            if count_lemmas is True:
-                filter_file = config.db_path + "/data/frequencies/lemmas"
-            else:
-                filter_file = config.db_path + "/data/frequencies/word_frequencies"
-            try:
-                filter_num = int(request.filter_frequency)
-            except ValueError:
-                raise BadRequest(
-                    f"The number of most frequent words to filter must be a number: {request.filter_frequency}"
-                )
+        if frequency_filter is None:
+            frequency_filter = resolve_frequency_filter(request, config, count_lemmas)
+        kind, value = frequency_filter
+        if kind == "df":
+            return _df_filter_list(os.path.join(config.db_path, "data"), count_lemmas, value)
+        if count_lemmas is True:
+            filter_file = config.db_path + "/data/frequencies/lemmas"
         else:
-            if df_pct is None:
-                df_pct = DEFAULT_DF_PCT
-            return _df_filter_list(os.path.join(config.db_path, "data"), count_lemmas, df_pct)
+            filter_file = config.db_path + "/data/frequencies/word_frequencies"
+        filter_num = value
     filter_list = []
     with open(filter_file, encoding="utf8") as filehandle:
         for line_count, line in enumerate(filehandle):
@@ -1097,7 +1144,10 @@ def build_filter_list(request, config, count_lemmas, choice=None):
     return filter_list
 
 
-def create_file_path(request, field, hitlist_dir, ext=".pickle", filters=None):
+def create_file_path(request, field, hitlist_dir, ext=".pickle", filters=None, frequency_filter=None):
+    """The cache file of a collocation. frequency_filter, as resolve_frequency_filter gives it, is part of its name when
+    it is the df filter: the same request is answered with the top n words while the database has no sentence counts,
+    and with the df filter once it has. The top n filter is named by filter_frequency, as it always was."""
     hash = hashlib.sha1()
     if filters is not None:
         hash.update(filters.key().encode("utf-8"))
@@ -1109,7 +1159,8 @@ def create_file_path(request, field, hitlist_dir, ext=".pickle", filters=None):
     hash.update(request.q_attribute_value.encode("utf-8"))
     hash.update(str(request.colloc_within).encode("utf-8"))
     hash.update(str(request.filter_frequency).encode("utf-8"))
-    hash.update(str(request["filter_df_pct"]).encode("utf-8"))
+    if frequency_filter is not None and frequency_filter[0] == "df":
+        hash.update(f"df={frequency_filter[1]}".encode("utf-8"))
     hash.update(field.encode("utf-8"))
     for k, v in sorted(request.metadata.items()):
         if v:

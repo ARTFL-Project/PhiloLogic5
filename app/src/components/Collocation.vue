@@ -64,7 +64,7 @@
         </div>
 
         <results-summary :filter-list="filterList" :colloc-method="mode"
-            :stopwords-missing="stopwordsMissing"
+            :stopwords-missing="stopwordsMissing" :frequency-filter="mode === 'frequency' ? frequencyFilter : null"
             v-if="['frequency', 'senses', 'senseOverview'].includes(mode)"
             style="margin-top:0 !important;"></results-summary>
 
@@ -188,6 +188,8 @@ function methodOf(query) {
 }
 const filterList = ref([]);
 const stopwordsMissing = ref(false);
+// The filter of common words the server applied: {type: "df", pct} or {type: "top_n", n}; null before the results
+const frequencyFilter = ref(null);
 // Whether the primary collocation fetch has run for the current query. False
 // when the page was loaded directly on a senses tab, which runs its own detection
 // — so switching to frequency/similar/compare must trigger the primary fetch.
@@ -361,6 +363,7 @@ const { run: fetchResults } = useReport(
         resultsLength.value = data.results_length;
         filterList.value = data.filter_list;
         stopwordsMissing.value = Boolean(data.stopwords_missing);
+        frequencyFilter.value = data.frequency_filter || null;
         collocatesFilePath.value = data.file_path;
         primaryFetched.value = true;
         if (resultsLength.value) {

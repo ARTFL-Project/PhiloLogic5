@@ -179,6 +179,7 @@
         "noResults": "No results for your query",
         "fromTheseTitles": "from these titles",
         "groupByOccurrences": "{total} total occurrences spread across {n} {label}(s)",
+        "commonWords": "The {n} most common words",
         "commonWordsDf": "Words appearing in over {pct}% of sentences",
         "commonStopwords": "The most common function words",
         "filtered": "are being filtered from this report",
