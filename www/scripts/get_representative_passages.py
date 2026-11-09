@@ -434,7 +434,12 @@ def _get_context_html(db, config, hit, main_offsets, sig_offsets, word_regex):
     main_adj = [a for a, b in zip(adj_offsets, all_offsets) if b in main_set]
     sig_adj = [a for a, b in zip(adj_offsets, all_offsets) if b not in main_set]
     return format_concordance_distinctive(
-        text, word_regex, main_adj, sig_adj, page_marker_regex=db.locals["page_marker_regex"]
+        text,
+        word_regex,
+        main_adj,
+        sig_adj,
+        page_marker_regex=db.locals["page_marker_regex"],
+        file_type=db.locals["file_type"],
     )
 
 

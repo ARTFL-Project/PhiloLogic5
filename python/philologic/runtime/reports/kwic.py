@@ -88,7 +88,11 @@ def kwic_hit_object(hit, config, db):
     byte_offsets, start_byte = adjust_bytes(hit.bytes, config.concordance_length)
     conc_text = get_text(hit, start_byte, length, config.db_path)
     conc_text = format_strip(
-        conc_text, db.locals["token_regex"], byte_offsets, page_marker_regex=db.locals["page_marker_regex"]
+        conc_text,
+        db.locals["token_regex"],
+        byte_offsets,
+        page_marker_regex=db.locals["page_marker_regex"],
+        file_type=db.locals["file_type"],
     )
     conc_text = conc_text.replace("\n", " ")
     conc_text = conc_text.replace("\r", "")

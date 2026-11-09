@@ -1911,8 +1911,11 @@ class Loader:
         db_values["token_regex"] = self.token_regex
         # The plain-text parser made page breaks of the lines it matches: the runtime shows them as such
         parser_factory = self.parser_config.get("parser_factory")
-        if isinstance(parser_factory, type) and issubclass(parser_factory, PlainTextParser):
+        plain_text = isinstance(parser_factory, type) and issubclass(parser_factory, PlainTextParser)
+        if plain_text:
             db_values["page_marker_regex"] = self.parser_config.get("page_marker_regex")
+        # And their text as text, with no markup: the file type is that of the parser, whichever the -t option
+        db_values["file_type"] = "plain_text" if plain_text else "xml"
         db_values["default_object_level"] = self.default_object_level
         db_values["word_attributes"] = self.word_attributes
         db_values["overflow_words"] = self.overflow_words
