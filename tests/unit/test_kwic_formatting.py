@@ -307,3 +307,44 @@ class TestKwicLineWithTheHitAtTheStart:
         assert '<span class="inner-before"> before. </span>' in whole
         cut = self.line(monkeypatch, 15)["context"].split('<span class="kwic-after">')[0]
         assert cut == whole.replace(" before. ", "")
+
+
+@pytest.mark.unit
+class TestHighlightWithNoWordAfterIt:
+    """A hit whose text up to the next tag has no word, only spaces or punctuation (before a tag, or at the "<" of an
+    end tag the context cut the start of): its text was shown twice, in the highlight and again after it. It is shown
+    once, after an empty highlight, as in concordances."""
+
+    def test_its_text_shown_once(self):
+        output = kwic_text("<p>word, <hi>next</hi> more</p>", ", <hi>")
+        assert output == 'word<span class="highlight"></span>, next more'
+
+    def test_in_word_tags(self):
+        """At the "<" of the end tag of a word whose start tag was cut"""
+        text = 'ord</w> <w n="2">next</w> <w n="3">more</w>'
+        output = format_strip(text.encode(), TOKEN_REGEX, [text.index("</w>")])
+        assert output == (
+            '<span class="highlight"></span> <span class="xml-w" n="2">next</span> '
+            '<span class="xml-w" n="3">more</span>'
+        )
+
+    def test_the_columns_of_the_line(self):
+        assert columns("<p>my love, <hi>next</hi> more</p>", ", <hi>") == (
+            "my love", '<span class="highlight"></span>', ", next more"
+        )
+
+    def test_the_kwic_line(self, monkeypatch):
+        text = "Words before the hit, <hi>and</hi> the words after it."
+        data = text.encode("utf8")
+        monkeypatch.setattr(kwic_module, "get_text", lambda hit, start, length, path: data[start : start + length])
+        monkeypatch.setattr(kwic_module, "citation_links", lambda *args, **kwargs: {})
+        monkeypatch.setattr(kwic_module, "citations", lambda *args, **kwargs: [])
+        config = SimpleNamespace(concordance_length=100, db_path="", kwic_formatting_regex=[])
+        db = SimpleNamespace(
+            locals={"metadata_fields": [], "token_regex": TOKEN_REGEX, "page_marker_regex": None, "file_type": "xml"}
+        )
+        result = kwic_hit_object(Hit(bytes=[data.index(b", <hi>")], philo_id=[1, 1, 1, 1, 1, 1, 1]), config, db)
+        # (its first word cut, as a partial one)
+        assert kwic_module.TAGS.sub("", result["context"]) == " before the hit&nbsp;&nbsp;, and the words after it."
+        assert '<span class="kwic-highlight"><span class="highlight"></span></span>' in result["context"]
+        assert result["highlighted_text"] == ""
