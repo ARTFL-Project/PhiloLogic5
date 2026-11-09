@@ -9,6 +9,7 @@ import urllib.parse
 from pathlib import Path
 
 import pytest
+import regex as re
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT / "python"))
@@ -238,6 +239,27 @@ class TestPlainTextNavigation:
         assert response["text"].count('class="highlight"') == 1
         assert ">Chapter</span> 30" in response["text"]
         assert "Chapter 1\n" not in response["text"]
+
+    @pytest.mark.parametrize("cut", [False, True], ids=["in_the_part", "cut_to_the_part"])
+    def test_a_passage_after_highlights_in_a_part(self, tmp_path, cut):
+        """The highlights of the hits before the bounds of a passage don't move them in a part either, where the
+        passage may be cut to the part: the passage spans have the text of its bytes in the part"""
+        root = make_database(tmp_path, BOOK)
+        bounds = bounds_of(root, 1000)
+        part_start, part_end = bounds[3], bounds[4]
+        start = BOOK.index(b"word", part_start + 300)
+        end = BOOK.index(b"word", part_end + 100) if cut else BOOK.index(b"word", part_start + 700)
+        hits = [BOOK.index(b"word", part_start + offset) for offset in (20, 100, 200, start - part_start + 50)]
+        query = {"philo_id": "1 1", "windowed": "1", "window_start": str(part_start)}
+        query["byte"] = [str(hit) for hit in hits]
+        response = navigate(root, 1000, start_byte=str(start), end_byte=str(end), **query)
+        assert response["window"]["start_byte"] == part_start
+        text = response["text"]
+        in_passage = "".join(re.findall(r'<span class="passage-0" n="0">([^<]*)</span>', text))
+        assert in_passage == BOOK[start : min(end, part_end)].decode()
+        assert f'data-offsets="{start}-{min(end, part_end)}"' in text
+        assert text.count('<span class="highlight">') == 4
+        assert re.sub(r"<[^>]+>", "", text) == re.sub(r"<[^>]+>", "", navigate(root, 1000, **query)["text"])
 
     def test_old_clients_get_the_whole_book(self, tmp_path):
         root = make_database(tmp_path, BOOK)

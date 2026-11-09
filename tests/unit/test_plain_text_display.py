@@ -408,6 +408,27 @@ class TestTextPage:
         for special in ("&lt;abducere: ", "&amp; so on, &amp;c.;", "a &gt; b", "&amp;lt;not&amp;gt;"):
             assert special in passage
 
+    @pytest.mark.parametrize("last", ["Last", "an e."])
+    def test_a_passage_after_highlights(self, tmp_path, last):
+        """The highlights of the hits before the bounds of a passage don't move them, in the escaped text either: the
+        passage spans have the text of its bytes, its stray markup included. The last hit, "nor", is fewer bytes before
+        the end of the passage at "an e." than the escapes before it add."""
+        root = make_database(tmp_path, BOOK)
+        start, end = byte_of(BOOK, "abduction"), byte_of(BOOK, last)
+        inside = ("abducere", "so", "nor")
+        hits = [byte_of(BOOK, words) for words in ("first hit", "words after") + inside]
+        query = {"philo_id": "1 1", "byte": [str(hit) for hit in hits]}
+        text = navigate(root, start_byte=str(start), end_byte=str(end), **query)["text"]
+        assert philologic_tags_only(text)
+        assert f'data-offsets="{start}-{end}"' in text
+        in_passage = "".join(re.findall(r'<span class="passage-0" n="0">([^<]*)</span>', text))
+        assert Html(in_passage).text == BOOK.encode()[start:end].decode().replace("{00000002}", "")  # but its page
+        for word in ("first", "words"):
+            assert f'<span class="highlight">{word}</span>' in text
+        for word in inside:
+            assert f'<span class="highlight"><span class="passage-0" n="0">{word}</span></span>' in text
+        assert Html(text).text == Html(navigate(root, **query)["text"]).text
+
     def test_the_parts_of_a_windowed_text(self, tmp_path):
         """A "<" opening no tag doesn't move the ends of the parts of a plain text: they end at the same line breaks as
         without it, and show all of the text"""
