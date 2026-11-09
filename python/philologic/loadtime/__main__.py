@@ -14,6 +14,7 @@ start_worker_server(["philologic.loadtime.Loader"])
 
 from philologic.loadtime.Loader import Loader, setup_db_dir
 from philologic.loadtime.LoadOptions import LoadOptions
+from philologic.loadtime.db_url import db_url
 
 os.environ["LC_ALL"] = "C"  # Exceedingly important to get uniform sort order.
 os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -70,5 +71,9 @@ if __name__ == "__main__":
             )
         )
 
-    print(f"Database loaded in {load_options['db_destination']}: the web app serves it at /{load_options.dbname}/ "
-          "under its URL prefix (e.g. /philologic5/)\n")
+    if url := db_url(load_options.dbname):
+        print(f"Database URL: {url}\n")
+    else:
+        dbname = load_options.dbname
+        print(f"Database loaded in {load_options['db_destination']}: the web app serves it at /{dbname}/ "
+              f"under its URL prefix (e.g. /philologic5/{dbname}/)\n")
