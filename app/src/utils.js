@@ -7,11 +7,13 @@ export function dbUrlOnThisHost(dbUrl, location = window.location) {
     return location.origin + new URL(dbUrl, location.href).pathname;
 }
 
-export function databaseUrl(doc = document, devUrl = import.meta.env.VITE_DB_URL) {
-    // The database's URL: the <base href> the server gives its pages, the database's own path. The client is built
-    // for no path in particular, so a database can be served under any prefix, or copied to another machine,
-    // without rebuilding it. With `npm run dev`, VITE_DB_URL is the database to work with (in .env.development.local).
-    return devUrl || doc.baseURI;
+export function databaseUrl(doc = document, devUrl = import.meta.env.VITE_DB_URL, location = window.location) {
+    // The database's URL: the <base href> the server gives its pages, the database's own path, on the host this page
+    // came from. The client is built for no path in particular, so a database can be served under any prefix, or
+    // copied to another machine, without rebuilding it. With `npm run host`, VITE_DB_URL (in .env.development.local)
+    // is the database to work with, as it is: the dev server only serves the client's code, so requests go to the
+    // database's own server.
+    return devUrl || dbUrlOnThisHost(doc.baseURI, location);
 }
 
 export function refusedSearchMessage(error) {
