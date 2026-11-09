@@ -4,6 +4,7 @@ events of the ShlaxIngestor it builds them from, which TagCensus reads too."""
 import sys
 from pathlib import Path
 
+import lxml.html
 import pytest
 from lxml import etree
 
@@ -13,6 +14,7 @@ sys.path.insert(0, str(REPO_ROOT / "python"))
 
 from philologic.runtime.FragmentParser import parse
 from philologic.shlaxtree import ShlaxIngestor
+from philologic.utils.convert_entities import convert_entities
 
 
 def parsed(text):
@@ -129,3 +131,17 @@ class TestFragmentParser:
 
     def test_comments_and_processing_instructions_dropped(self):
         assert parsed("<p>x<!-- c --><?pi y?>z</p>") == "<p>xz</p>"
+
+    @pytest.mark.parametrize("tag", ["<abducere: ", "<abducere:>", "<a: b>", "<abducere: x/>"])
+    def test_tags_lxml_makes_no_element_of_are_text(self, tag):
+        """A "tag" of no name without its prefix, as "<abducere: " in the etymologies of an OCR'd plain-text dictionary:
+        both the parser and its HTML fallback raised a ValueError, so that the text gave a 500. A page shows them as
+        they are, once the formatters have decoded the entities of the text (as the fallback has the "<" of no tag)"""
+        output = convert_entities(etree.tostring(parse(f"<p>see {tag}abduce <hi>x</hi></p> y"), encoding="unicode"))
+        page = lxml.html.fragment_fromstring(output)
+        assert page.text_content() == f"see {tag}abduce x y"
+        assert [element.tag for element in page.iter()] == ["div", "p", "hi"]
+
+    def test_tags_the_html_fallback_mends_still_go_through_it(self):
+        """Only what both parses refuse is read leniently: the rest is as it was"""
+        assert parsed("x <«B. foo> y") == "x &amp;lt;&amp;#171;B. foo&amp;gt; y"

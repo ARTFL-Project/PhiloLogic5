@@ -71,6 +71,22 @@ class FragmentParser:
         return r
 
 
+class LenientFragmentParser(FragmentParser):
+    """A FragmentParser keeping as text the tags lxml makes no element of, such as the "<abducere: " of plain-text
+    dictionaries, whose name is nothing once its "prefix" is dropped. They are kept escaped, as the HTML fallback has
+    the "<" it takes for no tag: the formatters decode the entities of the text once more."""
+
+    def feed(self, kind, content, offset, name, attributes):
+        if kind != "start":
+            return super().feed(kind, content, offset, name, attributes)
+        depth = len(self.stack)
+        try:
+            super().feed(kind, content, offset, name, attributes)
+        except ValueError:
+            del self.stack[depth:]
+            self.data(content.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
 class FragmentStripper:
     def __init__(self):
         self.buffer = ""
@@ -91,6 +107,8 @@ def parse(text) -> etree.Element:
         feeder.feed(text)
         return feeder.close()
     except ValueError:
+        pass
+    try:
         # we use LXML's HTML parser which is more flexible and then feed the result to fragment parser
         parser = etree.HTMLParser()
         tree = etree.fromstring(text, parser=parser)
@@ -105,6 +123,11 @@ def parse(text) -> etree.Element:
         parser = FragmentParser()
         feeder = st.ShlaxIngestor(target=parser)
         feeder.feed(new_text)
+        return feeder.close()
+    except ValueError:
+        # the HTML parser kept the tag lxml makes no element of: the text with that tag as text
+        feeder = st.ShlaxIngestor(target=LenientFragmentParser())
+        feeder.feed(text)
         return feeder.close()
 
 
