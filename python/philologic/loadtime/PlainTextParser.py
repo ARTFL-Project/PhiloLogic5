@@ -11,6 +11,7 @@ from philologic.loadtime import OHCOVector
 from philologic.loadtime.Parser import CHARS_NOT_TO_INDEX, pilcrow_between, virgule_ends_sentence
 from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input
 from philologic.utils.ligatures import ligatures_as_letters
+from philologic.utils.page_markers import compile_page_marker_regex, page_marker_number
 
 TOKEN_REGEX = r"[\p{L}\p{M}\p{N}]+|[&\p{L};]+"
 PUNCTUATION = r"""[;,:=+()"]"""
@@ -72,7 +73,7 @@ class PlainTextParser:
 
         # Lines which match page_marker_regex are page breaks, numbered by the regex's first group
         if page_marker_regex:
-            self.page_marker_regex = re.compile(page_marker_regex)
+            self.page_marker_regex = compile_page_marker_regex(page_marker_regex)
         else:
             self.page_marker_regex = None
         # Split the text into div1 sections of about section_length characters. 0 or None keeps one virtual div1.
@@ -128,11 +129,11 @@ class PlainTextParser:
         previous_line_empty = False
         for line in input_file:  # TODO: recognize divs on lines with all characters in CAPS?
             if self.page_marker_regex is not None:
-                page_marker = self.page_marker_regex.fullmatch(line.strip())
-                if page_marker is not None:  # a page break: not indexed, and the end of the paragraph
+                page_number = page_marker_number(line, self.page_marker_regex)
+                if page_number is not None:  # a page break: not indexed, and the end of the paragraph
                     self.v.pull("para", bytes_read_in)
                     open_para = False
-                    self.page_break(page_marker, bytes_read_in, chars_read_in)
+                    self.page_break(page_number, bytes_read_in, chars_read_in)
                     bytes_read_in += len(line.encode("utf8"))
                     chars_read_in += len(line)
                     previous_line_empty = True
@@ -205,12 +206,8 @@ class PlainTextParser:
         self.v.pull("page", self.filesize)
         self.v.pull("doc", self.filesize)
 
-    def page_break(self, page_marker, start_byte, start_char):
-        """Start a new page at a page marker, and a new section if the current one is long enough."""
-        try:
-            n = str(int(page_marker.group(1)))
-        except (IndexError, TypeError, ValueError):
-            n = "na"
+    def page_break(self, n, start_byte, start_char):
+        """Start a new page, numbered n, at a page marker, and a new section if the current one is long enough."""
         new_section = self.section_length and start_char - self.section_start >= self.section_length
         if new_section:
             self.close_section(start_byte)

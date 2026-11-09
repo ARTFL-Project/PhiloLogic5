@@ -12,6 +12,7 @@ from philologic.runtime.DB import DB
 from philologic.runtime.FragmentParser import parse as FragmentParserParse
 from philologic.runtime.link import make_absolute_query_link
 from philologic.utils import convert_entities
+from philologic.utils.page_markers import cut_page_marker_start, page_markers_to_pb
 
 BEGIN_MATCH = re.compile(rb"^[^<]*?>")
 START_CUTOFF_MATCH = re.compile(rb"^[^ |\n<]+")
@@ -193,8 +194,8 @@ def adjust_bytes(bytes, padding):
     return new_bytes, start_byte
 
 
-def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
-    """Formatting concordances"""
+def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_regex=None):
+    """Formatting concordances. The page markers of page_marker_regex are page breaks, which are not shown."""
     removed_from_start = 0
     # The partial tag and word the text may start with are cut, but never past the first hit: a ">" before it is
     # text (OCR has them), not the end of a tag
@@ -212,6 +213,10 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
     end = END_MATCH.search(text_in_utf8)
     if end and removed_from_start + end.start(0) > last_hit:
         text_in_utf8 = text_in_utf8[: end.start(0)]
+    # And the page marker it may end in the middle of, which is no page marker line any more
+    marker_start = cut_page_marker_start(text_in_utf8, page_marker_regex)
+    if marker_start is not None and removed_from_start + marker_start > last_hit:
+        text_in_utf8 = text_in_utf8[:marker_start]
     if byte_offsets is not None:
         byte_offsets = [b - removed_from_start for b in byte_offsets]
         new_text = b""
@@ -221,7 +226,7 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
                 new_text += text_in_utf8[last_offset:b] + b"<philoHighlight/>"
                 last_offset = b
         text_in_utf8 = new_text + text_in_utf8[last_offset:]
-    text = text_in_utf8.decode("utf8", "ignore")
+    text = page_markers_to_pb(text_in_utf8.decode("utf8", "ignore"), page_marker_regex)
     xml = FragmentParserParse(text)
     allowed_tags = set(["philoHighlight", "l", "ab", "ln", "w", "sp", "speaker", "stage", "i", "sc", "scx", "br"])
     for el in xml.iter():
@@ -268,8 +273,9 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None):
 
 
 def format_concordance_distinctive(text_in_utf8, word_regex,
-                                    main_byte_offsets, distinctive_byte_offsets):
-    """Concordance formatter that emits two distinct highlight classes.
+                                    main_byte_offsets, distinctive_byte_offsets, page_marker_regex=None):
+    """Concordance formatter that emits two distinct highlight classes. The page markers of page_marker_regex are page
+    breaks, which are not shown, as in format_concordance.
 
     Like format_concordance, but accepts two offset sets:
       - main_byte_offsets: query word(s) — rendered with class "highlight"
@@ -299,6 +305,10 @@ def format_concordance_distinctive(text_in_utf8, word_regex,
     end = END_MATCH.search(text_in_utf8)
     if end and removed_from_start + end.start(0) > last_hit:
         text_in_utf8 = text_in_utf8[:end.start(0)]
+    # And the page marker it may end in the middle of, which is no page marker line any more
+    marker_start = cut_page_marker_start(text_in_utf8, page_marker_regex)
+    if marker_start is not None and removed_from_start + marker_start > last_hit:
+        text_in_utf8 = text_in_utf8[:marker_start]
 
     # Build a unified ordered list of (adjusted_offset, kind), main winning ties.
     main_set = set(b - removed_from_start for b in (main_byte_offsets or []))
@@ -318,7 +328,7 @@ def format_concordance_distinctive(text_in_utf8, word_regex,
             last_offset = b
         text_in_utf8 = new_text + text_in_utf8[last_offset:]
 
-    text = text_in_utf8.decode("utf8", "ignore")
+    text = page_markers_to_pb(text_in_utf8.decode("utf8", "ignore"), page_marker_regex)
     xml = FragmentParserParse(text)
     allowed_tags = set([
         "philoHighlightMain", "philoHighlightSig",
@@ -365,8 +375,8 @@ def format_concordance_distinctive(text_in_utf8, word_regex,
     return output
 
 
-def format_strip(text, word_regex, byte_offsets=None):
-    """Remove formatting for HTML rendering
+def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None):
+    """Remove formatting for HTML rendering, the page markers of page_marker_regex included
     Called from KWIC only"""
     removed_from_start = 0
     # The partial tag and word the text may start with are cut, but never past the first hit: a ">" before it is
@@ -385,6 +395,10 @@ def format_strip(text, word_regex, byte_offsets=None):
     end = END_MATCH.search(text)
     if end and removed_from_start + end.start(0) > last_hit:
         text = text[: end.start(0)]
+    # And the page marker it may end in the middle of, which is no page marker line any more
+    marker_start = cut_page_marker_start(text, page_marker_regex)
+    if marker_start is not None and removed_from_start + marker_start > last_hit:
+        text = text[:marker_start]
     if byte_offsets is not None:
         byte_offsets = [b - removed_from_start for b in byte_offsets]
         new_text = b""
@@ -394,7 +408,7 @@ def format_strip(text, word_regex, byte_offsets=None):
                 new_text += text[last_offset:b] + b"<philoHighlight/>"
                 last_offset = b
         text = new_text + text[last_offset:]
-    xml = FragmentParserParse(text.decode("utf8", "ignore"))
+    xml = FragmentParserParse(page_markers_to_pb(text.decode("utf8", "ignore"), page_marker_regex))
     output = clean_tags(xml, word_regex)
     ## remove spaces around hyphens and apostrophes
     output = SPACE_MATCH.sub(r"\1\2", output)
@@ -415,7 +429,8 @@ def format_text_object(
     window=False,
 ):
     """Format text objects. With window, the text is the part of the object starting at object_start_byte, and its
-    first page image is the one there."""
+    first page image is the one there. The page markers of the page_marker_regex of the object's database are page
+    breaks, as <pb> tags."""
     philo_id = obj.philo_id
     if byte_offsets is not None:
         new_text = b""
@@ -449,7 +464,7 @@ def format_text_object(
         text = new_text + text[last_offset:]
     current_obj_img = []
     current_graphic_img = []
-    text = "<div>" + text.decode("utf8", "ignore") + "</div>"
+    text = "<div>" + page_markers_to_pb(text.decode("utf8", "ignore"), obj.db.locals["page_marker_regex"]) + "</div>"
     xml: etree.Element = FragmentParserParse(text)
     c = obj.db.dbh.cursor()
     passage_number = None
