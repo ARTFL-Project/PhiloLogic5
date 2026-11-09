@@ -500,7 +500,16 @@
         "viewGraphic": "Ver gráfico {number}",
         "mainTextContent": "Contenido principal",
         "nextPageImages": "Imágenes de próxima página",
-        "nextGraphics": "Gráficos siguientes"
+        "nextGraphics": "Gráficos siguientes",
+        "textParts": "Partes del texto",
+        "textPartsEnd": "Partes del texto, al final de esta parte",
+        "partOf": "Parte {part} de {count}",
+        "previousPart": "Parte anterior",
+        "nextPart": "Parte siguiente",
+        "previousPartLabel": "Parte anterior: parte {part} de {count}",
+        "nextPartLabel": "Parte siguiente: parte {part} de {count}",
+        "goToPreviousPart": "Ir a la parte anterior",
+        "goToNextPart": "Ir a la parte siguiente"
     },
     "timeSeries": {
         "chartTitle": "Gráfico de Series Temporales",

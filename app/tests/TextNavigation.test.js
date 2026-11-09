@@ -40,7 +40,7 @@ async function mountTextNavigation(overrides = {}) {
     const router = createTestRouter({
         name: "textNavigation",
         path: "/navigate/1/5",
-        query: {},
+        query: overrides.query || {},
     });
     await router.isReady();
 
@@ -52,6 +52,7 @@ async function mountTextNavigation(overrides = {}) {
     consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
     const wrapper = mount(TextNavigation, {
+        attachTo: overrides.attachTo,
         global: {
             plugins: [pinia, i18n, router],
             provide: { $http: http, $dbUrl: "/testdb", $philoConfig: config },
@@ -225,5 +226,126 @@ describe("TextNavigation", () => {
         await wrapper.find("#toc-content").trigger("scroll"); // at its top (jsdom scrolls nothing)
         await nextTick();
         expect(sections()).toBe(400);
+    });
+});
+
+// A long text object comes a part at a time, with its window: its bounds, the starts of its neighbors, its number
+const firstPart = { start_byte: 0, end_byte: 1000, prev_start_byte: null, next_start_byte: 1000, part: 1, part_count: 4 };
+const middlePart = { start_byte: 2000, end_byte: 3000, prev_start_byte: 1000, next_start_byte: 3000, part: 3, part_count: 4 };
+const lastPart = { start_byte: 3000, end_byte: 3500, prev_start_byte: 2000, next_start_byte: null, part: 4, part_count: 4 };
+
+function partsHttp(window) {
+    return createMockHttp({
+        "navigation.py": { ...navFixture, window },
+        "get_table_of_contents.py": tocFixture,
+    });
+}
+
+describe("TextNavigation of a long text object, a part at a time", () => {
+    it("asks for windows, and for the part of window_start in the route", async () => {
+        const http = partsHttp(middlePart);
+        await mountTextNavigation({ http, query: { window_start: "2000" } });
+        const navCall = http.get.mock.calls.find(c => c[0].includes("navigation.py"));
+        expect(navCall[0]).toContain("windowed=1");
+        expect(navCall[0]).toContain("window_start=2000");
+    });
+
+    it("asks for windows with the hit, and no window_start, from a concordance", async () => {
+        const http = partsHttp(middlePart);
+        await mountTextNavigation({ http, query: { byte: "2500" } });
+        const navCall = http.get.mock.calls.find(c => c[0].includes("navigation.py"));
+        expect(navCall[0]).toContain("byte=2500");
+        expect(navCall[0]).toContain("windowed=1");
+        expect(navCall[0]).not.toContain("window_start");
+    });
+
+    it("shows no parts for an object sent whole", async () => {
+        const { wrapper } = await mountTextNavigation();
+        expect(wrapper.find(".text-parts").exists()).toBe(false);
+        expect(wrapper.find("#next-obj").attributes("aria-label")).toBe("Go to next section");
+        expect(wrapper.find("#prev-obj").attributes("aria-label")).toBe("Go to previous section");
+    });
+
+    it("shows which part it is, above and below the text, with links to the parts around it", async () => {
+        const { wrapper } = await mountTextNavigation({ http: partsHttp(middlePart), query: { byte: "2500" } });
+        const navs = wrapper.findAll("nav.text-parts");
+        expect(navs.length).toBe(2);
+        for (const nav of navs) {
+            expect(nav.find(".text-part-indicator").text()).toBe("Part 3 of 4");
+        }
+        expect(navs[0].attributes("aria-label")).not.toBe(navs[1].attributes("aria-label"));
+        const next = wrapper.find("#next-part-bottom");
+        expect(next.element.tagName).toBe("A");
+        expect(next.attributes("href")).toBe("/navigate/1/5?window_start=3000");  // without the hit of another part
+        expect(next.attributes("aria-label")).toBe("Next part: part 4 of 4");
+        expect(next.text()).toContain("Next part");
+        const previous = wrapper.find("#previous-part-top");
+        expect(previous.attributes("href")).toBe("/navigate/1/5?window_start=1000");
+        expect(previous.attributes("aria-label")).toBe("Previous part: part 2 of 4");
+        expect(wrapper.find("#previous-part-bottom").exists()).toBe(true);
+        expect(wrapper.find("#next-part-top").exists()).toBe(true);
+    });
+
+    it("has no link past the first or the last part", async () => {
+        let { wrapper } = await mountTextNavigation({ http: partsHttp(firstPart) });
+        expect(wrapper.find("#previous-part-top").exists()).toBe(false);
+        expect(wrapper.find("#previous-part-bottom").exists()).toBe(false);
+        expect(wrapper.find(".text-part-indicator").text()).toBe("Part 1 of 4");
+        ({ wrapper } = await mountTextNavigation({ http: partsHttp(lastPart) }));
+        expect(wrapper.find("#next-part-top").exists()).toBe(false);
+        expect(wrapper.find("#next-part-bottom").exists()).toBe(false);
+    });
+
+    it("steps through the parts with the nav bar's buttons", async () => {
+        const { wrapper, router } = await mountTextNavigation({ http: partsHttp(middlePart), query: { byte: "2500" } });
+        const pushSpy = vi.spyOn(router, "push");
+        expect(wrapper.find("#next-obj").attributes("aria-label")).toBe("Go to next part");
+        expect(wrapper.find("#prev-obj").attributes("aria-label")).toBe("Go to previous part");
+        await wrapper.find("#next-obj").trigger("click");
+        expect(pushSpy).toHaveBeenLastCalledWith({ path: "/navigate/1/5", query: { window_start: "3000" } });
+        await wrapper.find("#prev-obj").trigger("click");
+        expect(pushSpy).toHaveBeenLastCalledWith({ path: "/navigate/1/5", query: { window_start: "1000" } });
+    });
+
+    it("goes on to the next object from the last part, and back to the previous one from the first", async () => {
+        let { wrapper, router } = await mountTextNavigation({ http: partsHttp(lastPart) });
+        let pushSpy = vi.spyOn(router, "push");
+        expect(wrapper.find("#next-obj").attributes("aria-label")).toBe("Go to next section");
+        await wrapper.find("#next-obj").trigger("click");
+        expect(pushSpy).toHaveBeenLastCalledWith({ path: "/navigate/1/6/0/0/0/0/0" });
+        ({ wrapper, router } = await mountTextNavigation({ http: partsHttp(firstPart) }));
+        pushSpy = vi.spyOn(router, "push");
+        expect(wrapper.find("#prev-obj").attributes("aria-label")).toBe("Go to previous section");
+        await wrapper.find("#prev-obj").trigger("click");
+        expect(pushSpy).toHaveBeenLastCalledWith({ path: "/navigate/1/4/0/0/0/0/0" });
+    });
+
+    it("shows the nav bar's buttons for the parts of an object with no neighbors", async () => {
+        const http = createMockHttp({
+            "navigation.py": { ...navFixture, prev: "", next: "", window: middlePart },
+            "get_table_of_contents.py": tocFixture,
+        });
+        const { wrapper } = await mountTextNavigation({ http });
+        expect(wrapper.find("#prev-obj").exists()).toBe(true);
+        expect(wrapper.find("#next-obj").exists()).toBe(true);
+    });
+
+    it("opens the part a part link goes to, and gives its text the focus", async () => {
+        const scrollSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+        const http = partsHttp(middlePart);
+        const { wrapper, router } = await mountTextNavigation({ http, query: { byte: "2500" }, attachTo: document.body });
+        await wrapper.find("#next-part-bottom").trigger("click");
+        await flushPromises();
+        await nextTick();
+        await flushPromises();
+        expect(router.currentRoute.value.query).toEqual({ window_start: "3000" });
+        const navCalls = http.get.mock.calls.filter(c => c[0].includes("navigation.py"));
+        expect(navCalls.length).toBe(2);
+        expect(navCalls[1][0]).toContain("window_start=3000");
+        expect(navCalls[1][0]).not.toContain("byte=");
+        expect(document.activeElement?.id).toBe("text-obj-content");
+        expect(scrollSpy).toHaveBeenCalledWith({ top: 0, behavior: "instant" });
+        wrapper.unmount();
+        scrollSpy.mockRestore();
     });
 });

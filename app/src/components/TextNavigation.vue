@@ -20,8 +20,9 @@
                         <span class="d-inline-block d-sm-none">{{ $t("textNav.top") }}</span>
                     </button>
                     <div class="btn-group btn-group-sm" role="group" :aria-label="$t('textNav.navigationControls')">
-                        <button type="button" class="btn btn-secondary" v-if="textObject.prev" id="prev-obj"
-                            @click="goToTextObject(textObject.prev)" :aria-label="$t('textNav.previousSection')">
+                        <button type="button" class="btn btn-secondary" v-if="textObject.prev || previousPart !== null"
+                            id="prev-obj" @click="goToPrevious()"
+                            :aria-label="previousPart !== null ? $t('textNav.goToPreviousPart') : $t('textNav.previousSection')">
                             <span aria-hidden="true">&lt;</span>
                             <span class="visually-hidden">{{ $t('textNav.previous') }}</span>
                         </button>
@@ -31,8 +32,9 @@
                             :aria-label="$t('textNav.toggleToc')">
                             {{ $t("textNav.toc") }}
                         </button>
-                        <button type="button" class="btn btn-secondary" v-if="textObject.next" id="next-obj"
-                            @click="goToTextObject(textObject.next)" :aria-label="$t('textNav.nextSection')">
+                        <button type="button" class="btn btn-secondary" v-if="textObject.next || nextPart !== null"
+                            id="next-obj" @click="goToNext()"
+                            :aria-label="nextPart !== null ? $t('textNav.goToNextPart') : $t('textNav.nextSection')">
                             <span aria-hidden="true">&gt;</span>
                             <span class="visually-hidden">{{ $t('textNav.next') }}</span>
                         </button>
@@ -76,6 +78,23 @@
             <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text"
                 style="text-align: center">
                 <article class="card text-view mt-2 mb-4 p-4 shadow d-inline-block">
+                    <nav class="text-parts text-parts-top mb-3" v-if="textWindow" :aria-label="$t('textNav.textParts')">
+                        <router-link v-if="previousPart !== null" :to="partRoute(previousPart)"
+                            class="btn btn-secondary btn-sm" id="previous-part-top"
+                            @click="partLinkFollowed()"
+                            :aria-label="$t('textNav.previousPartLabel', { part: textWindow.part - 1, count: textWindow.part_count })">
+                            <span aria-hidden="true">&lt;</span> {{ $t("textNav.previousPart") }}
+                        </router-link>
+                        <span class="text-part-indicator" aria-live="polite">
+                            {{ $t("textNav.partOf", { part: textWindow.part, count: textWindow.part_count }) }}
+                        </span>
+                        <router-link v-if="nextPart !== null" :to="partRoute(nextPart)"
+                            class="btn btn-secondary btn-sm" id="next-part-top"
+                            @click="partLinkFollowed()"
+                            :aria-label="$t('textNav.nextPartLabel', { part: textWindow.part + 1, count: textWindow.part_count })">
+                            {{ $t("textNav.nextPart") }} <span aria-hidden="true">&gt;</span>
+                        </router-link>
+                    </nav>
                     <div id="book-page">
                         <section id="previous-pages" v-if="beforeObjImgs"
                             :aria-label="$t('textNav.previousPageImages')">
@@ -107,6 +126,24 @@
                                 :aria-label="$t('textNav.viewGraphic', { number: afterGraphIndex + 1 })"></a>
                         </section>
                     </div>
+                    <nav class="text-parts text-parts-bottom mt-4" v-if="textWindow"
+                        :aria-label="$t('textNav.textPartsEnd')">
+                        <router-link v-if="previousPart !== null" :to="partRoute(previousPart)"
+                            class="btn btn-secondary btn-sm" id="previous-part-bottom"
+                            @click="partLinkFollowed()"
+                            :aria-label="$t('textNav.previousPartLabel', { part: textWindow.part - 1, count: textWindow.part_count })">
+                            <span aria-hidden="true">&lt;</span> {{ $t("textNav.previousPart") }}
+                        </router-link>
+                        <span class="text-part-indicator">
+                            {{ $t("textNav.partOf", { part: textWindow.part, count: textWindow.part_count }) }}
+                        </span>
+                        <router-link v-if="nextPart !== null" :to="partRoute(nextPart)"
+                            class="btn btn-secondary btn-sm" id="next-part-bottom"
+                            @click="partLinkFollowed()"
+                            :aria-label="$t('textNav.nextPartLabel', { part: textWindow.part + 1, count: textWindow.part_count })">
+                            {{ $t("textNav.nextPart") }} <span aria-hidden="true">&gt;</span>
+                        </router-link>
+                    </nav>
                 </article>
             </div>
         </div>
@@ -165,11 +202,18 @@ const images = ref([]);
 const loading = ref(false);
 const loadError = ref("");  // the message key, when the text can't be shown
 const textObjectURL = ref("");
+// Where a part link was followed: the text of the part it opens gets the focus. Not on a reload or back and forward.
+const focusPartOnLoad = ref(false);
 
 //  Computed ─
 const processedTocElements = computed(() =>
     buildTocTree(tocElements.value.elements.slice(start.value, end.value))
 );
+// The part of a long text object the server sent, with its neighbors: none from servers or custom navigation reports
+// that send objects whole
+const textWindow = computed(() => textObject.value.window || null);
+const previousPart = computed(() => textWindow.value?.prev_start_byte ?? null);
+const nextPart = computed(() => textWindow.value?.next_start_byte ?? null);
 const whiteSpace = computed(() =>
     philoConfig.respect_text_line_breaks ? "pre" : "normal"
 );
@@ -353,8 +397,15 @@ function scrollToTarget() {
         } else {
             scrollToElement(element, 150);
         }
+    } else if (focusPartOnLoad.value) {
+        // a part link followed: the start of the part, as when it opens a section. At once: a smooth scroll from the
+        // bottom of the part went through the whole of the new one
+        focusPartOnLoad.value = false;
+        const text = document.getElementById("text-obj-content");
+        if (text) text.focus({ preventScroll: true });
+        window.scrollTo({ top: 0, behavior: "instant" });
     } else if (formData.value.start_byte !== "") {
-        scrollToElement(document.querySelector(".passage-marker"), 150);
+        scrollToElement(document.querySelector(".passage-marker"), 150);  // none in the parts the passage isn't in
     } else if (route.hash) {
         scrollToElement(document.getElementById(route.hash.slice(1)), 250, true);
     }
@@ -385,7 +436,11 @@ function fetchText() {
         byte.value = "";
     }
 
-    const navigationParams = { report: "navigation", philo_id: philoID.value };
+    // windowed: the server may send a long object a part at a time, the one holding window_start, else the hit
+    const navigationParams = { report: "navigation", philo_id: philoID.value, windowed: "1" };
+    if (route.query.window_start) {
+        navigationParams.window_start = String(route.query.window_start);
+    }
     if (formData.value.start_byte !== "") {
         navigationParams.start_byte = formData.value.start_byte;
         navigationParams.end_byte = formData.value.end_byte;
@@ -418,6 +473,7 @@ function fetchText() {
             logError(error);
             loading.value = false;
             searching.value = false;
+            focusPartOnLoad.value = false;
             textObject.value = {};
             loadError.value = error.response?.status === 404 ? "common.textNotFound" : "common.textLoadFailed";
         });
@@ -514,6 +570,37 @@ function goToTextObject(philoIDArg) {
     const path = philoIDArg.split(/[- ]/).join("/");
     if (tocOpen.value) tocOpen.value = false;
     router.push({ path: `/navigate/${path}` });
+}
+
+// The route of the part of this object starting at startByte: its hits are in the part they came from
+function partRoute(startByte) {
+    const query = { ...route.query, window_start: String(startByte) };
+    delete query.byte;
+    return { path: route.path, query };
+}
+
+function partLinkFollowed() {
+    if (tocOpen.value) tocOpen.value = false;
+    focusPartOnLoad.value = true;
+}
+
+// The nav bar's buttons go through the parts of a long object before going to the next or previous one
+function goToPrevious() {
+    if (previousPart.value !== null) {
+        if (tocOpen.value) tocOpen.value = false;
+        router.push(partRoute(previousPart.value));
+    } else {
+        goToTextObject(textObject.value.prev);
+    }
+}
+
+function goToNext() {
+    if (nextPart.value !== null) {
+        if (tocOpen.value) tocOpen.value = false;
+        router.push(partRoute(nextPart.value));
+    } else {
+        goToTextObject(textObject.value.next);
+    }
 }
 
 function textObjectSelection(philoId, event) {
@@ -758,6 +845,33 @@ fetchText();
 #book-page {
     text-align: justify;
     white-space: v-bind("whiteSpace");
+}
+
+/* Parts of a long text object: previous part, "Part k of n", next part */
+.text-parts {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.text-part-indicator {
+    grid-column: 2;
+    font-size: 0.875rem;
+    color: theme.$link-color;
+    font-weight: 600;
+}
+
+#previous-part-top,
+#previous-part-bottom {
+    grid-column: 1;
+    justify-self: start;
+}
+
+#next-part-top,
+#next-part-bottom {
+    grid-column: 3;
+    justify-self: end;
 }
 
 :deep(.xml-pb) {

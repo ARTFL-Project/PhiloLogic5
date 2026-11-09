@@ -500,7 +500,16 @@
         "viewGraphic": "View graphic {number}",
         "mainTextContent": "Main text content",
         "nextPageImages": "Next page images",
-        "nextGraphics": "Next graphics"
+        "nextGraphics": "Next graphics",
+        "textParts": "Parts of the text",
+        "textPartsEnd": "Parts of the text, at the end of this part",
+        "partOf": "Part {part} of {count}",
+        "previousPart": "Previous part",
+        "nextPart": "Next part",
+        "previousPartLabel": "Previous part: part {part} of {count}",
+        "nextPartLabel": "Next part: part {part} of {count}",
+        "goToPreviousPart": "Go to previous part",
+        "goToNextPart": "Go to next part"
     },
     "timeSeries": {
         "chartTitle": "Time Series Chart",

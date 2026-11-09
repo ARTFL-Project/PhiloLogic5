@@ -99,6 +99,7 @@ KINDS = {
     "skip_table_of_contents": ("navigation", "bool", ()),
     "respect_text_line_breaks": ("navigation", "bool", ()),
     "header_in_toc": ("navigation", "bool", ()),
+    "navigation_window_length": ("navigation", "int", ()),
     "external_page_images": ("navigation", "bool", ()),
     "page_images_url_root": ("navigation", "string", ()),
     "page_image_extension": ("navigation", "string", ()),
