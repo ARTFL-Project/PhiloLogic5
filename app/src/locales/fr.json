@@ -180,7 +180,6 @@
         "noResults": "pas de résultat pour cette recherche",
         "fromTheseTitles": "dans ces textes",
         "groupByOccurrences": "{total} occurrences disséminées à travers {n} {label}(s)",
-        "commonWords": "Les {n} mots les plus courants",
         "commonWordsDf": "Les mots apparaissant dans plus de {pct} % des phrases",
         "commonStopwords": "Les mots vides les plus courants",
         "filtered": "sont filtrés de ce rapport de recherche",

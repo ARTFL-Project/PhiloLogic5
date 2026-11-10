@@ -7,12 +7,7 @@ import numpy as np
 import pytest
 
 from philologic.loadtime.PostFilters import write_corpus_counts
-from philologic.runtime.reports.collocation import (
-    _df_filter_list,
-    _load_sentence_df,
-    _load_token_counts,
-    has_sentence_df,
-)
+from philologic.runtime.reports.collocation import _df_filter_list, _load_sentence_df, _load_token_counts
 from philologic.utils import write_corpus_counts as script
 
 # Three sentences: words 0 1 1 2 | 1 3 | 0, of a vocabulary of 5 (word 4 never occurs); their lemmas 0 0 1 1 | 0 2 | 0
@@ -88,18 +83,6 @@ class TestReaders:
             _load_token_counts(str(data), False)
         with pytest.raises(FileNotFoundError, match="philologic.utils.write_corpus_counts"):
             _load_sentence_df(str(data), False)
-
-    def test_a_database_without_them_has_none(self, tmp_path):
-        data, _ = database(tmp_path)
-        assert not has_sentence_df(str(data), False)
-        assert not has_sentence_df(str(data), True)
-
-    def test_counts_of_another_vocabulary_are_not_used(self, tmp_path):
-        data, colloc_dir = database(tmp_path)
-        write_corpus_counts(str(colloc_dir))
-        assert has_sentence_df(str(data), False) and has_sentence_df(str(data), True)
-        np.save(colloc_dir / "sentence_df_lemma.npy", np.zeros(2, dtype=np.int64))
-        assert has_sentence_df(str(data), False) and not has_sentence_df(str(data), True)
 
     def test_words_in_more_sentences_than_the_percentage(self, tmp_path):
         data, colloc_dir = database(tmp_path)

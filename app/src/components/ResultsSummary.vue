@@ -101,9 +101,9 @@
                             <span v-if="leftOut.frequency || (leftOut.stopwords && !stopwordsMissing)">
                                 <button type="button" class="btn btn-link p-0" @click="toggleFilterList($event)"
                                     v-if="leftOut.frequency"
-                                    :aria-label="$t(commonWords.key, commonWords.params) + ' ' + $t('resultsSummary.filtered')"
+                                    :aria-label="$t('resultsSummary.commonWordsDf', { pct: formData.filter_df_pct }) + ' ' + $t('resultsSummary.filtered')"
                                     :aria-expanded="showFilteredWords" aria-controls="filter-list">
-                                    {{ $t(commonWords.key, commonWords.params) }}
+                                    {{ $t("resultsSummary.commonWordsDf", { pct: formData.filter_df_pct }) }}
                                 </button>
                                 <template v-if="leftOut.frequency && leftOut.stopwords && !stopwordsMissing">
                                     {{ " " + $t("resultsSummary.and") + " " }}
@@ -240,7 +240,7 @@ import {
     splitValues,
 } from "../utils.js";
 
-const props = defineProps(["description", "filterList", "groupLength", "stopwordsMissing", "frequencyFilter"]);
+const props = defineProps(["description", "filterList", "groupLength", "stopwordsMissing"]);
 
 // The common words the collocation report leaves out (colloc_filter_choice: frequency, stopwords, both, nofilter;
 // empty is the most frequent words, as the report has it)
@@ -248,16 +248,6 @@ const leftOut = computed(() => {
     const choices = splitValues(formData.value.colloc_filter_choice || "frequency");
     return { frequency: choices.includes("frequency"), stopwords: choices.includes("stopwords") };
 });
-// The common words filtered: the n most common if the server applied that filter (it does for a database without the
-// sentence counts), else those in over the percentage of the sentences the form gives
-const commonWords = computed(() =>
-    props.frequencyFilter && props.frequencyFilter.type === "top_n"
-        ? { key: "resultsSummary.commonWords", params: { n: props.frequencyFilter.n } }
-        : {
-            key: "resultsSummary.commonWordsDf",
-            params: { pct: props.frequencyFilter ? props.frequencyFilter.pct : formData.value.filter_df_pct },
-        }
-);
 
 const $http = inject("$http");
 const $dbUrl = inject("$dbUrl");

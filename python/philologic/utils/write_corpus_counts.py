@@ -1,7 +1,7 @@
 """Write the corpus counts of databases loaded before the loader wrote them: for each word (and lemma), the number of
-sentences it is in and of times it occurs, which the collocation filter and the word senses weigh words by: without
-them, the senses fail and the collocation filter falls back to the most frequent words. Databases that have them all
-are left alone, unless --force is given. Run it as a user who can write the databases' data/collocations directories.
+sentences it is in and of times it occurs, which the collocation filter and the word senses weigh words by: those
+reports fail on a database without them. Databases that have them all are left alone, unless --force is given. Run it
+as a user who can write the databases' data/collocations directories.
 
     python3 -m philologic.utils.write_corpus_counts [--force] /var/www/html/philologic5/mydb [...]
 """
