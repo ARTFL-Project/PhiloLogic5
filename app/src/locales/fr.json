@@ -382,6 +382,7 @@
         "textContent": "Contenu du texte principal",
         "dictionaryLookup": "Informations de recherche dans le dictionnaire",
         "previousPageImages": "Images de pages précédentes",
+        "page": "Page",
         "viewPageImage": "Voir l'image de la page {number}",
         "previousGraphics": "Graphiques précédents",
         "viewGraphic": "Voir le graphique {number}",

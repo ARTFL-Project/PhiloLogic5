@@ -1,7 +1,7 @@
 <template>
     <div class="container-fluid mt-4">
         <header class="row">
-            <div class="col-8 offset-2">
+            <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2">
                 <div id="object-title" class="text-center pt-4">
                     <h1 class="h5">
                         <citations :citation="textNavigationCitation"></citations>
@@ -117,9 +117,8 @@
             {{ $t(loadError) }}
         </div>
         <div role="region" class="row" id="all-content" :aria-label="$t('textNav.textContent')">
-            <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text"
-                style="text-align: center">
-                <article class="card text-view mt-2 mb-4 p-4 shadow d-inline-block">
+            <div class="col-12 col-sm-10 offset-sm-1 col-lg-8 offset-lg-2" id="center-content" v-if="textObject.text">
+                <article class="card text-view text-page mt-2 mb-4 shadow">
                     <nav class="text-parts text-parts-top mb-3" v-if="textWindow" :aria-label="$t('textNav.textParts')">
                         <router-link v-if="previousPart !== null" :to="partRoute(previousPart)"
                             class="btn btn-secondary btn-sm" id="previous-part-top"
@@ -199,6 +198,7 @@ import GLightbox from "glightbox";
 import "glightbox/dist/css/glightbox.css";
 import { storeToRefs } from "pinia";
 import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import vueScrollTo from "vue-scrollto";
 import { useMainStore } from "../stores/main";
@@ -212,6 +212,7 @@ const philoConfig = inject("$philoConfig");
 const route = useRoute();
 const router = useRouter();
 const store = useMainStore();
+const { t } = useI18n();
 const {
     formData,
     textNavigationCitation,
@@ -306,14 +307,16 @@ function setUpNotePopovers() {
         const noteId = `note-content-${index}`;
         note.setAttribute("role", "button");
         note.setAttribute("tabindex", "0");
-        note.setAttribute("aria-label", `Note ${note.textContent || index + 1}`);
+        // The server marks inline notes with the word "note"
+        const label = note.textContent.trim() === "note" ? "" : note.textContent || index + 1;
+        note.setAttribute("aria-label", `Note ${label}`.trim());
         note.setAttribute("aria-describedby", noteId);
 
         const popoverInstance = new Popover(note, {
             html: true,
             content: noteContent,
             trigger: "focus",
-            customClass: "custom-popover shadow-lg",
+            customClass: "custom-popover text-view shadow-lg",
         });
         note.addEventListener("shown.bs.popover", () => {
             const popoverElement = document.querySelector(".popover");
@@ -359,7 +362,7 @@ function setUpNoteRefs() {
                     html: true,
                     content: response.data.text,
                     trigger: "focus",
-                    customClass: "custom-popover shadow-lg",
+                    customClass: "custom-popover text-view shadow-lg",
                 });
                 noteRef.addEventListener("shown.bs.popover", () => {
                     const popoverElement = document.querySelector(".popover");
@@ -403,6 +406,17 @@ function setUpHeadingSemantics() {
         headword.setAttribute("role", "heading");
         headword.setAttribute("aria-level", headingDepth + 2);
     });
+}
+
+// A page break shows its number alone: screen readers say it is a page's. Links to page images say so already
+function setUpPageBreaks() {
+    for (const pageBreak of document.querySelectorAll("#text-obj-content .xml-pb-image")) {
+        if (pageBreak.querySelector("a") || !pageBreak.textContent.trim()) continue;
+        const label = document.createElement("span");
+        label.className = "visually-hidden";
+        label.textContent = `${t("textNav.page")} `;
+        pageBreak.prepend(label);
+    }
 }
 
 function setUpInternalLinks() {
@@ -513,6 +527,7 @@ function fetchText() {
                 setUpNotePopovers();
                 setUpNoteRefs();
                 setUpHeadingSemantics();
+                setUpPageBreaks();
                 setUpInternalLinks();
                 scrollToTarget();
                 setUpGallery();
@@ -819,6 +834,16 @@ fetchText();
 <style lang="scss" scoped>
 @use "../assets/styles/theme.module.scss" as theme;
 
+$measure: 37em;
+
+$leading: 1.72;
+
+#object-title h1 {
+    max-width: $measure;
+    margin-right: auto;
+    margin-left: auto;
+}
+
 .separator {
     padding: 5px;
     font-size: 60%;
@@ -939,9 +964,33 @@ fetchText();
     margin-left: -1.25rem;
 }
 
+.text-page {
+    width: 100%;
+    max-width: $measure * 1.5;
+    min-width: min-content;
+    margin: 0 auto;
+    padding: 2.5rem max(2rem, min((100% - $measure) / 2, $measure / 4)) 3rem;
+    background-color: theme.$paper;
+    color: theme.$ink;
+    font-size: 1.08rem !important;
+}
+
 #book-page {
+    line-height: $leading;
     text-align: justify;
     white-space: v-bind("whiteSpace");
+}
+
+@media (max-width: 575.98px) {
+    .text-page {
+        padding: 1.75rem 1.1rem 2rem;
+    }
+
+    #book-page,
+    #book-page :deep(.xml-lb),
+    #book-page :deep(.xml-l) {
+        text-align: start;
+    }
 }
 
 /* Parts of a long text object: previous part, "Part k of n", next part */
@@ -971,19 +1020,66 @@ fetchText();
     justify-self: end;
 }
 
-:deep(.xml-pb) {
-    display: block;
-    text-align: center;
-    margin: 10px;
+#text-obj-content :deep(.xml-pb-image),
+#text-obj-content :deep(.xml-pb) {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.25rem 0;
+    color: var(--bs-secondary-color);
+    font-size: 0.8em;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    line-height: 1;
+    text-indent: 0;
 }
 
-:deep(.xml-pb::before) {
-    content: "-" attr(n) "-";
-    white-space: pre;
+#text-obj-content :deep(.xml-pb-image:empty),
+#text-obj-content :deep(.xml-pb:empty) {
+    gap: 0;
+}
+
+#text-obj-content :deep(.xml-pb-image::before),
+#text-obj-content :deep(.xml-pb-image::after),
+#text-obj-content :deep(.xml-pb::before),
+#text-obj-content :deep(.xml-pb::after) {
+    content: "";
+    flex: 1 1 auto;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+#text-obj-content :deep(.xml-milestone[type="runhead"]) {
+    display: block;
+    margin: -0.5rem 0 1rem;
+    text-align: center;
+}
+
+#text-obj-content :deep(.xml-milestone[type="runhead"]::before) {
+    content: attr(n);
+    color: var(--bs-secondary-color);
+    font-family: inherit;
+    font-size: 0.75em;
+    font-variant: small-caps;
+    letter-spacing: 0.08em;
+    vertical-align: baseline;
+}
+
+#text-obj-content :deep(.xml-pb-image a) {
+    padding: 0.3rem 0.7rem;
+    border: 1px solid rgba(theme.$link-color, 0.55);
+    border-radius: 2rem;
+    color: theme.$link-color;
+    text-decoration: none;
+}
+
+#text-obj-content :deep(.xml-pb-image a:hover),
+#text-obj-content :deep(.xml-pb-image a:focus-visible) {
+    border-color: theme.$link-color;
+    background-color: rgba(theme.$link-color, 0.08);
 }
 
 :deep(p) {
-    margin-bottom: 0.5rem;
+    margin-bottom: $leading * 0.5em;
 }
 
 :deep(.highlight) {
@@ -1020,16 +1116,26 @@ fetchText();
 }
 
 :deep(b.headword) {
-    font-weight: 700 !important;
-    font-size: 130%;
-    font-variant: small-caps;
     display: block;
-    margin-top: 20px;
+    margin: 1.75em 0 0.75em;
+    color: theme.$header-color;
+    font-size: 1.05em;
+    font-weight: 600 !important;
+    font-variant: small-caps;
+    letter-spacing: 0.03em;
+    line-height: 1.3;
+    text-align: start;
+    text-wrap: balance;
 }
 
-:deep(b.headword::before) {
-    content: "\A";
-    white-space: pre;
+:deep(b.headword[aria-level="2"]) {
+    margin-bottom: 1.25em;
+    font-size: 1.4em;
+    text-align: center;
+}
+
+:deep(b.headword[aria-level="3"]) {
+    font-size: 1.2em;
 }
 
 :deep(#bibliographic-results b.headword) {
@@ -1091,31 +1197,6 @@ fetchText();
 
 :deep(.xml-speaker) {
     font-weight: 700;
-}
-
-:deep(.xml-pb) {
-    display: block;
-    text-align: center;
-    margin: 10px;
-}
-
-:deep(.xml-pb::before) {
-    content: "-" attr(n) "-";
-    white-space: pre;
-}
-
-:deep(#main-text .xml-pb-image a) {
-    text-decoration: none;
-    border: 1px solid theme.$link-color;
-    border-radius: 0.25rem;
-    padding: 0.15rem;
-    font-weight: 700;
-}
-
-:deep(#main-text .xml-pb-image a:hover),
-:deep(#main-text .xml-pb-image a:focus) {
-    background-color: rgba(theme.$link-color, 0.025);
-    border: 2px solid theme.$link-color;
 }
 
 :deep(.xml-lg) {
@@ -1260,8 +1341,9 @@ body {
 /*Methodique styling*/
 
 :deep(div[type="article"] .headword) {
-    display: inline-block;
-    margin-bottom: 10px;
+    display: inline;
+    margin: 0;
+    font-size: 1.05em;
 }
 
 :deep(.headword + p) {
@@ -1285,17 +1367,49 @@ body {
 
 :deep(.note),
 :deep(.note-ref) {
-    vertical-align: 0.3em;
-    font-size: 0.7em;
-    margin-left: 0.1rem;
-    padding: 0 0.2rem;
-    border-radius: 50%;
+    margin-left: 0.15em;
+    padding: 0.15em 0.5em;
+    border: 1px solid rgba(theme.$link-color, 0.55);
+    border-radius: 1em;
+    background-color: rgba(theme.$link-color, 0.08);
+    color: theme.$link-color !important;
+    font-size: 0.68em;
+    font-weight: 700;
+    line-height: 1;
+    text-decoration: none;
+    text-indent: 0;
+    vertical-align: 0.45em;
+    white-space: nowrap;
+    cursor: pointer;
 }
 
 :deep(.note:hover),
-:deep(.note-ref:hover) {
-    cursor: pointer;
-    text-decoration: none;
+:deep(.note-ref:hover),
+:deep(.note:focus),
+:deep(.note-ref:focus) {
+    border-color: theme.$link-color;
+    background-color: rgba(theme.$link-color, 0.16);
+    box-shadow: none;
+}
+
+:deep(.note:focus-visible),
+:deep(.note-ref:focus-visible) {
+    outline: 2px solid theme.$link-color;
+    outline-offset: 2px;
+}
+
+:global(.custom-popover) {
+    --bs-popover-max-width: min(26rem, calc(100vw - 2rem));
+}
+
+:global(.custom-popover .popover-body) {
+    color: theme.$ink;
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+:global(.custom-popover .popover-body p:last-child) {
+    margin-bottom: 0;
 }
 
 :deep(div[type="notes"] .xml-note) {

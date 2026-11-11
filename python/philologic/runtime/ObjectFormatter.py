@@ -148,6 +148,18 @@ VALID_HTML_TAGS = set(
     ]
 )
 
+# The HTML elements with no end tag
+VOID_HTML_TAGS = "area base br col embed hr img input link meta param source track wbr".split()
+
+
+def to_html(xml):
+    """The HTML of a tree, its empty void elements as <br/>: the FragmentParser gives every element a text, which lxml
+    writes as <br></br>, and browsers read that </br> as a second line break"""
+    for el in xml.iter(*VOID_HTML_TAGS):
+        if not el.text and len(el) == 0:
+            el.text = None
+    return etree.tostring(xml, encoding="unicode")
+
 
 def get_all_text(element):
     """Get all text"""
@@ -280,7 +292,7 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_
             el.attrib["class"] = "highlight"
         if el.tag not in VALID_HTML_TAGS:
             el = xml_to_html_class(el)
-    output = etree.tostring(xml, encoding="unicode")
+    output = to_html(xml)
     output = re.sub(r'\A<div class="philologic-fragment">', "", output)
     output = re.sub(r"</div>\Z", "", output)
     output = convert_entities(output)
@@ -596,11 +608,8 @@ def format_text_object(
                     else:
                         link_tag.attrib["class"] = "page-image-link"
                         link_tag.attrib["data-gallery"] = ""
-                else:
-                    if el.attrib["n"]:
-                        el.text = f"--{el.attrib['n']}--"
-                    else:
-                        el.text = "--na--"
+                else:  # the page's number alone, as clients set it off as they like
+                    el.text = el.attrib["n"]
                 grand_parent = el.getparent().getparent()
                 if grand_parent.attrib["class"] == "xml-row":
                     # Move page outside of table row to avoid display issues
@@ -732,7 +741,7 @@ def format_text_object(
                 del el.attrib["class"]
                 del el.attrib["n"]
 
-    output = etree.tostring(xml, encoding="unicode")
+    output = to_html(xml)
     output = convert_entities(output)
 
     if note:  ## Notes don't need to fetch images

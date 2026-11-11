@@ -4,6 +4,9 @@
 from lxml import etree
 from philologic import shlaxtree as st
 
+# Elements always empty, even when a text writes <pb n="2"> with no slash: what follows is their tail, not their content
+EMPTY_TAGS = frozenset(("pb", "lb", "cb", "milestone", "br"))
+
 
 class FragmentParser:
     """Fragment Parser: reconstructs broken trees"""
@@ -28,7 +31,9 @@ class FragmentParser:
             self.data(content)
 
     def start(self, tag, attrib):
-        self.stack.append(tag)
+        empty = (tag[tag.index(":") + 1 :] if ":" in tag else tag) in EMPTY_TAGS
+        if not empty:
+            self.stack.append(tag)
         # Without their namespace prefix, up to the first ":", with the values they had before any was renamed
         for k, v in [(k, v) for k, v in attrib.items() if ":" in k]:
             del attrib[k]
@@ -39,6 +44,9 @@ class FragmentParser:
         new_el = etree.SubElement(self.current_el, tag, attrib)
         new_el.text = ""
         new_el.tail = ""
+        if empty:
+            self.current_tail = new_el
+            return
         self.current_el = new_el
         self.in_tag = True
         self.current_tail = None
