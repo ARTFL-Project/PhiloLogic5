@@ -363,6 +363,10 @@ span.note {
     content: "";
 }
 
+.xml-l:empty:not([n]):not([id])::before {
+    display: none;
+}
+
 .xml-milestone::before {
     content: attr(n) "\00a0";
     color: #555555;

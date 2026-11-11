@@ -6,6 +6,8 @@ $link-color: rgb(156, 60, 60);
 $passage-color: rgb(155, 65, 55);
 $card-header-color: rgb(173, 66, 66);
 $focus-on-dark-color: #fff; // Focus indicator for dark backgrounds (WCAG 3:1 contrast)
+$paper: #fdfcfa;
+$ink: #2a2522;
 
 $popover-max-width: 50%;
 .custom-popover {
@@ -198,11 +200,6 @@ select:focus,
     border-bottom-width: 1px !important;
 }
 
-.note-ref {
-    color: #fff !important;
-    background-color: #670a0a !important;
-}
-
 // Fonts
 body,
 .btn,
@@ -215,7 +212,7 @@ input {
     font-family: "Open-Sans", sans-serif !important;
 }
 .text-view {
-    font-family: "Source Serif Pro", serif;
+    font-family: "Source Serif 4", serif;
 }
 
 // Theme color overrides for specific components

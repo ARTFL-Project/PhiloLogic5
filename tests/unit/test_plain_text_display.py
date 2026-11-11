@@ -191,8 +191,8 @@ def navigate(root, window_length=0, **query):
 
 
 def shown(text):
-    """The text of the book as the text page shows it: its page markers as the --n-- of page breaks"""
-    return text.replace("{00000001}", "--1--").replace("{00000002}", "--2--")
+    """The text of the book as the text page shows it: its page markers as the numbers of page breaks"""
+    return text.replace("{00000001}", "1").replace("{00000002}", "2")
 
 
 @pytest.mark.unit
@@ -393,7 +393,7 @@ class TestTextPage:
         assert html.count('class="highlight"') == 4
         for word in ("first", "words", "abducere"):
             assert f'<span class="highlight">{word}</span>' in html
-        assert '<span n="2" class="xml-pb-image">--2--</span>' in html
+        assert '<span n="2" class="xml-pb-image">2</span>' in html
 
     def test_a_passage_over_stray_markup(self, tmp_path):
         """The spans of a passage keep its text escaped: parsed again, its "&lt;" were "<", which the convert_entities
@@ -448,15 +448,15 @@ class TestTextPage:
             assert response["window"]["start_byte"] == start
             assert philologic_tags_only(response["text"])
             parts.append(Html(response["text"]).text)
-        assert "".join(parts) == shown(text)[len("--1--\n\n") :]
+        assert "".join(parts) == shown(text)[len("1\n\n") :]
 
     def test_markers_of_markup_characters(self, tmp_path):
         """Matched as the file has them: the parser made pages of them"""
         text = "Words <here>.\n\n<<12>>\n\nMore & more.\n\n[p&13]\n\nEnd <<14>> no marker.\n"
         root = make_database(tmp_path, text, page_marker_regex=MARKUP_MARKERS)
         html = navigate(root, philo_id="1 1")["text"]
-        assert re.findall(r'<span n="(\d+)" class="xml-pb-image">--\1--</span>', html) == ["12", "13"]
-        assert Html(html).text == text.replace("<<12>>", "--12--").replace("[p&13]", "--13--")
+        assert re.findall(r'<span n="(\d+)" class="xml-pb-image">\1</span>', html) == ["12", "13"]
+        assert Html(html).text == text.replace("<<12>>", "12").replace("[p&13]", "13")
 
     def test_xml_without_a_file_type(self, tmp_path):
         """The text page of databases loaded before file_type was written to db.locals.py is that of XML texts"""

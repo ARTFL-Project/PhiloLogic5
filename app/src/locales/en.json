@@ -494,6 +494,7 @@
         "textContent": "Main text content",
         "dictionaryLookup": "Dictionary lookup information",
         "previousPageImages": "Previous page images",
+        "page": "Page",
         "viewPageImage": "View page image {number}",
         "previousGraphics": "Previous graphics",
         "viewGraphic": "View graphic {number}",

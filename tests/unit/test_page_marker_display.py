@@ -59,7 +59,7 @@ for placeholder, marker in MARKERS.items():
 
 def pb_span(n):
     """A page break as the text page shows those of XML texts, with no page images"""
-    return f'<span n="{n}" class="xml-pb-image">--{n}--</span>'
+    return f'<span n="{n}" class="xml-pb-image">{n}</span>'
 
 
 def parsed_rows(text, page_marker_regex, section_length):
@@ -147,7 +147,7 @@ def byte_of(text, words):
 
 def page_breaks(html):
     """The numbers of the page breaks the text page shows, in order"""
-    return re.findall(r'<span n="([^"]*)" class="xml-pb-image">--\1--</span>', html)
+    return re.findall(r'<span n="([^"]*)" class="xml-pb-image">\1</span>', html)
 
 
 @pytest.mark.unit
