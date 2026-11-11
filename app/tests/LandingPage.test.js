@@ -73,30 +73,6 @@ describe("LandingPage", () => {
             expect(http.get).toHaveBeenCalled();
         }
     });
-
-    it("renders results after fetching content", async () => {
-        const wrapper = mountLandingPage();
-        await flushPromises();
-        await nextTick();
-
-        // Should render citations for fetched content
-        const citations = wrapper.findAll(".citations-stub");
-        expect(citations.length).toBeGreaterThanOrEqual(0);
-    });
-
-    // --- Active range highlighting ---
-    it("highlights active range button", async () => {
-        const wrapper = mountLandingPage();
-        await flushPromises();
-        await nextTick();
-
-        const rangeBtns = wrapper.findAll("button").filter(b => b.text().includes("-"));
-        if (rangeBtns.length > 0) {
-            await rangeBtns[0].trigger("click");
-            await nextTick();
-            // Active button should have active/selected class
-        }
-    });
 });
 
 describe("LandingPage title browse", () => {

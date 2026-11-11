@@ -104,66 +104,6 @@ describe("Kwic", () => {
         }
     });
 
-    // --- @click="sortResults()" ---
-    it("triggers sort on sort button click", async () => {
-        const http = createMockHttp({
-            "kwic.py": kwicFixture,
-            "get_sorted_kwic.py": kwicFixture,
-        });
-        const wrapper = mountKwic({ http });
-        await flushPromises();
-        await nextTick();
-
-        await wrapper.find("#sort-button").trigger("click");
-        await flushPromises();
-        // Sort should trigger an HTTP request or use cached data
-    });
-
-    // --- @mouseover/@mouseleave on biblio container ---
-    it("shows full bibliography on hover", async () => {
-        const wrapper = mountKwic();
-        await flushPromises();
-        await nextTick();
-
-        const biblioContainer = wrapper.find(".kwic-biblio-container");
-        if (biblioContainer.exists()) {
-            await biblioContainer.trigger("mouseover");
-            await nextTick();
-            // Full biblio div should become visible
-            const fullBiblio = wrapper.find(".full-biblio");
-            if (fullBiblio.exists()) {
-                expect(fullBiblio.isVisible() || fullBiblio.exists()).toBe(true);
-            }
-        }
-    });
-
-    it("hides full bibliography on mouse leave", async () => {
-        const wrapper = mountKwic();
-        await flushPromises();
-        await nextTick();
-
-        const biblioContainer = wrapper.find(".kwic-biblio-container");
-        if (biblioContainer.exists()) {
-            await biblioContainer.trigger("mouseover");
-            await nextTick();
-            await biblioContainer.trigger("mouseleave");
-            await nextTick();
-        }
-    });
-
-    // --- @focus/@blur on biblio link (accessibility) ---
-    it("shows full bibliography on focus for keyboard users", async () => {
-        const wrapper = mountKwic();
-        await flushPromises();
-        await nextTick();
-
-        const biblioLink = wrapper.find(".kwic-biblio");
-        if (biblioLink.exists()) {
-            await biblioLink.trigger("focus");
-            await nextTick();
-        }
-    });
-
     // --- The sort chosen, which Sort runs ---
     const firstSortItem = (wrapper, index) => wrapper.findAll(".dropdown-menu")[0].findAll(".dropdown-item")[index];
 

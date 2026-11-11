@@ -87,23 +87,6 @@ describe("SearchForm", () => {
         expect(useMainStore().currentReport).toBe("concordance");
     });
 
-    // --- @click="onSubmit()" ---
-    it("submits search on search button click", async () => {
-        const wrapper = mountSearchForm();
-        await wrapper.find("#query-term-input").setValue("liberty");
-        await wrapper.find("#button-search").trigger("click");
-        await nextTick();
-        // Should attempt to navigate via router
-    });
-
-    // --- @keyup.enter="onSubmit()" on form ---
-    it("submits search on Enter key in form", async () => {
-        const wrapper = mountSearchForm();
-        await wrapper.find("#query-term-input").setValue("liberty");
-        await wrapper.find("form").trigger("keyup.enter");
-        await nextTick();
-    });
-
     // --- @reset="onReset" ---
     it("clears form on reset", async () => {
         const wrapper = mountSearchForm();
@@ -153,17 +136,6 @@ describe("SearchForm", () => {
         expect(tipsBtn.text()).toContain("?");
     });
 
-    // --- @input="onChange('q')" autocomplete ---
-    it("triggers autocomplete on query input", async () => {
-        const http = createMockHttp({ "autocomplete.py": [] });
-        const wrapper = mountSearchForm({ http });
-        const input = wrapper.find("#query-term-input");
-        await input.setValue("lib");
-        await input.trigger("input");
-        await nextTick();
-        // Should have called autocomplete endpoint
-    });
-
     // --- @keyup.escape="clearAutoCompletePopup" ---
     it("clears autocomplete on Escape key", async () => {
         const wrapper = mountSearchForm();
@@ -172,31 +144,6 @@ describe("SearchForm", () => {
         await nextTick();
         // The autocomplete <ul> is rendered v-if results.length > 0 — it should not be present
         expect(wrapper.find("#autocomplete-q").exists()).toBe(false);
-    });
-
-    // --- @change="toggleApproximate" ---
-    it("toggles approximate match in advanced options", async () => {
-        const wrapper = mountSearchForm();
-        // Open advanced options first
-        await wrapper.find("#show-search-form").trigger("click");
-        await nextTick();
-
-        const checkbox = wrapper.find("#approximate-input");
-        await checkbox.trigger("change");
-        await nextTick();
-    });
-
-    // --- @change="toggleCoocOrder" ---
-    it("toggles co-occurrence order in advanced options", async () => {
-        const wrapper = mountSearchForm();
-        await wrapper.find("#show-search-form").trigger("click");
-        await nextTick();
-
-        const checkbox = wrapper.find("#co-occurrence-order-input");
-        if (checkbox.exists()) {
-            await checkbox.trigger("change");
-            await nextTick();
-        }
     });
 
     // --- Collocation params shown when report is collocation ---

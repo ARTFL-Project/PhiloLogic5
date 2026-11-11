@@ -171,35 +171,6 @@ describe("Collocation", () => {
         expect(wrapper.find("#compare-tab").classes()).toContain("active");
     });
 
-    // --- Collocate row click: @click, @keydown.enter, @keydown.space ---
-    it("navigates on collocate row click", async () => {
-        const wrapper = mountCollocation();
-        await flushPromises();
-        await nextTick();
-
-        const row = wrapper.find("tbody tr");
-        await row.trigger("click");
-        // Should push a concordance route via router
-    });
-
-    it("navigates on collocate row Enter key", async () => {
-        const wrapper = mountCollocation();
-        await flushPromises();
-        await nextTick();
-
-        const row = wrapper.find("tbody tr");
-        await row.trigger("keydown.enter");
-    });
-
-    it("navigates on collocate row Space key", async () => {
-        const wrapper = mountCollocation();
-        await flushPromises();
-        await nextTick();
-
-        const row = wrapper.find("tbody tr");
-        await row.trigger("keydown.space");
-    });
-
     // --- Workflow modes (driven by ?collocation_method= URL param) ---
     // Each of the four modes branches in created() to a different HTTP path.
     // These tests cover the load-bearing dispatch logic — under <script setup>

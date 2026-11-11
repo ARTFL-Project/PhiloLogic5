@@ -43,6 +43,7 @@ async function mountTextNavigation(overrides = {}) {
         query: overrides.query || {},
     });
     await router.isReady();
+    if (overrides.hash) await router.push({ path: "/navigate/1/5", query: overrides.query || {}, hash: overrides.hash });
 
     const store = useMainStore();
     store.formData = { ...store.formData, report: "textNavigation" };
@@ -347,5 +348,61 @@ describe("TextNavigation of a long text object, a part at a time", () => {
         expect(scrollSpy).toHaveBeenCalledWith({ top: 0, behavior: "instant" });
         wrapper.unmount();
         scrollSpy.mockRestore();
+    });
+});
+
+describe("TextNavigation's scroll to what the URL points at", () => {
+    // A text with a note (its content after it), a search hit in the note or in the text, and a note reference, which
+    // the notes link back to
+    function textWith(hitInNote) {
+        const hit = '<span class="highlight">liberty</span>';
+        return {
+            ...navFixture,
+            text: `<p>Sample text with ${hitInNote ? "freedom" : hit}.<a class="note" href="#">1</a>` +
+                `<span class="note-content">A note on ${hitInNote ? hit : "freedom"}.</span></p>` +
+                '<p>Another paragraph, its note: <a class="note-ref" id="n2" target="n2">2</a>.</p>',
+        };
+    }
+    async function open(text, url) {
+        vi.useFakeTimers({ toFake: ["setTimeout"] });
+        const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+        const http = createMockHttp({
+            "navigation.py": text, "get_table_of_contents.py": tocFixture, "get_notes.py": { text: "The note's text" },
+        });
+        const { wrapper } = await mountTextNavigation({ http, attachTo: document.body, ...url });
+        return { wrapper, scrollTo };
+    }
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+        document.body.innerHTML = "";
+    });
+
+    it("focuses the note a search hit is in once scrolled to it", async () => {
+        const { wrapper, scrollTo } = await open(textWith(true), { query: { byte: "55" } });
+        const note = wrapper.find(".note").element;
+        expect(scrollTo).toHaveBeenCalledWith(expect.objectContaining({ behavior: "smooth" }));
+        expect(document.activeElement).not.toBe(note); // not while the page scrolls
+        vi.advanceTimersByTime(750);
+        expect(document.activeElement).toBe(note);
+        wrapper.unmount();
+    });
+
+    it("focuses the element the URL's anchor names once scrolled to it", async () => {
+        const { wrapper, scrollTo } = await open(textWith(false), { hash: "#n2" });
+        const target = document.getElementById("n2");
+        expect(scrollTo).toHaveBeenCalled();
+        expect(document.activeElement).not.toBe(target);
+        vi.advanceTimersByTime(750);
+        expect(document.activeElement).toBe(target);
+        wrapper.unmount();
+    });
+
+    it("scrolls to a search hit in the text, leaving the focus where it is", async () => {
+        const { wrapper, scrollTo } = await open(textWith(false), { query: { byte: "55" } });
+        expect(scrollTo).toHaveBeenCalled();
+        vi.advanceTimersByTime(750);
+        expect(document.activeElement).toBe(document.body);
+        wrapper.unmount();
     });
 });

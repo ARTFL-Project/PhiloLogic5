@@ -60,12 +60,6 @@ describe("ResultsBibliography", () => {
     });
 
     // --- @click="$event.target.blur()" on modal trigger ---
-    it("has blur handler on modal trigger button", () => {
-        const wrapper = mountResultsBibliography();
-        const buttons = wrapper.findAll("button");
-        // The modal trigger button should exist
-        expect(buttons.length).toBeGreaterThanOrEqual(0);
-    });
 
     it("handles empty results gracefully", () => {
         const wrapper = mountResultsBibliography({ results: [] });

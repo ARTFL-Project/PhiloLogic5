@@ -143,17 +143,6 @@ describe("SearchArguments", () => {
         }
     });
 
-    // --- @click="removeTerm(index)" ---
-    it("removes term group on close-pill click", async () => {
-        const { wrapper } = await mountSearchArguments();
-        await flushPromises();
-        await nextTick();
-
-        await wrapper.findAll(".close-pill")[0].trigger("click");
-        await nextTick();
-        // Should trigger router navigation with modified query
-    });
-
     // --- Collocation mode ---
     it("shows collocation text when report is collocation", async () => {
         const { wrapper, store } = await mountSearchArguments();

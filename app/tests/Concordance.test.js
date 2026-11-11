@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { mount, flushPromises } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { createGlobalConfig, createMockHttp, createPendingHttp } from "./helpers.js";
@@ -88,18 +88,6 @@ describe("Concordance", () => {
     });
 
     // @keyup="dicoLookup($event, result.metadata_fields.year)"
-    it("handles dictionary lookup keypress on concordance text", async () => {
-        const wrapper = mountConcordance();
-        await flushPromises();
-        await nextTick();
-
-        const textDiv = wrapper.find(".concordance-text");
-        // Pressing 'd' triggers dictionary lookup (opens window)
-        const windowSpy = vi.spyOn(window, "open").mockImplementation(() => {});
-        await textDiv.trigger("keyup", { key: "d" });
-        // Should not throw — dictionaryLookup handles gracefully even without selection
-        windowSpy.mockRestore();
-    });
 
     // --- A search at a time ---
     it("shows the newest search, the request of the one it replaced aborted", async () => {

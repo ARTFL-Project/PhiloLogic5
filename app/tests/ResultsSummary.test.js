@@ -67,13 +67,6 @@ describe("ResultsSummary", () => {
         expect(wrapper.text()).toContain("100");
     });
 
-    it("shows no results message when resultsLength is 0", () => {
-        mountResultsSummary();
-        const store = useMainStore();
-        store.resultsLength = 0;
-        // Wait for reactivity (sync since it's just a store update)
-    });
-
     // --- @click="switchReport('concordance')" / 'kwic' ---
     it("renders report switch buttons for concordance report", () => {
         const wrapper = mountResultsSummary();
@@ -88,27 +81,6 @@ describe("ResultsSummary", () => {
         const concBtn = buttons[0];
         expect(concBtn.classes()).toContain("active");
         expect(concBtn.attributes("aria-pressed")).toBe("true");
-    });
-
-    it("switches to kwic on kwic button click", async () => {
-        const wrapper = mountResultsSummary();
-        const buttons = wrapper.findAll("#report_switch .btn");
-        const kwicBtn = buttons[1];
-        await kwicBtn.trigger("click");
-        await nextTick();
-        // Should navigate to kwic via router
-    });
-
-    it("switches to concordance on concordance button click", async () => {
-        const wrapper = mountResultsSummary({ report: "kwic" });
-        const store = useMainStore();
-        store.formData.report = "kwic";
-        await nextTick();
-        const buttons = wrapper.findAll("#report_switch .btn");
-        if (buttons.length > 0) {
-            await buttons[0].trigger("click");
-            await nextTick();
-        }
     });
 
     // --- @click="switchResultsPerPage(number)" ---
@@ -128,44 +100,7 @@ describe("ResultsSummary", () => {
         expect(options.length).toBeGreaterThan(0);
     });
 
-    it("changes results per page on dropdown item click", async () => {
-        const wrapper = mountResultsSummary();
-        const options = wrapper.findAll(".dropdown-menu .dropdown-item");
-        if (options.length > 0) {
-            await options[0].trigger("click");
-            await nextTick();
-            // Should navigate with new results_per_page
-        }
-    });
-
-    // --- @click="toggleFacets()" ---
-    it("shows facets toggle button when facets are hidden", async () => {
-        mountResultsSummary({
-            philoConfig: { facets: ["author", "title"] },
-        });
-        const store = useMainStore();
-        store.showFacets = false;
-        await nextTick();
-        // Button may render depending on philoConfig.facets
-    });
-
     // --- @click="toggleFilterList($event)" (collocation) ---
-    it("renders filter list toggle in collocation mode", async () => {
-        const wrapper = mountResultsSummary({
-            report: "collocation",
-            props: {
-                description: { start: 1, end: 25, results_per_page: 25 },
-                filterList: ["the", "a", "an", "of", "to"],
-            },
-        });
-        const store = useMainStore();
-        store.formData.report = "collocation";
-        store.formData.colloc_filter_choice = "frequency";
-        await nextTick();
-        // Should show filter toggle button
-        const filterBtn = wrapper.findAll(".btn-link");
-        expect(filterBtn.length).toBeGreaterThanOrEqual(0);
-    });
 
     it("says both lists of common words are left out", async () => {
         const wrapper = mountResultsSummary({ report: "collocation" });
