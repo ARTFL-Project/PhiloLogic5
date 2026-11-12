@@ -56,6 +56,8 @@ OBJECT_TAGS = {
 join_hyphen_with_lb = re.compile(r"(\&shy;[\n \t]*<lb\/>)", re.I | re.M)
 join_hyphen = re.compile(r"(\&shy;[\n \t]*)", re.I | re.M)
 text_tag = re.compile(r"<text\W", re.I)
+tei_header_tag = re.compile(r"<teiHeader\b[^>]*(?<!/)>", re.I)
+closed_tei_header_tag = re.compile(r"</teiHeader\W", re.I)
 doc_body_tag = re.compile(r"<docbody", re.I)
 body_tag = re.compile(r"<body\W", re.I)
 div_tag = re.compile(r"<div", re.I)
@@ -340,9 +342,18 @@ class XMLParser:
 
         self.bytes_read_in = 0
         self.line_count = 0
+        in_tei_header = False
         for line in self.content:
-            if not self.in_the_text and (text_tag.search(line) or doc_body_tag.search(line) or body_tag.search(line)):
-                self.in_the_text = True  # words and objects are indexed from the <text>, <docbody> or <body> tag on
+            if not self.in_the_text:  # words and objects are indexed from the <text>, <docbody> or <body> tag on
+                # Nothing in the TEI header starts the text, even a <text> element in a source description.
+                if tei_header_tag.search(line):
+                    in_tei_header = True
+                elif closed_tei_header_tag.search(line):
+                    in_tei_header = False
+                elif not in_tei_header and (
+                    text_tag.search(line) or doc_body_tag.search(line) or body_tag.search(line)
+                ):
+                    self.in_the_text = True
             self.line_count += 1
             line_bytes = len(line.encode("utf8"))
             if not line.startswith("<"):  # text, indexed from its start byte
@@ -879,6 +890,8 @@ class XMLParser:
 
     def handle_date(self, tag, tag_name, start_byte):
         """Dates: attributes of the current div"""
+        if self.context_div_level == 0:
+            return
         div = f"div{self.context_div_level}"
         for attrib_name, attrib_value in self.get_attributes(tag):
             if attrib_name == "value" or attrib_name == "when":
