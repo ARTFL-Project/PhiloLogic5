@@ -230,3 +230,35 @@ def test_long_s_is_indexed_as_s_in_plain_text():
     assert [word[1] for word in words] == ["ils", "sont", "christiens"]
     sont = json.loads(words[1][3])
     assert text.encode()[sont["start_byte"] : sont["end_byte"]].decode() == "ſont"
+
+
+def parse_words(text):
+    """Parse the TEI text, and return the words indexed."""
+    output = io.StringIO()
+    parser = XMLParser(output, 1, len(text.encode()), known_metadata={"filename": "t.xml"}, metadata_sql_types={})
+    parser.parse(io.StringIO(text))
+    return [line.split("\t")[1] for line in output.getvalue().splitlines() if line.startswith("word")]
+
+
+@pytest.mark.unit
+def test_text_elements_in_header_do_not_start_the_text():
+    """Test that <text> elements in the TEI header (empty or not, as in a source description) do not start the text:
+    no header word is indexed, and the header's <date> is not handled as a date in a div."""
+    text = (
+        "<TEI><teiHeader><sourceDesc><sources><source><text/></source><source><text>**</text></source></sources>"
+        "</sourceDesc>\n"
+        '<profileDesc><creation><date type="created" when="1633">1633</date> Theatre</creation></profileDesc>\n'
+        "</teiHeader>\n"
+        "<text><body><div><p>Corps du texte.</p></div></body></text></TEI>\n"
+    )
+    assert parse_words(text) == ["corps", "du", "texte"]
+
+
+@pytest.mark.unit
+def test_date_outside_any_div_is_skipped():
+    """Test that a <date> in the body before the first div, or after the last one, does not crash the parser."""
+    text = (
+        '<TEI><text><body><p>Avant <date when="1633">1633</date>.</p>\n'
+        '<div><p>Dans.</p></div><p>Apres <date when="1700">1700</date>.</p></body></text></TEI>\n'
+    )
+    assert parse_words(text) == ["avant", "dans", "apres"]

@@ -182,6 +182,8 @@ join_hyphen_with_lb = re.compile(r"(\&shy;[\n \t]*<lb\/>)", re.I | re.M)
 join_hyphen = re.compile(r"(\&shy;[\n \t]*)", re.I | re.M)
 text_tag = re.compile(r"<text\W", re.I)
 closed_text_tag = re.compile(r"</text\W", re.I)
+tei_header_tag = re.compile(r"<teiHeader\b[^>]*(?<!/)>", re.I)
+closed_tei_header_tag = re.compile(r"</teiHeader\W", re.I)
 doc_body_tag = re.compile(r"<docbody", re.I)
 body_tag = re.compile(r"<body\W", re.I)
 div_tag = re.compile(r"<div", re.I)
@@ -518,10 +520,16 @@ class XMLParser:
 
         self.bytes_read_in = 0
         self.line_count = 0
+        in_tei_header = False
         for line in self.content:
+            # Nothing in the TEI header starts the text, even a <text> element in a source description.
+            if tei_header_tag.search(line):
+                in_tei_header = True
+            elif closed_tei_header_tag.search(line):
+                in_tei_header = False
             # Let's start indexing words and objects at either the <text
             # of the <docbody tag.  We can add more.
-            if self.in_the_text is False:
+            if self.in_the_text is False and not in_tei_header:
                 if text_tag.search(line) or doc_body_tag.search(line) or body_tag.search(line):
                     self.in_the_text = True
                 elif self.file_type == "html" and closed_head_tag.search(line):
@@ -1067,7 +1075,7 @@ class XMLParser:
                     for metadata_name, metadata_value in attrib.items():
                         self.set_metadata_value(div, metadata_name, metadata_value)
 
-            elif tag_name == "date":
+            elif tag_name == "date" and self.context_div_level > 0:
                 div = f"div{self.context_div_level}"
                 for attrib_name, attrib_value in self.get_attributes(tag):
                     if attrib_name == "value" or attrib_name == "when":
