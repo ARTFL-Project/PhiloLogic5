@@ -24,6 +24,7 @@ from philologic.loadtime.parser_defaults import (  # (which other modules import
 )
 from philologic.loadtime.spacy_tokenizer import TextBytes, spacy_tokenizer, split_words, tokenizer_input
 from philologic.utils import convert_entities, extract_full_date, extract_integer
+from philologic.utils.choice import READINGS, choose_readings
 from philologic.utils.ligatures import ligatures_as_letters
 
 # Tags which open or close para and div level objects (or their containers). Used to detect when we
@@ -51,6 +52,13 @@ OBJECT_TAGS = {
     "back",
     "text",
 }
+
+# The elements with no content even without a slash (<pb n="2">), as the FragmentParser of the formatters has them: what
+# follows them is in their parent, for the readings of a <choice> as on the text page
+CHOICE_EMPTY_TAGS = frozenset(("pb", "lb", "cb", "milestone", "br"))
+# A start or end tag, and its name, with its namespace prefix
+choice_tag_name = re.compile(r"<(/?)([A-Za-z_:][^\s/>]*)")
+NO_CHOICE_STATUS = (True, True, None)  # of the text outside the readings of choices: shown, and indexed where it is
 
 # Pre-compiled regexes used for parsing
 join_hyphen_with_lb = re.compile(r"(\&shy;[\n \t]*<lb\/>)", re.I | re.M)
@@ -208,6 +216,10 @@ class XMLParser:
     This is a port of the PhiloLogic3 parser originally written by Mark Olsen in Perl.
     """
 
+    # It indexes only one of the readings of a <choice> (see find_choices): the Loader writes it in db.locals.py, for
+    # the formatters to show only one of them too
+    choice_readings = True
+
     def __init__(
         self,
         output,
@@ -257,6 +269,10 @@ class XMLParser:
         self.suppress_tags = DEFAULT_SUPPRESS_TAGS | {i for i in parse_options.get("suppress_tags", []) if i}
         self.in_suppressed_tag = False
         self.suppressed_tag_stack = []  # suppressed tags and object tags opened inside a suppressed tag
+        # The readings of <choice> elements not both shown and indexed where they are: see find_choices
+        self.choice_bounds, self.choice_statuses = [], []
+        self.choice_content = None  # the content find_choices reads, before cleanup_content changes it
+        self.line_offsets = []  # with choices, the byte offset of each line of the content
 
         self.break_apost = parse_options.get("break_apost", True)
         self.chars_not_to_index = re.compile(r"%s" % parse_options.get("chars_not_to_index", CHARS_NOT_TO_INDEX), re.I)
@@ -339,6 +355,12 @@ class XMLParser:
         # Split content into a list on newlines.
         self.content = self.content.split("\n")
         self.closed_suppressed_tags = self.find_closed_suppressed_tags()
+        if self.choice_content is not None:
+            self.choice_bounds, self.choice_statuses = self.find_choices(self.choice_content)
+            self.choice_content = None
+            self.line_offsets = [0]
+            for line in self.content:
+                self.line_offsets.append(self.line_offsets[-1] + len(line.encode("utf8")))
 
         self.bytes_read_in = 0
         self.line_count = 0
@@ -395,6 +417,10 @@ class XMLParser:
             for soft_hyphen in (join_hyphen_with_lb, join_hyphen):
                 self.content = soft_hyphen.sub(self.placeholder(self.content), self.content)
         self.content = self.content.replace("\n", " ")  # tags can have newlines, which make a mess of things
+        # The <choice> elements are read as the formatters read them, with all their tags, before abbreviations are
+        # expanded and tags taken out of words: the bytes stay where they were
+        if "<choice" in self.content:
+            self.choice_content = self.content
         self.expansions = []  # (start, end) bytes of each expansion in the content, and the bytes of its parts
         self.expansion_starts = []
         if self.abbrev_expand:
@@ -573,6 +599,121 @@ class XMLParser:
                 open_tags.append((name, line_num))
                 open_tag_counts[name] = open_tag_counts.get(name, 0) + 1
         return closed_suppressed_tags
+
+    def find_choices(self, content):
+        """The bytes of the content (with its tags, all of them in their place) in the readings of <choice> elements
+        (see philologic.utils.choice) which the text doesn't both show and index where they are, with their status:
+        sorted start bytes, each with the (shown, indexed, span) of the bytes up to the next. The words of a reading
+        indexed but not shown are indexed at the span, the start and end bytes of the text of the reading shown
+        instead, so that its hits highlight that. The rule applies again to the choices inside the readings shown and
+        indexed. Choices are read as the formatters read them: an end tag closes the last element still open if it has
+        its name, and is nothing otherwise; a choice that is never closed is text like any other."""
+        lines = content.replace("<", "\n<").replace(">", ">\n").split("\n")
+        offsets = [0]  # the byte offset of each line, as parse counts them
+        for line in lines:
+            offsets.append(offsets[-1] + len(line.encode("utf8")))
+        choices = []  # the outermost choices, as [name, start line, end line, elements inside it]
+        stack = []
+        for line_num, line in enumerate(lines):
+            if not line.startswith("<") or not (stack or line.startswith("<choice")):
+                continue
+            match = choice_tag_name.match(line)
+            if match is None:
+                continue
+            closing, name = match.groups()
+            if closing:
+                if stack and stack[-1][0] == name:
+                    stack.pop()[2] = line_num
+                continue
+            local_name = name[name.index(":") + 1 :] if ":" in name else name
+            if not stack and local_name != "choice":
+                continue
+            element = [name, line_num, None, []]
+            (stack[-1][3] if stack else choices).append(element)
+            if line.rstrip().endswith("/>") or local_name in CHOICE_EMPTY_TAGS:
+                element[2] = line_num
+            else:
+                stack.append(element)
+
+        status = {}
+
+        def local(element):
+            name = element[0]
+            return name[name.index(":") + 1 :] if ":" in name else name
+
+        def mark(element, value):
+            if value != NO_CHOICE_STATUS:
+                for line_num in range(element[1], element[2] + 1):
+                    status[line_num] = value
+
+        def text_span(reading):
+            """The start and end bytes of the text the reading shows: its first and last characters other than spaces"""
+            start = end = None
+            for line_num in range(reading[1] + 1, reading[2]):
+                line = lines[line_num]
+                if line.startswith("<") or not status.get(line_num, NO_CHOICE_STATUS)[0] or not line.strip():
+                    continue
+                if start is None:
+                    start = offsets[line_num] + len(line[: len(line) - len(line.lstrip())].encode("utf8"))
+                end = offsets[line_num] + len(line.rstrip().encode("utf8"))
+            if start is None:  # nothing shown but tags, or spaces: right after its start tag
+                start = end = offsets[reading[1] + 1]
+            return start, end
+
+        def resolve(element, shown, indexed, span):
+            """Mark the lines of the readings of the choices in element, whose text is shown or not, indexed or not,
+            at span if not where it is"""
+            readings = []
+            if local(element) == "choice":
+                readings = [child for child in element[3] if local(child) in READINGS]
+            if not readings:
+                for child in element[3]:
+                    resolve(child, shown, indexed, span)
+                return
+            shown_reading, indexed_reading = choose_readings([local(reading) for reading in readings])
+            reading_ids = {id(reading) for reading in readings}
+            for child in element[3]:
+                if id(child) not in reading_ids:
+                    resolve(child, shown, indexed, span)
+            for position, reading in enumerate(readings):
+                if position == shown_reading:
+                    value = (shown, indexed and position == indexed_reading, span)
+                    mark(reading, value)
+                    for child in reading[3]:
+                        resolve(child, *value)
+                elif position != indexed_reading:
+                    mark(reading, (False, False, None))
+            if indexed_reading != shown_reading:
+                reading = readings[indexed_reading]
+                value = (False, False, None)
+                if indexed:
+                    value = (False, True, span if span is not None else text_span(readings[shown_reading]))
+                mark(reading, value)
+                for child in reading[3]:
+                    resolve(child, *value)
+
+        for choice in choices:
+            if choice[2] is not None:
+                resolve(choice, *NO_CHOICE_STATUS)
+        bounds, statuses = [], []
+        for line_num in sorted(status):
+            for start, value in ((offsets[line_num], status[line_num]), (offsets[line_num + 1], NO_CHOICE_STATUS)):
+                if bounds and bounds[-1] == start:
+                    bounds.pop()
+                    statuses.pop()
+                if not statuses or statuses[-1] != value:
+                    bounds.append(start)
+                    statuses.append(value)
+        return bounds, statuses
+
+    def choice_status(self, byte):
+        """The (shown, indexed, span) of the byte of the content (see find_choices)"""
+        position = bisect_right(self.choice_bounds, byte) - 1
+        return NO_CHOICE_STATUS if position < 0 else self.choice_statuses[position]
+
+    def is_shown(self, line_num):
+        """Whether the line is shown, not in a reading of a <choice> other than the one shown"""
+        return not self.choice_bounds or self.choice_status(self.line_offsets[line_num])[0]
 
     def skip_suppressed_tag(self, tag, tag_name):
         """Track suppressed tags. Returns True if the tag is a suppressed tag or is inside one, and should be skipped."""
@@ -932,9 +1073,16 @@ class XMLParser:
     def word_handler(self, words):
         """Index the words of a text line, and what's between them (see index_words), split by token_regex"""
         if not self.in_suppressed_tag:
+            # The words of a reading of a <choice> are indexed only if it is the one indexed, and if it isn't shown, at
+            # the span of the one shown: all at the same bytes
+            span = None
+            if self.choice_bounds:
+                _, indexed, span = self.choice_status(self.bytes_read_in)
+                if not indexed:
+                    return
             if char_ents.search(words):  # entities of punctuation and symbols as spaces, for a clean break
                 words = self.clear_char_ents(words)
-            self.index_words(self.split_with_token_regex(words), self.bytes_read_in)
+            self.index_words(self.split_with_token_regex(words), self.bytes_read_in, span)
 
     def split_with_token_regex(self, words):
         """The items of words (see index_words), split by token_regex"""
@@ -956,11 +1104,13 @@ class XMLParser:
             word_list = [word_list[0], *[w for w in word_list[1:-1] if w], word_list[-1]]
         return word_list
 
-    def index_words(self, word_list, current_pos):
+    def index_words(self, word_list, current_pos, span=None):
         """Index the items of word_list, split by token_regex, which follow each other from byte current_pos on: words,
         and what's between them (spaces, punctuation), which may end a sentence. Each gets the bytes of its text in the
         file: a word joined across tag exceptions ends after the tags inside it, and what's between words leaves out
-        the spaces around it and the "_" standing for what cleanup_content took out."""
+        the spaces around it and the "_" standing for what cleanup_content took out. With a span, the bytes of the
+        reading of a <choice> shown instead of theirs (see find_choices), they all get those, and sentences end at its
+        end."""
         last_word = next_word = ""
         for number, item in enumerate(word_list):
             if number + 1 < len(word_list):  # (the last item has itself as the next one)
@@ -984,15 +1134,17 @@ class XMLParser:
                     if self.defined_words_to_index and word not in self.words_to_index:
                         continue
                     token = text if self.spacy_model and text != word else None
-                    self.push_word(word, word_start, self.word_ends.get(current_pos, current_pos), token)
+                    word_bytes = span or (word_start, self.word_ends.get(current_pos, current_pos))
+                    self.push_word(word, *word_bytes, token)
                 text = word  # (the indexed word is what's checked below)
             if self.is_word_sentence_breaker(text, last_word, next_word):
                 sentence_name = text.replace("\t", " ").strip()
                 if not is_word and not self.in_line_group and not self.in_tagged_sentence:
-                    self.end_sentence(sentence_name, *self.text_bytes(text, item_start, current_pos))
+                    sentence_bytes = (span[1], span[1]) if span else self.text_bytes(text, item_start, current_pos)
+                    self.end_sentence(sentence_name, *sentence_bytes)
                 self.last_sentence_marker = sentence_name
             if self.punct_regex.search(text):
-                self.push_punct(text, *self.text_bytes(text, item_start, current_pos))
+                self.push_punct(text, *(span or self.text_bytes(text, item_start, current_pos)))
 
     def index_tokens(self, items):
         """Index the items of a run split by the tokenizer (see flush_run), each with its exact bytes in the file:
@@ -1002,6 +1154,13 @@ class XMLParser:
         words, items are split as without a tokenizer, and end sentences as they do without one."""
         last_word = ""
         for number, (text, start_byte, end_byte, is_word, token) in enumerate(items):
+            # As in word_handler: the words of the readings of a <choice> not indexed left out, those of one indexed
+            # but not shown at the span of the one shown
+            span = None
+            if self.choice_bounds:
+                _, indexed, span = self.choice_status(start_byte)
+                if not indexed:
+                    continue
             converted = self.convert_entities(text) if "&" in text else text
             if is_word:
                 last_word = converted
@@ -1010,7 +1169,7 @@ class XMLParser:
                     self.skip_long_word(word)
                 elif word and (not self.defined_words_to_index or word in self.words_to_index):
                     end_byte = self.word_ends.get(end_byte, end_byte)  # (joined across an abbreviation)
-                    self.push_word(word, start_byte, end_byte, token if token != word else None)
+                    self.push_word(word, *(span or (start_byte, end_byte)), token if token != word else None)
                 continue
             if self.placeholders and start_byte in self.placeholders:  # not text: left out
                 placeholder_length = self.placeholders[start_byte] - start_byte
@@ -1027,10 +1186,10 @@ class XMLParser:
                 if not sentence_name:
                     sentence_name, sentence_end = "¶", start_byte
                 if not self.in_line_group and not self.in_tagged_sentence:
-                    self.end_sentence(sentence_name, start_byte, sentence_end)
+                    self.end_sentence(sentence_name, *((span[1], span[1]) if span else (start_byte, sentence_end)))
                 self.last_sentence_marker = sentence_name
             if self.punct_regex.search(converted):
-                self.push_punct(converted, start_byte, end_byte)
+                self.push_punct(converted, *(span or (start_byte, end_byte)))
 
     @staticmethod
     def text_bytes(item, start_byte, end_byte):
@@ -1326,8 +1485,9 @@ class XMLParser:
         tag, else its type attribute, else [NA]"""
         div_head, head_lines = "", 0
         # (from the line after the one after the tag)
-        lines = (self.content[number] for number in range(self.line_count + 1, len(self.content)))
-        for line in lines:
+        numbers = iter(range(self.line_count + 1, len(self.content)))
+        for number in numbers:
+            line = self.content[number]
             if "<" not in line:
                 continue
             line = head_self_close_tag.sub("", line)
@@ -1337,11 +1497,13 @@ class XMLParser:
                 continue
             if div_head:
                 div_head += " "  # between heads, such as "Chapitre I" and its title
-            for line in lines:  # the lines of the head, up to its closing tag
+            for number in numbers:  # the lines of the head, up to its closing tag
+                line = self.content[number]
                 head_lines += 1
                 if closed_head_tag.search(line) or head_lines > 50:  # (in case </head> is missing)
                     break
-                div_head += line
+                if self.is_shown(number):  # not the readings of a <choice> the text doesn't show
+                    div_head += line
             else:
                 break
         if div_head:

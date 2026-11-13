@@ -11,6 +11,7 @@ from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.get_text import get_text
 from philologic.runtime.ObjectFormatter import adjust_bytes, format_strip
 from philologic.runtime.pages import page_interval
+from philologic.utils.choice import choice_readings_of
 
 SPAN = re.compile(r'<span class="(highlight|xml-w)"[^>]*>|</span>')
 TAGS = re.compile(r"<[^>]+>")
@@ -93,6 +94,7 @@ def kwic_hit_object(hit, config, db):
         byte_offsets,
         page_marker_regex=db.locals["page_marker_regex"],
         file_type=db.locals["file_type"],
+        choice_readings=choice_readings_of(db.locals),
     )
     conc_text = conc_text.replace("\n", " ")
     conc_text = conc_text.replace("\r", "")

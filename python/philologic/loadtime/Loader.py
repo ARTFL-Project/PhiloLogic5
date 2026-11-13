@@ -1916,6 +1916,8 @@ class Loader:
             db_values["page_marker_regex"] = self.parser_config.get("page_marker_regex")
         # And their text as text, with no markup: the file type is that of the parser, whichever the -t option
         db_values["file_type"] = "plain_text" if plain_text else "xml"
+        # Whether the parser indexed only one reading of each <choice>: the texts then show only one
+        db_values["choice_readings"] = bool(getattr(parser_factory, "choice_readings", False))
         db_values["default_object_level"] = self.default_object_level
         db_values["word_attributes"] = self.word_attributes
         db_values["overflow_words"] = self.overflow_words

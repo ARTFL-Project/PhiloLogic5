@@ -12,6 +12,7 @@ from lxml import etree
 from philologic.runtime.DB import DB
 from philologic.runtime.exceptions import BadRequest
 from philologic.runtime.HitWrapper import ObjectWrapper
+from philologic.utils.choice import choice_readings_of
 
 from .ObjectFormatter import adjust_bytes, format_concordance, format_text_object
 
@@ -80,6 +81,7 @@ def get_concordance_text(db, hit, path, context_size):
         byte_offsets,
         page_marker_regex=db.locals["page_marker_regex"],
         file_type=db.locals["file_type"],
+        choice_readings=choice_readings_of(db.locals),
     )
     return conc_text
 
