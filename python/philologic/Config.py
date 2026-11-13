@@ -181,6 +181,10 @@ DB_LOCALS_DEFAULTS = {
         "value": None,
         "comment": "# The page_marker_regex plain texts were loaded with: the lines it matches are page breaks, which the text shows as those of XML texts.\n# None for texts loaded without one, and XML texts.",
     },
+    "choice_readings": {
+        "value": False,
+        "comment": "# Whether the parser indexed only one of the readings of each TEI <choice> (the reg of an orig and a reg), at the bytes of the one shown\n# (the orig): the texts then show only that one. False for databases loaded before, whose texts show every reading, all indexed.",
+    },
 }
 DB_LOCALS_HEADER = """
    #########################################################\n

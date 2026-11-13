@@ -1196,6 +1196,8 @@ class Loader:
             db_values["file_type"] = "html"
         else:
             db_values["file_type"] = "xml"
+        # Whether the parser indexed only one reading of each <choice>: the texts then show only one
+        db_values["choice_readings"] = bool(getattr(parser_factory, "choice_readings", False))
         db_values["default_object_level"] = self.default_object_level
         db_values["word_attributes"] = self.word_attributes
         db_values["overflow_words"] = self.overflow_words

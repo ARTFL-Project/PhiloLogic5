@@ -13,6 +13,7 @@ from philologic.runtime.DB import DB
 from philologic.runtime.FragmentParser import parse as FragmentParserParse
 from philologic.runtime.link import make_absolute_query_link
 from philologic.utils import convert_entities
+from philologic.utils.choice import READINGS, choice_readings_of, choose_readings
 from philologic.utils.page_markers import cut_page_marker_start, escape_plain_text, page_markers_to_pb, same_position
 
 BEGIN_MATCH = re.compile(rb"^[^<]*?>")
@@ -26,6 +27,10 @@ STRIP_START_PUNCTUATION = re.compile(r"^[,?;.:!']")
 # the ">" that would end a tag for the patterns that skip them
 ATTRIBUTE_ESCAPES = str.maketrans({'"': "&quot;", ">": "&gt;"})
 HIGHLIGHT = b"<philoHighlight/>"  # inserted in the text of a text object at each highlight, before it is parsed
+# The start and end tags of <choice> elements, and the self-closing ones, in the bytes of a text
+CHOICE_TAGS = re.compile(rb"<(/?)choice\b[^>]*?(/?)>")
+# The elements the formatters insert in a text, where its hits and passages are
+INSERTED_TAGS = frozenset(("philoHighlight", "start-passage", "end-passage"))
 
 
 # Source: https://developer.mozilla.org/en-US/docs/Web/Guide/HTML/HTML5/HTML5_element_list
@@ -191,6 +196,87 @@ def note_content(element):
     return element
 
 
+def partial_choices(text):
+    """Where the partial <choice> the bytes of a text start in ends (0 if they start in none), and where the one they
+    end in starts (None if none): the outermost of those in which they start or end."""
+    start_end = 0
+    open_starts = []
+    for match in CHOICE_TAGS.finditer(text):
+        if match.group(2):  # <choice/>
+            continue
+        if not match.group(1):
+            open_starts.append(match.start())
+        elif open_starts:
+            open_starts.pop()
+        else:
+            start_end = match.end()
+    return start_end, open_starts[0] if open_starts else None
+
+
+def cut_partial_choices(text, removed_from_start, first_hit, last_hit):
+    """The bytes of a text cut of the partial <choice> they start and end in, of which the readings shown can't be told
+    from those hidden, and the bytes removed from the start: never past the first and last hits, as the formatters cut
+    partial tags."""
+    start_end, end_start = partial_choices(text)
+    if start_end and removed_from_start + start_end <= first_hit:
+        removed_from_start += start_end
+        text = text[start_end:]
+        if end_start is not None:
+            end_start -= start_end
+    if end_start is not None and removed_from_start + end_start > last_hit:
+        text = text[:end_start]
+    return text, removed_from_start
+
+
+def remove_element(element, keep=()):
+    """Remove an element from its tree, but not its tail, which follows the elements of keep (from inside it) instead"""
+    parent = element.getparent()
+    previous = element.getprevious()
+    tail = element.tail or ""
+    index = parent.index(element)
+    parent.remove(element)
+    for offset, kept in enumerate(keep):
+        kept.tail = ""
+        parent.insert(index + offset, kept)
+    if keep:
+        keep[-1].tail = tail
+    elif previous is not None:
+        previous.tail = (previous.tail or "") + tail
+    else:
+        parent.text = (parent.text or "") + tail
+
+
+def show_choice_readings(xml):
+    """Leave out of the tree of a text the readings of its <choice> elements which it doesn't show (see
+    philologic.utils.choice), with what they hold, but for the highlights and passage bounds inserted in them. When the
+    reading indexed is not the one shown, the parser indexed its words at the bytes of the text of the one shown, where
+    their highlights are: the whole of that is highlighted, once for them all."""
+    for choice in list(xml.iter("choice")):
+        readings = [child for child in choice if child.tag in READINGS]
+        if not readings:
+            continue
+        shown, indexed = choose_readings([reading.tag for reading in readings])
+        for position, reading in enumerate(readings):
+            if position != shown:
+                inserted = [
+                    el
+                    for el in reading.iterdescendants()
+                    if el.tag in INSERTED_TAGS or (el.tag == "span" and el.get("class") == "passage-marker")
+                ]
+                remove_element(reading, inserted)
+        reading = readings[shown]
+        highlights = list(reading.iter("philoHighlight"))
+        if indexed != shown and highlights:
+            for highlight in highlights:
+                remove_element(highlight)
+            whole = etree.Element("philoHighlight")
+            whole.text = reading.text or ""
+            whole.extend(list(reading))
+            whole.tail = ""
+            reading.text = ""
+            reading.append(whole)
+
+
 def adjust_bytes(bytes, padding):
     """Readjust byte offsets for concordance"""
     ### Called from every report that fetches text and needs highlighting
@@ -218,9 +304,13 @@ def escape_plain_text_hits(text, byte_offsets):
     return text, byte_offsets
 
 
-def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_regex=None, file_type="xml"):
+def format_concordance(
+    text_in_utf8, word_regex, byte_offsets=None, page_marker_regex=None, file_type="xml", choice_readings=False
+):
     """Formatting concordances. The page markers of page_marker_regex are page breaks, which are not shown. The text of
-    a file_type "plain_text" is text: its "&", "<" and ">" are shown as they are, and none is taken for a tag."""
+    a file_type "plain_text" is text: its "&", "<" and ">" are shown as they are, and none is taken for a tag. With
+    choice_readings, of a database loaded with them (see philologic.utils.choice), only one reading of each <choice> is
+    shown."""
     plain_text = file_type == "plain_text"
     if plain_text:
         text_in_utf8, byte_offsets = escape_plain_text_hits(text_in_utf8, byte_offsets)
@@ -245,6 +335,9 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_
     marker_start = cut_page_marker_start(text_in_utf8, page_marker_regex, escaped=plain_text)
     if marker_start is not None and removed_from_start + marker_start > last_hit:
         text_in_utf8 = text_in_utf8[:marker_start]
+    # And the partial <choice> it may start or end in
+    if choice_readings:
+        text_in_utf8, removed_from_start = cut_partial_choices(text_in_utf8, removed_from_start, first_hit, last_hit)
     if byte_offsets is not None:
         byte_offsets = [b - removed_from_start for b in byte_offsets]
         new_text = b""
@@ -256,6 +349,8 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_
         text_in_utf8 = new_text + text_in_utf8[last_offset:]
     text = page_markers_to_pb(text_in_utf8.decode("utf8", "ignore"), page_marker_regex, escaped=plain_text)
     xml = FragmentParserParse(text)
+    if choice_readings:
+        show_choice_readings(xml)
     allowed_tags = set(["philoHighlight", "l", "ab", "ln", "w", "sp", "speaker", "stage", "i", "sc", "scx", "br"])
     for el in xml.iter():
         # Delete lang attributes if present to avoid accessibility issues
@@ -300,9 +395,9 @@ def format_concordance(text_in_utf8, word_regex, byte_offsets=None, page_marker_
     return output
 
 
-def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None, file_type="xml"):
+def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None, file_type="xml", choice_readings=False):
     """Remove formatting for HTML rendering, the page markers of page_marker_regex included. The text of a file_type
-    "plain_text" is text, as in format_concordance.
+    "plain_text" is text, and choice_readings show one reading of each <choice>, as in format_concordance.
     Called from KWIC only"""
     plain_text = file_type == "plain_text"
     if plain_text:
@@ -328,6 +423,9 @@ def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None, fi
     marker_start = cut_page_marker_start(text, page_marker_regex, escaped=plain_text)
     if marker_start is not None and removed_from_start + marker_start > last_hit:
         text = text[:marker_start]
+    # And the partial <choice> it may start or end in
+    if choice_readings:
+        text, removed_from_start = cut_partial_choices(text, removed_from_start, first_hit, last_hit)
     if byte_offsets is not None:
         byte_offsets = [b - removed_from_start for b in byte_offsets]
         new_text = b""
@@ -338,6 +436,8 @@ def format_strip(text, word_regex, byte_offsets=None, page_marker_regex=None, fi
                 last_offset = b
         text = new_text + text[last_offset:]
     xml = FragmentParserParse(page_markers_to_pb(text.decode("utf8", "ignore"), page_marker_regex, escaped=plain_text))
+    if choice_readings:
+        show_choice_readings(xml)
     output = clean_tags(xml, word_regex)
     ## remove spaces around hyphens and apostrophes
     output = SPACE_MATCH.sub(r"\1\2", output)
@@ -371,9 +471,11 @@ def format_text_object(
 ):
     """Format text objects. With window, the text is the part of the object starting at object_start_byte, and its
     first page image is the one there. The page markers of the page_marker_regex of the object's database are page
-    breaks, as <pb> tags. The text of a database of file_type "plain_text" is text, as in format_concordance."""
+    breaks, as <pb> tags. The text of a database of file_type "plain_text" is text, and that of a database loaded with
+    choice_readings shows one reading of each <choice>, as in format_concordance."""
     philo_id = obj.philo_id
     plain_text = obj.db.locals["file_type"] == "plain_text"
+    choice_readings = choice_readings_of(obj.db.locals)
     position = same_position  # where a byte offset of the file is in the text
     if byte_offsets is not None:
         byte_offsets = highlight_offsets(byte_offsets, len(text), request)
@@ -433,6 +535,8 @@ def format_text_object(
     tei_header = xml.find(".//teiHeader")
     if tei_header is not None:
         tei_header.getparent().remove(tei_header)
+    if choice_readings:
+        show_choice_readings(xml)
     for el in xml.iter():
         is_page = False
         try:
