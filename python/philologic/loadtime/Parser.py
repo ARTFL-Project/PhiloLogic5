@@ -78,6 +78,7 @@ head_tag = re.compile(r"<head", re.I)
 closed_head_tag = re.compile(r"<\/head>", re.I)
 type_attrib = re.compile(r'type="([^"]*)"', re.I)
 n_attrib = re.compile(r'(?<![\w:.-])n="([^"]*)"', re.I)
+bare_number = re.compile(r"(?:\d+|[IVXLCDM]+|[ivxlcdm]+)(?:[.\-]\d+)*(?:bis|ter|[a-z])?\.?")  # "2", "IV", "3.1", "2bis"
 char_ents = re.compile(r"\&[a-zA-Z0-9\#][a-zA-Z0-9]*;", re.I)
 check_if_char_word = re.compile(r"\p{L}", re.I)
 cap_char_or_num = re.compile(r"[A-Z0-9]")  # Capitals
@@ -1483,7 +1484,8 @@ class XMLParser:
 
     def get_div_head(self, tag):
         """The head of a div: the text of the <head> tags after it (all of them, 50 lines at most), up to the next div
-        tag, else its type attribute with its n attribute after it if it has one ("tome 2"), else [NA]"""
+        tag, else its n attribute if that is a label ("Préface"), else its type attribute with its n after it if it has
+        one ("tome 2"), else [NA]"""
         div_head, head_lines = "", 0
         # (from the line after the one after the tag)
         numbers = iter(range(self.line_count + 1, len(self.content)))
@@ -1516,14 +1518,14 @@ class XMLParser:
             div_head = div_head.replace("[", "").replace("]", "")
             div_head = div_head.replace('"', "")
             div_head = div_head.strip()
-        elif "type=" in tag:
-            try:
-                div_head = type_attrib.findall(tag)[0]
-            except IndexError:
-                pass
+        elif "type=" in tag or n_attrib.search(tag):
+            div_type = type_attrib.findall(tag)
             div_n = n_attrib.search(tag)
-            if div_head and div_n and div_n.group(1).strip():
-                div_head = f"{div_head} {div_n.group(1).strip()}"  # as the table of contents names a div with no head
+            div_n = div_n.group(1).strip() if div_n else ""
+            if div_n and not bare_number.fullmatch(div_n):
+                div_head = div_n  # a label of its own, as TEI's n may be: shown as it is
+            elif div_type:
+                div_head = f"{div_type[0]} {div_n}".strip()  # a number after the type, as the table of contents names a div with no head
 
         if not div_head:
             div_head = "[NA]"
