@@ -77,6 +77,7 @@ head_self_close_tag = re.compile(r"<head\/>", re.I)
 head_tag = re.compile(r"<head", re.I)
 closed_head_tag = re.compile(r"<\/head>", re.I)
 type_attrib = re.compile(r'type="([^"]*)"', re.I)
+n_attrib = re.compile(r'(?<![\w:.-])n="([^"]*)"', re.I)
 char_ents = re.compile(r"\&[a-zA-Z0-9\#][a-zA-Z0-9]*;", re.I)
 check_if_char_word = re.compile(r"\p{L}", re.I)
 cap_char_or_num = re.compile(r"[A-Z0-9]")  # Capitals
@@ -1482,7 +1483,7 @@ class XMLParser:
 
     def get_div_head(self, tag):
         """The head of a div: the text of the <head> tags after it (all of them, 50 lines at most), up to the next div
-        tag, else its type attribute, else [NA]"""
+        tag, else its type attribute with its n attribute after it if it has one ("tome 2"), else [NA]"""
         div_head, head_lines = "", 0
         # (from the line after the one after the tag)
         numbers = iter(range(self.line_count + 1, len(self.content)))
@@ -1520,6 +1521,9 @@ class XMLParser:
                 div_head = type_attrib.findall(tag)[0]
             except IndexError:
                 pass
+            div_n = n_attrib.search(tag)
+            if div_head and div_n and div_n.group(1).strip():
+                div_head = f"{div_head} {div_n.group(1).strip()}"  # as the table of contents names a div with no head
 
         if not div_head:
             div_head = "[NA]"

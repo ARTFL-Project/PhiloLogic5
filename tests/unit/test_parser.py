@@ -401,9 +401,9 @@ def test_abbreviations_are_indexed_as_their_expansion(language):
         assert metadata["pub_place"] == "1 < 2 é"
 
 
-def parse_div_head(head):
+def parse_div_head(head, div_tag='<div type="chapter">'):
     """Parse a div with the given head, and return the head the parser gives the div."""
-    text = f'<TEI><text><body><div type="chapter">\n{head}\n<p>Some text.</p>\n</div></body></text></TEI>\n'
+    text = f"<TEI><text><body>{div_tag}\n{head}\n<p>Some text.</p>\n</div></body></text></TEI>\n"
     output = io.StringIO()
     parser = XMLParser(output, 1, len(text.encode()), known_metadata={"filename": "t.xml"}, metadata_sql_types={})
     parser.parse(io.StringIO(text))
@@ -431,6 +431,21 @@ class TestDivHead:
     def test_head(self, head, expected):
         """Test that tags break words in heads as in the index, and that heads are kept apart."""
         assert parse_div_head(head) == expected
+
+    @pytest.mark.parametrize(
+        "div_tag, head, expected",
+        [
+            ('<div type="tome" n="2">', "", "tome 2"),
+            ('<div n="2" type="tome">', "", "tome 2"),
+            ('<div type="tome" n="2">', "<head>TOME SECOND</head>", "TOME SECOND"),
+            ('<div type="tome" n="">', "", "tome"),
+            ('<div type="tome" xml:n="2">', "", "tome"),
+            ('<div n="2">', "", "[NA]"),
+        ],
+    )
+    def test_head_from_type_and_n(self, div_tag, head, expected):
+        """Test that a div with no head is named by its type and its n, if it has one."""
+        assert parse_div_head(head, div_tag) == expected
 
 
 @pytest.mark.unit
