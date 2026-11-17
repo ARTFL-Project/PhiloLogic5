@@ -17,8 +17,8 @@ import subprocess
 import sys
 import time
 import zlib
-from collections import Counter, defaultdict
-from concurrent.futures import FIRST_EXCEPTION, ThreadPoolExecutor, as_completed, wait
+from collections import Counter, defaultdict, deque
+from concurrent.futures import FIRST_COMPLETED, FIRST_EXCEPTION, ThreadPoolExecutor, as_completed, wait
 from glob import iglob
 from types import FunctionType
 
@@ -40,6 +40,7 @@ from philologic.Config import (
     MakeDBConfig,
     MakeWebConfig,
 )
+from philologic.loadtime import LoadFilters
 from philologic.loadtime.PlainTextParser import PlainTextParser
 from philologic.loadtime.PostFilters import (
     count_lemma_runs,
@@ -564,7 +565,8 @@ def merge_indexes(index_paths, merged_path):
 
 
 # Loader class attributes which parse workers don't get: they are sent the files to parse one at a time, and don't use
-# the spaCy model (with one, files are parsed in the loading process)
+# the spaCy model of the loading process (when it runs on the GPU, the workers parse the files and the loading process
+# tags their words, see parse_files_around_tagger)
 ATTRIBUTES_NOT_SENT_TO_WORKERS = {"filequeue", "data_dicts", "nlp"}
 worker_loader = None  # Loader class of a parse worker, set up by init_parse_worker
 
@@ -609,6 +611,20 @@ def parse_in_worker(text, metadata):
     """Parse a file in a parse worker. Returns the number of lines of its words and lemmas files, and samples of the
     sort keys of their lines (see count_and_sample_lines)."""
     worker_loader.parse_text(text, metadata)
+    return text["word_lines"], text["lemma_lines"], text["word_sample"], text["lemma_sample"]
+
+
+def prepare_in_worker(text, metadata):
+    """When the spaCy model runs on the GPU in the loading process (see parse_files_around_tagger), the first part of
+    parsing a file, in a parse worker: the file parsed and the load filters before the tagger run. Returns the words
+    the tagger tags, sentence by sentence (LoadFilters.spacy_sentences)."""
+    return worker_loader.parse_text_until_tagger(text, metadata)
+
+
+def finish_in_worker(text, sentence_tags):
+    """The last part, in a parse worker: the tags the loading process gave the words written into the file's records,
+    the load filters after the tagger run, its words counted and compressed. Returns what parse_in_worker returns."""
+    worker_loader.parse_text_after_tagger(text, sentence_tags)
     return text["word_lines"], text["lemma_lines"], text["word_sample"], text["lemma_sample"]
 
 
@@ -1231,7 +1247,11 @@ class Loader:
                         word_samples.extend(word_sample)
                         lemma_samples.extend(lemma_sample)
                         pbar.update()
-            else:  # the spaCy model runs on the GPU: files are tagged in this process only
+            elif not os.environ.get("PHILOLOGIC_SERIAL_GPU_PARSE") and all(
+                cls.split_at_tagger(cls.text_load_filters(text))[1] is not None for text in cls.filequeue
+            ):  # the spaCy model runs on the GPU: files are tagged in this process only, parsed by the workers
+                cls.parse_files_around_tagger(workers, pbar, line_counts, word_samples, lemma_samples)
+            else:  # the spaCy model runs on the GPU: files are parsed and tagged in this process only, one at a time
                 for file_pos in range(len(cls.data_dicts)):
                     cls.parse_file(file_pos)
                     line_counts[0] += cls.filequeue[file_pos]["word_lines"]
@@ -1245,26 +1265,122 @@ class Loader:
             print("%s: done parsing" % time.ctime())
 
     @classmethod
+    def parse_files_around_tagger(cls, workers, pbar, line_counts, word_samples, lemma_samples):
+        """parse_files when the spaCy model runs on the GPU, in this process: the parse workers parse the files and run
+        the load filters before and after the tagger (prepare_in_worker, finish_in_worker), this process only tags their
+        words (LoadFilters.spacy_tags), a file at a time, as they come. Largest files first, as parse_files has them.
+        The files parsed ahead of the tagging, their words waiting in memory, are together at most as large as the
+        largest file (in bytes: their words are only known once parsed), and no more of them are parsed at once than
+        there are workers."""
+        file_positions = deque(
+            sorted(range(len(cls.data_dicts)), key=lambda file_pos: cls.filequeue[file_pos]["size"], reverse=True)
+        )
+        ahead_limit = cls.filequeue[file_positions[0]]["size"]
+        with process_pool(workers, init_parse_worker, (*pickle_loader_state(cls), workers)) as pool:
+            preparing, finishing = {}, set()  # futures of the files being parsed (with their positions), being finished
+            prepared = deque()  # (position, words) of the files parsed, waiting for the tagger
+            ahead = 0  # bytes of the files being parsed or waiting for the tagger
+
+            def prepare_more():
+                nonlocal ahead
+                while (
+                    file_positions
+                    and len(preparing) < workers
+                    and ahead + cls.filequeue[file_positions[0]]["size"] <= ahead_limit
+                ):
+                    file_pos = file_positions.popleft()
+                    future = pool.submit(prepare_in_worker, cls.filequeue[file_pos], cls.data_dicts[file_pos])
+                    preparing[future] = file_pos
+                    ahead += cls.filequeue[file_pos]["size"]
+
+            def take_in(timeout):
+                """Take in the files the workers are done with: parsed (then waiting for the tagger) or finished. A function
+                of its own so that their futures, which keep the words of the files parsed, go once it returns."""
+                for future in wait([*preparing, *finishing], timeout=timeout, return_when=FIRST_COMPLETED).done:
+                    if future in finishing:
+                        finishing.discard(future)
+                        word_lines, lemma_lines, word_sample, lemma_sample = future.result()
+                        line_counts[0] += word_lines
+                        line_counts[1] += lemma_lines
+                        word_samples.extend(word_sample)
+                        lemma_samples.extend(lemma_sample)
+                        pbar.update()
+                    else:
+                        prepared.append((preparing.pop(future), future.result()))
+
+            prepare_more()
+            while preparing or prepared or finishing:
+                take_in(timeout=0 if prepared else None)
+                if not prepared:
+                    prepare_more()
+                    continue
+                file_pos, sentences = prepared.popleft()
+                ahead -= cls.filequeue[file_pos]["size"]
+                prepare_more()  # the workers parse the next files while this one is tagged
+                try:
+                    sentence_tags = LoadFilters.spacy_tags(cls, sentences)
+                except Exception:
+                    raise ParserError(f"{cls.filequeue[file_pos]['name']} has caused parser to die.")
+                del sentences
+                finishing.add(pool.submit(finish_in_worker, cls.filequeue[file_pos], sentence_tags))
+                del sentence_tags  # kept by the pool until the file is finished
+
+    @classmethod
     def parse_file(cls, file_pos):
         """Parse a single file"""
         return cls.parse_text(cls.filequeue[file_pos], cls.data_dicts[file_pos])
 
     @classmethod
+    def text_load_filters(cls, text):
+        """The load filters of a file: its own, or the load's"""
+        return text["options"].get("load_filters", cls.parser_config["load_filters"])
+
+    @staticmethod
+    def split_at_tagger(filters):
+        """The load filters before spacy_tagger and those after it ((filters, None) without it)"""
+        names = [getattr(load_filter, "__name__", "") for load_filter in filters]
+        if "spacy_tagger" not in names:
+            return filters, None
+        position = names.index("spacy_tagger")
+        return filters[:position], filters[position + 1 :]
+
+    @classmethod
     def parse_text(cls, text, metadata):
         """Parse a single file, given its filequeue entry and metadata"""
-        options = text["options"]
+        cls.run_load_filters(text, cls.parse_xml(text, metadata))
+        return cls.finish_parsed_text(text)
+
+    @classmethod
+    def parse_text_until_tagger(cls, text, metadata):
+        """parse_text up to spacy_tagger: the file parsed, the load filters before it run; returns the words it tags"""
+        before, _ = cls.split_at_tagger(cls.parse_xml(text, metadata))
+        cls.run_load_filters(text, before)
+        try:
+            return LoadFilters.spacy_sentences(cls, text)
+        except Exception:
+            raise ParserError(f"{text['name']} has caused parser to die.")
+
+    @classmethod
+    def parse_text_after_tagger(cls, text, sentence_tags):
+        """The rest of parse_text, given the tags LoadFilters.spacy_tags gave the words of the file"""
+        _, after = cls.split_at_tagger(cls.text_load_filters(text))
+        try:
+            LoadFilters.spacy_write_tags(cls, text, sentence_tags)
+        except Exception:
+            raise ParserError(f"{text['name']} has caused parser to die.")
+        cls.run_load_filters(text, after)
+        return cls.finish_parsed_text(text)
+
+    @classmethod
+    def parse_xml(cls, text, metadata):
+        """Parse a file into its raw records (text["raw"]); returns its load filters. The file's options are left as
+        they are (parse_text_after_tagger reads its load filters again)."""
+        options = dict(text["options"])
         if "options" in metadata:  # cleanup, should do above.
             del metadata["options"]
 
-        if "parser_factory" not in options:
-            options["parser_factory"] = cls.parser_config["parser_factory"]
-        parser_factory = options["parser_factory"]
-        del options["parser_factory"]
-
-        if "load_filters" not in options:
-            options["load_filters"] = cls.parser_config["load_filters"]
-        filters = options["load_filters"]
-        del options["load_filters"]
+        parser_factory = options.pop("parser_factory", cls.parser_config["parser_factory"])
+        filters = options.pop("load_filters", cls.parser_config["load_filters"])
 
         for option in [
             "token_regex",
@@ -1308,12 +1424,20 @@ class Loader:
                     parser.parse(input_file)
                 except RuntimeError as error:
                     raise ParserError(f"{text['name']} failed to parse") from error
+        return filters
+
+    @classmethod
+    def run_load_filters(cls, text, filters):
+        """Run these load filters on a parsed file"""
         for f in filters:
             try:
                 f(cls, text)
             except Exception:
                 raise ParserError(f"{text['name']} has caused parser to die.")
 
+    @classmethod
+    def finish_parsed_text(cls, text):
+        """A file's words and lemmas counted and compressed, once its load filters have run"""
         # Lines of its words and lemmas files, merged into those count_words would otherwise count
         text["word_lines"], text["word_sample"] = count_and_sample_lines(text["words"], text["name"])
         lemma_file = text["raw"] + ".lemma.lz4"

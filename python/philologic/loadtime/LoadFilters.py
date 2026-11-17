@@ -60,20 +60,52 @@ def spacy_tagger(loader_obj, text):
     than it (see XMLParser.index_tokens), and the punctuation of the sentence. A sentence is the words and punctuation
     up to its sent record, which isn't tagged, and the punctuation after it which ends it (within its bytes: these
     records don't have the sentence's id). With flatten_ligatures, lemmas have their ligatures as letters, as words
-    do."""
+    do. In three parts, which the loader runs in different processes when the model runs on the GPU (see
+    Loader.parse_files): spacy_sentences and spacy_write_tags, which don't need the model, in parse workers, and
+    spacy_tags in the loading process, which has it."""
+    spacy_write_tags(loader_obj, text, spacy_tags(loader_obj, spacy_sentences(loader_obj, text)))
+
+
+def spacy_token(record):
+    """What spaCy tags for a record: nothing for a sentence"""
+    if record.type == "sent":
+        return ""
+    return record.attrib.get("spacy_token", record.name)
+
+
+def spacy_sentence_records(text):
+    """The records of the words, sentences and punctuation of a file, a sentence at a time"""
+    with open(text["raw"], encoding="utf8") as fh:
+        sentence_records = []
+        sentence_end = None  # end byte of the sent record of sentence_records, once it has come
+        for line in fh:
+            philo_type, word, philo_id, attrib = line.split("\t")
+            if philo_type in ("word", "sent", "punct"):
+                record = Record(philo_type, word, philo_id.split())
+                record.attrib = loads(attrib)
+                if sentence_end is not None and (
+                    philo_type == "word" or (philo_type == "punct" and record.attrib["end_byte"] > sentence_end)
+                ):
+                    yield sentence_records
+                    sentence_records = []
+                    sentence_end = None
+                sentence_records.append(record)
+                if philo_type == "sent":
+                    sentence_end = record.attrib["end_byte"]
+        if sentence_records:
+            yield sentence_records
+
+
+def spacy_sentences(_, text):
+    """The words spaCy tags in a file, a sentence at a time (lists of words)"""
+    return [[token for token in map(spacy_token, records) if token != ""] for records in spacy_sentence_records(text)]
+
+
+def spacy_tags(loader_obj, sentences):
+    """The part of spacy_tagger which needs the model: for each sentence (a list of words), the pos, tag, entity type
+    and lemma spaCy gives each of its words, tagged in batches of 1024 sentences"""
     from spacy.tokens import Doc as SpacyDoc  # only imported when used: importing spacy takes about a second
     from spacy.util import minibatch
-
-    flatten_ligatures = loader_obj.parser_config.get("flatten_ligatures", True)  # as the parser has it
-
-    def token(record):
-        """What spaCy tags for a record: nothing for a sentence"""
-        if record.type == "sent":
-            return ""
-        return record.attrib.get("spacy_token", record.name)
-
-    def tokens(records):
-        return [token(r) for r in records if token(r) != ""]
 
     def tagged(sentences):
         """The docs spaCy tagged for each of these sentences (lists of words): tagged at once, as nlp.pipe tags a
@@ -93,46 +125,37 @@ def spacy_tagger(loader_obj, text):
         half = len(sentences[0]) // 2
         return [[*tagged([sentences[0][:half]])[0], *tagged([sentences[0][half:]])[0]]]
 
-    def process_file():
-        with open(text["raw"], encoding="utf8") as fh:
-            sentence_records = []
-            sentence_end = None  # end byte of the sent record of sentence_records, once it has come
-            for line in fh:
-                philo_type, word, philo_id, attrib = line.split("\t")
-                if philo_type in ("word", "sent", "punct"):
-                    record = Record(philo_type, word, philo_id.split())
-                    record.attrib = loads(attrib)
-                    if sentence_end is not None and (
-                        philo_type == "word" or (philo_type == "punct" and record.attrib["end_byte"] > sentence_end)
-                    ):
-                        yield sentence_records
-                        sentence_records = []
-                        sentence_end = None
-                    sentence_records.append(record)
-                    if philo_type == "sent":
-                        sentence_end = record.attrib["end_byte"]
-            if sentence_records:
-                yield sentence_records
+    intern = sys.intern  # the same tags and lemmas, the same strings: pickled once each when sent to a parse worker
+    sentence_tags = []
+    for batch in minibatch(sentences, 1024):  # the batches of nlp.pipe(..., batch_size=1024)
+        for spacy_sentence in tagged(batch):
+            sentence_tags.append(
+                [
+                    (intern(word.pos_), intern(word.tag_), intern(word.ent_type_), intern(word.lemma_))
+                    for word in chain.from_iterable(spacy_sentence)
+                ]
+            )
+            for doc in spacy_sentence:
+                doc.tensor = None
+    return sentence_tags
 
+
+def spacy_write_tags(loader_obj, text, sentence_tags):
+    """The tags spacy_tags gave the words of a file written into their records; the file is then its words, sentences
+    and punctuation only"""
+    flatten_ligatures = loader_obj.parser_config.get("flatten_ligatures", True)  # as the parser has it
     with open(text["raw"] + ".tmp", "w", encoding="utf8") as tmp_file:
-        for batch in minibatch(process_file(), 1024):  # the batches of nlp.pipe(..., batch_size=1024)
-            for sentence_records, spacy_sentence in zip(batch, tagged([tokens(records) for records in batch])):
-                parsed_words = chain.from_iterable(spacy_sentence)
-                for record in sentence_records:
-                    if token(record) != "":
-                        parsed_word = next(parsed_words)
-                        record.attrib["pos"] = parsed_word.pos_
-                        record.attrib["tag"] = parsed_word.tag_
-                        record.attrib["ent_type"] = parsed_word.ent_type_
-                        lemma = "_".join((parsed_word.lemma_ or record.name).lower().split())
-                        record.attrib["lemma"] = ligatures_as_letters(lemma) if flatten_ligatures else lemma
-                    print(record, file=tmp_file)
-
-                for doc in spacy_sentence:
-                    doc.tensor = None
-                del spacy_sentence
-                del sentence_records
-
+        for sentence_records, word_tags in zip(spacy_sentence_records(text), sentence_tags, strict=True):
+            word_tags = iter(word_tags)
+            for record in sentence_records:
+                if spacy_token(record) != "":
+                    pos, tag, ent_type, lemma = next(word_tags)
+                    record.attrib["pos"] = pos
+                    record.attrib["tag"] = tag
+                    record.attrib["ent_type"] = ent_type
+                    lemma = "_".join((lemma or record.name).lower().split())
+                    record.attrib["lemma"] = ligatures_as_letters(lemma) if flatten_ligatures else lemma
+                print(record, file=tmp_file)
     os.remove(text["raw"])
     os.rename(text["raw"] + ".tmp", text["raw"])
 
