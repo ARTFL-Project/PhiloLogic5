@@ -71,6 +71,8 @@ doc_body_tag = re.compile(r"<docbody", re.I)
 body_tag = re.compile(r"<body\W", re.I)
 div_tag = re.compile(r"<div\d*\b", re.I)  # div, div0, div1..., not divGen
 closed_div_tag = re.compile(r"<\/div\d*\b", re.I)
+# A suppressed tag with an attribute value: div[@type="notes"]
+suppressed_with_value = re.compile(r"""([^\s\["']+)\[@([^\s=\]]+)=(["'])(.*)\3\]""")
 page_tag = re.compile(r"<pb\W", re.I)
 attrib_matcher = re.compile(r"""(\S+)="?((?:.(?!"?\s+(?:\S+)=|[>"]))+.)"?""", re.I)
 tag_matcher = re.compile(r"<(\/?\w+)[^>]*>?", re.I)
@@ -268,8 +270,21 @@ class XMLParser:
         self.sentence_breakers = parse_options.get("sentence_breakers", [])
         self.punct_regex = re.compile(f"{parse_options.get('punctuation', PUNCTUATION)}")
 
-        # Tags in DEFAULT_SUPPRESS_TAGS are always suppressed: load configs can add tags, but not remove these.
-        self.suppress_tags = DEFAULT_SUPPRESS_TAGS | {i for i in parse_options.get("suppress_tags", []) if i}
+        # Tags in DEFAULT_SUPPRESS_TAGS are always suppressed: load configs can add tags, but not remove these. A tag
+        # given with an attribute value (div[@type="notes"]) is suppressed when it has that value.
+        suppressed_names = set(DEFAULT_SUPPRESS_TAGS)
+        self.suppressed_values = {}  # names of tags suppressed with an attribute value: regexes of their values
+        for suppressed in parse_options.get("suppress_tags", []):
+            with_value = suppressed_with_value.fullmatch(suppressed.strip()) if suppressed else None
+            if with_value:
+                name, attribute, _, value = with_value.groups()
+                value = re.compile(rf"""\s{re.escape(attribute)}\s*=\s*(["']){re.escape(value)}\1""")
+                self.suppressed_values.setdefault(name, []).append(value)
+            elif suppressed:
+                suppressed_names.add(suppressed)
+        for name in suppressed_names & self.suppressed_values.keys():  # suppressed whatever their attributes
+            del self.suppressed_values[name]
+        self.suppress_tags = suppressed_names | self.suppressed_values.keys()
         self.in_suppressed_tag = False
         self.suppressed_tag_stack = []  # suppressed tags and object tags opened inside a suppressed tag
         # The readings of <choice> elements not both shown and indexed where they are: see find_choices
@@ -572,6 +587,13 @@ class XMLParser:
                 end_byte = next((part[3] for part in parts if end_byte <= part[1]), parts[-1][3])
         return start_byte, end_byte
 
+    def is_suppressed(self, name, tag):
+        """Whether a start tag is suppressed: its name is, with no attribute value or one the tag has"""
+        if name not in self.suppress_tags:
+            return False
+        values = self.suppressed_values.get(name)
+        return values is None or any(value.search(tag) for value in values)
+
     def is_tracked_tag(self, name, is_self_closing):
         """Suppressed and object open tags, which we match with their closing tags to find the extent of suppressed tags."""
         return not is_self_closing and (name in self.suppress_tags or name.lower() in OBJECT_TAGS)
@@ -594,14 +616,14 @@ class XMLParser:
                 if open_tag_counts.get(name):
                     # Close the most recent matching tag: any tags opened after it were left unclosed
                     while True:
-                        open_name, open_line_num = open_tags.pop()
+                        open_name, open_line_num, suppressed = open_tags.pop()
                         open_tag_counts[open_name] -= 1
                         if open_name == name:
-                            if name in self.suppress_tags:
+                            if suppressed:
                                 closed_suppressed_tags.add(open_line_num)
                             break
             elif self.is_tracked_tag(name, line.rstrip().endswith("/>")):
-                open_tags.append((name, line_num))
+                open_tags.append((name, line_num, self.is_suppressed(name, line)))
                 open_tag_counts[name] = open_tag_counts.get(name, 0) + 1
         return closed_suppressed_tags
 
@@ -726,7 +748,7 @@ class XMLParser:
         name = tag_name.lstrip("/")
         is_self_closing = tag.rstrip().endswith("/>")
         if self.in_suppressed_tag is False:
-            if is_closing or name not in self.suppress_tags:
+            if is_closing or not self.is_suppressed(name, tag):
                 return False
             # Self-closing and unclosed tags have no content to suppress
             if self.line_count - 1 in self.closed_suppressed_tags:

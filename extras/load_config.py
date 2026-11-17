@@ -161,7 +161,8 @@ ascii_conversion = True
 sort_order = ["year", "author", "title", "filename"]
 
 # A list of tags to ignore: contents will not be indexed
-# This should be a list of tag names, such as ["desc", "fw"]
+# This should be a list of tag names, such as ["desc", "fw"]. A tag with an attribute value,
+# such as 'div[@type="notes"]', leaves out only the tags with that value.
 # <gap> is always suppressed and does not need to be listed here.
 suppress_tags = []
 

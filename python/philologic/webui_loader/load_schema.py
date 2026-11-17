@@ -299,7 +299,8 @@ OPTIONS = [
         "list",
         [],
         "indexing",
-        "Tags whose contents are not indexed, such as desc or fw. <gap> is always left out.",
+        'Tags whose contents are not indexed, such as desc or fw, or div[@type="notes"] for the divs of that type. '
+        "<gap> is always left out.",
     ),
     Option(
         "suppress_word_attributes",

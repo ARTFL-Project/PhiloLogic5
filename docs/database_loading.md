@@ -253,7 +253,8 @@ ascii_conversion = True
 sort_order = ["year", "author", "title", "filename"]
 
 # A list of tags to ignore: contents will not be indexed
-# This should be a list of tag names, such as ["desc", "gap"]
+# This should be a list of tag names, such as ["desc", "fw"]. A tag with an attribute value,
+# such as 'div[@type="notes"]', leaves out only the tags with that value.
 suppress_tags = []
 
 # --------------------- Set Apostrophe Break ------------------------
@@ -366,7 +367,7 @@ The basic layout is this:
 
 `metadata_to_parse` is a dictionary that maps one or more non-document-level object types to a list of metadata (usually attributes) to retrieve.
 
-`suppress_tags` is a list of tags in which you do not want to perform tokenization at all--that is, no words in them will be searchable via full-text search. It does not prohibit extracting metadata from the content of those tags. `<gap>` is always suppressed, whether or not it is listed here.
+`suppress_tags` is a list of tags in which you do not want to perform tokenization at all--that is, no words in them will be searchable via full-text search. A tag can be suppressed only when it has an attribute value: `'div[@type="notes"]'` suppresses the divs of type notes, and no other div. It does not prohibit extracting metadata from the content of those tags. `<gap>` is always suppressed, whether or not it is listed here.
 
 `token_regex` is a regular expression used to drive our tokenizer.
 

@@ -549,10 +549,12 @@ def test_ligatures_are_indexed_as_letters_in_plain_text(flatten_ligatures, forms
     assert coeur["lemma"] == forms[1]
 
 
-def parse_words(text):
+def parse_words(text, **options):
     """Parse the TEI text, and return the words indexed."""
     output = io.StringIO()
-    parser = XMLParser(output, 1, len(text.encode()), known_metadata={"filename": "t.xml"}, metadata_sql_types={})
+    parser = XMLParser(
+        output, 1, len(text.encode()), known_metadata={"filename": "t.xml"}, metadata_sql_types={}, **options
+    )
     parser.parse(io.StringIO(text))
     return [line.split("\t")[1] for line in output.getvalue().splitlines() if line.startswith("word")]
 
@@ -692,3 +694,24 @@ class TestDivLevels:
             ("div1", "Acte", "acte e scène f"),
             ("div2", "Scène", "scène f"),
         ]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "suppress_tags, words",
+    [
+        (['div[@type="notes"]'], ["gardé", "après"]),
+        (["div[@type='notes']", "div[@type='chapter']"], []),
+        (['div[@n="2"]'], ["gardé", "note", "dedans", "encore"]),
+        (["div", 'div[@type="notes"]'], []),
+    ],
+)
+def test_tags_suppressed_with_an_attribute_value(suppress_tags, words):
+    """Test that a tag suppressed with an attribute value leaves out the contents of the tags with that value only,
+    with the tags of its name inside them."""
+    text = (
+        '<TEI><text><body><div type="chapter" n="1"><p>Gardé.</p></div>\n'
+        '<div type="notes"><p>Note.</p><div type="item"><p>Dedans.</p></div><p>Encore.</p></div>\n'
+        '<div type="chapter" n="2"><p>Après.</p></div></body></text></TEI>\n'
+    )
+    assert parse_words(text, suppress_tags=suppress_tags) == words
