@@ -6,6 +6,7 @@ import collections
 import datetime
 import hashlib
 import os
+import resource
 import shutil
 import sqlite3
 import struct
@@ -37,6 +38,7 @@ from philologic.utils import (
     extract_integer,
     load_module,
     pretty_print,
+    raise_open_files_limit,
     sort_list,
 )
 
@@ -85,6 +87,19 @@ class ParserError(Exception):
 
     def __init___(self, *error_args):
         super().__init__(error_args)
+
+
+def merge_batch_size(file_num=1000):
+    """Files merge_files merges with a single sort, at most: file_num (250 on macOS), fewer if the limit on open files
+    is too low for them. sort gets each file through a pipe from lz4cat, which it has open and opens again: it needs two
+    file descriptors per file. Lacking them, it would merge a few files at a time through a temporary file, copying
+    all it merged so far each time."""
+    if sys.platform == "darwin":
+        file_num = 250
+    open_files_limit = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+    if open_files_limit != resource.RLIM_INFINITY:
+        file_num = min(file_num, (open_files_limit - 64) // 2)
+    return max(2, file_num)
 
 
 class Loader:
@@ -137,6 +152,7 @@ class Loader:
     @classmethod
     def set_class_attributes(cls, loader_options):
         """Set initial class attributes and return Loader object"""
+        raise_open_files_limit()  # for the merges of many files (see merge_batch_size)
         cls.post_filters = list(loader_options["post_filters"])
         cls.debug = loader_options["debug"]
         cls.words_to_index = loader_options["words_to_index"]
@@ -675,7 +691,7 @@ class Loader:
             except Exception:
                 raise ParserError(f"{text['name']} has caused parser to die.")
 
-        os.system("lz4 --rm -c -q -3 %s > %s" % (text["words"], text["words"] + ".lz4"))
+        os.system("lz4 --rm -c -q %s > %s" % (text["words"], text["words"] + ".lz4"))
         if cls.debug is False:
             os.remove(text["raw"])
         return text["results"]
@@ -683,17 +699,26 @@ class Loader:
     def merge_objects(self):
         """Merge all parsed objects"""
         print("\n### Merge parser output ###")
-        print(f"{time.ctime()}: sorting words")
-        self.merge_files("words")
+        # With this few files, each merge is a single sort writing its own file (see merge_files), so they can
+        # run at the same time. With more files, each merge already runs several sorts in parallel.
+        if len(self.filequeue) <= merge_batch_size():
+            print(f"{time.ctime()}: sorting words, lemmas and objects", flush=True)
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                merges = [executor.submit(self.merge_files, file_type) for file_type in ("words", "lemmas", "toms")]
+                for merge in merges:
+                    merge.result()
+        else:
+            print(f"{time.ctime()}: sorting words")
+            self.merge_files("words")
 
-        print(f"{time.ctime()}: sorting lemmas")
-        self.merge_files("lemmas")
+            print(f"{time.ctime()}: sorting lemmas")
+            self.merge_files("lemmas")
 
-        print(f"{time.ctime()}: sorting objects", flush=True)
-        self.merge_files("toms")
+            print(f"{time.ctime()}: sorting objects", flush=True)
+            self.merge_files("toms")
         if self.debug is False:
             for toms_file in iglob(self.workdir + "/*toms.sorted"):
-                os.system(f"rm {toms_file}")
+                os.remove(toms_file)
 
         for object_type, extension in [
             ("pages", "pages"),
@@ -702,22 +727,24 @@ class Loader:
             ("lines", "lines"),
         ]:
             print(f"{time.ctime()}: joining {object_type}", flush=True)
-            if self.debug is False:
-                os.system(
-                    f'for i in $(find {self.workdir} -type f -name "*{extension}"); do cat $i >> {self.workdir}/all_{extension}; rm $i; done'
-                )
-            else:
-                os.system(
-                    f'for i in $(find {self.workdir} -type f -name "*{extension}"); do cat $i >> {self.workdir}/all_{extension}; done'
-                )
+            # Concatenate in find's order (which determines row order in the SQL tables), without a cat and rm per file
+            found_files = subprocess.run(
+                ["find", self.workdir, "-type", "f", "-name", f"*{extension}"], capture_output=True, check=False
+            ).stdout.split()
+            if found_files:
+                with open(f"{self.workdir}/all_{extension}", "ab") as joined_file:
+                    for found_file in found_files:
+                        with open(found_file, "rb") as object_file:
+                            shutil.copyfileobj(object_file, joined_file)
+                        if self.debug is False:
+                            os.remove(found_file)
 
     def merge_files(self, file_type, file_num=1000, verbose=True):
         """This function runs a multi-stage merge sort on words
         Since PhiloLogic can potentially merge thousands of files, we need to split
         the sorting stage into multiple steps to avoid running out of file descriptors
         """
-        if sys.platform == "darwin":
-            file_num = 250
+        file_num = merge_batch_size(file_num)
         lists_of_files = []
         files = []
         if file_type == "words":
@@ -726,8 +753,8 @@ class Loader:
                 open_file_command = "lz4cat --rm"
             else:
                 open_file_command = "lz4cat"
-            sort_command = f"LANG=C sort -S 7% -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
-            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
         elif file_type == "lemmas":
             suffix = "/*raw.lemma.lz4"
             if self.debug is False:
@@ -735,12 +762,15 @@ class Loader:
             else:
                 open_file_command = "lz4cat"
             sort_command = f"LANG=C sort -S 7% -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
-            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_word} {self.sort_by_id} "
         else:  # sorting for toms
             suffix = "/*.toms.sorted"
             open_file_command = "cat"
-            sort_command = f"LANG=C sort -S 7% -m -T {self.workdir} {self.sort_by_id} "
-            final_sort_command = f"LANG=C sort -S 25% --parallel=4 -m -T {self.workdir} {self.sort_by_id} "
+            sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_id} "
+            final_sort_command = f"LANG=C sort -S 1G -m -T {self.workdir} {self.sort_by_id} "
+        # sort merges at most --batch-size inputs at once (16 by default), through temporary files for more:
+        # let it merge all the files of a batch, and all batches, in a single pass
+        sort_command += f"--batch-size={file_num} "
 
         # First we split the sort workload into chunks of 1000 (default defined in the file_num keyword)
         for f in iglob(self.workdir + suffix):
@@ -762,17 +792,37 @@ class Loader:
         else:
             print(f"Merging {file_type} in batches of {file_num}...", flush=True)
         os.system(f"touch {self.workdir}/sorted.init")
+
+        if len(lists_of_files) == 1:
+            # A single batch: write its output directly to the final file. Merging it again with sort -m
+            # (the second stage below) would only copy a single sorted input.
+            command_list = " ".join([i[0] for i in lists_of_files[0]])
+            if file_type == "words":
+                output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
+                command = f'/bin/bash -c "{sort_command}{command_list} | lz4 -q -B4 > {output_file}"'
+            elif file_type == "lemmas":
+                output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
+                command = f'/bin/bash -c "{sort_command}{command_list} | lz4 -q -B4 > {output_file}"'
+            else:
+                output_file = os.path.join(self.workdir, "all_toms_sorted")
+                command = f'/bin/bash -c "{sort_command}{command_list} > {output_file}"'
+            status = subprocess.run(command, shell=True).returncode
+            if status != 0:
+                print(f"{file_type} sorting failed\nInterrupting database load...")
+                sys.exit()
+            return
         with tqdm(total=total_files, leave=False) as pbar:
 
             def run_batch(pos, object_list):
                 command_list = " ".join([i[0] for i in object_list])
                 output = os.path.join(self.workdir, f"sorted.{pos}.split")
                 args = sort_command + command_list
-                command = f'/bin/bash -c "{args} | lz4 -3 -q >{output}"'
+                command = f'/bin/bash -c "{args} | lz4 -q -B4 >{output}"'
                 result = subprocess.run(command, shell=True)
                 return pos, len(object_list), result.returncode
 
-            with ThreadPoolExecutor(max_workers=4) as executor:
+            # Merges of sorted files each take a core and little memory; the lemma files are sorted, with more memory
+            with ThreadPoolExecutor(max_workers=4 if file_type == "lemmas" else max(4, self.cores // 2)) as executor:
                 futures = [executor.submit(run_batch, pos, obj_list) for pos, obj_list in enumerate(lists_of_files)]
                 for future in as_completed(futures):
                     pos, batch_size, returncode = future.result()
@@ -783,12 +833,13 @@ class Loader:
 
         # WARNING: we are technically limited by the file descriptor limit (1024), which should be equivalent to 1,024,000 files.
         sorted_files = " ".join([f"<(lz4cat -q --rm {i})" for i in iglob(f"{self.workdir}/*.split")])
+        final_sort_command += f"--batch-size={max(2, len(lists_of_files))} "
         if file_type == "words":
             output_file = os.path.join(self.workdir, "all_words_sorted.lz4")
-            command = f'/bin/bash -c "{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
+            command = f'/bin/bash -c "{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q -B4 > {output_file}"'
         elif file_type == "lemmas":
             output_file = os.path.join(self.workdir, "all_lemmas_sorted.lz4")
-            command = f'/bin/bash -c "{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q > {output_file}"'
+            command = f'/bin/bash -c "{final_sort_command} -b --compress-program=lz4 {sorted_files} | lz4 -q -B4 > {output_file}"'
         else:
             output_file = os.path.join(self.workdir, "all_toms_sorted")
             command = f'/bin/bash -c "{final_sort_command} {sorted_files} > {output_file}"'
