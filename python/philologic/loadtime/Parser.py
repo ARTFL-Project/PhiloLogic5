@@ -5,6 +5,7 @@ import os
 import string
 import sys
 from bisect import bisect_right
+from collections import Counter
 
 import regex as re
 from philologic.loadtime.OHCOVector import CompoundStack
@@ -195,8 +196,8 @@ tei_header_tag = re.compile(r"<teiHeader\b[^>]*(?<!/)>", re.I)
 closed_tei_header_tag = re.compile(r"</teiHeader\W", re.I)
 doc_body_tag = re.compile(r"<docbody", re.I)
 body_tag = re.compile(r"<body\W", re.I)
-div_tag = re.compile(r"<div", re.I)
-closed_div_tag = re.compile(r"<\/div", re.I)
+div_tag = re.compile(r"<div\d*\b", re.I)  # div, div0, div1..., not divGen
+closed_div_tag = re.compile(r"<\/div\d*\b", re.I)
 para_tag = re.compile(r"<p\W", re.I)
 quote_tag = re.compile(r"<q[ >]", re.I)
 closed_quote_tag = re.compile(r"</q>", re.I)
@@ -238,7 +239,6 @@ closed_front_tag = re.compile(r"</front\W", re.I)
 attrib_matcher = re.compile(r"""(\S+)="?((?:.(?!"?\s+(?:\S+)=|[>"]))+.)"?""", re.I)
 tag_matcher = re.compile(r"<(\/?\w+)[^>]*>?", re.I)
 head_self_close_tag = re.compile(r"<head\/>", re.I)
-closed_div_tag = re.compile(r"<\/div", re.I)
 head_tag = re.compile(r"<head", re.I)
 closed_head_tag = re.compile(r"<\/head>", re.I)
 any_tag = re.compile(r"<[^>]*>")
@@ -504,7 +504,9 @@ class XMLParser:
         self.in_tagged_sentence = False
         self.got_a_div = False
         self.got_a_para = False
-        self.context_div_level = 0
+        self.context_div_level = 0  # the level of the div we are in
+        self.open_div_tags = []  # (name, level, object) of the div tags (and front) not closed yet, innermost last
+        self.div_tags_ended = Counter()  # div tags ended by another tag before their end tag, by name
         self.current_tag = "doc"
         self.in_a_word_tag = False
         self.current_div_id = ""
@@ -1053,9 +1055,14 @@ class XMLParser:
                 self.get_object_attributes(tag, tag_name, "div1")
                 self.context_div_level = 1
                 self.open_div1 = True
+                self.open_div_tags.append(("front", 1, self.v["div1"]))
             elif closed_front_tag.search(tag):
                 self.in_front_matter = False
-                self.context_div_level = 0
+                positions = range(len(self.open_div_tags) - 1, -1, -1)
+                front = next((i for i in positions if self.open_div_tags[i][0] == "front"), -1)
+                self.end_div_tags(front + 1)
+                del self.open_div_tags[front:]
+                self.context_div_level = self.open_div_tags[-1][1] if self.open_div_tags else 0
                 self.close_div1(self.bytes_read_in)
 
             # BODY TAG: Let's set it as a <div object if we have no divs in the document.
@@ -1084,6 +1091,7 @@ class XMLParser:
                 self.v.push("div1", tag_name, start_byte)
                 self.current_div_id = self.v["div1"].id
                 self.v["div1"]["head"] = "[HyperDiv]"
+                self.open_div_tags.append(("hyperdiv", 1, self.v["div1"]))  # (it has no end tag)
 
             # h1, h2, h3 tags should be considered markers for divs in HTML files
             # what follows the h tags are the content for that div, so we use implied close
@@ -1137,40 +1145,44 @@ class XMLParser:
             # - I output <head> info where I find it.  This could also be modified to output
             #   a structured table record with div type, and other attributes, along with
             #   the Philoid and head for searching under document levels.
+            # The end of a div tag: of the object its start tag opened, if no other div ended it before. A numbered
+            # end tag of another name than the div tags still open ends the innermost one of its level, unless a div
+            # tag of its name was ended before; an unnumbered one ends nothing (as in <div1>...</div><div2>, numbered
+            # divs whose numbers give their levels)
             elif closed_div_tag.search(tag):
-                if "div1" in tag_name:
-                    if self.in_front_matter:
-                        self.close_div2(self.bytes_read_in)
-                    else:
-                        self.close_div1(self.bytes_read_in)
-                elif "div2" in tag_name:
-                    if self.in_front_matter:
-                        self.close_div3(self.bytes_read_in)
-                    else:
-                        self.close_div2(self.bytes_read_in)
-                elif "div3" in tag_name:
-                    self.close_div3(self.bytes_read_in)
-                self.context_div_level -= 1
+                name = tag_name[1:].lower()
+                positions = range(len(self.open_div_tags) - 1, -1, -1)
+                position = next((i for i in positions if self.open_div_tags[i][0] == name), None)
+                if position is None and self.div_tags_ended[name]:
+                    self.div_tags_ended[name] -= 1
+                elif position is None and name != "div":
+                    level = int(name[3:]) + (1 if self.in_front_matter and int(name[3:]) < 3 else 0)  # (front: a div1)
+                    divs = (
+                        i for i in positions if self.open_div_tags[i][1] == level and self.open_div_tags[i][0][:3] == "div"
+                    )
+                    position = next(divs, None)
+                if position is not None:
+                    _, level, div_object = self.open_div_tags[position]
+                    self.end_div_tags(position + 1)
+                    del self.open_div_tags[position]
+                    if getattr(self, f"open_div{level}") and self.v[f"div{level}"] is div_object:
+                        getattr(self, f"close_div{level}")(self.bytes_read_in)
+                self.context_div_level = self.open_div_tags[-1][1] if self.open_div_tags else 0
                 self.no_deeper_objects = False
+            # Divs: division levels, from their number (1, 2 or 3) or else the level of the div they are in (in the
+            # front matter, a div1, always), with the <head> found in them. Self-closing divs are empty: no object.
+            elif div_tag.search(tag) and tag.rstrip().endswith("/>"):
+                pass
             elif div_tag.search(tag):
-                self.context_div_level += 1
-                if self.context_div_level > 3:
-                    if self.open_div3:
-                        self.close_div3(start_byte)
-                    self.context_div_level = 3
-                if self.context_div_level < 1:
-                    self.context_div_level = 1
-
-                div_level = tag_name[-1]
-                if not div_level.isdigit():
-                    div_level = self.context_div_level
-                elif div_level == "0" or int(div_level) > 3:
-                    div_level = self.context_div_level
+                number = tag_name[3:]
+                if number.isdigit() and 1 <= int(number) <= 3 and not self.in_front_matter:
+                    div_level = int(number)
+                    position = len(self.open_div_tags)
+                    while position and self.open_div_tags[position - 1][1] >= div_level:  # their end tags left out
+                        position -= 1
+                    self.end_div_tags(position)
                 else:
-                    div_level = int(div_level)
-                # <Front is top level div1, so inner divs should be div2s or div3s
-                if self.in_front_matter:
-                    div_level = self.context_div_level
+                    div_level = min(self.context_div_level + 1, 3)  # deeper divs take the place of the div3
                 self.context_div_level = div_level
 
                 # TODO: ignore divs inside of internal text tags.  Setable
@@ -1200,6 +1212,7 @@ class XMLParser:
                     self.current_div_id = self.v["div3"].id
                     self.v["div3"]["head"] = self.get_div_head(tag)
                     self.get_object_attributes(tag, tag_name, object_type="div3")
+                self.open_div_tags.append((tag_name.lower(), div_level, self.v[div_type]))
 
                 if "type" in self.v[div_type]:
                     if self.v[div_type]["type"] == "notes":
@@ -1449,6 +1462,11 @@ class XMLParser:
             self.close_sent(end_byte)
         self.v.pull("para", end_byte)
         self.open_para = False
+
+    def end_div_tags(self, position):
+        """End the open div tags from this position on, before their end tag"""
+        self.div_tags_ended.update(name for name, _, _ in self.open_div_tags[position:])
+        del self.open_div_tags[position:]
 
     def close_div3(self, end_byte):
         """Close div3 objects."""
