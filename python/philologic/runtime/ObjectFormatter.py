@@ -564,6 +564,12 @@ def format_text_object(
                     and previous_el.attrib["class"] == "headword"
                 ):
                     el.tag = "span"
+                    # Space it from what the headword holds already: "III La prière.", not "IIILa prière."
+                    if len(previous_el):
+                        if not (previous_el[-1].tail or "")[-1:].isspace():
+                            previous_el[-1].tail = (previous_el[-1].tail or "") + " "
+                    elif not (previous_el.text or "")[-1:].isspace():
+                        previous_el.text = (previous_el.text or "") + " "
                     previous_el.append(el)
                 else:
                     el.tag = "b"
