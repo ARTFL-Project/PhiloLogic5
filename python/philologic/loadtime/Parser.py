@@ -263,7 +263,14 @@ cap_char_or_num = re.compile(r"[A-Z0-9]")  # Capitals
 ending_punctuation = re.compile(r"[%s]$" % string.punctuation.replace(")", "").replace("]", ""))
 add_tag = re.compile(r"<add\W", re.I)
 seg_attrib = re.compile(r"<seg \w+=", re.I)
-abbrev_expand = re.compile(r'(<abbr .*expan=")([^"]*)("[^>]*>)([^>]*)(</abbr>)', re.I | re.M)
+abbreviation_tag = re.compile(r"""<abbr\b[^>]*?\bexpan=(["'])(.*?)\1[^>]*>(.*?)</abbr>""", re.I | re.S)
+TOKEN_CHAR = re.compile(r"[\p{L}\p{M}\p{N}&;]", re.I)  # a character of a TOKEN_REGEX token
+# The tags the tag handler does something with (an abbreviation with one inside is left as it is)
+TAGS_WITH_HANDLERS = frozenset(
+    "text /text q /q p note /note castlist /castlist sp /sp epigraph /epigraph argument /argument opener /opener "
+    "closer /closer add /add list /list stage /stage speaker pb lg /lg l /l ab /ab s /s front /front body hyperdiv "
+    "div /div index date ref graphic".split()
+)
 semi_colon_strip = re.compile(r"\A;?(\w+);?\Z")
 h_tag = re.compile(r"<h(\d)>", re.I)
 
@@ -343,6 +350,20 @@ entity_regex = [
 ]
 
 LINE_SPLITTER = re.compile(r"([^\n]+)")
+
+
+def byte_positions(text):
+    """A function giving the byte (in UTF-8) of character positions of text, asked for in increasing order"""
+    if text.isascii():
+        return lambda position: position
+    last = [0, 0]  # the position last asked for, and its byte
+
+    def byte(position):
+        last[1] += len(text[last[0] : position].encode("utf8"))
+        last[0] = position
+        return last[1]
+
+    return byte
 
 
 class XMLParser:
@@ -611,14 +632,17 @@ class XMLParser:
         # tags with newlines, which can make a mess of things.
         self.content = self.content.replace("\n", " ")
 
-        # Abbreviation expander
-        if self.abbrev_expand:
-            self.content = abbrev_expand.sub("\1\4\3\2\5", self.content)
-
-        # The <choice> elements are read before the tags between letters are moved out of words, as the formatters
-        # read them, with all their tags: the bytes stay where they were
+        # The <choice> elements are read before abbreviations are expanded and the tags between letters are moved out
+        # of words, as the formatters read them, with all their tags: the bytes stay where they were
         if "<choice" in self.content:
             self.choice_content = self.content
+
+        # Abbreviation expander
+        self.expansions = []  # (start, end) bytes of each expansion in the content, and the bytes of its parts
+        self.expansion_starts = []
+        self.word_ends = {}  # the end in the content of words joined across an abbreviation: their end in the file
+        if self.abbrev_expand:
+            self.content = self.expand_abbreviations(self.content)
 
         # An experimental inword tag spanner. For selected tags between letters, this replaces the tag with "_"
         # (in order to keep the byte count).  This is to allow indexing of words broken by tags.
@@ -632,6 +656,96 @@ class XMLParser:
 
         # Add newlines to the beginning and end of all tags
         self.content = self.content.replace("<", "\n<").replace(">", ">\n")
+
+    def expand_abbreviations(self, content):
+        """content with its abbreviations, as <abbr expan="en">&emacr;</abbr> or <abbr expan="Valerius Maximus">Val.
+        Max.</abbr>, replaced by their expansion, which the index has: the letters following one, as in
+        pres<abbr expan="en">&emacr;</abbr>t, move after its expansion, to make one word (present), and a space for each
+        byte left keeps the byte count. The words of an expansion get the bytes of the abbreviation in the file (see
+        file_bytes): of the word it expands, if it has as many words (Valerius gets those of Val.), else all of it."""
+        output, position = [], 0
+        byte = byte_positions(content)
+        for match in abbreviation_tag.finditer(content):
+            expansion, abbreviation = match.group(2), match.group(3)
+            if match.start() < position or not expansion.strip() or not self.abbreviation_words(abbreviation):
+                continue
+            if any(self.has_handler(tag) for tag in any_tag.findall(abbreviation)):
+                continue  # tags inside it which make objects (as pages): left as it is
+            following_end = match.end()
+            while following_end < len(content) and TOKEN_CHAR.match(content, following_end):
+                following_end += 1
+            text = expansion + content[match.end() : following_end]
+            start = byte(match.start())
+            abbreviation_start = byte(match.start(3))
+            replaced_end = byte(following_end)
+            text_end = start + len(text.encode("utf8"))
+            # The parts of the expansion, and the bytes in the file of what each stands for
+            expansion_words = [m.span() for m in re.finditer(r"\S+", expansion)]
+            abbreviation_words = self.abbreviation_words(abbreviation)
+            if len(expansion_words) != len(abbreviation_words):  # all of the abbreviation for each word
+                expansion_words = [(expansion_words[0][0], expansion_words[-1][1])]
+                abbreviation_words = [(abbreviation_words[0][0], abbreviation_words[-1][1])]
+            parts = []
+            for (x_start, x_end), (a_start, a_end) in zip(expansion_words, abbreviation_words):
+                parts.append(
+                    (
+                        start + len(expansion[:x_start].encode("utf8")),
+                        start + len(expansion[:x_end].encode("utf8")),
+                        abbreviation_start + len(abbreviation[:a_start].encode("utf8")),
+                        abbreviation_start + len(abbreviation[:a_end].encode("utf8")),
+                    )
+                )
+            self.expansions.append((start, start + len(expansion.encode("utf8")), parts))
+            self.expansion_starts.append(start)
+            if following_end > match.end():  # a word joined across the abbreviation ends after the letters following it
+                self.word_ends[text_end] = replaced_end
+            output += [content[position : match.start()], text, " " * (replaced_end - text_end)]
+            position = following_end
+        output.append(content[position:])
+        return "".join(output)
+
+    @staticmethod
+    def has_handler(tag):
+        """Whether the tag handler does something with a tag (see TAGS_WITH_HANDLERS)"""
+        try:
+            name = tag_matcher.findall(tag)[0].lower()
+        except IndexError:
+            return False
+        if re.fullmatch(r"/?div\d*", name):
+            name = "/div" if name.startswith("/") else "div"
+        return name in TAGS_WITH_HANDLERS
+
+    @staticmethod
+    def abbreviation_words(abbreviation):
+        """(start, end) of the words of an abbreviation, between spaces, its tags left out (as those of <w>)"""
+        words, start, end = [], None, None
+        for match in re.finditer(r"<[^>]*>|\s+|[^<\s]+", abbreviation):
+            if match.group()[0] == "<":
+                continue
+            if match.group()[0].isspace():
+                if start is not None:
+                    words.append((start, end))
+                start = None
+            else:
+                start = match.start() if start is None else start
+                end = match.end()
+        if start is not None:
+            words.append((start, end))
+        return words
+
+    def file_bytes(self, start_byte, end_byte):
+        """The bytes in the file of a record from start_byte to end_byte in the content: in an expansion of an
+        abbreviation (see expand_abbreviations), those of what it stands for"""
+        if self.expansions:
+            number = bisect_right(self.expansion_starts, start_byte) - 1
+            if number >= 0 and start_byte < self.expansions[number][1]:
+                parts = self.expansions[number][2]
+                start_byte = next((part[2] for part in parts if start_byte < part[1]), parts[-1][2])
+            number = bisect_right(self.expansion_starts, end_byte - 1) - 1
+            if number >= 0 and end_byte <= self.expansions[number][1]:
+                parts = self.expansions[number][2]
+                end_byte = next((part[3] for part in parts if end_byte <= part[1]), parts[-1][3])
+        return start_byte, end_byte
 
     def is_suppressed(self, name, tag):
         """Whether a start tag is suppressed: its name is, with no attribute value or one the tag has"""
@@ -1356,8 +1470,8 @@ class XMLParser:
                         word_match = check_if_char_word.search(word)
                     if word_match:
                         last_word = word
-                        word_pos = current_pos - len(word_in_utf8)
-                        word_end = current_pos
+                        word_end = self.word_ends.get(current_pos, current_pos)  # (joined across an abbreviation)
+                        word_pos, word_end = self.file_bytes(current_pos - len(word_in_utf8), word_end)
                         if span is not None:
                             word_pos, word_end = span
                         if "&" in word:
@@ -1425,7 +1539,7 @@ class XMLParser:
                             # until we encounter it--so instead, we let the push on "word" create a
                             # implicit philo_virtual sentence, then change its name once we actually encounter
                             # the punctuation token.
-                            sent_start, sent_end = current_pos, current_pos + len(word.encode("utf8"))
+                            sent_start, sent_end = self.file_bytes(current_pos, current_pos + len(word.encode("utf8")))
                             if span is not None:
                                 sent_start = sent_end = span[1]
                             if "sent" not in self.v:
@@ -1440,7 +1554,7 @@ class XMLParser:
                         punct = punct.replace("\t", " ")
                         punct = self.remove_control_chars(punct)
                         if punct and not punct.isspace():
-                            punc_end = punc_pos + len(punct.encode("utf8"))
+                            punc_pos, punc_end = self.file_bytes(punc_pos, punc_pos + len(punct.encode("utf8")))
                             if span is not None:
                                 punc_pos, punc_end = span
                             self.v.push("punct", punct, punc_pos)
