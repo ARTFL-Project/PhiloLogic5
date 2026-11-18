@@ -34,9 +34,8 @@ HOSTNAME_DOMAIN = access_control._client_domain  # the real one, which fresh_sta
 
 @pytest.fixture(autouse=True)
 def fresh_state(monkeypatch, tmp_path):
-    """No remembered answers, compiled whitelists in the test's directory, and no DNS."""
+    """No remembered answers, and no DNS."""
     monkeypatch.setattr(access_control, "_allowed", {})
-    monkeypatch.setattr(access_control, "_COMPILED_IP_CACHE_DIR", str(tmp_path))
     monkeypatch.setattr(access_control, "_client_domain", lambda address: "unknown.example")
 
 
@@ -80,19 +79,32 @@ class TestClientAddress:
 
 # The cases of the access file below, with local networks off: (description, address, domain, allowed)
 ACCESS_FILE = """
-domain_list = [".edu", "example.com"]
-blocked_ips = ["10.0.0.99", "203.0.113.100", "192.168.5.5"]
-allowed_ips = [
+blocked_ips = ["10.0.0.99", "203.0.113.100", "192.168.5.5", "172.26.20."]
+
+[first-university]
+name = "A university"  # keys other than domains and ip_rules are ignored
+domains = [".edu", "example.com"]
+ip_rules = [
     "192.168.1.1",              # Exact IP match
     "172.16.0.0/16",            # CIDR notation
     "192.168.2.10-20",          # Range in last octet
-    "192.168-170.0.0",          # Range in non-last octet
+    "10.168-170.0.0",           # Range in non-last octet
     "192.168.4-5.10-20",        # Multiple ranges
     "172.18",                   # Network prefix
-    "134.226",                  # Network prefix with 2 octets
-    "192.70.186",               # Network prefix with 3 octets
-    "140.141.",                 # Network prefix with trailing dot
-    "216.87.19-20",             # Should match 216.87.19.* and 216.87.20.*
+    "172.21",                   # Network prefix with 2 octets
+    "",                         # Blank
+]
+
+[second-university]
+ip_rules = [
+    "172.22.186",               # Network prefix with 3 octets
+    "172.23.",                  # Network prefix with trailing dot
+    "172.25.19-20",             # Should match 172.25.19.* and 172.25.20.*
+    "10.2.2",                   # A prefix of the address string, not of its octets
+    "172.26.",
+    "10.57.0-127",
+    "10.64.0.0/11",
+    "192.0.2.4-192.0.2.9",      # Not an octet range: skipped
 ]
 """
 ADDRESS_CASES = [
@@ -106,9 +118,9 @@ ADDRESS_CASES = [
     ("Last octet range match end", "192.168.2.20", "example.org", True),
     ("Last octet range non-match below", "192.168.2.9", "example.org", False),
     ("Last octet range non-match above", "192.168.2.21", "example.org", False),
-    ("Non-last octet range match start", "192.168.0.0", "example.org", True),
-    ("Non-last octet range match end", "192.170.0.0", "example.org", True),
-    ("Non-last octet range non-match", "192.171.0.0", "example.org", False),
+    ("Non-last octet range match start", "10.168.0.0", "example.org", True),
+    ("Non-last octet range match end", "10.170.0.0", "example.org", True),
+    ("Non-last octet range non-match", "10.171.0.0", "example.org", False),
     ("Multiple ranges match", "192.168.4.15", "example.org", True),
     ("Multiple ranges match edge", "192.168.5.20", "example.org", True),
     ("Multiple ranges non-match", "192.168.6.15", "example.org", False),
@@ -124,12 +136,25 @@ ADDRESS_CASES = [
     ("Domain non-match", "203.0.113.1", "example.net", False),
     ("Blocked IP", "10.0.0.99", "example.org", False),
     ("Blocked IP overrides allowed network", "192.168.5.5", "example.org", False),
-    ("Network prefix with 2 octets", "134.226.12.34", "example.org", True),
-    ("Network prefix with 3 octets", "192.70.186.50", "example.org", True),
-    ("Network prefix with trailing dot", "140.141.10.20", "example.org", True),
-    ("Network prefix with trailing dot non-match", "140.142.10.20", "example.org", False),
-    ("Multiple adjacent octets range", "216.87.19.50", "example.org", True),
-    ("Multiple adjacent octets range", "216.87.20.50", "example.org", True),
+    ("Network prefix with 2 octets", "172.21.12.34", "example.org", True),
+    ("Network prefix with 3 octets", "172.22.186.50", "example.org", True),
+    ("Network prefix with trailing dot", "172.23.10.20", "example.org", True),
+    ("Network prefix with trailing dot non-match", "172.24.10.20", "example.org", False),
+    ("Multiple adjacent octets range", "172.25.19.50", "example.org", True),
+    ("Multiple adjacent octets range", "172.25.20.50", "example.org", True),
+    ("Prefix without dot admits 10.2.2x", "10.2.25.1", "example.org", True),
+    ("Prefix without dot admits 10.2.200", "10.2.200.1", "example.org", True),
+    ("Prefix without dot refuses 10.222", "10.222.1.1", "example.org", False),
+    ("Octet range admits its low end", "10.57.0.0", "example.org", True),
+    ("Octet range admits its high end", "10.57.127.255", "example.org", True),
+    ("Octet range refuses above it", "10.57.200.1", "example.org", False),
+    ("CIDR admits its last address", "10.95.255.255", "example.org", True),
+    ("CIDR refuses the next one", "10.96.0.0", "example.org", False),
+    ("Prefix matches the start of the address only", "10.172.23.1", "example.org", False),
+    ("Blocked trailing-dot entry blocks no one", "172.26.20.5", "example.org", True),
+    ("Blocked trailing-dot entry is exact", "172.26.20.", "example.org", False),
+    ("Malformed rule is skipped", "192.0.2.5", "example.org", False),
+    ("Rules after a malformed one still count", "172.25.19.1", "example.org", True),
 ]
 
 
@@ -139,31 +164,85 @@ class TestAddressChecks:
     def test_access_file(self, monkeypatch, tmp_path, description, address, domain, allowed):
         monkeypatch.setattr(access_control, "local_networks", [])
         monkeypatch.setattr(access_control, "_client_domain", lambda _: domain)
-        access_file = tmp_path / "access.py"
+        access_file = tmp_path / "access.toml"
         access_file.write_text(ACCESS_FILE)
         config = make_config(tmp_path / "db", access_file=str(access_file))
         assert is_allowed({"REMOTE_ADDR": address}, config) is allowed
 
     def test_local_networks_are_allowed(self, tmp_path):
-        access_file = tmp_path / "access.py"
-        access_file.write_text("allowed_ips = []\n")
+        access_file = tmp_path / "access.toml"
+        access_file.write_text("blocked_ips = []\n")
         config = make_config(tmp_path / "db", access_file=str(access_file))
         assert is_allowed({"REMOTE_ADDR": "10.1.2.3"}, config)
 
     def test_no_access_file_lets_nobody_in(self, tmp_path):
         assert not is_allowed({"REMOTE_ADDR": "10.1.2.3"}, make_config(tmp_path / "db"))
-        assert not is_allowed({"REMOTE_ADDR": "10.1.2.3"}, make_config(tmp_path / "db", access_file="missing.py"))
+        assert not is_allowed({"REMOTE_ADDR": "10.1.2.3"}, make_config(tmp_path / "db", access_file="missing.toml"))
 
     def test_answer_follows_the_access_file(self, tmp_path):
         """The answer is remembered for each version of the access file only."""
-        access_file = tmp_path / "access.py"
-        access_file.write_text('allowed_ips = ["198.51.100.7"]\n')
+        access_file = tmp_path / "access.toml"
+        access_file.write_text('[a]\nip_rules = ["198.51.100.7"]\n')
         config = make_config(tmp_path / "db", access_file=str(access_file))
         assert is_allowed({"REMOTE_ADDR": "198.51.100.7"}, config)
-        access_file.write_text("allowed_ips = []\n")
+        access_file.write_text("blocked_ips = []\n")
         stat = access_file.stat()
         os.utime(access_file, (stat.st_atime, stat.st_mtime + 10))
         assert not is_allowed({"REMOTE_ADDR": "198.51.100.7"}, config)
+
+    def test_exact_blocked_ip_overrides_an_allowing_rule(self, tmp_path):
+        access_file = tmp_path / "access.toml"
+        access_file.write_text('blocked_ips = ["198.51.100.7"]\n[a]\nip_rules = ["198.51.100.0/24"]\n')
+        config = make_config(tmp_path / "db", access_file=str(access_file))
+        assert not is_allowed({"REMOTE_ADDR": "198.51.100.7"}, config)
+        assert is_allowed({"REMOTE_ADDR": "198.51.100.8"}, config)
+
+    def test_table_with_only_domains(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(access_control, "_client_domain", lambda address: "cs.uchicago.edu")
+        access_file = tmp_path / "access.toml"
+        access_file.write_text('[a]\nname = "x"\ndomains = ["uchicago.edu"]\n')
+        assert is_allowed({"REMOTE_ADDR": "203.0.113.7"}, make_config(tmp_path / "db", access_file=str(access_file)))
+
+    def test_malformed_rule_is_skipped_with_a_warning(self, tmp_path, capsys):
+        malformed = ["192.0.2.4-192.0.2.9", "x.y-z", "192.0.2.4.5-9", "198.51.100.250-300", "198.51.100.9-3"]
+        access_file = tmp_path / "access.toml"
+        access_file.write_text(f"[a]\nip_rules = {json.dumps(malformed + ['198.51.100.7'])}\n")
+        config = make_config(tmp_path / "db", access_file=str(access_file))
+        assert is_allowed({"REMOTE_ADDR": "198.51.100.7"}, config)
+        err = capsys.readouterr().err
+        for rule in malformed:
+            assert rule in err
+
+    def test_python_access_file_lets_nobody_in(self, tmp_path, capsys):
+        access_file = tmp_path / "access.toml"
+        access_file.write_text('allowed_ips = ["192.0.2.4" "192.0.2.5"]\n')
+        config = make_config(tmp_path / "db", access_file=str(access_file))
+        assert not is_allowed({"REMOTE_ADDR": "192.0.2.4"}, config)
+        assert not is_allowed({"REMOTE_ADDR": "10.1.2.3"}, config)
+        assert "ACCESS ERROR" in capsys.readouterr().err
+
+    def test_file_is_parsed_once_for_each_version(self, monkeypatch, tmp_path):
+        parsed = []
+        load = access_control.tomllib.load
+        monkeypatch.setattr(access_control.tomllib, "load", lambda f: parsed.append(1) or load(f))
+        access_file = tmp_path / "access.toml"
+        access_file.write_text('[a]\nip_rules = ["198.51.100.7"]\n')
+        config = make_config(tmp_path / "db", access_file=str(access_file))
+        for address in ("198.51.100.7", "198.51.100.8", "198.51.100.9"):
+            is_allowed({"REMOTE_ADDR": address}, config)
+        assert len(parsed) == 1
+
+    def test_edit_changes_the_answer(self, tmp_path):
+        access_file = tmp_path / "access.toml"
+        access_file.write_text('[a]\nip_rules = ["198.51.100.7"]\n')
+        config = make_config(tmp_path / "db", access_file=str(access_file))
+        assert is_allowed({"REMOTE_ADDR": "198.51.100.7"}, config)
+        assert not is_allowed({"REMOTE_ADDR": "198.51.100.9"}, config)
+        access_file.write_text('[a]\nip_rules = ["198.51.100.9"]\n')
+        stat = access_file.stat()
+        os.utime(access_file, (stat.st_atime, stat.st_mtime + 10))
+        assert not is_allowed({"REMOTE_ADDR": "198.51.100.7"}, config)
+        assert is_allowed({"REMOTE_ADDR": "198.51.100.9"}, config)
 
 
 @pytest.mark.unit
@@ -184,8 +263,8 @@ class TestDomains:
     def test_allowed(self, monkeypatch, tmp_path, fqdn, domain_list):
         monkeypatch.setattr(access_control, "_client_domain", HOSTNAME_DOMAIN)
         monkeypatch.setattr(access_control.socket, "getfqdn", lambda address: fqdn)
-        access_file = tmp_path / "access.py"
-        access_file.write_text(f"domain_list = {domain_list!r}\n")
+        access_file = tmp_path / "access.toml"
+        access_file.write_text(f"[a]\ndomains = {json.dumps(domain_list)}\n")
         assert is_allowed({"REMOTE_ADDR": "203.0.113.7"}, make_config(tmp_path / "db", access_file=str(access_file)))
 
     @pytest.mark.parametrize(
@@ -199,11 +278,11 @@ class TestDomains:
 
     def test_no_lookup_without_domains(self, monkeypatch, tmp_path):
         def lookup(address):
-            raise AssertionError("no domain_list, no DNS")
+            raise AssertionError("no domains, no DNS")
 
         monkeypatch.setattr(access_control, "_client_domain", lookup)
-        access_file = tmp_path / "access.py"
-        access_file.write_text('allowed_ips = ["198.51.100.0/24"]\n')
+        access_file = tmp_path / "access.toml"
+        access_file.write_text('[a]\nip_rules = ["198.51.100.0/24"]\n')
         assert not is_allowed({"REMOTE_ADDR": "203.0.113.7"}, make_config(tmp_path / "db", access_file=str(access_file)))
 
 
@@ -332,10 +411,10 @@ ALLOWED, DENIED = "198.51.100.7", "203.0.113.7"
 def web_root(tmp_path_factory):
     """A database root with an access-controlled database, "closed", which lets ALLOWED in, and an "open" one."""
     base = tmp_path_factory.mktemp("access")
-    (base / "access.py").write_text(f'allowed_ips = ["{ALLOWED}"]\n')
+    (base / "access.toml").write_text(f'[a]\nip_rules = ["{ALLOWED}"]\n')
     root = base / "root"
     for name, web_config in (
-        ("closed", f'access_control = True\naccess_file = "{base / "access.py"}"\n'),
+        ("closed", f'access_control = True\naccess_file = "{base / "access.toml"}"\n'),
         ("open", "access_control = False\n"),
     ):
         (root / name / "data").mkdir(parents=True)
