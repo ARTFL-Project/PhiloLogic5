@@ -47,7 +47,7 @@ There are two components in the built-in access control:
 
 In order for access control to be turned on, you first need to set the `access_control` variable in web_config.cfg to `True`.
 
-Once access control has been turned on, PhiloLogic will check the `access_file` variable which defines a file contained in the /data directory which will contain the domain names allowed as well as the IPs addresses to be blocked. If no such file is provided, access will be automatically granted.
+Once access control has been turned on, PhiloLogic will check the `access_file` variable, which names a TOML file (relative to the database's /data directory, or an absolute path) with the domain names and IP rules (addresses, prefixes, octet ranges, CIDR networks) that are allowed, and the IP addresses to be blocked. Edits to it take effect without a restart. If no such file is provided, or it can't be read, nobody is let in by their address. See [Access control](access_control.md) for the format.
 
 ## <a name="changing-theme"></a>Changing the Web Application theme
 Changing the Web Application theme requires editing the `theme.module.scss` file which can be found in the database directory under `app/src/assets/styles/`.

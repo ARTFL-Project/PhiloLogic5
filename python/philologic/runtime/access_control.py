@@ -9,13 +9,14 @@ needs (see www/middleware.py).
 
 import hashlib
 import hmac
+import itertools
 import os
-import pickle
 import secrets
 import socket
 import sys
 import time
-from functools import cache
+import tomllib
+from functools import cache, lru_cache
 
 import netaddr
 import regex as re
@@ -25,10 +26,6 @@ from philologic.utils import load_module
 
 # These should always be allowed for local access
 local_networks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8"]
-ip_ranges = [re.compile(rf"^{i.split('/')[0]}.*") for i in local_networks]  # For backward compatibility
-
-# Cached IP whitelist info
-_COMPILED_IP_CACHE_DIR = "/var/lib/philologic5/ip_cache"
 
 # How long an auth cookie lets its client in
 AUTH_COOKIE_MAX_AGE = 7 * 24 * 3600
@@ -48,184 +45,77 @@ def _global_config_path():
     return os.environ.get("PHILOLOGIC_CONFIG", "/etc/philologic/philologic5.cfg")
 
 
-def load_or_compile_ip_whitelist(access_file):
-    """Load compiled IP whitelist or recompile if outdated"""
-    safe_name = access_file.replace("/", "_").lstrip("_") + ".compiled_ips"
-    compiled_file = os.path.join(_COMPILED_IP_CACHE_DIR, safe_name)
-    access_mtime = os.path.getmtime(access_file)
-
-    # Check if compiled file exists and is newer than access file
-    if os.path.exists(compiled_file) and os.path.getmtime(compiled_file) >= access_mtime:
-        try:
-            with open(compiled_file, "rb") as f:
-                return pickle.load(f)
-        except (pickle.PickleError, EOFError):
-            # If loading fails, recompile
-            pass
-
-    # Compile IP whitelist
-    print("Compiling IP whitelist from", access_file, file=sys.stderr)
-    access_config = load_module("access_config", access_file)
-
-    network_set = IPSet()
-
-    # Add local networks to the set
-    for net in local_networks:
-        network_set.add(netaddr.IPNetwork(net))
-
-    # Regular IPs and networks
-    exact_ips = set()
-    regex_patterns = set()
-
-    try:
-        for ip in access_config.allowed_ips:
-            try:
-                # Handle CIDR notation
-                if "/" in ip:
-                    network_set.add(netaddr.IPNetwork(ip))
-                    continue
-
-                # Handle range in any octet (192.168-170.0.0)
-                if "-" in ip:
-                    split_numbers = ip.split(".")
-                    range_count = sum(1 for octet in split_numbers if "-" in octet)
-
-                    # Multiple ranges in different octets (like 192.168.4-5.10-20)
-                    if range_count > 1:
-                        expand_ip_range(ip, exact_ips, network_set, regex_patterns)
-                        continue
-
-                    # Range in last octet (192.168.0.1-100)
-                    if len(split_numbers) == 4 and "-" in split_numbers[3]:
-                        base_ip = ".".join(split_numbers[:3])
-                        last_part = split_numbers[3]
-
-                        if re.search(r"\d+-\d+", last_part):
-                            start, end = map(int, last_part.split("-"))
-                            network_set.add(netaddr.IPRange(f"{base_ip}.{start}", f"{base_ip}.{end}"))
-                        continue
-
-                    # Handle ranges in other octets
-                    if any("-" in octet for octet in split_numbers):
-                        expand_ip_range(ip, exact_ips, network_set, regex_patterns)
-                        continue
-
-                # Single IP or network prefix
-                if ip.count(".") < 3:
-                    # Check for trailing dot (like "140.141.")
-                    if ip.endswith("."):
-                        # Remove trailing dot for pattern creation
-                        ip_pattern = ip.rstrip(".")
-                        regex_patterns.add(re.compile(f"^{ip_pattern}\\.[0-9]+\\.[0-9]+$"))
-                    else:
-                        # Network prefix (e.g., "192.168")
-                        regex_patterns.add(re.compile(f"^{ip}.*$"))
-                else:
-                    # Exact IP address
-                    exact_ips.add(ip)
-
-                    # Match prefixes of exact IPs as well (e.g., "192.168.1.12" should match "192.168.1.123")
-                    regex_patterns.add(re.compile(f"^{re.escape(ip)}.*$"))
-
-            except (ValueError, netaddr.AddrFormatError) as e:
-                # Fallback to regex for any formats netaddr can't handle
-                print(f"Warning: Could not parse IP '{ip}': {str(e)}", file=sys.stderr)
-                regex_patterns.add(re.compile(f"^{ip}.*$"))
-
-    except Exception as e:
-        print(f"Error compiling IP whitelist: {repr(e)}", file=sys.stderr)
-
-    # Package all the compiled IPs
-    ip_whitelist = {
-        "exact_ips": exact_ips,
-        "network_set": network_set,  # IPSet instead of list
-        "regex_patterns": regex_patterns,
-        "timestamp": time.time(),
-    }
-
-    # Save compiled whitelist
-    try:
-        with open(compiled_file, "wb") as f:
-            pickle.dump(ip_whitelist, f)
-    except Exception as e:
-        print(f"Error saving compiled IP whitelist: {repr(e)}", file=sys.stderr)
-
-    return ip_whitelist
-
-
-def expand_ip_range(ip_with_range, exact_ips_set, network_set, regex_patterns_set):
-    """Expand IP ranges like 192.168-170.0.0 into multiple networks"""
-    parts = ip_with_range.split(".")
-
-    # For full IP addresses with ranges (all 4 octets specified)
-    if len(parts) == 4:
-        # Try to use IPRange for efficiency when possible
-        has_range = any("-" in p for p in parts)
-        if has_range:
-            # Count ranges to determine approach
-            range_octets = [i for i, p in enumerate(parts) if "-" in p]
-
-            # If only one octet has a range, we can use an efficient IPRange
-            if len(range_octets) == 1 and range_octets[0] == 3:  # Last octet only
-                base_ip = ".".join(parts[:3])
-                start, end = map(int, parts[3].split("-"))
-                network_set.add(netaddr.IPRange(f"{base_ip}.{start}", f"{base_ip}.{end}"))
-                return
-
-    # Parse each octet, building lists of possible values
-    octets = []
+def _octet_box(rule):
+    """The box of an octet-range rule such as "128.120.0-82" or "192.168-170.0.0": four (low, high) pairs, one for each
+    octet, those not given being 0-255. A trailing dot is ignored. None if the rule has more than four parts, or a part
+    that is not a number or a range of numbers between 0 and 255."""
+    parts = rule.split(".")
+    while parts and parts[-1] == "":
+        parts.pop()
+    if not parts or len(parts) > 4:
+        return None
+    box = []
     for part in parts:
-        if "-" in part and part.count("-") == 1:
-            try:
-                start, end = map(int, part.split("-"))
-                octets.append(list(range(start, end + 1)))
-            except ValueError:
-                # Handle malformed ranges
-                octets.append([0])
-        else:
-            try:
-                octets.append([int(part)])
-            except ValueError:
-                octets.append([0])
+        try:
+            low, high = (int(number) for number in part.split("-", 1)) if "-" in part else (int(part), int(part))
+        except ValueError:
+            return None
+        if not 0 <= low <= high <= 255:
+            return None
+        box.append((low, high))
+    return box + [(0, 255)] * (4 - len(box))
 
-    # Pad with zeros if we have fewer than 4 octets
-    while len(octets) < 4:
-        octets.append([0])
 
-    # Generate all combinations
-    for a in octets[0]:
-        for b in octets[1]:
-            for c in octets[2]:
-                for d in octets[3]:
-                    # Create the IP address - use IPSet when possible
-                    if len(parts) == 4:  # Complete IP, add to IPSet
-                        network_set.add(netaddr.IPAddress(f"{a}.{b}.{c}.{d}"))
-                    else:
-                        # Add to exact IPs for partial patterns
-                        ip = f"{a}.{b}.{c}.{d}"
-                        exact_ips_set.add(ip)
+def _add_box(network_set, box):
+    """Add to network_set the addresses each of whose octets is in its range of box, as one IPRange for each
+    combination of the octets before the last one that is not 0-255 (those after it make the range contiguous)."""
+    last = max((i for i, (low, high) in enumerate(box) if (low, high) != (0, 255)), default=-1)
+    if last < 0:
+        network_set.add(netaddr.IPNetwork("0.0.0.0/0"))
+        return
+    head = [range(low, high + 1) for low, high in box[:last]]
+    low, high = box[last]
+    tail = 3 - last
+    for prefix in itertools.product(*head):
+        start = ".".join(map(str, (*prefix, low, *[0] * tail)))
+        end = ".".join(map(str, (*prefix, high, *[255] * tail)))
+        network_set.add(netaddr.IPRange(start, end))
 
-    # If we have fewer than 4 octets, create a regex pattern for EACH combination
-    if len(parts) < 4:
-        # Create regex patterns for all possible combinations up to the parts we have
-        for a in octets[0]:
-            if len(parts) > 1:
-                for b in octets[1]:
-                    if len(parts) > 2:
-                        for c in octets[2]:
-                            # Create pattern based on values so far
-                            base = f"{a}.{b}.{c}"
-                            regex_patterns_set.add(re.compile(f"^{base}.*$"))
-                    else:
-                        # Two octets
-                        base = f"{a}.{b}"
-                        regex_patterns_set.add(re.compile(f"^{base}.*$"))
+
+@lru_cache(maxsize=32)
+def _read_access_file(path, mtime):
+    """What the TOML access file at path, as modified at mtime, allows: (prefixes, networks, domains, blocked_ips).
+    It has an optional top-level blocked_ips list, and any number of tables, each with optional domains and ip_rules
+    lists, whose rules together let a client in; other keys are ignored. A rule of ip_rules with a "/" is a CIDR
+    network, one with a "-" an octet range; one that can't be read is skipped with a warning, any other a prefix of the
+    client's address string. The local networks are always in networks. Raises if the file can't be read or isn't
+    valid TOML."""
+    with open(path, "rb") as access_file:
+        config = tomllib.load(access_file)
+    network_set = IPSet(netaddr.IPNetwork(network) for network in local_networks)
+    prefixes, domains = [], []
+    for table in config.values():
+        if not isinstance(table, dict):
+            continue
+        domains.extend(table.get("domains", []))
+        for rule in table.get("ip_rules", []):
+            rule = rule.strip()
+            if not rule:
+                continue
+            if "/" in rule:
+                try:
+                    network_set.add(netaddr.IPNetwork(rule))
+                except netaddr.AddrFormatError:
+                    print(f"Warning: skipping the ip rule '{rule}' of {path}: not a CIDR network", file=sys.stderr)
+            elif "-" in rule:
+                box = _octet_box(rule)
+                if box is None:
+                    print(f"Warning: skipping the ip rule '{rule}' of {path}: not an octet range", file=sys.stderr)
+                else:
+                    _add_box(network_set, box)
             else:
-                # Single octet
-                base = f"{a}"
-                regex_patterns_set.add(re.compile(f"^{base}.*$"))
-
-
+                prefixes.append(rule)
+    return tuple(prefixes), network_set, tuple(domains), frozenset(config.get("blocked_ips", []))
 
 
 @cache
@@ -269,7 +159,7 @@ def connected_address(environ):
 
 
 def _client_domain(incoming_address):
-    """The client's domain, which the access file's domain_list is matched against and the login screen shows, from a
+    """The client's domain, which the access file's domains are matched against and the login screen shows, from a
     reverse DNS lookup of its address."""
     fq_domain_name = socket.getfqdn(incoming_address).split(",")[-1]
     edit_domain = re.split(r"\.", fq_domain_name)
@@ -298,9 +188,9 @@ def is_allowed(environ, config):
     now = time.monotonic()
     if key in _allowed and now - _allowed[key][1] < _ALLOWED_TTL:
         return _allowed[key][0]
-    allowed = _check_address(incoming_address, access_file, mtime is not None)
+    allowed = _check_address(incoming_address, access_file, mtime)
     connected = connected_address(environ)
-    if connected != incoming_address and _check_address(connected, access_file, mtime is not None, log=False) != allowed:
+    if connected != incoming_address and _check_address(connected, access_file, mtime, log=False) != allowed:
         # Whether checking the address that connected, as 5.2.7 did, would refuse anyone: the first address decides
         print(
             f"ACCESS AUDIT: {os.path.basename(os.path.normpath(config.db_path))}: "
@@ -314,59 +204,38 @@ def is_allowed(environ, config):
     return allowed
 
 
-def _check_address(incoming_address, access_file, access_file_exists, log=True):
-    """Whether access_file lets incoming_address in; refusals are logged, if log."""
+def _check_address(incoming_address, access_file, mtime, log=True):
+    """Whether access_file, modified at mtime (None if it doesn't exist), lets incoming_address in; refusals are
+    logged, if log."""
     say = print if log else (lambda *args, **kwargs: None)
     if not access_file:
         say(f"UNAUTHORIZED ACCESS TO:{incoming_address}: no access file is defined", file=sys.stderr)
         return False
-    if not access_file_exists:
+    if mtime is None:
         say(f"ACCESS FILE DOES NOT EXIST. UNAUTHORIZED ACCESS TO: {incoming_address}", file=sys.stderr)
         return False
 
-    # Load access config and IP whitelist
     try:
-        access_config = load_module("access_config", access_file)
-        ip_whitelist = load_or_compile_ip_whitelist(access_file)
+        prefixes, network_set, domain_list, blocked_ips = _read_access_file(access_file, mtime)
     except Exception as e:
-        say("ACCESS ERROR", repr(e), file=sys.stderr)
+        say("ACCESS ERROR", repr(e), "(access files are TOML, see docs/access_control.md)", file=sys.stderr)
         say(f"UNAUTHORIZED ACCESS TO:{incoming_address}: can't load access config", file=sys.stderr)
         return False
 
-    # Check blocked IPs
-    blocked_ips = set(getattr(access_config, "blocked_ips", []))
     if incoming_address in blocked_ips:
         say(f"BLOCKED IP ACCESS ATTEMPT: {incoming_address}", file=sys.stderr)
         return False
 
-    # Check IP whitelist
+    if incoming_address.startswith(prefixes):
+        return True
     try:
-        # 1. Check exact IPs first (fastest)
-        if incoming_address in ip_whitelist["exact_ips"]:
+        if netaddr.IPAddress(incoming_address) in network_set:
             return True
-
-        # 2. Check IP networks using IPSet (much faster)
-        try:
-            client_ip = netaddr.IPAddress(incoming_address)
-
-            # This is a single O(log n) operation instead of O(n)
-            if client_ip in ip_whitelist["network_set"]:
-                return True
-
-        except (ValueError, netaddr.AddrFormatError):
-            # Skip network checks if IP format is invalid
-            pass
-
-        # 3. Check regex patterns (slowest)
-        for pattern in ip_whitelist["regex_patterns"]:
-            if pattern.search(incoming_address):
-                return True
-    except Exception as e:
-        say(f"Error checking IP whitelist: {repr(e)}", file=sys.stderr)
+    except (ValueError, netaddr.AddrFormatError):
+        pass  # not an IP address
 
     # Check domain access, last: it takes a reverse DNS lookup. By substring, and with no forward lookup to confirm
-    # the name: stricter rules would have refused subscribers' VPNs and proxies in the 2025 logs of artflsrv04.
-    domain_list = set(getattr(access_config, "domain_list", []))
+    # the name.
     match_domain = _client_domain(incoming_address) if domain_list else incoming_address
     if match_domain in domain_list or any(domain in match_domain for domain in domain_list):
         return True
