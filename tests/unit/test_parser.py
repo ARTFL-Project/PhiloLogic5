@@ -214,10 +214,27 @@ class TestDivHead:
             ('<div type="tome" n="">', "", "tome"),
             ('<div type="tome" xml:n="2">', "", "tome"),
             ('<div n="2">', "", "[NA]"),
+            ('<div type="chapitre" n="IV">', "", "chapitre IV"),
+            ('<div type="scène" n="3bis">', "", "scène 3bis"),
+            ('<div type="article" n="3.1">', "", "article 3.1"),
         ],
     )
     def test_head_from_type_and_n(self, div_tag, head, expected):
         """Test that a div with no head is named by its type and its n, if it has one."""
+        assert parse_div_head(head, div_tag) == expected
+
+    @pytest.mark.parametrize(
+        "div_tag, head, expected",
+        [
+            ('<div type="poème" n="Le Vœu">', "", "Le Vœu"),
+            ('<div type="partie" n="Première partie">', "", "Première partie"),
+            ('<div type="journal" n="Octobre 1914">', "", "Octobre 1914"),
+            ('<div n="Préface">', "", "Préface"),
+            ('<div type="poème" n="Le Vœu">', "<head>LE VŒU</head>", "LE VŒU"),
+        ],
+    )
+    def test_head_from_n_label(self, div_tag, head, expected):
+        """Test that a div with no head whose n is a label, not a number, is named by its n alone."""
         assert parse_div_head(head, div_tag) == expected
 
 
