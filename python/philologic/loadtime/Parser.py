@@ -250,6 +250,7 @@ inverted_ent = re.compile(r"\&inverted([a-zA-Z0-9]);", re.I)
 supp_ent = re.compile(r"&supp([a-z0-9]);", re.I)
 ligatures_ent = re.compile(r"\&([A-Za-z][A-Za-z])lig;", re.I)
 type_attrib = re.compile(r'type="([^"]*)"', re.I)
+n_attrib = re.compile(r'(?<![\w:.-])n="([^"]*)"', re.I)
 hyper_div_tag = re.compile(r"<hyperdiv\W", re.I)
 div_num_tag = re.compile(r"<div(.)", re.I)
 char_ents = re.compile(r"\&[a-zA-Z0-9\#][a-zA-Z0-9]*;", re.I)
@@ -1508,7 +1509,8 @@ class XMLParser:
             pass
 
     def get_div_head(self, tag):
-        """Get div head."""
+        """The head of a div: the text of the <head> tags after it (all of them, 50 lines at most), up to the next div
+        tag, else its type attribute with its n attribute after it if it has one ("tome 2"), else [NA]"""
         read_more = False
         look_ahead = self.line_count
         overflow_trap = 0
@@ -1556,6 +1558,9 @@ class XMLParser:
                 div_head = type_attrib.findall(tag)[0]
             except IndexError:
                 pass
+            div_n = n_attrib.search(tag)
+            if div_head and div_n and div_n.group(1).strip():
+                div_head = f"{div_head} {div_n.group(1).strip()}"  # as the table of contents names a div with no head
 
         if not div_head:
             div_head = "[NA]"
