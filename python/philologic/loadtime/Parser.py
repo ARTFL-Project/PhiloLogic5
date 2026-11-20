@@ -115,7 +115,7 @@ DEFAULT_DOC_XPATHS = {
     "keywords": [".//profileDesc/textClass/keywords/list/item"],
     "language": [".//profileDesc/language/language"],
     "notes": [".//fileDesc/notesStmt/note", ".//publicationStmt/notesStmt/note"],
-    "auth_gender": [".//publicationStmt/notesStmt/note"],
+    "auth_gender": [".//profileDesc/textClass/keywords[@scheme='authorgender']/term"],
     "collection": [".//seriesStmt/title"],
     "period": [
         ".//profileDesc/textClass/keywords[@scheme='period']/list/item",
